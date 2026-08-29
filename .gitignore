@@ -1,10 +1,30 @@
-__pycache__/
-*.pyc
-.venv/
-venv/
+# Áp dụng chung cho cả 2 folder con: vn-stock-swarm/ (code chính) và
+# llm-engineer-demo/ (code tham chiếu để build từng Agent theo plan.md).
+
+# Secrets — KHÔNG BAO GIỜ commit
 .env
-data/
+*.env
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-*.egg-info/
+.venv/
+venv/
+
+# Dữ liệu / cache nặng — không commit (qdrant index, dataset đã tải,
+# checkpoint fine-tune, sink DB & JSONL runtime của swarm)
+data/
+!vn-stock-swarm/tests/**/data/
+training/output/
+*.db
+*.sqlite3
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
