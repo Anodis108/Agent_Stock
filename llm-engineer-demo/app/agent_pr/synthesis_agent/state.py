@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TypedDict
+from typing import Any, TypedDict
 
 from app.agent_pr.craw_agent.schemas import Agent_Output as PriceOut
 from app.agent_pr.eval_agent.schemas import Agent_Output as EvalOut
@@ -16,3 +16,4 @@ class SynthState(TypedDict, total=False):
     eval: EvalOut
     n_history: int
     result: Agent_Output                  # compose ghi; run_synthesis lấy field này
+    _trace_span: Any                      # span cha từ hub

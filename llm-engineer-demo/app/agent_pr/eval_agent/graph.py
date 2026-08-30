@@ -7,21 +7,32 @@ craw/news tách fetch/parse vì có mạng. Eval chỉ chấm nên gộp một h
 
 from __future__ import annotations
 
+from functools import lru_cache
+
 from langgraph.graph import END, START, StateGraph
 
 from app.agent_pr.eval_agent.nodes import score
 from app.agent_pr.eval_agent.schemas import Agent_Input, Agent_Output
 from app.agent_pr.eval_agent.state import EvalState
+from app.monitoring.tracing import trace_answer
 
 
-def _graph():
-    g = StateGraph(EvalState)
-    g.add_node("score", score)
-    g.add_edge(START, "score")
-    g.add_edge("score", END)
-    return g.compile()
+@lru_cache(maxsize=1)
+def _build_graph():
+    graph = StateGraph(EvalState)
+    graph.add_node("score", score)
+    graph.add_edge(START, "score")
+    graph.add_edge("score", END)
+    return graph.compile()
 
 
 async def run_eval(inp: Agent_Input) -> Agent_Output:
     """Nhận price+news, trả report. Lấy `["report"]` — score luôn ghi field này."""
-    return (await _graph().ainvoke({"price": inp.price, "news": inp.news}))["report"]
+    with trace_answer("agent_pr_eval", inp.price.symbol) as t:
+        report = (
+            await _build_graph().ainvoke(
+                {"price": inp.price, "news": inp.news, "_trace_span": t.get("_span")}
+            )
+        )["report"]
+        t["output"] = report.detail
+        return report

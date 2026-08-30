@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import routes_admin, routes_assistant, routes_chat, routes_multi_agent, routes_pr
+from app.api import routes_admin, routes_chat, routes_multi_agent, routes_pr
 from app.config import settings
 from app.guardrails.checks import GuardrailViolation
 
@@ -37,18 +37,37 @@ app.add_middleware(
 
 app.include_router(routes_chat.router)
 app.include_router(routes_admin.router)
-app.include_router(routes_assistant.router)
 app.include_router(routes_multi_agent.router)
 app.include_router(routes_pr.router)
 
 _STATIC_DIR = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
+app.mount("/portfolio", StaticFiles(directory=_STATIC_DIR / "portfolio", html=True), name="portfolio")
 
 
 @app.get("/", tags=["meta"])
-def chat_ui() -> FileResponse:
-    """Demo UI — chat đơn giản, lịch sử lưu ở localStorage (xem app/static/chat.html)."""
+def agent_pr_ui() -> FileResponse:
+    """Demo UI mặc định — Hierarchical VN-stock agent (xem app/static/agent_pr.html).
+
+    Module II (Personal Assistant, routes_assistant) tắt hẳn khỏi router phía
+    trên — không mount qua main.py. app/agent (CRAG, /chat/agent) vẫn còn
+    trong routes_chat.router nhưng không link từ UI mặc định nữa; gọi trực
+    tiếp qua /docs nếu cần. Module I chat.html cũ vẫn phục vụ tại /legal-chat.
+    """
+    return FileResponse(_STATIC_DIR / "agent_pr.html")
+
+
+@app.get("/legal-chat", tags=["meta"])
+def legal_chat_ui() -> FileResponse:
+    """UI cũ Module I (RAG + CRAG) — xem app/static/chat.html. Tab Assistant (M2)
+    trong trang này sẽ lỗi vì /assistant/* đã tắt khỏi router (xem agent_pr_ui)."""
     return FileResponse(_STATIC_DIR / "chat.html")
+
+
+@app.get("/swarm-handoff-map.html", tags=["meta"])
+def swarm_handoff_map() -> FileResponse:
+    """Sơ đồ kiến trúc Crawler Swarm đề xuất (link từ portfolio) — xem app/static/swarm-handoff-map.html."""
+    return FileResponse(_STATIC_DIR / "swarm-handoff-map.html")
 
 
 @app.exception_handler(GuardrailViolation)

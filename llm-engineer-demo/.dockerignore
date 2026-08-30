@@ -1,0 +1,11 @@
+.git
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+data/qdrant
+data/agent_pr.sqlite3
+.env
+*.md
+.cursor
+training

@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>VN-Stock Hierarchical Agent — Demo</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --border: #2a2e38;
+    --text: #e6e8ec;
+    --muted: #8b90a0;
+    --accent: #4f7cff;
+    --user-bubble: #4f7cff;
+    --bot-bubble: #1f232c;
+    --error: #ff5c6c;
+    --warn: #d9a441;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  header h1 { font-size: 15px; font-weight: 600; margin: 0; }
+  header .sub { font-size: 12px; color: var(--muted); }
+  .symbols { font-size: 11px; color: var(--muted); }
+  .symbols span {
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 1px 8px;
+    margin-left: 4px;
+  }
+
+  #messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .msg-row { display: flex; }
+  .msg-row.user { justify-content: flex-end; }
+  .bubble {
+    max-width: 72%;
+    padding: 10px 14px;
+    border-radius: 12px;
+    line-height: 1.5;
+    font-size: 14px;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+  .msg-row.user .bubble { background: var(--user-bubble); color: white; border-bottom-right-radius: 3px; }
+  .msg-row.bot .bubble { background: var(--bot-bubble); border: 1px solid var(--border); border-bottom-left-radius: 3px; }
+  .msg-row.error .bubble { background: rgba(255, 92, 108, 0.12); border: 1px solid var(--error); color: var(--error); }
+  .typing { color: var(--muted); font-style: italic; font-size: 13px; }
+
+  details.trace { margin-top: 8px; font-size: 12px; }
+  details.trace summary { cursor: pointer; color: var(--accent); }
+  .trace-step {
+    margin-top: 6px;
+    padding: 6px 8px;
+    background: rgba(255,255,255,0.03);
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    color: var(--muted);
+  }
+
+  .eval-btn {
+    margin-top: 8px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    padding: 5px 12px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .eval-btn:hover { color: var(--accent); border-color: var(--accent); }
+  .eval-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .eval-card {
+    margin-top: 8px;
+    padding: 10px 12px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 13px;
+  }
+  .eval-title { font-weight: 600; margin-bottom: 8px; }
+  .eval-section { margin-bottom: 10px; }
+  .eval-section:last-child { margin-bottom: 0; }
+  .eval-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted); margin-bottom: 4px; }
+  .eval-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    border-radius: 999px; padding: 2px 10px; font-size: 12px; border: 1px solid var(--border);
+  }
+  .eval-badge.pass { color: #4caf6a; border-color: #4caf6a; background: rgba(76,175,106,0.08); }
+  .eval-badge.fail { color: var(--error); border-color: var(--error); background: rgba(255,92,108,0.08); }
+  .eval-reasoning { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .eval-scores { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 6px; margin-top: 4px; }
+  .eval-score-item { background: rgba(255,255,255,0.03); border-radius: 6px; padding: 6px 8px; text-align: center; }
+  .eval-score-item .score-value { font-size: 15px; font-weight: 600; color: var(--accent); }
+  .eval-score-item .score-label { font-size: 10px; color: var(--muted); margin-top: 2px; }
+  .eval-issues { margin-top: 6px; font-size: 12px; color: var(--warn); }
+  .eval-issues li { margin-left: 16px; }
+  .eval-error { color: var(--error); font-size: 12px; }
+
+  #input-bar {
+    border-top: 1px solid var(--border);
+    padding: 14px 20px;
+    display: flex;
+    gap: 10px;
+  }
+  #symbol {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 14px;
+    width: 160px;
+    text-transform: uppercase;
+  }
+  #symbol:focus { outline: none; border-color: var(--accent); }
+  #send-btn {
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    padding: 0 20px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  #send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>VN-Stock Hierarchical Agent</h1>
+    <div class="sub">Coordinator → Price · News · DB (song song) → Eval → Synthesis</div>
+  </div>
+  <div class="symbols">Mã demo:<span>VNM</span><span>HPG</span><span>FPT</span><span>VCB</span></div>
+</header>
+
+<div id="messages"></div>
+
+<div id="input-bar">
+  <input id="symbol" placeholder="VD: HPG" maxlength="10" />
+  <button id="send-btn">Hỏi</button>
+</div>
+
+<script>
+const messagesEl = document.getElementById("messages");
+const symbolEl = document.getElementById("symbol");
+const sendBtn = document.getElementById("send-btn");
+
+function scrollToBottom() {
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+function renderRow(role, text) {
+  const row = document.createElement("div");
+  row.className = `msg-row ${role}`;
+  const bubble = document.createElement("div");
+  bubble.className = "bubble";
+  bubble.textContent = text;
+  row.appendChild(bubble);
+  messagesEl.appendChild(row);
+  scrollToBottom();
+  return { row, bubble };
+}
+
+function renderTrace(bubble, trace) {
+  if (!trace || !trace.length) return;
+  const details = document.createElement("details");
+  details.className = "trace";
+  const summary = document.createElement("summary");
+  summary.textContent = `${trace.length} bước điều phối`;
+  details.appendChild(summary);
+  trace.forEach((step) => {
+    const div = document.createElement("div");
+    div.className = "trace-step";
+    div.textContent = step;
+    details.appendChild(div);
+  });
+  bubble.appendChild(details);
+}
+
+function renderEvalCard(body) {
+  const card = document.createElement("div");
+  card.className = "eval-card";
+
+  const title = document.createElement("div");
+  title.className = "eval-title";
+  title.textContent = "📊 Kết quả đánh giá";
+  card.appendChild(title);
+
+  const successSection = document.createElement("div");
+  successSection.className = "eval-section";
+  const successLabel = document.createElement("div");
+  successLabel.className = "eval-label";
+  successLabel.textContent = "Task Success";
+  successSection.appendChild(successLabel);
+
+  const ts = body.task_success;
+  const badge = document.createElement("span");
+  badge.className = `eval-badge ${ts.success ? "pass" : "fail"}`;
+  badge.textContent = `${ts.success ? "✓ Đạt" : "✗ Chưa đạt"} — điểm ${(ts.score * 100).toFixed(0)}%`;
+  successSection.appendChild(badge);
+
+  const reasoning = document.createElement("div");
+  reasoning.className = "eval-reasoning";
+  reasoning.textContent = ts.reasoning;
+  successSection.appendChild(reasoning);
+  card.appendChild(successSection);
+
+  const trajSection = document.createElement("div");
+  trajSection.className = "eval-section";
+  const trajLabel = document.createElement("div");
+  trajLabel.className = "eval-label";
+  trajLabel.textContent = `Trajectory Quality (${body.step_count} bước, điểm TB ${body.trajectory.overall.toFixed(1)}/5)`;
+  trajSection.appendChild(trajLabel);
+
+  const scores = document.createElement("div");
+  scores.className = "eval-scores";
+  const scoreDefs = [
+    ["efficiency", "Hiệu quả"],
+    ["logical_order", "Thứ tự logic"],
+    ["tool_correctness", "Đúng tool"],
+    ["recovery", "Xử lý lỗi"],
+  ];
+  for (const [key, label] of scoreDefs) {
+    const item = document.createElement("div");
+    item.className = "eval-score-item";
+    const value = document.createElement("div");
+    value.className = "score-value";
+    value.textContent = `${body.trajectory[key]}/5`;
+    const lbl = document.createElement("div");
+    lbl.className = "score-label";
+    lbl.textContent = label;
+    item.appendChild(value);
+    item.appendChild(lbl);
+    scores.appendChild(item);
+  }
+  trajSection.appendChild(scores);
+
+  if (body.trajectory.issues && body.trajectory.issues.length) {
+    const issuesList = document.createElement("ul");
+    issuesList.className = "eval-issues";
+    for (const issue of body.trajectory.issues) {
+      const li = document.createElement("li");
+      li.textContent = issue;
+      issuesList.appendChild(li);
+    }
+    trajSection.appendChild(issuesList);
+  }
+
+  card.appendChild(trajSection);
+  return card;
+}
+
+async function runEvaluation(symbol, btn, bubble) {
+  btn.disabled = true;
+  btn.textContent = "⏳ Đang đánh giá...";
+  try {
+    const res = await fetch("/pr/ask/evaluate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ symbol }),
+    });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.detail || `HTTP ${res.status}`);
+    btn.remove();
+    bubble.appendChild(renderEvalCard(body));
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = "📊 Đánh giá";
+    const errEl = document.createElement("div");
+    errEl.className = "eval-error";
+    errEl.textContent = `Lỗi đánh giá: ${err.message}`;
+    bubble.appendChild(errEl);
+  }
+}
+
+async function sendSymbol() {
+  const symbol = symbolEl.value.trim().toUpperCase();
+  if (!symbol) return;
+
+  symbolEl.value = "";
+  sendBtn.disabled = true;
+
+  renderRow("user", symbol);
+
+  const { bubble } = renderRow("bot", "");
+  const typing = document.createElement("span");
+  typing.className = "typing";
+  typing.textContent = "coordinator đang điều phối Price · News · DB → Eval → Synthesis...";
+  bubble.appendChild(typing);
+  scrollToBottom();
+
+  try {
+    const res = await fetch("/pr/ask", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ symbol }),
+    });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.detail || `HTTP ${res.status}`);
+
+    typing.remove();
+    bubble.textContent = body.answer;
+    renderTrace(bubble, body.trace);
+
+    const evalBtn = document.createElement("button");
+    evalBtn.className = "eval-btn";
+    evalBtn.textContent = "📊 Đánh giá";
+    evalBtn.addEventListener("click", () => runEvaluation(symbol, evalBtn, bubble));
+    bubble.appendChild(evalBtn);
+  } catch (err) {
+    bubble.parentElement.remove();
+    renderRow("error", `Lỗi: ${err.message}`);
+  } finally {
+    sendBtn.disabled = false;
+    symbolEl.focus();
+    scrollToBottom();
+  }
+}
+
+symbolEl.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    sendSymbol();
+  }
+});
+sendBtn.addEventListener("click", sendSymbol);
+
+renderRow("bot", "Nhập mã cổ phiếu (VNM, HPG, FPT, VCB) để agent phân tích giá + tin tức.");
+</script>
+</body>
+</html>

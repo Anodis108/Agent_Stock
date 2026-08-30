@@ -23,3 +23,4 @@ class NewsState(TypedDict, total=False):
     symbol: str                    # mã đã upper + nằm ALLOWED (normalize ghi)
     rows: list[dict[str, Any]]     # [{title, url, publish_time}, ...] từ CafeF News.ashx
     news: Agent_Output             # parse ghi; run_news lấy đúng field này trả caller
+    _trace_span: Any               # span cha LangFuse — Send phải gửi kèm (nhánh chỉ thấy payload)

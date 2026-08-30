@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from app.agent_pr.craw_agent.schemas import Agent_Output
 from app.agent_pr.craw_agent.state import CrawlState
+from app.monitoring.tracing import trace_step
 
 ALLOWED = frozenset({"VNM", "HPG", "FPT", "VCB"})
 
@@ -24,9 +25,11 @@ ALLOWED = frozenset({"VNM", "HPG", "FPT", "VCB"})
 def normalize(state: CrawlState) -> dict:
     """Upper + strip; raise ValueError nếu mã chưa nằm whitelist."""
     symbol = str(state.get("symbol") or "").strip().upper()
-    if symbol not in ALLOWED:
-        raise ValueError(f"Mã '{symbol}' chưa hỗ trợ")
-    return {"symbol": symbol}
+    with trace_step(state.get("_trace_span"), "craw_normalize", input=symbol) as t:
+        if symbol not in ALLOWED:
+            raise ValueError(f"Mã '{symbol}' chưa hỗ trợ")
+        t["output"] = symbol
+        return {"symbol": symbol}
 
 
 # ── Lấy rows ──────────────────────────────────────────────────────────────────
@@ -42,15 +45,16 @@ def fetch(state: CrawlState) -> dict:
     from vnstock import Quote
 
     symbol = state["symbol"]
-    df = Quote(symbol=symbol, source="KBS").history(length="5", interval="d")
-    if df is None or df.empty:
-        raise ValueError(f"Không có dữ liệu {symbol}")
-    return {
-        "rows": [
+    with trace_step(state.get("_trace_span"), "craw_fetch", input=symbol) as t:
+        df = Quote(symbol=symbol, source="KBS").history(length="5", interval="d")
+        if df is None or df.empty:
+            raise ValueError(f"Không có dữ liệu {symbol}")
+        rows = [
             {"time": str(row.time), "close": float(row.close)}
             for row in df.tail(2).itertuples()
         ]
-    }
+        t["output"] = {"n_rows": len(rows)}
+        return {"rows": rows}
 
 
 # ── Parse ─────────────────────────────────────────────────────────────────────
@@ -63,17 +67,18 @@ def parse(state: CrawlState) -> dict:
     """rows (nghìn đồng) → Agent_Output (VND). Field `quote` là output graph."""
     rows = state["rows"]
     symbol = state["symbol"]
-    if not rows:
-        raise ValueError("Không có dữ liệu")
-    last = float(rows[-1]["close"]) * 1000
-    prev = float(rows[-2]["close"]) * 1000 if len(rows) >= 2 else None
-    pct = round((last - prev) / prev * 100, 2) if prev else None
-    return {
-        "quote": Agent_Output(
+    with trace_step(state.get("_trace_span"), "craw_parse", input=symbol) as t:
+        if not rows:
+            raise ValueError("Không có dữ liệu")
+        last = float(rows[-1]["close"]) * 1000
+        prev = float(rows[-2]["close"]) * 1000 if len(rows) >= 2 else None
+        pct = round((last - prev) / prev * 100, 2) if prev else None
+        quote = Agent_Output(
             symbol=symbol,
             last=last,
             prev_close=prev,
             pct_change=pct,
             trading_date=str(rows[-1].get("time", ""))[:10].replace("-", ""),
         )
-    }
+        t["output"] = {"last": last, "pct_change": pct}
+        return {"quote": quote}

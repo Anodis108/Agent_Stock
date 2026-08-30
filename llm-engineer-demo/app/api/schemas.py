@@ -172,3 +172,28 @@ class PriceResponse(BaseModel):
     pct_change: float | None = None
     trading_date: str = ""
     source: str = "vnstock"
+
+
+class AskRequest(BaseModel):
+    symbol: str = Field(min_length=1, description="Mã CP demo: VNM, HPG, FPT, VCB")
+
+
+class AskResponse(BaseModel):
+    """Kết quả hub supervisor — 1 câu + trace, không dump hết news."""
+
+    symbol: str
+    answer: str
+    trace: list[str] = []
+    last: float | None = None
+    pct_change: float | None = None
+    n_news: int = 0
+    eval_detail: str = ""
+
+
+class AskEvaluateResponse(BaseModel):
+    """POST /pr/ask/evaluate — cùng 2 chiều agent_m2 (task success + trajectory)."""
+
+    task_success: TaskSuccessSchema
+    trajectory: TrajectorySchema
+    trajectory_steps: list[TrajectoryStep] = Field(default_factory=list)
+    step_count: int = 0

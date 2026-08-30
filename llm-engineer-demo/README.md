@@ -7,6 +7,7 @@ gồm 2 module độc lập trên cùng 1 FastAPI app:
 |--------|--------|----------|
 | **Module I** | Vietnamese Legal Assistant — RAG Chatbot (chat completions → RAG → agentic RAG → eval/guardrails → production optimization) | [README.module1.md](README.module1.md) |
 | **Module II** | AI Agent — Personal Assistant (LangGraph: ReAct loop, HITL, memory, context engineering, tool design, MCP) | [README.module2.md](README.module2.md) |
+| **agent_pr** | Hierarchical VN-stock — giá + tin + eval + synthesis (`app/agent_pr/`) | [README.agent_pr.md](README.agent_pr.md) |
 
 > **Triết lý:** dùng **native SDK** (OpenAI, Qdrant...) thay vì framework cao cấp, để
 > engineer hiểu và kiểm soát từng lời gọi. **API-first** với FastAPI. LangGraph (Module I
@@ -54,6 +55,15 @@ pytest          # không gọi API thật (mock LLM), không cần key
 Test cho cả 2 module nằm chung trong `tests/` (`test_chat.py`, `test_rag.py`,
 `test_agent.py`, ... cho Module I; `test_agent_m2*.py` cho Module II).
 
+**agent_pr** (giá + tin, không cần OpenAI) — Docker Compose:
+
+```bash
+docker compose up --build app
+# POST http://localhost:8000/pr/ask  {"symbol":"HPG"}
+```
+
+Chi tiết: [README.agent_pr.md](README.agent_pr.md).
+
 ---
 
 ## Cấu trúc tổng quan
@@ -74,6 +84,7 @@ app/
 ├── retrieval/            # Module I — RAG hoàn chỉnh (loader, chunking, embeddings, vectorstore, retriever)
 ├── agent/                # Module I, Buổi 6 — CRAG + Query Decomposition (LangGraph)
 ├── agent_m2/             # Module II — Personal Assistant agent (LangGraph) — chi tiết ở README.module2.md
+├── agent_pr/             # Hierarchical VN-stock — README.agent_pr.md
 ├── guardrails/           # Module I — injection.py, pii.py, checks.py
 ├── eval/                 # Module I — judge.py (LLM-as-Judge), ragas_native.py, metrics.py
 ├── monitoring/           # Module I — tracing.py, LangFuse hooks tối thiểu

@@ -18,6 +18,7 @@ from pathlib import Path
 
 from app.agent_pr.db_agent.schemas import Agent_Output, PendingWrite, PriceRow, SavedNews
 from app.agent_pr.db_agent.state import DBState
+from app.monitoring.tracing import trace_step
 
 ALLOWED = frozenset({"VNM", "HPG", "FPT", "VCB"})
 
@@ -72,9 +73,11 @@ def _connect() -> sqlite3.Connection:
 def normalize(state: DBState) -> dict:
     """Upper + strip; raise ValueError nếu mã chưa nằm whitelist."""
     symbol = str(state.get("symbol") or "").strip().upper()
-    if symbol not in ALLOWED:
-        raise ValueError(f"Mã '{symbol}' chưa hỗ trợ")
-    return {"symbol": symbol}
+    with trace_step(state.get("_trace_span"), "db_normalize", input=symbol) as t:
+        if symbol not in ALLOWED:
+            raise ValueError(f"Mã '{symbol}' chưa hỗ trợ")
+        t["output"] = symbol
+        return {"symbol": symbol}
 
 
 # ── ĐỌC — luôn tự động, không HITL ──────────────────────────────────────────
@@ -88,6 +91,16 @@ def normalize(state: DBState) -> dict:
 def read(state: DBState) -> dict:
     """Đọc lịch sử giá + tin đã lưu (bảng CHÍNH THỨC) của 1 mã."""
     symbol = state["symbol"]
+    with trace_step(state.get("_trace_span"), "db_read", input=symbol) as t:
+        out = _read_rows(symbol)
+        t["output"] = {
+            "n_price": len(out["price_rows"]),
+            "n_news": len(out["news_rows"]),
+        }
+        return out
+
+
+def _read_rows(symbol: str) -> dict:
     with _connect() as conn:
         price_cur = conn.execute(
             "SELECT trading_date, close FROM prices WHERE symbol = ? "
@@ -121,9 +134,17 @@ def stage_writes(state: DBState) -> dict:
     """
     symbol = state["symbol"]
     candidates = state.get("candidate_news") or []
-    if not candidates:
-        return {"pending_rows": []}
+    with trace_step(state.get("_trace_span"), "db_stage_writes", input=symbol) as t:
+        if not candidates:
+            t["output"] = {"n_pending": 0}
+            return {"pending_rows": []}
 
+        pending_rows = _stage_pending(symbol, candidates)
+        t["output"] = {"n_pending": len(pending_rows)}
+        return {"pending_rows": pending_rows}
+
+
+def _stage_pending(symbol: str, candidates) -> list[dict]:
     with _connect() as conn:
         existing = {
             row["url"]
@@ -145,7 +166,7 @@ def stage_writes(state: DBState) -> dict:
             )
             pending_rows.append({"id": cur.lastrowid, "symbol": symbol, "title": title, "url": url})
             existing.add(url)
-    return {"pending_rows": pending_rows}
+    return pending_rows
 
 
 # ── Parse ─────────────────────────────────────────────────────────────────────
@@ -157,8 +178,8 @@ def parse(state: DBState) -> dict:
     price_rows = state.get("price_rows") or []
     news_rows = state.get("news_rows") or []
     pending_rows = state.get("pending_rows") or []
-    return {
-        "result": Agent_Output(
+    with trace_step(state.get("_trace_span"), "db_parse", input=symbol) as t:
+        result = Agent_Output(
             symbol=symbol,
             price_history=[PriceRow(**row) for row in price_rows],
             saved_news=[SavedNews(**row) for row in news_rows],
@@ -168,7 +189,8 @@ def parse(state: DBState) -> dict:
                 f"soạn {len(pending_rows)} lệnh ghi mới (chờ duyệt)"
             ),
         )
-    }
+        t["output"] = result.detail
+        return {"result": result}
 
 
 # ── HITL — nằm NGOÀI graph, gọi sau khi người duyệt ─────────────────────────

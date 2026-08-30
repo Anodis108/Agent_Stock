@@ -29,3 +29,4 @@ class DBState(TypedDict, total=False):
     news_rows: list[dict[str, Any]]    # [{title, url}, ...] đọc từ bảng news (đã duyệt)
     pending_rows: list[dict[str, Any]]  # [{id, symbol, title, url}, ...] vừa soạn, chưa commit
     result: Agent_Output               # parse ghi; run_db lấy đúng field này trả caller
+    _trace_span: Any                   # span cha LangFuse — Send/cửa sổ phải truyền

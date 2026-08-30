@@ -25,3 +25,4 @@ class CrawlState(TypedDict, total=False):
     symbol: str                    # mã đã upper + nằm ALLOWED (normalize ghi)
     rows: list[dict[str, Any]]     # [{time, close}, ...] từ vnstock; close = nghìn đồng
     quote: Agent_Output            # parse ghi; run_crawl lấy đúng field này trả caller
+    _trace_span: Any               # span cha LangFuse — Send/cửa sổ phải truyền (xem GraphState)

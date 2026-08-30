@@ -8,37 +8,41 @@ from __future__ import annotations
 
 from app.agent_pr.synthesis_agent.schemas import Agent_Output
 from app.agent_pr.synthesis_agent.state import SynthState
+from app.monitoring.tracing import trace_step
 
 
 def compose(state: SynthState) -> dict:
     """price + news + eval → 1 câu. Field `result` là output graph."""
     price, news, ev = state["price"], state["news"], state["eval"]
-    parts = [f"{price.symbol}:"]
+    with trace_step(state.get("_trace_span"), "synth_compose", input=price.symbol) as t:
+        parts = [f"{price.symbol}:"]
 
-    if price.pct_change is not None:
-        chieu = "giảm" if price.pct_change < 0 else "tăng"
-        parts.append(f"giá {chieu} {abs(price.pct_change):.1f}% so với phiên liền trước.")
-    else:
-        parts.append("chưa đủ lịch sử giá để tính % biến động.")
+        if price.pct_change is not None:
+            chieu = "giảm" if price.pct_change < 0 else "tăng"
+            parts.append(f"giá {chieu} {abs(price.pct_change):.1f}% so với phiên liền trước.")
+        else:
+            parts.append("chưa đủ lịch sử giá để tính % biến động.")
 
-    if news.articles:
-        parts.append(
-            f"tìm thấy {len(news.articles)} tin liên quan "
-            f"({ev.negative_count} tin tiêu cực, {ev.positive_count} tin tích cực, "
-            f"{ev.neutral_count} tin trung lập)."
-        )
-        # Dùng đúng cờ eval — không tự tính lại khớp giá.
-        if ev.price_matches_news is True:
-            parts.append("chiều giá khớp với thiên hướng tin tức.")
-        elif ev.price_matches_news is False:
+        if news.articles:
             parts.append(
-                "lưu ý: chiều giá KHÔNG khớp với thiên hướng tin tức — cần thêm bằng chứng."
+                f"tìm thấy {len(news.articles)} tin liên quan "
+                f"({ev.negative_count} tin tiêu cực, {ev.positive_count} tin tích cực, "
+                f"{ev.neutral_count} tin trung lập)."
             )
-    else:
-        parts.append("chưa tìm thấy tin liên quan.")
+            # Dùng đúng cờ eval — không tự tính lại khớp giá.
+            if ev.price_matches_news is True:
+                parts.append("chiều giá khớp với thiên hướng tin tức.")
+            elif ev.price_matches_news is False:
+                parts.append(
+                    "lưu ý: chiều giá KHÔNG khớp với thiên hướng tin tức — cần thêm bằng chứng."
+                )
+        else:
+            parts.append("chưa tìm thấy tin liên quan.")
 
-    n = state.get("n_history") or 0
-    if n >= 2:
-        parts.append(f"lịch sử {n} phiên gần nhất đã có trong DB.")
+        n = state.get("n_history") or 0
+        if n >= 2:
+            parts.append(f"lịch sử {n} phiên gần nhất đã có trong DB.")
 
-    return {"result": Agent_Output(answer=" ".join(parts))}
+        answer = " ".join(parts)
+        t["output"] = answer
+        return {"result": Agent_Output(answer=answer)}

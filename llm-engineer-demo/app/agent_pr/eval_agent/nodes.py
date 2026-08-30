@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from app.agent_pr.eval_agent.schemas import Agent_Output, ScoredItem
 from app.agent_pr.eval_agent.state import EvalState
+from app.monitoring.tracing import trace_step
 
 # Đúng list Sơ đồ 3d — không thêm "lãi"/"lỗ" (tránh lệch map).
 _NEGATIVE = ("xả hàng", "bán ròng", "giảm sàn", "cắt lỗ")
@@ -37,30 +38,30 @@ def score(state: EvalState) -> dict:
       None  = chưa rõ (thiếu % hoặc không có tin thiên hướng)
     """
     price, news = state.get("price"), state.get("news")
-    if price is None or news is None:
-        raise ValueError("Eval cần cả price và news")
-    if price.symbol != news.symbol:
-        raise ValueError(f"Lệch mã giá={price.symbol} tin={news.symbol}")
+    with trace_step(state.get("_trace_span"), "eval_score", input=getattr(price, "symbol", "")) as t:
+        if price is None or news is None:
+            raise ValueError("Eval cần cả price và news")
+        if price.symbol != news.symbol:
+            raise ValueError(f"Lệch mã giá={price.symbol} tin={news.symbol}")
 
-    items = [ScoredItem(title=a.title, url=a.url, sentiment=_sentiment(a.title)) for a in news.articles]
-    n_neg = sum(i.sentiment == "negative" for i in items)
-    n_pos = sum(i.sentiment == "positive" for i in items)
-    n_neu = sum(i.sentiment == "neutral" for i in items)
-    pct = price.pct_change
+        items = [ScoredItem(title=a.title, url=a.url, sentiment=_sentiment(a.title)) for a in news.articles]
+        n_neg = sum(i.sentiment == "negative" for i in items)
+        n_pos = sum(i.sentiment == "positive" for i in items)
+        n_neu = sum(i.sentiment == "neutral" for i in items)
+        pct = price.pct_change
 
-    # Không có tin rõ chiều → không đối chiếu (tránh nhầm False = lệch).
-    if pct is None or (n_neg == 0 and n_pos == 0):
-        matched = None
-    elif (pct < 0 and n_neg > n_pos) or (pct >= 0 and n_pos > n_neg):
-        matched = True
-    elif n_neg != n_pos:
-        matched = False
-    else:
-        matched = None
+        # Không có tin rõ chiều → không đối chiếu (tránh nhầm False = lệch).
+        if pct is None or (n_neg == 0 and n_pos == 0):
+            matched = None
+        elif (pct < 0 and n_neg > n_pos) or (pct >= 0 and n_pos > n_neg):
+            matched = True
+        elif n_neg != n_pos:
+            matched = False
+        else:
+            matched = None
 
-    nhan = {True: "có", False: "không", None: "chưa rõ"}[matched]
-    return {
-        "report": Agent_Output(
+        nhan = {True: "có", False: "không", None: "chưa rõ"}[matched]
+        report = Agent_Output(
             symbol=price.symbol,
             items=items,
             negative_count=n_neg,
@@ -73,4 +74,5 @@ def score(state: EvalState) -> dict:
                 f" — đủ chứng: {'có' if items else 'không'} — khớp giá: {nhan}"
             ),
         )
-    }
+        t["output"] = report.detail
+        return {"report": report}

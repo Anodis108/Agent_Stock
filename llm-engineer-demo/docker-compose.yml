@@ -1,11 +1,21 @@
-# Qdrant vector database cho RAG (Buổi 5).
+# API agent_pr + Qdrant (RAG buổi 5, không bắt buộc cho /pr/ask).
 #
-#   docker compose up -d        # khởi động Qdrant nền
-#   docker compose down         # dừng
+#   docker compose up --build        # app :8000 + qdrant
+#   docker compose up --build app    # chỉ FastAPI (giá/tin/eval)
+#   docker compose down
 #
-# Sau khi chạy, đặt trong .env:  QDRANT_URL=http://localhost:6333
-# Dashboard: http://localhost:6333/dashboard
+# Hub: POST http://localhost:8000/pr/ask  {"symbol":"HPG"}
+# Docs: http://localhost:8000/docs
 services:
+  app:
+    build: .
+    container_name: llm-engineer-demo
+    ports:
+      - "8000:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
   qdrant:
     image: qdrant/qdrant:latest
     container_name: legal-qdrant

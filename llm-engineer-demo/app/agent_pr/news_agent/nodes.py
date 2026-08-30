@@ -18,6 +18,7 @@ from urllib.parse import urljoin
 
 from app.agent_pr.news_agent.schemas import Agent_Output, NewsItem
 from app.agent_pr.news_agent.state import NewsState
+from app.monitoring.tracing import trace_step
 
 ALLOWED = frozenset({"VNM", "HPG", "FPT", "VCB"})
 
@@ -33,9 +34,11 @@ _MAX_NEWS = 10
 def normalize(state: NewsState) -> dict:
     """Upper + strip; raise ValueError nếu mã chưa nằm whitelist."""
     symbol = str(state.get("symbol") or "").strip().upper()
-    if symbol not in ALLOWED:
-        raise ValueError(f"Mã '{symbol}' chưa hỗ trợ")
-    return {"symbol": symbol}
+    with trace_step(state.get("_trace_span"), "news_normalize", input=symbol) as t:
+        if symbol not in ALLOWED:
+            raise ValueError(f"Mã '{symbol}' chưa hỗ trợ")
+        t["output"] = symbol
+        return {"symbol": symbol}
 
 
 # ── Lấy rows ──────────────────────────────────────────────────────────────────
@@ -66,32 +69,34 @@ def fetch(state: NewsState) -> dict:
 
     _fix_ssl_env()
     symbol = state["symbol"]
-    resp = httpx.get(
-        _CAFEF_NEWS,
-        params={"Symbol": symbol, "NewsType": 0, "PageIndex": 1, "PageSize": _MAX_NEWS},
-        headers={"User-Agent": "Mozilla/5.0", "Referer": f"{_CAFEF_ORIGIN}/"},
-        timeout=20.0,
-        follow_redirects=True,
-    )
-    resp.raise_for_status()
-    payload = resp.json()
-    items = payload.get("Data") or []
-    rows = []
-    for it in items:
-        title = (it.get("Title") or "").strip()
-        if not title:
-            continue
-        path = it.get("LinkDetail") or ""
-        rows.append(
-            {
-                "title": title,
-                "url": urljoin(_CAFEF_ORIGIN, path) if path else "",
-                "publish_time": _deploy_date(str(it.get("DeployDate") or "")),
-            }
+    with trace_step(state.get("_trace_span"), "news_fetch", input=symbol) as t:
+        resp = httpx.get(
+            _CAFEF_NEWS,
+            params={"Symbol": symbol, "NewsType": 0, "PageIndex": 1, "PageSize": _MAX_NEWS},
+            headers={"User-Agent": "Mozilla/5.0", "Referer": f"{_CAFEF_ORIGIN}/"},
+            timeout=20.0,
+            follow_redirects=True,
         )
-    if not rows:
-        raise ValueError(f"Không có tin {symbol}")
-    return {"rows": rows}
+        resp.raise_for_status()
+        payload = resp.json()
+        items = payload.get("Data") or []
+        rows = []
+        for it in items:
+            title = (it.get("Title") or "").strip()
+            if not title:
+                continue
+            path = it.get("LinkDetail") or ""
+            rows.append(
+                {
+                    "title": title,
+                    "url": urljoin(_CAFEF_ORIGIN, path) if path else "",
+                    "publish_time": _deploy_date(str(it.get("DeployDate") or "")),
+                }
+            )
+        if not rows:
+            raise ValueError(f"Không có tin {symbol}")
+        t["output"] = {"n_rows": len(rows)}
+        return {"rows": rows}
 
 
 # ── Parse ─────────────────────────────────────────────────────────────────────
@@ -101,10 +106,10 @@ def parse(state: NewsState) -> dict:
     """rows → Agent_Output. Field `news` là output của graph."""
     rows = state["rows"]
     symbol = state["symbol"]
-    if not rows:
-        raise ValueError("Không có tin")
-    return {
-        "news": Agent_Output(
+    with trace_step(state.get("_trace_span"), "news_parse", input=symbol) as t:
+        if not rows:
+            raise ValueError("Không có tin")
+        news = Agent_Output(
             symbol=symbol,
             articles=[
                 NewsItem(
@@ -115,4 +120,5 @@ def parse(state: NewsState) -> dict:
                 for r in rows
             ],
         )
-    }
+        t["output"] = {"n_articles": len(news.articles)}
+        return {"news": news}

@@ -18,28 +18,31 @@ Entry `run_db` nhận Agent_Input, trả Agent_Output — không trả cả stat
 
 from __future__ import annotations
 
+from functools import lru_cache
+
 from langgraph.graph import END, START, StateGraph
 
 from app.agent_pr.db_agent.nodes import approve_pending_write, normalize, parse, read, stage_writes
 from app.agent_pr.db_agent.schemas import Agent_Input, Agent_Output
 from app.agent_pr.db_agent.state import DBState
+from app.monitoring.tracing import trace_answer
 
 __all__ = ["approve_pending_write", "run_db"]
 
 
-def _graph():
-    """Compile graph. Slice này gọi ít — không cache; read/stage_writes luôn hit sqlite."""
-    g = StateGraph(DBState)
-    g.add_node("normalize", normalize)
-    g.add_node("read", read)
-    g.add_node("stage_writes", stage_writes)
-    g.add_node("parse", parse)
-    g.add_edge(START, "normalize")
-    g.add_edge("normalize", "read")
-    g.add_edge("read", "stage_writes")
-    g.add_edge("stage_writes", "parse")
-    g.add_edge("parse", END)
-    return g.compile()
+@lru_cache(maxsize=1)
+def _build_graph():
+    graph = StateGraph(DBState)
+    graph.add_node("normalize", normalize)
+    graph.add_node("read", read)
+    graph.add_node("stage_writes", stage_writes)
+    graph.add_node("parse", parse)
+    graph.add_edge(START, "normalize")
+    graph.add_edge("normalize", "read")
+    graph.add_edge("read", "stage_writes")
+    graph.add_edge("stage_writes", "parse")
+    graph.add_edge("parse", END)
+    return graph.compile()
 
 
 async def run_db(inp: Agent_Input) -> Agent_Output:
@@ -47,6 +50,15 @@ async def run_db(inp: Agent_Input) -> Agent_Output:
 
     Lấy `["result"]` sau ainvoke — parse luôn ghi field này; thiếu = bug graph.
     """
-    return (
-        await _graph().ainvoke({"symbol": inp.symbol, "candidate_news": inp.candidate_news})
-    )["result"]
+    with trace_answer("agent_pr_db", inp.symbol) as t:
+        result = (
+            await _build_graph().ainvoke(
+                {
+                    "symbol": inp.symbol,
+                    "candidate_news": inp.candidate_news,
+                    "_trace_span": t.get("_span"),
+                }
+            )
+        )["result"]
+        t["output"] = result.detail
+        return result
