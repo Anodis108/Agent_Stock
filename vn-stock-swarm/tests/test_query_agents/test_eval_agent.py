@@ -3,9 +3,9 @@
 
 from __future__ import annotations
 
-from vn_stock_swarm.query.agents.eval_agent import EvalAgent, NewsSentiment
-from vn_stock_swarm.query.agents.news_agent import NewsReport
-from vn_stock_swarm.query.agents.price_agent import PriceReport
+from query.agents.eval_agent import EvalAgent, NewsSentiment
+from query.agents.news_agent import NewsReport
+from query.agents.price_agent import PriceReport
 
 
 def _price(pct_change: float | None) -> PriceReport:

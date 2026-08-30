@@ -19,4 +19,4 @@ RUN useradd --create-home --uid 1000 crawler && \
     mkdir -p /data && chown -R crawler:crawler /app /data
 USER crawler
 
-ENTRYPOINT ["python", "-m", "vn_stock_swarm.main"]
+ENTRYPOINT ["python", "-m", "main"]

@@ -18,4 +18,4 @@ RUN mkdir -p /data
 # mục home của nó; giữ nguyên root ở đây thay vì tranh giành quyền sở hữu —
 # chấp nhận được cho 1 worker render đơn nhiệm trong project học tập.
 
-ENTRYPOINT ["python", "-m", "vn_stock_swarm.main"]
+ENTRYPOINT ["python", "-m", "main"]

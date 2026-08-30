@@ -6,12 +6,12 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from vn_stock_swarm.config import Settings
-from vn_stock_swarm.query.agents.db_agent import PendingWrite
-from vn_stock_swarm.query.agents.news_agent import NewsReport
-from vn_stock_swarm.query.agents.price_agent import PriceReport
-from vn_stock_swarm.query.coordinator import QueryCoordinator, TraceStep, _PendingRequest
-from vn_stock_swarm.sink_store import SinkStore
+from config import Settings
+from query.agents.db_agent import PendingWrite
+from query.agents.news_agent import NewsReport
+from query.agents.price_agent import PriceReport
+from query.coordinator import QueryCoordinator, TraceStep, _PendingRequest
+from sink_store import SinkStore
 
 
 def _settings(**overrides: object) -> Settings:

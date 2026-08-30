@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from vn_stock_swarm.sink_store import SinkStore
+from sink_store import SinkStore
 
 
 async def test_save_and_read_price(tmp_path: Path) -> None:

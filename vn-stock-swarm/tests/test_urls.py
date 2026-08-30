@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from vn_stock_swarm.urls import origin, registered_domain
+from urls import origin, registered_domain
 
 
 def test_registered_domain_strips_subdomain() -> None:

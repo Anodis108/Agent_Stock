@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import httpx
 
-from vn_stock_swarm.robots import RobotsCache
+from robots import RobotsCache
 
 ROBOTS_TXT = "User-agent: *\nDisallow: /private/\n"
 

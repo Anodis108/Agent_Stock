@@ -157,3 +157,18 @@ class SwarmResponse(BaseModel):
     answer: str
     final_agent: str = Field(description="Agent đã trả lời cuối cùng, sau (nếu có) handoff")
     handoff_log: list[str] = Field(description="Vết chuyển giao, vd ['calendar → dining']")
+
+
+# ── agent_pr slice 1: craw_agent lấy giá ─────────────────────────────────────
+
+class PriceRequest(BaseModel):
+    symbol: str = Field(min_length=1, description="Mã CP demo: VNM, HPG, FPT, VCB")
+
+
+class PriceResponse(BaseModel):
+    symbol: str
+    last: float
+    prev_close: float | None = None
+    pct_change: float | None = None
+    trading_date: str = ""
+    source: str = "vnstock"

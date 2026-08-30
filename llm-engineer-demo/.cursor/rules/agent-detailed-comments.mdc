@@ -1,0 +1,40 @@
+---
+description: Chú thích chi tiết kiểu app/agent — module, field, hàm, bẫy
+globs: app/agent/**/*.py, app/agent_pr/**/*.py, app/agent_m2/**/*.py
+alwaysApply: true
+---
+
+# Chú thích agent — bắt chước `app/agent`
+
+Khi viết/sửa Python trong `llm-engineer-demo` (đặc biệt `app/agent*`, `app/agent_pr`), **luôn** chú thích chi tiết như `app/agent/{state,nodes,graph,tools_web}.py`. Code vẫn ngắn; comment giải thích **vì sao**, không kể lại từng dòng.
+
+## Bắt buộc
+
+- **Module docstring**: đây là gì, nằm đâu trên graph, so với module khác khác gì, bẫy dễ mắc.
+- **TypedDict / schema**: mỗi field 1 comment (đơn vị, ai ghi/ai đọc, có reducer không).
+- **Hàm / node**: docstring nói input → output, khi nào raise, vì sao tách hàm này.
+- **Khối logic**: banner `# ── Tên ──` + đoạn giải thích phía trên (như `nodes.py` của `app/agent`).
+- **Inline**: chỉ khi không hiển nhiên — đơn vị (vnstock `close` = nghìn đồng), merge LangGraph.
+
+## Cấm
+
+- Xóa comment để “code gọn”.
+- Comment thừa: `# tăng i` cạnh `i += 1`.
+- Module chỉ còn 1 câu (`"""3 node."""`) khi file có graph/state/IO.
+
+## Mẫu
+
+```python
+# ❌ BAD
+class CrawlState(TypedDict, total=False):
+    symbol: str
+    rows: list[dict]
+
+# ✅ GOOD — giống GraphState trong app/agent/state.py
+class CrawlState(TypedDict, total=False):
+    """total=False: node chỉ trả field nó cập nhật; LangGraph merge vào state."""
+
+    symbol: str                    # mã đã upper (normalize ghi)
+    rows: list[dict[str, Any]]     # [{time, close}, ...] close = nghìn đồng
+    quote: PriceQuote              # parse ghi; run_crawl lấy field này
+```

@@ -5,9 +5,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from vn_stock_swarm.config import Settings
-from vn_stock_swarm.query.agents.price_agent import PriceAgent
-from vn_stock_swarm.sink_store import SinkStore
+from config import Settings
+from query.agents.price_agent import PriceAgent
+from sink_store import SinkStore
 
 
 def _settings(**overrides: object) -> Settings:

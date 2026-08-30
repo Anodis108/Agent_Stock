@@ -3,7 +3,7 @@ trọng nhất: khi thêm 1 node chỉ xáo trộn THIỂU SỐ domain, không p
 
 from __future__ import annotations
 
-from vn_stock_swarm.hashing import am_i_owner, pick_owner
+from hashing import am_i_owner, pick_owner
 
 
 def test_pick_owner_deterministic() -> None:

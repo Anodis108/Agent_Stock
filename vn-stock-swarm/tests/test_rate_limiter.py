@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import time
 
-from vn_stock_swarm.rate_limiter import DomainRateLimiter
+from rate_limiter import DomainRateLimiter
 
 
 async def test_first_call_does_not_block(redis) -> None:

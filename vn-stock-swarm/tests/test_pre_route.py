@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from vn_stock_swarm.pre_route import guess_agent_type, stream_name
+from pre_route import guess_agent_type, stream_name
 
 
 def test_pdf_extension_routes_to_document() -> None:

@@ -3,11 +3,11 @@ chấm lại bất cứ điều gì (đợt 2b, chạy sau cùng trong Sơ đồ
 
 from __future__ import annotations
 
-from vn_stock_swarm.query.agents.db_agent import DBReadResult
-from vn_stock_swarm.query.agents.eval_agent import EvalReport, NewsSentiment
-from vn_stock_swarm.query.agents.news_agent import NewsReport
-from vn_stock_swarm.query.agents.price_agent import PriceReport
-from vn_stock_swarm.query.agents.synthesis_agent import SynthesisAgent
+from query.agents.db_agent import DBReadResult
+from query.agents.eval_agent import EvalReport, NewsSentiment
+from query.agents.news_agent import NewsReport
+from query.agents.price_agent import PriceReport
+from query.agents.synthesis_agent import SynthesisAgent
 
 
 def test_answer_mentions_price_direction_and_magnitude() -> None:

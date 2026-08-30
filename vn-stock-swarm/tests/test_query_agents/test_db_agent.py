@@ -6,9 +6,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from vn_stock_swarm.query.agents.db_agent import DBAgent
-from vn_stock_swarm.query.agents.news_agent import NewsReport
-from vn_stock_swarm.sink_store import SinkStore
+from query.agents.db_agent import DBAgent
+from query.agents.news_agent import NewsReport
+from sink_store import SinkStore
 
 
 async def test_read_is_always_automatic(tmp_path: Path) -> None:

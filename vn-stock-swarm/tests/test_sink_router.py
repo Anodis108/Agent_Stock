@@ -3,9 +3,9 @@
 
 from __future__ import annotations
 
-from vn_stock_swarm.fetcher import RawResponse
-from vn_stock_swarm.router import RouteResult
-from vn_stock_swarm.sink_router import SinkRouter
+from fetcher import RawResponse
+from router import RouteResult
+from sink_router import SinkRouter
 
 
 def _response(url: str = "https://cafef.vn/a", content_type: str = "text/html") -> RawResponse:

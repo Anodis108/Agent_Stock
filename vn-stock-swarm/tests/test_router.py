@@ -8,8 +8,8 @@ import json
 
 from pypdf import PdfWriter
 
-from vn_stock_swarm.fetcher import RawResponse
-from vn_stock_swarm.router import (
+from fetcher import RawResponse
+from router import (
     BinaryHandler,
     ContentRouter,
     HtmlHandler,

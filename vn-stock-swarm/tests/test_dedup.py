@@ -3,7 +3,7 @@ nhiều agent (cùng loại hay khác loại) cùng nhìn thấy URL đó."""
 
 from __future__ import annotations
 
-from vn_stock_swarm.dedup import claim_url
+from dedup import claim_url
 
 
 async def test_claim_url_first_time_succeeds(redis) -> None:

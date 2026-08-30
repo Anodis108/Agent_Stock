@@ -3,8 +3,8 @@ dựa trên tín hiệu THẬT của response, không phải hình dạng URL.""
 
 from __future__ import annotations
 
-from vn_stock_swarm.fetcher import RawResponse
-from vn_stock_swarm.handoff import (
+from fetcher import RawResponse
+from handoff import (
     HandoffReason,
     decide_handoff,
     is_stealth_domain,

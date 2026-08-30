@@ -14,10 +14,10 @@ from pathlib import Path
 
 import httpx
 
-from vn_stock_swarm.config import Settings
-from vn_stock_swarm.query import api as query_api
-from vn_stock_swarm.query.coordinator import QueryCoordinator
-from vn_stock_swarm.sink_store import SinkStore
+from config import Settings
+from query import api as query_api
+from query.coordinator import QueryCoordinator
+from sink_store import SinkStore
 
 
 def _settings(**overrides: object) -> Settings:

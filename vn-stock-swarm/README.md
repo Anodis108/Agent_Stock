@@ -215,7 +215,7 @@ một image nhẹ (`Dockerfile`).
 ## Cấu trúc code
 
 ```
-src/vn_stock_swarm/
+src/
   config.py             # Settings (pydantic) — freshness threshold, render/stealth/HITL TTL
   logging_config.py      # Structured logging (structlog)
   hashing.py               # Rendezvous hashing cho domain ownership
