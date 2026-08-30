@@ -14,13 +14,13 @@ from __future__ import annotations
 
 import pytest
 
-from app.agent_pr.craw_agent import run_crawl
+from app.agent_pr.craw_agent import Agent_Input, run_crawl
 
 
 @pytest.mark.asyncio
 async def test_hpg_online():
-    """HPG nằm ALLOWED — graph chạy hết, in 6 field PriceQuote."""
-    q = await run_crawl("HPG")
+    """HPG nằm ALLOWED — graph chạy hết, in 6 field Agent_Output."""
+    q = await run_crawl(Agent_Input(symbol="HPG"))
     print()
     print("symbol      :", q.symbol)
     print("last (VND)  :", q.last)
@@ -40,4 +40,4 @@ async def test_hpg_online():
 async def test_ma_sai():
     """ABC không whitelist — normalize raise trước khi gọi vnstock."""
     with pytest.raises(ValueError):
-        await run_crawl("ABC")
+        await run_crawl(Agent_Input(symbol="ABC"))

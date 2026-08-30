@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any, TypedDict
 
-from app.agent_pr.craw_agent.schemas import PriceQuote
+from app.agent_pr.craw_agent.schemas import Agent_Output
 
 
 class CrawlState(TypedDict, total=False):
@@ -24,4 +24,4 @@ class CrawlState(TypedDict, total=False):
 
     symbol: str                    # mã đã upper + nằm ALLOWED (normalize ghi)
     rows: list[dict[str, Any]]     # [{time, close}, ...] từ vnstock; close = nghìn đồng
-    quote: PriceQuote              # parse ghi; run_crawl lấy đúng field này trả caller
+    quote: Agent_Output            # parse ghi; run_crawl lấy đúng field này trả caller

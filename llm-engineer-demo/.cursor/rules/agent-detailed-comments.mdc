@@ -36,5 +36,5 @@ class CrawlState(TypedDict, total=False):
 
     symbol: str                    # mã đã upper (normalize ghi)
     rows: list[dict[str, Any]]     # [{time, close}, ...] close = nghìn đồng
-    quote: PriceQuote              # parse ghi; run_crawl lấy field này
+    quote: Agent_Output            # parse ghi; run_crawl lấy field này
 ```

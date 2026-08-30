@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
 
-from app.agent_pr.craw_agent import run_crawl
+from app.agent_pr.craw_agent import Agent_Input, run_crawl
 from app.api.schemas import PriceRequest, PriceResponse
 
 router = APIRouter(prefix="/pr", tags=["agent-pr"])
@@ -17,7 +17,7 @@ router = APIRouter(prefix="/pr", tags=["agent-pr"])
 @router.post("/price", response_model=PriceResponse)
 async def fetch_price(req: PriceRequest) -> PriceResponse:
     try:
-        quote = await run_crawl(req.symbol)
+        quote = await run_crawl(Agent_Input(symbol=req.symbol))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return PriceResponse.model_validate(quote.model_dump())

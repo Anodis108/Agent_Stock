@@ -4,8 +4,8 @@ Luồng (tuyến tính, không conditional / Send):
     START → normalize → fetch → parse → END
 
 So với app/agent/graph.py (CRAG): không decompose, không fan-out, không
-guardrail LLM. Entry `run_crawl` trả PriceQuote chứ không trả cả state —
-caller HTTP/test chỉ cần quote; debug node thì đọc CrawlState trong test.
+guardrail LLM. Entry `run_crawl` nhận Agent_Input, trả Agent_Output — không
+trả cả state. Debug node thì đọc CrawlState trong test.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from __future__ import annotations
 from langgraph.graph import END, START, StateGraph
 
 from app.agent_pr.craw_agent.nodes import fetch, normalize, parse
-from app.agent_pr.craw_agent.schemas import PriceQuote
+from app.agent_pr.craw_agent.schemas import Agent_Input, Agent_Output
 from app.agent_pr.craw_agent.state import CrawlState
 
 
@@ -30,10 +30,10 @@ def _graph():
     return g.compile()
 
 
-async def run_crawl(symbol: str) -> PriceQuote:
-    """Chạy graph, trả quote. ainvoke vì route FastAPI là async.
+async def run_crawl(inp: Agent_Input) -> Agent_Output:
+    """Chạy graph, trả Agent_Output. ainvoke vì route FastAPI là async.
 
     Lấy `["quote"]` sau ainvoke — parse luôn ghi field này; thiếu = bug graph,
     để KeyError nổi chứ không trả None.
     """
-    return (await _graph().ainvoke({"symbol": symbol}))["quote"]
+    return (await _graph().ainvoke({"symbol": inp.symbol}))["quote"]

@@ -1,0 +1,118 @@
+"""Nodes news_agent — 3 hàm thuần: nhận NewsState, trả partial dict.
+
+LangGraph chỉ lo thứ tự. Việc thật nằm đây: normalize mã, gọi CafeF Ajax
+(News.ashx — cùng API trang dữ liệu mã dùng), map Title/LinkDetail → NewsItem.
+Không LLM, không chấm tốt/xấu (NewsAgent trên map: chỉ search tin).
+
+Không dùng vnstock tin (KBS 1 bài + quota; VCI nhiều CBTT nhưng URL trống).
+httpx khởi tạo trong `fetch`. SSL_CERT_FILE hỏng (conda Windows) thì bỏ env
+trước khi GET — lỗi cũ khi probe SSI.
+"""
+
+from __future__ import annotations
+
+import os
+import re
+from datetime import datetime, timezone
+from urllib.parse import urljoin
+
+from app.agent_pr.news_agent.schemas import Agent_Output, NewsItem
+from app.agent_pr.news_agent.state import NewsState
+
+ALLOWED = frozenset({"VNM", "HPG", "FPT", "VCB"})
+
+# NewsType=0 = tin bài trên trang mã (không phải CBTT type 1–4).
+_CAFEF_NEWS = "https://cafef.vn/du-lieu/Ajax/PageNew/News.ashx"
+_CAFEF_ORIGIN = "https://cafef.vn"
+_MAX_NEWS = 10
+
+
+# ── Chuẩn hoá mã ──────────────────────────────────────────────────────────────
+
+
+def normalize(state: NewsState) -> dict:
+    """Upper + strip; raise ValueError nếu mã chưa nằm whitelist."""
+    symbol = str(state.get("symbol") or "").strip().upper()
+    if symbol not in ALLOWED:
+        raise ValueError(f"Mã '{symbol}' chưa hỗ trợ")
+    return {"symbol": symbol}
+
+
+# ── Lấy rows ──────────────────────────────────────────────────────────────────
+#
+# GET News.ashx (JSON), không parse HTML — khối tin trên CafeF load bằng JS.
+# Field: Title, LinkDetail (path), DeployDate (/Date(ms)/). Hết data → ValueError.
+
+
+def _fix_ssl_env() -> None:
+    """Bỏ SSL_CERT_FILE nếu trỏ file không tồn tại — httpx mới GET được."""
+    cert = os.environ.get("SSL_CERT_FILE")
+    if cert and not os.path.isfile(cert):
+        os.environ.pop("SSL_CERT_FILE", None)
+
+
+def _deploy_date(raw: str) -> str:
+    """CafeF `/Date(1787820660000)/` → ISO UTC. Không khớp thì giữ nguyên."""
+    m = re.search(r"\d+", raw or "")
+    if not m:
+        return raw or ""
+    ts = int(m.group()) / 1000
+    return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+
+
+def fetch(state: NewsState) -> dict:
+    """Gọi CafeF News.ashx; ghi `rows`. httpx import trong hàm."""
+    import httpx
+
+    _fix_ssl_env()
+    symbol = state["symbol"]
+    resp = httpx.get(
+        _CAFEF_NEWS,
+        params={"Symbol": symbol, "NewsType": 0, "PageIndex": 1, "PageSize": _MAX_NEWS},
+        headers={"User-Agent": "Mozilla/5.0", "Referer": f"{_CAFEF_ORIGIN}/"},
+        timeout=20.0,
+        follow_redirects=True,
+    )
+    resp.raise_for_status()
+    payload = resp.json()
+    items = payload.get("Data") or []
+    rows = []
+    for it in items:
+        title = (it.get("Title") or "").strip()
+        if not title:
+            continue
+        path = it.get("LinkDetail") or ""
+        rows.append(
+            {
+                "title": title,
+                "url": urljoin(_CAFEF_ORIGIN, path) if path else "",
+                "publish_time": _deploy_date(str(it.get("DeployDate") or "")),
+            }
+        )
+    if not rows:
+        raise ValueError(f"Không có tin {symbol}")
+    return {"rows": rows}
+
+
+# ── Parse ─────────────────────────────────────────────────────────────────────
+
+
+def parse(state: NewsState) -> dict:
+    """rows → Agent_Output. Field `news` là output của graph."""
+    rows = state["rows"]
+    symbol = state["symbol"]
+    if not rows:
+        raise ValueError("Không có tin")
+    return {
+        "news": Agent_Output(
+            symbol=symbol,
+            articles=[
+                NewsItem(
+                    title=r["title"],
+                    url=r.get("url", ""),
+                    publish_time=r.get("publish_time", ""),
+                )
+                for r in rows
+            ],
+        )
+    }

@@ -9,7 +9,7 @@ banner vnai khi load graph / khi test mã sai chưa tới fetch).
 
 from __future__ import annotations
 
-from app.agent_pr.craw_agent.schemas import PriceQuote
+from app.agent_pr.craw_agent.schemas import Agent_Output
 from app.agent_pr.craw_agent.state import CrawlState
 
 ALLOWED = frozenset({"VNM", "HPG", "FPT", "VCB"})
@@ -60,7 +60,7 @@ def fetch(state: CrawlState) -> dict:
 
 
 def parse(state: CrawlState) -> dict:
-    """rows (nghìn đồng) → PriceQuote (VND). Field `quote` là output graph."""
+    """rows (nghìn đồng) → Agent_Output (VND). Field `quote` là output graph."""
     rows = state["rows"]
     symbol = state["symbol"]
     if not rows:
@@ -69,7 +69,7 @@ def parse(state: CrawlState) -> dict:
     prev = float(rows[-2]["close"]) * 1000 if len(rows) >= 2 else None
     pct = round((last - prev) / prev * 100, 2) if prev else None
     return {
-        "quote": PriceQuote(
+        "quote": Agent_Output(
             symbol=symbol,
             last=last,
             prev_close=prev,
