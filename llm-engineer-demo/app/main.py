@@ -11,6 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -22,6 +23,16 @@ app = FastAPI(
     title=settings.app_name,
     description="RAG chatbot pháp lý (Module I) + Personal Assistant agent (Module II).",
     version="0.1.0",
+)
+
+# Cho phép frontend tĩnh (Website_show_yourself, mở qua file:// hoặc một static
+# server khác cổng/khác origin) gọi thẳng API này khi demo trên cùng máy.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.include_router(routes_chat.router)
