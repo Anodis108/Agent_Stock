@@ -1,15 +1,14 @@
 """Hợp đồng vào/ra Hierarchical Coordinator (Sơ đồ 3 / 3d).
 
-Hub không crawl / không chấm / không ghi DB: giao việc, thu báo cáo, trả user.
-`answer` do SynthesisAgent; hub chỉ copy vào output.
+Hub không crawl / không chấm / không ghi DB: parse câu (LLM), chọn worker,
+thu báo cáo, trả user. Worker không nói với nhau.
 
-Agent_Input chỉ symbol (parse câu tiếng Việt thêm sau). Output gói báo cáo
-worker để test/HTTP thấy đủ — user đọc `answer` + `trace`.
+`question` là câu user; `symbol` gợi ý mã (có thể trống — LLM tách từ câu).
 """
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.agent_pr.craw_agent.schemas import Agent_Output as PriceOut
 from app.agent_pr.db_agent.schemas import Agent_Output as DbOut
@@ -18,18 +17,37 @@ from app.agent_pr.news_agent.schemas import Agent_Output as NewsOut
 
 
 class Agent_Input(BaseModel):
-    """Câu hỏi rút gọn: chỉ mã. Parse câu tiếng Việt thêm sau."""
+    """Ít nhất một trong symbol / question. Coordinator LLM chốt mã + plan."""
 
-    symbol: str                           # thô, vd. "hpg" — coordinator upper
+    symbol: str = ""
+    question: str = ""
+    thread_id: str = ""               # short-term: trống → server cấp uuid
+    user_id: str = ""                 # long-term: trống → không recall/store
+
+
+class AgentPlan(BaseModel):
+    """Quyết định hub — LLM chọn worker nào chạy. Eval cần giá+tin."""
+
+    symbol: str = Field(description="Mã CP niêm yết VN, vd. HPG, VNM, MWG")
+    use_price: bool = Field(description="Cần giá / % biến động")
+    use_news: bool = Field(description="Cần tin tức")
+    use_db: bool = Field(description="Cần lịch sử trong DB")
+    use_eval: bool = Field(description="Cần chấm tin vs giá — chỉ true nếu có giá VÀ tin")
+    use_synth: bool = Field(description="Cần ghép câu trả lời có cấu trúc")
+    reasoning: str = Field(description="Lý do ngắn các cờ true/false")
 
 
 class Agent_Output(BaseModel):
-    """Trả user + đủ báo cáo worker (trace các lượt giao / nhận việc)."""
+    """Trả user + báo cáo worker đã chạy (None = hub không giao agent đó)."""
 
     symbol: str
-    answer: str                           # 1 dòng — copy từ Synthesis, hub nói với user
-    price: PriceOut
-    news: NewsOut
-    eval: EvalOut
-    db: DbOut | None = None               # đợt 1: lịch sử + pending (HITL ngoài graph)
+    question: str = ""
+    answer: str
+    price: PriceOut | None = None
+    news: NewsOut | None = None
+    eval: EvalOut | None = None
+    db: DbOut | None = None
     trace: list[str] = []
+    plan: AgentPlan | None = None
+    thread_id: str = ""
+    user_id: str = ""

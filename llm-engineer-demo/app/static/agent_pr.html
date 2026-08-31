@@ -8,6 +8,7 @@
   :root {
     --bg: #0f1115;
     --panel: #171a21;
+    --sidebar: #13151b;
     --border: #2a2e38;
     --text: #e6e8ec;
     --muted: #8b90a0;
@@ -16,16 +17,114 @@
     --bot-bubble: #1f232c;
     --error: #ff5c6c;
     --warn: #d9a441;
+    --sidebar-w: 272px;
   }
   * { box-sizing: border-box; }
+  html, body { height: 100%; }
   body {
     margin: 0;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     background: var(--bg);
     color: var(--text);
+  }
+  #app {
+    display: flex;
     height: 100vh;
+    overflow: hidden;
+  }
+
+  #sidebar {
+    width: var(--sidebar-w);
+    flex-shrink: 0;
+    background: var(--sidebar);
+    border-right: 1px solid var(--border);
     display: flex;
     flex-direction: column;
+    min-height: 0;
+  }
+  .sidebar-head {
+    padding: 14px 12px 10px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .sidebar-head h2 {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  #new-thread {
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  #new-thread:hover { filter: brightness(1.08); }
+  #session-list {
+    list-style: none;
+    margin: 0;
+    padding: 8px;
+    overflow-y: auto;
+    flex: 1;
+  }
+  #session-list li {
+    display: flex;
+    align-items: stretch;
+    gap: 4px;
+    margin-bottom: 4px;
+  }
+  .session-btn {
+    flex: 1;
+    text-align: left;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    padding: 8px 10px;
+    color: var(--text);
+    cursor: pointer;
+    min-width: 0;
+  }
+  .session-btn:hover { background: var(--panel); }
+  .session-btn.active {
+    background: var(--panel);
+    border-color: var(--border);
+  }
+  .session-title {
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .session-time {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 3px;
+  }
+  .session-del {
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    padding: 0 8px;
+    border-radius: 6px;
+    font-size: 14px;
+    line-height: 1;
+  }
+  .session-del:hover { color: var(--error); background: rgba(255,92,108,0.08); }
+
+  #main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
   }
   header {
     padding: 14px 20px;
@@ -35,15 +134,20 @@
     justify-content: space-between;
     gap: 12px;
     flex-wrap: wrap;
+    flex-shrink: 0;
   }
   header h1 { font-size: 15px; font-weight: 600; margin: 0; }
   header .sub { font-size: 12px; color: var(--muted); }
   .symbols { font-size: 11px; color: var(--muted); }
-  .symbols span {
+  #sidebar-toggle {
+    display: none;
+    background: transparent;
     border: 1px solid var(--border);
-    border-radius: 999px;
-    padding: 1px 8px;
-    margin-left: 4px;
+    color: var(--text);
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 13px;
+    cursor: pointer;
   }
 
   #messages {
@@ -126,76 +230,265 @@
     padding: 14px 20px;
     display: flex;
     gap: 10px;
+    align-items: flex-end;
+    flex-shrink: 0;
   }
-  #symbol {
+  #question {
+    flex: 1;
     background: var(--panel);
     border: 1px solid var(--border);
     color: var(--text);
     border-radius: 10px;
-    padding: 10px 14px;
+    padding: 12px 14px;
     font-size: 14px;
-    width: 160px;
-    text-transform: uppercase;
+    font-family: inherit;
+    resize: none;
+    min-height: 48px;
+    max-height: 160px;
+    line-height: 1.45;
   }
-  #symbol:focus { outline: none; border-color: var(--accent); }
+  #question:focus { outline: none; border-color: var(--accent); }
   #send-btn {
     background: var(--accent);
     color: white;
     border: none;
     border-radius: 10px;
-    padding: 0 20px;
+    padding: 0 22px;
+    height: 48px;
     font-size: 14px;
     cursor: pointer;
+    flex-shrink: 0;
   }
   #send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .meta { margin-top: 8px; font-size: 11px; color: var(--muted); }
+
+  @media (max-width: 800px) {
+    #sidebar {
+      position: fixed;
+      z-index: 20;
+      left: 0; top: 0; bottom: 0;
+      transform: translateX(-100%);
+      transition: transform 0.2s ease;
+    }
+    #app.sidebar-open #sidebar { transform: translateX(0); }
+    #sidebar-toggle { display: inline-block; }
+    #sidebar-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
+      z-index: 15;
+    }
+    #app.sidebar-open #sidebar-backdrop { display: block; }
+  }
 </style>
 </head>
 <body>
+<div id="app">
+  <aside id="sidebar">
+    <div class="sidebar-head">
+      <h2>Hội thoại</h2>
+      <button type="button" id="new-thread">+ Mới</button>
+    </div>
+    <ul id="session-list"></ul>
+  </aside>
+  <div id="sidebar-backdrop"></div>
 
-<header>
-  <div>
-    <h1>VN-Stock Hierarchical Agent</h1>
-    <div class="sub">Coordinator → Price · News · DB (song song) → Eval → Synthesis</div>
+  <div id="main">
+    <header>
+      <div>
+        <button type="button" id="sidebar-toggle">☰ Hội thoại</button>
+        <h1>VN-Stock Hierarchical Agent</h1>
+        <div class="sub">Hỏi tiếng Việt — hub LLM chọn Price · News · DB · Eval · Synthesis</div>
+        <div class="sub" id="session-meta"></div>
+      </div>
+      <div class="symbols">Mã niêm yết VN (HOSE / HNX / UPCOM)</div>
+    </header>
+
+    <div id="messages"></div>
+
+    <div id="input-bar">
+      <textarea id="question" rows="2" placeholder="Hỏi về cổ phiếu, ví dụ: Tại sao HPG giảm? (Enter gửi, Shift+Enter xuống dòng)"></textarea>
+      <button id="send-btn">Gửi</button>
+    </div>
   </div>
-  <div class="symbols">Mã demo:<span>VNM</span><span>HPG</span><span>FPT</span><span>VCB</span></div>
-</header>
-
-<div id="messages"></div>
-
-<div id="input-bar">
-  <input id="symbol" placeholder="VD: HPG" maxlength="10" />
-  <button id="send-btn">Hỏi</button>
 </div>
 
 <script>
+const SESSIONS_KEY = "pr_sessions_v1";
+const THREAD_KEY = "pr_thread_id";
+const USER_KEY = "pr_user_id";
+const WELCOME =
+  "Hỏi bằng tiếng Việt. Ví dụ: «Tại sao HPG giảm?» hoặc «giá MWG hôm nay». Mọi mã niêm yết VN. Chọn hội thoại bên trái để mở lại phiên cũ (cùng thread_id trên server).";
+
 const messagesEl = document.getElementById("messages");
-const symbolEl = document.getElementById("symbol");
+const questionEl = document.getElementById("question");
 const sendBtn = document.getElementById("send-btn");
+const sessionMeta = document.getElementById("session-meta");
+const sessionListEl = document.getElementById("session-list");
+const newThreadBtn = document.getElementById("new-thread");
+const appEl = document.getElementById("app");
+
+function storageId(key) {
+  let v = localStorage.getItem(key);
+  if (!v) {
+    v = crypto.randomUUID();
+    localStorage.setItem(key, v);
+  }
+  return v;
+}
+
+function loadSessions() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SESSIONS_KEY)) || [];
+    return Array.isArray(raw) ? raw : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveSessions() {
+  localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
+}
+
+const userId = storageId(USER_KEY);
+let sessions = loadSessions();
+let threadId = localStorage.getItem(THREAD_KEY) || "";
+
+function emptySession(id) {
+  return { id, title: "Đoạn chat mới", updatedAt: Date.now(), messages: [] };
+}
+
+function ensureActiveSession() {
+  if (threadId && sessions.some((s) => s.id === threadId)) return;
+  const legacy = localStorage.getItem(THREAD_KEY);
+  if (legacy && sessions.some((s) => s.id === legacy)) {
+    threadId = legacy;
+    return;
+  }
+  if (!sessions.length) {
+    threadId = legacy || crypto.randomUUID();
+    sessions = [emptySession(threadId)];
+    saveSessions();
+  } else {
+    threadId = sessions[0].id;
+  }
+  localStorage.setItem(THREAD_KEY, threadId);
+}
+
+function currentSession() {
+  return sessions.find((s) => s.id === threadId);
+}
+
+function setActiveThread(id) {
+  threadId = id;
+  localStorage.setItem(THREAD_KEY, id);
+  renderSessionMeta();
+  renderSessionList();
+  renderAll();
+}
+
+function touchSession(mutator) {
+  const s = currentSession();
+  if (!s) return;
+  mutator(s);
+  s.updatedAt = Date.now();
+  sessions.sort((a, b) => b.updatedAt - a.updatedAt);
+  saveSessions();
+  renderSessionList();
+}
+
+function titleFromText(text) {
+  const t = (text || "").trim().replace(/\s+/g, " ");
+  return t.length > 42 ? t.slice(0, 41) + "…" : t || "Đoạn chat mới";
+}
+
+function formatWhen(ts) {
+  const d = new Date(ts);
+  const now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  if (sameDay) return d.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" });
+}
+
+function renderSessionMeta() {
+  sessionMeta.textContent =
+    "phiên " + threadId.slice(0, 8) + " · user " + userId.slice(0, 8);
+}
+
+function renderSessionList() {
+  sessionListEl.innerHTML = "";
+  for (const s of sessions) {
+    const li = document.createElement("li");
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "session-btn" + (s.id === threadId ? " active" : "");
+    btn.innerHTML =
+      `<div class="session-title"></div><div class="session-time"></div>`;
+    btn.querySelector(".session-title").textContent = s.title;
+    btn.querySelector(".session-time").textContent = formatWhen(s.updatedAt);
+    btn.addEventListener("click", () => {
+      setActiveThread(s.id);
+      appEl.classList.remove("sidebar-open");
+    });
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "session-del";
+    del.title = "Xoá hội thoại";
+    del.textContent = "×";
+    del.addEventListener("click", (e) => {
+      e.stopPropagation();
+      deleteSession(s.id);
+    });
+    li.appendChild(btn);
+    li.appendChild(del);
+    sessionListEl.appendChild(li);
+  }
+}
+
+function deleteSession(id) {
+  sessions = sessions.filter((s) => s.id !== id);
+  if (!sessions.length) {
+    const created = emptySession(crypto.randomUUID());
+    sessions = [created];
+    saveSessions();
+    setActiveThread(created.id);
+    return;
+  }
+  saveSessions();
+  if (threadId === id) setActiveThread(sessions[0].id);
+  else renderSessionList();
+}
+
+function newSession() {
+  const created = emptySession(crypto.randomUUID());
+  sessions.unshift(created);
+  saveSessions();
+  setActiveThread(created.id);
+  questionEl.focus();
+}
 
 function scrollToBottom() {
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
-function renderRow(role, text) {
-  const row = document.createElement("div");
-  row.className = `msg-row ${role}`;
-  const bubble = document.createElement("div");
-  bubble.className = "bubble";
-  bubble.textContent = text;
-  row.appendChild(bubble);
-  messagesEl.appendChild(row);
-  scrollToBottom();
-  return { row, bubble };
-}
-
-function renderTrace(bubble, trace) {
-  if (!trace || !trace.length) return;
+function renderTrace(bubble, msg) {
+  const bits = [];
+  if (msg.used && msg.used.length) bits.push("agent: " + msg.used.join(" · "));
+  if (msg.reasoning) bits.push(msg.reasoning);
+  if (bits.length) {
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    meta.textContent = bits.join(" — ");
+    bubble.appendChild(meta);
+  }
+  if (!msg.trace || !msg.trace.length) return;
   const details = document.createElement("details");
   details.className = "trace";
   const summary = document.createElement("summary");
-  summary.textContent = `${trace.length} bước điều phối`;
+  summary.textContent = `${msg.trace.length} bước điều phối`;
   details.appendChild(summary);
-  trace.forEach((step) => {
+  msg.trace.forEach((step) => {
     const div = document.createElement("div");
     div.className = "trace-step";
     div.textContent = step;
@@ -277,42 +570,87 @@ function renderEvalCard(body) {
   return card;
 }
 
-async function runEvaluation(symbol, btn, bubble) {
+function renderMessage(msg) {
+  const row = document.createElement("div");
+  row.className = `msg-row ${msg.role}`;
+  const bubble = document.createElement("div");
+  bubble.className = "bubble";
+  bubble.appendChild(document.createTextNode(msg.text));
+  row.appendChild(bubble);
+  if (msg.role === "bot") {
+    renderTrace(bubble, msg);
+    if (msg.evalResult) {
+      bubble.appendChild(renderEvalCard(msg.evalResult));
+    } else if (msg.evalError) {
+      const err = document.createElement("div");
+      err.className = "eval-error";
+      err.textContent = `Lỗi đánh giá: ${msg.evalError}`;
+      bubble.appendChild(err);
+    } else if (msg.canEvaluate) {
+      const evalBtn = document.createElement("button");
+      evalBtn.className = "eval-btn";
+      evalBtn.textContent = "📊 Đánh giá";
+      evalBtn.addEventListener("click", () => runEvaluation(msg, evalBtn));
+      bubble.appendChild(evalBtn);
+    }
+  }
+  messagesEl.appendChild(row);
+  return { row, bubble };
+}
+
+function renderAll() {
+  messagesEl.innerHTML = "";
+  const s = currentSession();
+  const msgs = (s && s.messages) || [];
+  if (!msgs.length) {
+    renderMessage({ role: "bot", text: WELCOME });
+  } else {
+    for (const m of msgs) renderMessage(m);
+  }
+  scrollToBottom();
+}
+
+function memoryPayload(question) {
+  return { question, thread_id: threadId, user_id: userId };
+}
+
+async function runEvaluation(msg, btn) {
   btn.disabled = true;
   btn.textContent = "⏳ Đang đánh giá...";
   try {
     const res = await fetch("/pr/ask/evaluate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ symbol }),
+      body: JSON.stringify(memoryPayload(msg.question || "")),
     });
     const body = await res.json();
     if (!res.ok) throw new Error(body.detail || `HTTP ${res.status}`);
-    btn.remove();
-    bubble.appendChild(renderEvalCard(body));
+    msg.evalResult = body;
   } catch (err) {
-    btn.disabled = false;
-    btn.textContent = "📊 Đánh giá";
-    const errEl = document.createElement("div");
-    errEl.className = "eval-error";
-    errEl.textContent = `Lỗi đánh giá: ${err.message}`;
-    bubble.appendChild(errEl);
+    msg.evalError = err.message;
   }
+  saveSessions();
+  renderAll();
 }
 
-async function sendSymbol() {
-  const symbol = symbolEl.value.trim().toUpperCase();
-  if (!symbol) return;
+async function sendQuestion() {
+  const question = questionEl.value.trim();
+  if (!question) return;
 
-  symbolEl.value = "";
+  questionEl.value = "";
   sendBtn.disabled = true;
 
-  renderRow("user", symbol);
+  touchSession((s) => {
+    s.messages.push({ role: "user", text: question });
+    if (s.title === "Đoạn chat mới") s.title = titleFromText(question);
+  });
+  renderAll();
 
-  const { bubble } = renderRow("bot", "");
+  const { bubble } = renderMessage({ role: "bot", text: "" });
   const typing = document.createElement("span");
   typing.className = "typing";
-  typing.textContent = "coordinator đang điều phối Price · News · DB → Eval → Synthesis...";
+  typing.textContent = "Hub đang chọn worker rồi thu thập...";
+  bubble.textContent = "";
   bubble.appendChild(typing);
   scrollToBottom();
 
@@ -320,39 +658,61 @@ async function sendSymbol() {
     const res = await fetch("/pr/ask", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ symbol }),
+      body: JSON.stringify(memoryPayload(question)),
     });
     const body = await res.json();
     if (!res.ok) throw new Error(body.detail || `HTTP ${res.status}`);
 
-    typing.remove();
-    bubble.textContent = body.answer;
-    renderTrace(bubble, body.trace);
+    if (body.thread_id && body.thread_id !== threadId) {
+      const s = currentSession();
+      if (s) s.id = body.thread_id;
+      threadId = body.thread_id;
+      localStorage.setItem(THREAD_KEY, threadId);
+      saveSessions();
+    }
+    renderSessionMeta();
 
-    const evalBtn = document.createElement("button");
-    evalBtn.className = "eval-btn";
-    evalBtn.textContent = "📊 Đánh giá";
-    evalBtn.addEventListener("click", () => runEvaluation(symbol, evalBtn, bubble));
-    bubble.appendChild(evalBtn);
+    const botMsg = {
+      role: "bot",
+      text: body.answer,
+      question,
+      trace: body.trace,
+      used: body.used_agents,
+      reasoning: body.plan_reasoning,
+      canEvaluate: true,
+    };
+    touchSession((s) => s.messages.push(botMsg));
+    renderAll();
   } catch (err) {
-    bubble.parentElement.remove();
-    renderRow("error", `Lỗi: ${err.message}`);
+    touchSession((s) => s.messages.push({ role: "error", text: `Lỗi: ${err.message}` }));
+    renderAll();
   } finally {
     sendBtn.disabled = false;
-    symbolEl.focus();
+    questionEl.focus();
     scrollToBottom();
   }
 }
 
-symbolEl.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") {
+ensureActiveSession();
+renderSessionMeta();
+renderSessionList();
+renderAll();
+
+newThreadBtn.addEventListener("click", newSession);
+document.getElementById("sidebar-toggle").addEventListener("click", () => {
+  appEl.classList.toggle("sidebar-open");
+});
+document.getElementById("sidebar-backdrop").addEventListener("click", () => {
+  appEl.classList.remove("sidebar-open");
+});
+questionEl.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) {
     e.preventDefault();
-    sendSymbol();
+    sendQuestion();
   }
 });
-sendBtn.addEventListener("click", sendSymbol);
-
-renderRow("bot", "Nhập mã cổ phiếu (VNM, HPG, FPT, VCB) để agent phân tích giá + tin tức.");
+sendBtn.addEventListener("click", sendQuestion);
+questionEl.focus();
 </script>
 </body>
 </html>

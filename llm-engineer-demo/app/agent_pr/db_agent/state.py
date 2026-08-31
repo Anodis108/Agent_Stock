@@ -23,7 +23,7 @@ class DBState(TypedDict, total=False):
     read → price_rows/news_rows; stage_writes → pending_rows).
     """
 
-    symbol: str                        # mã đã upper + nằm ALLOWED (normalize ghi)
+    symbol: str                        # mã đã upper + đúng định dạng (normalize ghi)
     candidate_news: list[CandidateNews]  # tin ứng viên cần xét soạn lệnh ghi (đầu vào, giữ nguyên)
     price_rows: list[dict[str, Any]]   # [{trading_date, close}, ...] đọc từ bảng prices
     news_rows: list[dict[str, Any]]    # [{title, url}, ...] đọc từ bảng news (đã duyệt)

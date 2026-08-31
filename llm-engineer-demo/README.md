@@ -34,17 +34,13 @@ uvicorn app.main:app --reload
 
 - Docs tương tác: <http://localhost:8000/docs>
 - Health check (không cần key): <http://localhost:8000/health>
-- **Demo UI**: <http://localhost:8000/> — chat interface đơn giản (`app/static/chat.html`),
-  lịch sử chat lưu ở `localStorage` của trình duyệt (không có backend session/DB).
-  Bấm **"Ingest dữ liệu"** trong UI trước khi hỏi lần đầu — với `QDRANT_URL=:memory:`
-  (mặc định), mỗi process server có Qdrant riêng, ingest ở CLI process khác sẽ
-  không nạp được cho server đang chạy; nút này gọi `POST /admin/ingest` để ingest
-  đúng vào trong process server. Toggle **Streaming** (`/chat/stream`) và
-  **Agent (CRAG)** (`/chat/agent`, hiện thêm sources + web-search fallback badge)
-  để so sánh 2 pipeline trực tiếp (Module I). Câu hỏi bị chặn bởi guardrails hiện
-  dạng bubble lỗi riêng (đọc HTTP 400 từ exception handler trong `main.py`).
-  Module II (Personal Assistant agent) chạy qua `/assistant/message` +
-  `/assistant/approve` — xem ví dụ curl trong [README.module2.md](README.module2.md).
+- **Demo UI**: <http://localhost:8000/> — Hierarchical VN-stock (`app/static/agent_pr.html`).
+  Module I chat cũ: <http://localhost:8000/legal-chat> (`chat.html`).
+  Portfolio: <http://localhost:8000/portfolio>.
+  Lịch sử chat lưu `localStorage`. Bấm **"Ingest dữ liệu"** trước khi hỏi RAG —
+  với `QDRANT_URL=:memory:` mỗi process có Qdrant riêng; nút này gọi `POST /admin/ingest`.
+  Toggle **Streaming** (`/chat/stream`) và **Agent (CRAG)** (`/chat/agent`).
+  Module II: `/assistant/message` + `/assistant/approve` — [README.module2.md](README.module2.md).
 
 ## Test
 
@@ -55,11 +51,11 @@ pytest          # không gọi API thật (mock LLM), không cần key
 Test cho cả 2 module nằm chung trong `tests/` (`test_chat.py`, `test_rag.py`,
 `test_agent.py`, ... cho Module I; `test_agent_m2*.py` cho Module II).
 
-**agent_pr** (giá + tin, không cần OpenAI) — Docker Compose:
+**agent_pr** (Hierarchical VN-stock; `/pr/ask` cần OpenAI để hub chọn worker) — Docker Compose:
 
 ```bash
 docker compose up --build app
-# POST http://localhost:8000/pr/ask  {"symbol":"HPG"}
+# POST http://localhost:8000/pr/ask  {"question":"Tại sao HPG giảm?"}
 ```
 
 Chi tiết: [README.agent_pr.md](README.agent_pr.md).
@@ -72,9 +68,9 @@ Chi tiết: [README.agent_pr.md](README.agent_pr.md).
 Modelfile              # Module I, Buổi 2 — Ollama model có sẵn persona pháp lý
 app/
 ├── config.py          # đọc .env (điểm duy nhất chạm secrets, dùng chung 2 module)
-├── main.py            # FastAPI app + phục vụ static/chat.html tại "/"
+├── main.py            # FastAPI app + phục vụ static tại "/"
 ├── pipeline.py         # Module I — orchestrator: retrieve → prompt → llm
-├── static/             # ✓ chat.html — demo UI dùng chung, lịch sử lưu localStorage
+├── static/             # agent_pr.html, chat.html, portfolio, swarm-handoff-map
 ├── api/                 # FastAPI routes + schemas (routes_chat/routes_admin: Module I;
 │                        #   routes_assistant: Module II)
 ├── llm/                 # Module I — native SDK: completion, streaming, backoff, key rotation

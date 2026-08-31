@@ -10,7 +10,7 @@ crawl, worker nói ngang nhau. File này chấm thêm CON ĐƯỜNG, giống Bà
     (verbosity bias — xem agent_m2/eval.py).
 
 Khác agent_m2: không có checkpointer/tool_call_id. Trajectory dựng từ
-Agent_Output + hub.trace (thứ tự thật: đợt 1 Price·News·DB → Eval → Synthesis).
+Agent_Output + hub.trace (chỉ worker plan đã bật).
 Khác app/agent_pr/eval_agent/: đó là domain sentiment, không phải LLM-as-judge.
 
 Cost/latency lấy từ LangFuse span `agent_pr_ask` — không nhờ judge.
@@ -68,13 +68,11 @@ so sánh với câu trả lời khác.
 
 Đạt mục tiêu khi câu trả lời:
 - nêu đúng mã được hỏi
-- có chiều/biến động giá (tăng/giảm + %) hoặc nói rõ thiếu lịch sử
-- có thông tin tin tức (số tin / thiên hướng) hoặc nói rõ chưa có tin
+- khớp phạm vi nhiệm vụ (chỉ hỏi giá thì không bắt buộc tin; hỏi tin thì không bắt buộc %)
 - không bịa mã khác, không bịa số liệu không có trong kết quả agent"""
 
 _SUCCESS_CRITERIA = (
-    "Câu trả lời tiếng Việt, đúng mã, có biến động giá (hoặc nêu thiếu lịch sử), "
-    "có điểm tin/eval (hoặc nêu chưa có tin), không bịa số liệu."
+    "Câu trả lời tiếng Việt, đúng mã, đúng phạm vi câu hỏi, không bịa số liệu."
 )
 
 
@@ -99,21 +97,23 @@ def evaluate_task_success(
 _TRAJECTORY_SYSTEM = """Bạn chấm CHUỖI HÀNH ĐỘNG của Hierarchical Coordinator (Sơ đồ 3d),
 không chỉ câu trả lời cuối.
 
-Luồng đúng (cố định, không phải Swarm):
-  đợt 1 song song: PriceAgent + NewsAgent + DBAgent
-  → hub thu 3 báo cáo
-  → đợt 2a EvalAgent (chỉ nhận giá+tin, không crawl)
-  → đợt 2b SynthesisAgent (chỉ ghép báo cáo)
+Luồng đúng (không phải Swarm): hub gọi LLM một lần lập plan (cờ từng worker),
+rồi chỉ giao agent được bật. Worker không nói với nhau.
+
+  đợt gather (song song, chỉ worker plan bật): Price / News / DB
+  → hub thu báo cáo
+  → EvalAgent CHỈ nếu plan bật eval VÀ đã có giá+tin
+  → SynthesisAgent nếu plan bật synth
   → hub trả user
 
 Trừ điểm logical_order / tool_correctness nếu:
-- Eval hoặc Synthesis chạy trước khi đủ giá+tin
+- Eval chạy khi chưa có giá+tin, hoặc khi plan không bật eval
+- Giao worker plan đã tắt
 - worker tự gọi nhau (cạnh ngang) thay vì báo cáo hub
-- Price/News/DB không cùng đợt 1
-- worker sai việc (Eval crawl, Synthesis chấm lại sentiment, News tự chấm tốt/xấu)
+- worker sai việc (Eval crawl, Synthesis chấm lại sentiment)
 
-4 tiêu chí ĐỘC LẬP, thang 1-5. KHÔNG thưởng trajectory dài — nhiều bước hơn
-thường là kém hiệu quả (verbosity bias), trừ khi đúng 2 đợt trên map."""
+4 tiêu chí ĐỘC LẬP, thang 1-5. KHÔNG thưởng trajectory dài — thiếu worker
+mà plan đã tắt là ĐÚNG (efficiency), không phải thiếu sót."""
 
 
 def _format_trajectory(trajectory: list[dict]) -> str:
@@ -150,58 +150,81 @@ def evaluate_run(task: str, final_output: str, trajectory: list[dict]) -> AgentE
 
 
 def extract_trajectory(out: Agent_Output) -> list[dict]:
-    """Thứ tự thật trên graph: đợt 1 Price·News·DB → Eval → Synthesis → reply.
+    """Chỉ bước worker thật sự chạy — plan tắt agent nào thì không bịa bước đó.
 
-    Mỗi bước `{tool, args, observation}` — cùng shape agent_m2._extract_trajectory
-    để evaluate_trajectory đọc được. Hub.trace gắn vào observation của
-    coordinator để judge thấy lời giao việc, không phải bịa thêm bước.
+    Mỗi bước `{tool, args, observation}` — cùng shape agent_m2._extract_trajectory.
+    Hub.trace gắn vào observation của coordinator.
     """
     hub = " | ".join(out.trace) if out.trace else ""
+    plan = out.plan
     steps: list[dict] = [
         {
             "tool": "coordinator",
-            "args": {"symbol": out.symbol, "wave": "wave1"},
-            "observation": hub or "giao đợt 1 Price · News · DB",
+            "args": {
+                "symbol": out.symbol,
+                "question": out.question,
+                "plan": plan.model_dump() if plan else {},
+            },
+            "observation": hub or "LLM lập plan rồi giao worker",
         },
-        {
-            "tool": "price_agent",
-            "args": {"symbol": out.symbol},
-            "observation": (
-                f"last={out.price.last} prev={out.price.prev_close} "
-                f"pct_change={out.price.pct_change} date={out.price.trading_date} "
-                f"source={out.price.source}"
-            ),
-        },
-        {
-            "tool": "news_agent",
-            "args": {"symbol": out.symbol},
-            "observation": f"{len(out.news.articles)} tin {out.news.source}",
-        },
-        {
-            "tool": "db_agent",
-            "args": {"symbol": out.symbol},
-            "observation": out.db.detail if out.db else "chưa gọi DBAgent",
-        },
-        {
-            "tool": "eval_agent",
-            "args": {"symbol": out.symbol},
-            "observation": out.eval.detail,
-        },
-        {
-            "tool": "synthesis_agent",
-            "args": {"symbol": out.symbol},
-            "observation": out.answer,
-        },
+    ]
+    if out.price:
+        steps.append(
+            {
+                "tool": "price_agent",
+                "args": {"symbol": out.symbol},
+                "observation": (
+                    f"last={out.price.last} prev={out.price.prev_close} "
+                    f"pct_change={out.price.pct_change} date={out.price.trading_date} "
+                    f"source={out.price.source}"
+                ),
+            }
+        )
+    if out.news:
+        steps.append(
+            {
+                "tool": "news_agent",
+                "args": {"symbol": out.symbol},
+                "observation": f"{len(out.news.articles)} tin {out.news.source}",
+            }
+        )
+    if out.db:
+        steps.append(
+            {
+                "tool": "db_agent",
+                "args": {"symbol": out.symbol},
+                "observation": out.db.detail,
+            }
+        )
+    if out.eval:
+        steps.append(
+            {
+                "tool": "eval_agent",
+                "args": {"symbol": out.symbol},
+                "observation": out.eval.detail,
+            }
+        )
+    if plan is None or plan.use_synth:
+        steps.append(
+            {
+                "tool": "synthesis_agent",
+                "args": {"symbol": out.symbol},
+                "observation": out.answer,
+            }
+        )
+    steps.append(
         {
             "tool": "reply",
             "args": {"symbol": out.symbol},
             "observation": f"trả user · {len(out.trace)} dòng trace hub",
-        },
-    ]
+        }
+    )
     return steps
 
 
 def evaluate_ask(out: Agent_Output) -> AgentEvalResult:
     """Chấm 1 lượt /pr/ask đã chạy xong — POST /pr/ask/evaluate."""
-    task = f"Phân tích biến động giá và tin tức liên quan đến mã {out.symbol} hôm nay."
+    task = out.question or (
+        f"Phân tích biến động giá và tin tức liên quan đến mã {out.symbol} hôm nay."
+    )
     return evaluate_run(task, out.answer, extract_trajectory(out))

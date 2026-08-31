@@ -22,12 +22,29 @@ def _last(_left, right):
     """
     return right
 
+
+def _append_trim(left, right):
+    """Short-term: nối history; compact gửi `set_history` thì GHI ĐÈ.
+
+    Cắt bằng `sliding_window` (giữ system/summary) — không slice đuôi mù,
+    kẻo mất bản tóm tắt ở đầu list. Xem app.agent_pr.context.
+    """
+    from app.agent_pr.context import ReplaceHistory, sliding_window
+    from app.config import settings
+
+    if isinstance(right, ReplaceHistory):
+        merged = list(right)
+    else:
+        merged = list(left or []) + list(right or [])
+    cap = max(4, int(settings.agent_max_messages))
+    return sliding_window(merged, cap)
+
 from app.agent_pr.craw_agent.schemas import Agent_Output as PriceOut
 from app.agent_pr.db_agent.schemas import Agent_Output as DbOut
 from app.agent_pr.db_agent.schemas import CandidateNews
 from app.agent_pr.eval_agent.schemas import Agent_Output as EvalOut
 from app.agent_pr.news_agent.schemas import Agent_Output as NewsOut
-from app.agent_pr.supervisor_agent.schemas import Agent_Output
+from app.agent_pr.supervisor_agent.schemas import Agent_Output, AgentPlan
 from app.agent_pr.synthesis_agent.schemas import Agent_Output as SynthOut
 
 
@@ -38,17 +55,27 @@ class SupervisorState(TypedDict, total=False):
     trùng tên sẽ lẫn kiểu Pydantic khi nhúng.
     """
 
-    symbol: Annotated[str, _last]  # 3 worker đợt 1 cùng ghi — xem _last
-    next_wave: str                 # wave1 | eval | synth | done — route đọc
-    price: PriceOut                # PriceAgent (cửa sổ) ghi
-    news: NewsOut                  # NewsAgent ghi (trùng tên NewsState.news)
-    db: DbOut                      # DBAgent cửa sổ lift từ result nội bộ
-    eval: EvalOut                  # EvalAgent cửa sổ lift từ report
-    n_history: int                 # coordinator ghi trước khi giao Synthesis
-    draft: SynthOut                # Synthesis cửa sổ lift từ result nội bộ
-    output: Agent_Output           # reply đóng gói cho user
-    trace: list[str]               # hub ghi từng lượt giao/thu — không reducer
-    _trace_span: Annotated[Any, _last]  # span cha LangFuse; 3 worker đợt 1 copy lại — xem _last
+    symbol: Annotated[str, _last]
+    question: str
+    turn: str                      # uuid mỗi HTTP — tách plan/eval/synth khỏi checkpoint cũ
+    user_id: str                   # long-term: rỗng = không recall/store
+    history: Annotated[list, _append_trim]  # short-term; compact ghi đè qua set_history
+    memories: list[str]            # long-term đã recall lượt này
+    plan: AgentPlan
+    plan_turn: str
+    next_wave: str
+    price: PriceOut
+    news: NewsOut
+    db: DbOut
+    eval: EvalOut
+    eval_turn: str
+    n_history: int
+    draft: SynthOut
+    synth_turn: str
+    output: Agent_Output
+    trace: list[str]
+    # Không có `_trace_span` trên hub — checkpointer không serialize được
+    # LangfuseSpan. Hub lấy span qua tracing.current_span(); worker nhận qua Send.
 
 
 class PriceWindow(TypedDict, total=False):
@@ -66,8 +93,10 @@ class EvalWindow(TypedDict, total=False):
 
     price: PriceOut
     news: NewsOut
-    report: EvalOut                # eval graph ghi
-    eval: EvalOut                  # lift
+    report: EvalOut
+    eval: EvalOut
+    turn: str                      # copy từ hub — lift ghi eval_turn
+    eval_turn: str
     _trace_span: Any
 
 
@@ -78,8 +107,10 @@ class SynthWindow(TypedDict, total=False):
     news: NewsOut
     eval: EvalOut
     n_history: int
-    result: SynthOut               # synth graph ghi
-    draft: SynthOut                # lift
+    result: SynthOut
+    draft: SynthOut
+    turn: str
+    synth_turn: str
     _trace_span: Any
 
 

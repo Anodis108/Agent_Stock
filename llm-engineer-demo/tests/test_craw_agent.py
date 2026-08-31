@@ -19,7 +19,7 @@ from app.agent_pr.craw_agent import Agent_Input, run_crawl
 
 @pytest.mark.asyncio
 async def test_hpg_online():
-    """HPG nằm ALLOWED — graph chạy hết, in 6 field Agent_Output."""
+    """HPG — graph chạy hết, in 6 field Agent_Output."""
     q = await run_crawl(Agent_Input(symbol="HPG"))
     print()
     print("symbol      :", q.symbol)
@@ -38,6 +38,6 @@ async def test_hpg_online():
 
 @pytest.mark.asyncio
 async def test_ma_sai():
-    """ABC không whitelist — normalize raise trước khi gọi vnstock."""
+    """Sai định dạng mã — normalize raise trước khi gọi vnstock."""
     with pytest.raises(ValueError):
-        await run_crawl(Agent_Input(symbol="ABC"))
+        await run_crawl(Agent_Input(symbol="HP"))

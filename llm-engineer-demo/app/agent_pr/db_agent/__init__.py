@@ -5,7 +5,6 @@ approve_pending_write. Không re-export node/graph nội bộ.
 """
 
 from app.agent_pr.db_agent.graph import approve_pending_write, run_db
-from app.agent_pr.db_agent.nodes import ALLOWED
 from app.agent_pr.db_agent.schemas import (
     Agent_Input,
     Agent_Output,
@@ -16,7 +15,6 @@ from app.agent_pr.db_agent.schemas import (
 )
 
 __all__ = [
-    "ALLOWED",
     "Agent_Input",
     "Agent_Output",
     "CandidateNews",

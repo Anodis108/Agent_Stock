@@ -5,7 +5,6 @@ Không re-export node/graph nội bộ.
 """
 
 from app.agent_pr.news_agent.graph import run_news
-from app.agent_pr.news_agent.nodes import ALLOWED
 from app.agent_pr.news_agent.schemas import Agent_Input, Agent_Output
 
-__all__ = ["ALLOWED", "Agent_Input", "Agent_Output", "run_news"]
+__all__ = ["Agent_Input", "Agent_Output", "run_news"]

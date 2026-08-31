@@ -5,7 +5,6 @@ Không re-export node/graph nội bộ.
 """
 
 from app.agent_pr.craw_agent.graph import run_crawl
-from app.agent_pr.craw_agent.nodes import ALLOWED
 from app.agent_pr.craw_agent.schemas import Agent_Input, Agent_Output
 
-__all__ = ["ALLOWED", "Agent_Input", "Agent_Output", "run_crawl"]
+__all__ = ["Agent_Input", "Agent_Output", "run_crawl"]

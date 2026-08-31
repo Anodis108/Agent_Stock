@@ -20,7 +20,7 @@ class NewsState(TypedDict, total=False):
     total=False: node chỉ trả field nó cập nhật (normalize → symbol; fetch → rows).
     """
 
-    symbol: str                    # mã đã upper + nằm ALLOWED (normalize ghi)
+    symbol: str                    # mã đã upper + đúng định dạng (normalize ghi)
     rows: list[dict[str, Any]]     # [{title, url, publish_time}, ...] từ CafeF News.ashx
     news: Agent_Output             # parse ghi; run_news lấy đúng field này trả caller
     _trace_span: Any               # span cha LangFuse — Send phải gửi kèm (nhánh chỉ thấy payload)

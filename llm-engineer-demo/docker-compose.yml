@@ -1,27 +1,60 @@
-# API agent_pr + Qdrant (RAG buổi 5, không bắt buộc cho /pr/ask).
+# FastAPI VN-stock — service `app` :8000 (API + UI tĩnh)
 #
-#   docker compose up --build        # app :8000 + qdrant
-#   docker compose up --build app    # chỉ FastAPI (giá/tin/eval)
+#   docker compose up --build -d          # app (UI / + API /pr/ask)
+#   docker compose --profile rag up -d    # + Qdrant (RAG Module I)
 #   docker compose down
 #
-# Hub: POST http://localhost:8000/pr/ask  {"symbol":"HPG"}
+# UI:   http://localhost:8000/
 # Docs: http://localhost:8000/docs
+# Ask:  POST http://localhost:8000/pr/ask  {"question":"Tại sao HPG giảm?"}
+# .env (OPENAI_API_KEYS) không copy vào image — compose đọc env_file.
+
 services:
   app:
     build: .
-    container_name: llm-engineer-demo
+    container_name: vn-stock-api
+    env_file:
+      - .env
+    command:
+      [
+        "uvicorn",
+        "app.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+        "--reload",
+      ]
+    volumes:
+      - ./app:/app/app
     ports:
       - "8000:8000"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 45s
 
   qdrant:
+    profiles: ["rag"]
     image: qdrant/qdrant:latest
     container_name: legal-qdrant
     ports:
       - "6333:6333"   # REST API + dashboard
       - "6334:6334"   # gRPC
     volumes:
-      - ./data/qdrant:/qdrant/storage   # persist dữ liệu qua các lần restart
+      - ./data/qdrant:/qdrant/storage
     restart: unless-stopped

@@ -21,6 +21,7 @@ from app.config import settings
 from app.llm.client import get_client, mark_current_key_limited
 from app.llm.params import GenerationParams
 from app.llm.resilience import retry_with_backoff
+from app.monitoring.tracing import trace_step
 
 TModel = TypeVar("TModel", bound=BaseModel)
 
@@ -47,7 +48,17 @@ def chat(messages: Messages, params: GenerationParams | None = None) -> str:
         max_retries=settings.llm_max_retries,
         on_rate_limit=lambda: mark_current_key_limited(client),
     )
-    return response.choices[0].message.content or ""
+    text = response.choices[0].message.content or ""
+    with trace_step(
+        None,
+        "llm.chat",
+        input=messages,
+        model=settings.llm_model,
+        usage=response.usage,
+        model_parameters=params.to_openai_kwargs(),
+    ) as t:
+        t["output"] = text
+    return text
 
 
 def chat_stream(
@@ -75,10 +86,24 @@ def chat_stream(
         on_rate_limit=lambda: mark_current_key_limited(client),
     )
 
+    chunks: list[str] = []
+    usage = None
     for chunk in stream:
-        delta = chunk.choices[0].delta.content
-        if delta:  # delta có thể là None ở chunk cuối
+        if getattr(chunk, "usage", None):
+            usage = chunk.usage
+        delta = chunk.choices[0].delta.content if chunk.choices else None
+        if delta:
+            chunks.append(delta)
             yield delta
+    with trace_step(
+        None,
+        "llm.chat_stream",
+        input=messages,
+        model=settings.llm_model,
+        usage=usage,
+        model_parameters=params.to_openai_kwargs(),
+    ) as t:
+        t["output"] = "".join(chunks)
 
 
 def chat_parsed(
@@ -109,6 +134,15 @@ def chat_parsed(
     parsed = completion.choices[0].message.parsed
     if parsed is None:
         raise ValueError("Model không trả về output khớp schema.")
+    with trace_step(
+        None,
+        "llm.chat_parsed",
+        input=messages,
+        model=settings.llm_model,
+        usage=completion.usage,
+        model_parameters=params.to_openai_kwargs(),
+    ) as t:
+        t["output"] = parsed.model_dump()
     return parsed
 
 
@@ -133,8 +167,19 @@ def chat_with_tools(
             **params.to_openai_kwargs(),
         )
 
-    return retry_with_backoff(
+    response = retry_with_backoff(
         _call,
         max_retries=settings.llm_max_retries,
         on_rate_limit=lambda: mark_current_key_limited(client),
     )
+    msg = response.choices[0].message
+    with trace_step(
+        None,
+        "llm.chat_with_tools",
+        input=messages,
+        model=settings.llm_model,
+        usage=response.usage,
+        model_parameters=params.to_openai_kwargs(),
+    ) as t:
+        t["output"] = {"content": msg.content, "tool_calls": getattr(msg, "tool_calls", None)}
+    return response

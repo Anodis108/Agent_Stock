@@ -21,7 +21,7 @@ if hasattr(sys.stdout, "reconfigure"):
 
 @pytest.mark.asyncio
 async def test_hpg_online():
-    """HPG nằm ALLOWED — graph chạy hết, mỗi tin có title + url CafeF."""
+    """HPG — graph chạy hết, mỗi tin có title + url CafeF."""
     out = await run_news(Agent_Input(symbol="HPG"))
     print()
     print("symbol :", out.symbol)
@@ -40,6 +40,6 @@ async def test_hpg_online():
 
 @pytest.mark.asyncio
 async def test_ma_sai():
-    """ABC không whitelist — normalize raise trước khi gọi CafeF."""
+    """Sai định dạng mã — normalize raise trước khi gọi CafeF."""
     with pytest.raises(ValueError):
-        await run_news(Agent_Input(symbol="ABC"))
+        await run_news(Agent_Input(symbol="HP"))

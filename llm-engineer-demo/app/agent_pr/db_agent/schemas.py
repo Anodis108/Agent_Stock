@@ -48,8 +48,9 @@ class SavedNews(BaseModel):
 class PendingWrite(BaseModel):
     """1 lệnh ghi tin mới đang treo — soạn xong nhưng CHƯA commit vào DB.
 
-    `id` dùng để `approve_pending_write()` tìm đúng bản ghi cần duyệt; DBAgent
-    không tự sinh UUID phức tạp — thứ tự soạn trong 1 lần chạy là đủ demo.
+    `id` ổn định theo (symbol, url): stage lại cùng tin trả cùng id — caller
+    duyệt retry không tạo lệnh thứ hai. `approve_pending_write(id)` tìm đúng
+    hàng đó.
     """
 
     id: int

@@ -1,14 +1,15 @@
 # agent_pr — Hierarchical VN-stock
 
-Pipeline: giá (vnstock) + tin (CafeF) + eval từ khoá + ghép câu. **Không cần OpenAI.**
+Pipeline: hub LLM chọn worker → giá (vnstock) / tin (CafeF) / DB / eval / ghép câu.
+**POST `/pr/ask` cần OpenAI** (`OPENAI_API_KEYS` trong `.env`). `POST /pr/price` không cần.
 
-Mã demo: **VNM, HPG, FPT, VCB**.
+Mã: mọi CP niêm yết VN (HOSE / HNX / UPCOM), không whitelist.
 
 ---
 
 ## Chạy bằng Docker Compose (cách chính)
 
-Từ thư mục `llm-engineer-demo`:
+Từ thư mục `llm-engineer-demo` (compose đọc `.env`):
 
 ```bash
 cd vn-stock-swarm/llm-engineer-demo
@@ -21,12 +22,12 @@ Chỉ API (không Qdrant):
 docker compose up --build app
 ```
 
-Mở <http://localhost:8000/docs> → **POST /pr/ask**.
+Mở <http://localhost:8000/> (UI agent_pr) hoặc <http://localhost:8000/docs> → **POST /pr/ask**.
 
 ```bash
 curl -s -X POST http://localhost:8000/pr/ask ^
   -H "Content-Type: application/json" ^
-  -d "{\"symbol\":\"HPG\"}"
+  -d "{\"question\":\"Tại sao HPG giảm?\"}"
 ```
 
 Git Bash / Linux:
@@ -34,10 +35,12 @@ Git Bash / Linux:
 ```bash
 curl -s -X POST http://localhost:8000/pr/ask \
   -H "Content-Type: application/json" \
-  -d '{"symbol":"HPG"}'
+  -d '{"question":"Tại sao HPG giảm?"}'
 ```
 
-Chỉ giá: `POST /pr/price` cùng body `{"symbol":"HPG"}`.
+Chỉ mã (hub tự hỏi phân tích đủ worker): `{"symbol":"HPG"}`.
+
+Chỉ giá, không qua hub: `POST /pr/price` cùng body `{"symbol":"HPG"}`.
 
 Dừng: `docker compose down`.
 
@@ -73,14 +76,26 @@ Cùng URL `/pr/ask` như trên.
 Hierarchical Coordinator (hub) — worker là subgraph, không gọi nhau:
 
 ```
-POST /pr/ask
-    → coordinator
-        đợt 1 (song song): PriceAgent · NewsAgent · DBAgent
+POST /pr/ask  {question, thread_id?, user_id?}
+    → recall (long-term theo user_id; ghi history user)
+    → coordinator (1 lần chat_parsed → AgentPlan; có history + memories)
+        gather (song song, chỉ worker plan bật; tái dùng giá/tin ĐÚNG MÃ)
         → after_wave1 (fan-in) → coordinator
-        đợt 2a: EvalAgent → coordinator
-        đợt 2b: SynthesisAgent → coordinator
-        → reply (hub trả user)
-    → { answer, trace, last, pct_change, n_news }
+        EvalAgent  — nếu plan bật và đã có giá+tin (mỗi lượt hỏi mới)
+        SynthesisAgent — nếu plan bật (mỗi lượt hỏi mới)
+        → reply → store (trích 1 sự thật dài hạn nếu có user_id)
+    → { answer, trace, used_agents, plan_reasoning, thread_id, user_id, … }
+```
+
+**Memory** (cùng mô hình Module II / `agent_m2`):
+
+- **Short-term:** `thread_id` + `MemorySaver` (RAM, theo process). UI giữ id trong `localStorage`. Trống → server cấp uuid rồi trả về. Cùng phiên: nhớ hội thoại; giá/tin cùng mã không crawl lại. Nút **Phiên mới** đổi `thread_id`.
+- **Long-term:** `user_id` + `app.agent_pr.memory` (Qdrant collection `user_memory`). Không `user_id` → không recall/store. `docker compose --profile rag up` bật Qdrant; không Qdrant / không embed thì store fallback in-memory.
+
+```bash
+curl -s -X POST http://localhost:8000/pr/ask \
+  -H "Content-Type: application/json" \
+  -d '{"question":"Tại sao HPG giảm?","thread_id":"sess-1","user_id":"alice"}'
 ```
 
 LangFuse (`MONITORING_ENABLED=true`): span cha `agent_pr_ask` + span con từng node
@@ -92,7 +107,7 @@ Chấm chất lượng (LLM-as-judge, 2 chiều như `app/agent_m2/eval.py`):
 ```bash
 curl -s -X POST http://localhost:8000/pr/ask/evaluate \
   -H "Content-Type: application/json" \
-  -d '{"symbol":"HPG"}'
+  -d '{"question":"Tại sao HPG giảm?"}'
 ```
 
 → `task_success` + `trajectory` (efficiency / logical_order / tool_correctness /
@@ -106,7 +121,7 @@ recovery) + `trajectory_steps`. Tốn 2 lời gọi LLM — không gộp vào `/
 ## Pytest (tuỳ chọn, kiểm tra code)
 
 ```bash
-python -m pytest tests/test_supervisor_agent.py -s -q
+python -m pytest tests/test_supervisor_agent.py tests/test_supervisor_memory.py -s -q
 ```
 
 Không dùng pytest để “chạy app”.

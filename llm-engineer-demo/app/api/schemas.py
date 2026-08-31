@@ -6,7 +6,7 @@ còn domain.py là hình dạng dữ liệu nội bộ. Giữ tách biệt để
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.config import settings
 
@@ -162,7 +162,7 @@ class SwarmResponse(BaseModel):
 # ── agent_pr slice 1: craw_agent lấy giá ─────────────────────────────────────
 
 class PriceRequest(BaseModel):
-    symbol: str = Field(min_length=1, description="Mã CP demo: VNM, HPG, FPT, VCB")
+    symbol: str = Field(min_length=1, description="Mã CP niêm yết VN")
 
 
 class PriceResponse(BaseModel):
@@ -175,7 +175,24 @@ class PriceResponse(BaseModel):
 
 
 class AskRequest(BaseModel):
-    symbol: str = Field(min_length=1, description="Mã CP demo: VNM, HPG, FPT, VCB")
+    """Cần ít nhất symbol hoặc question. Hub LLM tách mã + chọn worker."""
+
+    symbol: str = Field("", description="Mã CP niêm yết VN — có thể trống nếu có question")
+    question: str = Field("", description="Câu tiếng Việt; trống thì phân tích mã symbol")
+    thread_id: str = Field(
+        "",
+        description="Short-term: id hội thoại. Trống → server cấp uuid (trả về để client giữ).",
+    )
+    user_id: str = Field(
+        "",
+        description="Long-term: id user (Qdrant user_memory). Trống → không recall/store.",
+    )
+
+    @model_validator(mode="after")
+    def need_symbol_or_question(self) -> AskRequest:
+        if not (self.symbol or "").strip() and not (self.question or "").strip():
+            raise ValueError("Cần symbol hoặc question")
+        return self
 
 
 class AskResponse(BaseModel):
@@ -188,6 +205,10 @@ class AskResponse(BaseModel):
     pct_change: float | None = None
     n_news: int = 0
     eval_detail: str = ""
+    used_agents: list[str] = []
+    plan_reasoning: str = ""
+    thread_id: str = ""
+    user_id: str = ""
 
 
 class AskEvaluateResponse(BaseModel):

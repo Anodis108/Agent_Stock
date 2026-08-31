@@ -11,23 +11,20 @@ from __future__ import annotations
 
 from app.agent_pr.craw_agent.schemas import Agent_Output
 from app.agent_pr.craw_agent.state import CrawlState
+from app.agent_pr.symbol import normalize_symbol
 from app.monitoring.tracing import trace_step
-
-ALLOWED = frozenset({"VNM", "HPG", "FPT", "VCB"})
 
 
 # ── Chuẩn hoá mã ──────────────────────────────────────────────────────────────
 #
-# Cổng vào graph: "hpg" / " HPG " → "HPG". Mã ngoài ALLOWED raise ngay — không
+# Cổng vào graph: "hpg" / " HPG " → "HPG". Sai định dạng raise ngay — không
 # tốn lời gọi vnstock (cùng ý với guardrail_input ở app/agent: fail sớm).
 
 
 def normalize(state: CrawlState) -> dict:
-    """Upper + strip; raise ValueError nếu mã chưa nằm whitelist."""
-    symbol = str(state.get("symbol") or "").strip().upper()
-    with trace_step(state.get("_trace_span"), "craw_normalize", input=symbol) as t:
-        if symbol not in ALLOWED:
-            raise ValueError(f"Mã '{symbol}' chưa hỗ trợ")
+    """Upper + strip; raise ValueError nếu không giống mã niêm yết."""
+    with trace_step(state.get("_trace_span"), "craw_normalize", input=state.get("symbol", "")) as t:
+        symbol = normalize_symbol(str(state.get("symbol") or ""))
         t["output"] = symbol
         return {"symbol": symbol}
 
@@ -37,7 +34,7 @@ def normalize(state: CrawlState) -> dict:
 # Quote.history(KBS): 5 phiên ngày, lấy tail(2) vì parse cần last + prev.
 # `close` vẫn nghìn đồng (22.1) — nhân 1000 ở parse, giữ đúng raw API.
 #
-# Hết data → ValueError. Lỗi mạng/SSL của vnstock để nổi nguyên, chưa bọc.
+# Hết data → rows rỗng (parse vẫn trả quote). Lỗi mạng Docker/DNS không crash graph.
 
 
 def fetch(state: CrawlState) -> dict:
@@ -46,9 +43,14 @@ def fetch(state: CrawlState) -> dict:
 
     symbol = state["symbol"]
     with trace_step(state.get("_trace_span"), "craw_fetch", input=symbol) as t:
-        df = Quote(symbol=symbol, source="KBS").history(length="5", interval="d")
+        try:
+            df = Quote(symbol=symbol, source="KBS").history(length="5", interval="d")
+        except Exception as exc:
+            t["output"] = {"error": str(exc)}
+            return {"rows": []}
         if df is None or df.empty:
-            raise ValueError(f"Không có dữ liệu {symbol}")
+            t["output"] = {"n_rows": 0}
+            return {"rows": []}
         rows = [
             {"time": str(row.time), "close": float(row.close)}
             for row in df.tail(2).itertuples()
@@ -69,7 +71,9 @@ def parse(state: CrawlState) -> dict:
     symbol = state["symbol"]
     with trace_step(state.get("_trace_span"), "craw_parse", input=symbol) as t:
         if not rows:
-            raise ValueError("Không có dữ liệu")
+            quote = Agent_Output(symbol=symbol, last=0, source="vnstock (không lấy được)")
+            t["output"] = {"last": 0, "empty": True}
+            return {"quote": quote}
         last = float(rows[-1]["close"]) * 1000
         prev = float(rows[-2]["close"]) * 1000 if len(rows) >= 2 else None
         pct = round((last - prev) / prev * 100, 2) if prev else None
