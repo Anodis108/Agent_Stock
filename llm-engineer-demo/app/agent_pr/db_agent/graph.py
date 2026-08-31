@@ -1,61 +1,101 @@
-"""Graph db_agent — LangGraph chỉ ráp control flow.
-
-Luồng (tuyến tính, giống craw_agent/news_agent — chưa conditional / Send):
-    START → normalize → read → stage_writes → parse → END
-
-So với craw_agent/news_agent: 4 node thay vì 3 — read (ĐỌC, tự động) và
-stage_writes (SOẠN lệnh ghi, cũng tự động) tách riêng vì khác nguồn dữ liệu
-(bảng `prices`/`news` vs bảng `news_pending`), dù cả hai đều không cần người.
-
-HITL (duyệt lệnh ghi) CHỦ Ý không nằm trong graph này — `approve_pending_write`
-là 1 hàm thường, gọi sau khi người quyết định (giống POST /approve tách khỏi
-graph 2-đợt bên vn-stock-swarm/src/query/api.py). Nhét việc "chờ người" vào
-1 StateGraph tuyến tính không interrupt sẽ hoặc chặn event loop hoặc phải giả
-lập start/resume — không đáng cho slice demo này.
-
-Entry `run_db` nhận Agent_Input, trả Agent_Output — không trả cả state.
-"""
+"""Graph DBAgent — ReAct đọc/soạn sqlite. COMMIT vẫn ở hub HITL."""
 
 from __future__ import annotations
 
+import json
 from functools import lru_cache
 
-from langgraph.graph import END, START, StateGraph
-
-from app.agent_pr.db_agent.nodes import approve_pending_write, normalize, parse, read, stage_writes
+from app.agent_pr.db_agent.nodes import approve_pending_write, parse
 from app.agent_pr.db_agent.schemas import Agent_Input, Agent_Output
 from app.agent_pr.db_agent.state import DBState
+from app.agent_pr.db_agent.tools import TOOLS
+from app.agent_pr.react import compile_react, last_tool_json
+from app.agent_pr.symbol import normalize_symbol
 from app.monitoring.tracing import trace_answer
 
 __all__ = ["approve_pending_write", "run_db"]
 
+_SYSTEM = (
+    "Bạn là DBAgent. Đọc kho sqlite hoặc soạn lệnh ghi (chưa COMMIT). "
+    "Chỉ đọc → read_symbol_store. Có tin/giá ứng viên → stage_new_rows. "
+    "Không tự COMMIT."
+)
+
+
+def _seed(state: DBState) -> dict:
+    if state.get("messages"):
+        return {}
+    symbol = str(state.get("symbol") or "").strip() or "?"
+    news = state.get("candidate_news") or []
+    prices = state.get("candidate_prices") or []
+    if news or prices:
+        nj = json.dumps(
+            [x.model_dump() if hasattr(x, "model_dump") else dict(x) for x in news],
+            ensure_ascii=False,
+        )
+        pj = json.dumps(
+            [x.model_dump() if hasattr(x, "model_dump") else dict(x) for x in prices],
+            ensure_ascii=False,
+        )
+        text = (
+            f"Soạn lệnh ghi mã {symbol}. news_json={nj} prices_json={pj}. "
+            "Gọi stage_new_rows."
+        )
+    else:
+        text = f"Đọc lịch sử DB mã {symbol}. Gọi read_symbol_store."
+    return {"messages": [{"role": "user", "content": text}]}
+
+
+def _query(state: DBState) -> str:
+    return str(state.get("symbol") or "")
+
+
+def _pack(state: DBState) -> dict:
+    raw = last_tool_json(state, {"read_symbol_store", "stage_new_rows"})
+    if raw:
+        return {"result": Agent_Output.model_validate_json(raw)}
+    return parse(state)
+
+
+def _offline(state: DBState) -> tuple[str, dict]:
+    symbol = str(state.get("symbol") or "")
+    news = state.get("candidate_news") or []
+    prices = state.get("candidate_prices") or []
+    if news or prices:
+        nj = json.dumps(
+            [x.model_dump() if hasattr(x, "model_dump") else dict(x) for x in news],
+            ensure_ascii=False,
+        )
+        pj = json.dumps(
+            [x.model_dump() if hasattr(x, "model_dump") else dict(x) for x in prices],
+            ensure_ascii=False,
+        )
+        return "stage_new_rows", {"symbol": symbol, "news_json": nj, "prices_json": pj}
+    return "read_symbol_store", {"symbol": symbol}
+
 
 @lru_cache(maxsize=1)
 def _build_graph():
-    graph = StateGraph(DBState)
-    graph.add_node("normalize", normalize)
-    graph.add_node("read", read)
-    graph.add_node("stage_writes", stage_writes)
-    graph.add_node("parse", parse)
-    graph.add_edge(START, "normalize")
-    graph.add_edge("normalize", "read")
-    graph.add_edge("read", "stage_writes")
-    graph.add_edge("stage_writes", "parse")
-    graph.add_edge("parse", END)
-    return graph.compile()
+    return compile_react(
+        state_schema=DBState,
+        catalog=TOOLS,
+        system_prompt=_SYSTEM,
+        query_fn=_query,
+        seed=_seed,
+        pack=_pack,
+        offline_call=_offline,
+    )
 
 
 async def run_db(inp: Agent_Input) -> Agent_Output:
-    """Chạy graph, trả Agent_Output. ainvoke vì route FastAPI là async.
-
-    Lấy `["result"]` sau ainvoke — parse luôn ghi field này; thiếu = bug graph.
-    """
-    with trace_answer("agent_pr_db", inp.symbol) as t:
+    symbol = normalize_symbol(inp.symbol)
+    with trace_answer("agent_pr_db", symbol) as t:
         result = (
             await _build_graph().ainvoke(
                 {
-                    "symbol": inp.symbol,
+                    "symbol": symbol,
                     "candidate_news": inp.candidate_news,
+                    "candidate_prices": inp.candidate_prices,
                     "_trace_span": t.get("_span"),
                 }
             )

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field, model_validator
 
+from app.agent_pr.db_agent.schemas import PendingWrite
 from app.config import settings
 
 
@@ -180,8 +181,8 @@ class AskRequest(BaseModel):
     symbol: str = Field("", description="Mã CP niêm yết VN — có thể trống nếu có question")
     question: str = Field("", description="Câu tiếng Việt; trống thì phân tích mã symbol")
     thread_id: str = Field(
-        "",
-        description="Short-term: id hội thoại. Trống → server cấp uuid (trả về để client giữ).",
+        min_length=1,
+        description="Short-term: id hội thoại. Client bắt buộc gửi (giống /assistant).",
     )
     user_id: str = Field(
         "",
@@ -209,6 +210,26 @@ class AskResponse(BaseModel):
     plan_reasoning: str = ""
     thread_id: str = ""
     user_id: str = ""
+    pending_writes: list[PendingWrite] = []
+    status: str = "done"  # done | pending_approval (HITL trong db_agent)
+
+
+class DbApproveRequest(BaseModel):
+    """HITL — resume interrupt_before hitl_commit (cùng thread_id với /pr/ask)."""
+
+    pending_id: int | None = None
+    approve: bool = True
+    kind: str = "news"
+    thread_id: str = Field(min_length=1)
+
+
+class DbApproveResponse(BaseModel):
+    ok: bool
+    pending_id: int = 0
+    approve: bool
+    status: str = "pending_approval"
+    pending_writes: list[PendingWrite] = []
+    answer: str = ""
 
 
 class AskEvaluateResponse(BaseModel):

@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from typing import Annotated, Any, TypedDict
 
+from langgraph.graph.message import add_messages
+
 
 def _last(_left, right):
     """3 worker đợt 1 cùng ghi `symbol` (đã upper, cùng giá trị) trong 1 step.
@@ -67,6 +69,9 @@ class SupervisorState(TypedDict, total=False):
     price: PriceOut
     news: NewsOut
     db: DbOut
+    db_lookup_turn: str           # đã đọc DB lượt HTTP này
+    db_write_turn: str            # đã soạn lệnh ghi lượt này
+    skip_hitl: bool               # True: pytest — soạn pending nhưng không pause
     eval: EvalOut
     eval_turn: str
     n_history: int
@@ -79,13 +84,24 @@ class SupervisorState(TypedDict, total=False):
 
 
 class PriceWindow(TypedDict, total=False):
-    """Cửa sổ PriceAgent. `rows`/`quote` ở lại đây, hub chỉ thấy `price`."""
+    """Cửa sổ PriceAgent. `rows`/`quote`/`messages` ở lại đây, hub chỉ thấy `price`."""
 
     symbol: str
-    rows: list[dict[str, Any]]     # nội bộ craw — không có trên SupervisorState
-    quote: PriceOut                # craw parse ghi
-    price: PriceOut                # lift copy quote → tên hub dùng
-    _trace_span: Any               # trùng tên hub → craw subgraph nhận span cha
+    rows: list[dict[str, Any]]
+    quote: PriceOut
+    price: PriceOut
+    messages: Annotated[list, add_messages]
+    _trace_span: Any
+
+
+class NewsWindow(TypedDict, total=False):
+    """Cửa sổ NewsAgent — messages ReAct không lộ lên hub."""
+
+    symbol: str
+    rows: list[dict[str, Any]]
+    news: NewsOut
+    messages: Annotated[list, add_messages]
+    _trace_span: Any
 
 
 class EvalWindow(TypedDict, total=False):
@@ -95,8 +111,9 @@ class EvalWindow(TypedDict, total=False):
     news: NewsOut
     report: EvalOut
     eval: EvalOut
-    turn: str                      # copy từ hub — lift ghi eval_turn
+    turn: str
     eval_turn: str
+    messages: Annotated[list, add_messages]
     _trace_span: Any
 
 
@@ -106,11 +123,13 @@ class SynthWindow(TypedDict, total=False):
     price: PriceOut
     news: NewsOut
     eval: EvalOut
+    db: DbOut
     n_history: int
     result: SynthOut
     draft: SynthOut
     turn: str
     synth_turn: str
+    messages: Annotated[list, add_messages]
     _trace_span: Any
 
 
@@ -118,10 +137,16 @@ class DbWindow(TypedDict, total=False):
     """Cửa sổ DBAgent. `result` nội bộ → `db` (tránh đụng output của hub)."""
 
     symbol: str
+    mode: str
     candidate_news: list[CandidateNews]
+    candidate_prices: list
     price_rows: list[dict[str, Any]]
     news_rows: list[dict[str, Any]]
     pending_rows: list[dict[str, Any]]
-    result: DbOut                  # db graph ghi
-    db: DbOut                      # lift
+    result: DbOut
+    db: DbOut
+    turn: str
+    db_lookup_turn: str
+    db_write_turn: str
+    messages: Annotated[list, add_messages]
     _trace_span: Any

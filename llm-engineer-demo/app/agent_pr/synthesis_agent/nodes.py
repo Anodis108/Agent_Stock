@@ -14,10 +14,12 @@ from app.monitoring.tracing import trace_step
 def compose(state: SynthState) -> dict:
     """Ghép báo cáo hub đã thu — thiếu worker thì bỏ đoạn đó, không bịa."""
     price, news, ev = state.get("price"), state.get("news"), state.get("eval")
+    db = state.get("db")
     symbol = (
         (price.symbol if price else "")
         or (news.symbol if news else "")
         or (ev.symbol if ev else "")
+        or (db.symbol if db else "")
         or "?"
     )
     with trace_step(state.get("_trace_span"), "synth_compose", input=symbol) as t:
@@ -47,13 +49,27 @@ def compose(state: SynthState) -> dict:
                             "lưu ý: chiều giá KHÔNG khớp với thiên hướng tin tức — cần thêm bằng chứng."
                         )
                 else:
-                    parts.append(f"tìm thấy {len(news.articles)} tin liên quan.")
+                    parts.append(f"tìm thấy {len(news.articles)} tin {news.source}.")
+                titles = [a.title for a in news.articles if getattr(a, "title", None)]
+                if titles:
+                    shown = titles[:8]
+                    extra = f" (+{len(titles) - 8} tin nữa)" if len(titles) > 8 else ""
+                    parts.append("Tiêu đề: " + "; ".join(shown) + extra + ".")
             else:
                 parts.append("chưa tìm thấy tin liên quan.")
 
         n = state.get("n_history") or 0
         if n >= 2:
             parts.append(f"lịch sử {n} phiên gần nhất đã có trong DB.")
+        if db and db.pending_writes:
+            n_p = len(db.pending_writes)
+            parts.append(
+                f"Đã soạn {n_p} lệnh ghi bài chưa có trong kho "
+                "(chờ duyệt HITL — chưa COMMIT vào bảng news)."
+            )
+            samples = [pw.title for pw in db.pending_writes[:5] if pw.title]
+            if samples:
+                parts.append("Bài chờ duyệt: " + "; ".join(samples) + ".")
 
         if len(parts) == 1:
             parts.append("chưa có báo cáo để ghép.")

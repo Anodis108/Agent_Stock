@@ -9,7 +9,9 @@ một node ghi. Khác craw_agent: rows là tin (title/url/time), không phải O
 
 from __future__ import annotations
 
-from typing import Any, TypedDict
+from typing import Annotated, Any, TypedDict
+
+from langgraph.graph.message import add_messages
 
 from app.agent_pr.news_agent.schemas import Agent_Output
 
@@ -22,5 +24,6 @@ class NewsState(TypedDict, total=False):
 
     symbol: str                    # mã đã upper + đúng định dạng (normalize ghi)
     rows: list[dict[str, Any]]     # [{title, url, publish_time}, ...] từ CafeF News.ashx
-    news: Agent_Output             # parse ghi; run_news lấy đúng field này trả caller
+    news: Agent_Output             # pack ghi từ tool fetch_cafef_news
+    messages: Annotated[list, add_messages]
     _trace_span: Any               # span cha LangFuse — Send phải gửi kèm (nhánh chỉ thấy payload)

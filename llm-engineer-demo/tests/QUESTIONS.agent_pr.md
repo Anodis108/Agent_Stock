@@ -10,8 +10,8 @@ Không dùng pytest để “chạy app”. File này là kịch bản hỏi tay
 
 ## Cách dùng
 
-1. Gửi lần lượt vào `POST /pr/ask` với `{ "question": "..." }`.
-2. Khi cần nhớ phiên: thêm `thread_id`. Khi cần nhớ dài hạn: thêm `user_id`.
+1. Gửi lần lượt vào `POST /pr/ask` với `{ "question": "...", "thread_id": "..." }`. `thread_id` bắt buộc.
+2. Khi cần nhớ dài hạn: thêm `user_id`.
 3. Sau mỗi câu, đối chiếu `used_agents`, `plan_reasoning`, `trace` — worker nào được bật, worker nào **không** được bật.
 4. Câu đánh dấu **API** không phải chat thuần: gọi đúng endpoint.
 
@@ -233,9 +233,9 @@ Giữ nguyên `thread_id`. Nút **Phiên mới** = đổi `thread_id`.
 
 Không được nhớ câu 1.
 
-### Kịch bản D — server cấp uuid
+### Kịch bản D — thiếu `thread_id`
 
-Gửi `{"question":"Giá VNM?"}` không `thread_id` → response có `thread_id`; gửi tiếp cùng id thì nhớ.
+Gửi `{"question":"Giá VNM?"}` không `thread_id` → HTTP 422. Client (UI) tự cấp id, giống `/assistant`.
 
 ---
 
@@ -313,7 +313,7 @@ Sau các câu làm phát sinh ghi DB (5.5–5.10, hoặc “lưu tin vừa tìm�
 |---|----------|----------|
 | 15.1 | `POST /pr/ask` + câu 1.1 | `answer`, `trace`, `used_agents`, `plan_reasoning`, `thread_id`, `user_id`. |
 | 15.2 | `POST /pr/price` `{"symbol":"HPG"}` | Giá, **không** hub, không OpenAI. |
-| 15.3 | `POST /pr/ask/evaluate` `{"question":"Tại sao HPG giảm?"}` | `task_success` + `trajectory` (`efficiency`, `logical_order`, `tool_correctness`, `recovery`) + `trajectory_steps`. **Không** gộp vào `/pr/ask`. |
+| 15.3 | `POST /pr/ask/evaluate` `{"question":"Tại sao HPG giảm?","thread_id":"sess-1"}` | `task_success` + `trajectory` (`efficiency`, `logical_order`, `tool_correctness`, `recovery`) + `trajectory_steps`. **Không** gộp vào `/pr/ask`. |
 | 15.4 | Bật `MONITORING_ENABLED=true`, chạy `/pr/ask` | LangFuse: span cha `agent_pr_ask`, con `coordinator`, `craw_*`, `news_*`, `db_*`, `eval_score`, `synth_compose`, `reply`. |
 | 15.5 | `POST /pr/price` khi monitoring | Span `agent_pr_price`. |
 
@@ -322,7 +322,7 @@ Ví dụ `curl` (Git Bash / Linux):
 ```bash
 curl -s -X POST http://localhost:8000/pr/ask \
   -H "Content-Type: application/json" \
-  -d '{"question":"Tại sao HPG giảm?"}'
+  -d '{"question":"Tại sao HPG giảm?","thread_id":"sess-1"}'
 ```
 
 ---

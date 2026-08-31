@@ -27,7 +27,7 @@ Mở <http://localhost:8000/> (UI agent_pr) hoặc <http://localhost:8000/docs> 
 ```bash
 curl -s -X POST http://localhost:8000/pr/ask ^
   -H "Content-Type: application/json" ^
-  -d "{\"question\":\"Tại sao HPG giảm?\"}"
+  -d "{\"question\":\"Tại sao HPG giảm?\",\"thread_id\":\"sess-1\"}"
 ```
 
 Git Bash / Linux:
@@ -35,10 +35,10 @@ Git Bash / Linux:
 ```bash
 curl -s -X POST http://localhost:8000/pr/ask \
   -H "Content-Type: application/json" \
-  -d '{"question":"Tại sao HPG giảm?"}'
+  -d '{"question":"Tại sao HPG giảm?","thread_id":"sess-1"}'
 ```
 
-Chỉ mã (hub tự hỏi phân tích đủ worker): `{"symbol":"HPG"}`.
+Chỉ mã (hub tự hỏi phân tích đủ worker): `{"symbol":"HPG","thread_id":"sess-1"}`.
 
 Chỉ giá, không qua hub: `POST /pr/price` cùng body `{"symbol":"HPG"}`.
 
@@ -76,9 +76,9 @@ Cùng URL `/pr/ask` như trên.
 Hierarchical Coordinator (hub) — worker là subgraph, không gọi nhau:
 
 ```
-POST /pr/ask  {question, thread_id?, user_id?}
+POST /pr/ask  {question, thread_id, user_id?}
     → recall (long-term theo user_id; ghi history user)
-    → coordinator (1 lần chat_parsed → AgentPlan; có history + memories)
+    → coordinator (LLM bind need_* tools → AgentPlan; có history + memories)
         gather (song song, chỉ worker plan bật; tái dùng giá/tin ĐÚNG MÃ)
         → after_wave1 (fan-in) → coordinator
         EvalAgent  — nếu plan bật và đã có giá+tin (mỗi lượt hỏi mới)
@@ -87,9 +87,13 @@ POST /pr/ask  {question, thread_id?, user_id?}
     → { answer, trace, used_agents, plan_reasoning, thread_id, user_id, … }
 ```
 
+Mỗi worker (và coordinator) là ReAct giống `agent_m2`: LLM `bind_tools` trên
+catalog **riêng** (sau `select_tools` embedding), `ToolNode` chạy tool, `pack`
+đưa về hợp đồng hub. HITL ghi DB vẫn chỉ ở hub `interrupt_before=["hitl_commit"]`.
+
 **Memory** (cùng mô hình Module II / `agent_m2`):
 
-- **Short-term:** `thread_id` + `MemorySaver` (RAM, theo process). UI giữ id trong `localStorage`. Trống → server cấp uuid rồi trả về. Cùng phiên: nhớ hội thoại; giá/tin cùng mã không crawl lại. Nút **Phiên mới** đổi `thread_id`.
+- **Short-term:** `thread_id` (client bắt buộc gửi, giống `/assistant`) + `PostgresSaver`. UI giữ id trong `localStorage`. Cùng phiên: nhớ hội thoại; giá/tin cùng mã không crawl lại. Nút **Phiên mới** đổi `thread_id`. Compose bật Postgres; thiếu `thread_id` → 422.
 - **Long-term:** `user_id` + `app.agent_pr.memory` (Qdrant collection `user_memory`). Không `user_id` → không recall/store. `docker compose --profile rag up` bật Qdrant; không Qdrant / không embed thì store fallback in-memory.
 
 ```bash
@@ -107,7 +111,7 @@ Chấm chất lượng (LLM-as-judge, 2 chiều như `app/agent_m2/eval.py`):
 ```bash
 curl -s -X POST http://localhost:8000/pr/ask/evaluate \
   -H "Content-Type: application/json" \
-  -d '{"question":"Tại sao HPG giảm?"}'
+  -d '{"question":"Tại sao HPG giảm?","thread_id":"sess-1"}'
 ```
 
 → `task_success` + `trajectory` (efficiency / logical_order / tool_correctness /

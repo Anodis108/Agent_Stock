@@ -69,7 +69,8 @@ so sánh với câu trả lời khác.
 Đạt mục tiêu khi câu trả lời:
 - nêu đúng mã được hỏi
 - khớp phạm vi nhiệm vụ (chỉ hỏi giá thì không bắt buộc tin; hỏi tin thì không bắt buộc %)
-- không bịa mã khác, không bịa số liệu không có trong kết quả agent"""
+- không bịa mã khác, không bịa số liệu không có trong kết quả agent
+- câu lưu/ghi tin: đạt nếu đúng mã + đã soạn lệnh chờ HITL (chưa COMMIT là đúng thiết kế, không phải thiếu)"""
 
 _SUCCESS_CRITERIA = (
     "Câu trả lời tiếng Việt, đúng mã, đúng phạm vi câu hỏi, không bịa số liệu."
@@ -97,17 +98,23 @@ def evaluate_task_success(
 _TRAJECTORY_SYSTEM = """Bạn chấm CHUỖI HÀNH ĐỘNG của Hierarchical Coordinator (Sơ đồ 3d),
 không chỉ câu trả lời cuối.
 
-Luồng đúng (không phải Swarm): hub gọi LLM một lần lập plan (cờ từng worker),
-rồi chỉ giao agent được bật. Worker không nói với nhau.
+Luồng đúng (không phải Swarm): hub gọi LLM một lần lập plan (loại dữ liệu cần),
+rồi: đọc DB trước → thiếu mới crawl Price/News → Eval (nếu có giá+tin)
+→ Synthesis → soạn lệnh ghi (nếu vừa crawl) → HITL interrupt_before COMMIT
+→ hub trả user. Worker không nói với nhau.
 
-  đợt gather (song song, chỉ worker plan bật): Price / News / DB
-  → hub thu báo cáo
+  đợt 1: DBAgent đọc kho
+  → (nếu thiếu) gather song song: Price / News
   → EvalAgent CHỈ nếu plan bật eval VÀ đã có giá+tin
-  → SynthesisAgent nếu plan bật synth
+  → SynthesisAgent
+  → DBAgent soạn lệnh ghi dữ liệu mới
+  → hitl_commit (interrupt_before) nếu còn pending
   → hub trả user
 
 Trừ điểm logical_order / tool_correctness nếu:
+- Crawl khi DB đã có đúng loại dữ liệu
 - Eval chạy khi chưa có giá+tin, hoặc khi plan không bật eval
+- Ghi DB trước HITL / trước Synthesis
 - Giao worker plan đã tắt
 - worker tự gọi nhau (cạnh ngang) thay vì báo cáo hub
 - worker sai việc (Eval crawl, Synthesis chấm lại sentiment)
@@ -168,7 +175,15 @@ def extract_trajectory(out: Agent_Output) -> list[dict]:
             "observation": hub or "LLM lập plan rồi giao worker",
         },
     ]
-    if out.price:
+    if out.db:
+        steps.append(
+            {
+                "tool": "db_agent",
+                "args": {"symbol": out.symbol, "mode": "read"},
+                "observation": out.db.detail,
+            }
+        )
+    if out.price and str(getattr(out.price, "source", "") or "") != "db":
         steps.append(
             {
                 "tool": "price_agent",
@@ -180,20 +195,12 @@ def extract_trajectory(out: Agent_Output) -> list[dict]:
                 ),
             }
         )
-    if out.news:
+    if out.news and str(getattr(out.news, "source", "") or "") != "db":
         steps.append(
             {
                 "tool": "news_agent",
                 "args": {"symbol": out.symbol},
                 "observation": f"{len(out.news.articles)} tin {out.news.source}",
-            }
-        )
-    if out.db:
-        steps.append(
-            {
-                "tool": "db_agent",
-                "args": {"symbol": out.symbol},
-                "observation": out.db.detail,
             }
         )
     if out.eval:
@@ -222,9 +229,29 @@ def extract_trajectory(out: Agent_Output) -> list[dict]:
     return steps
 
 
+def _payload_for_judge(out: Agent_Output) -> str:
+    """Câu trả lời + sự thật từ worker — judge không bịa ticker khác, thấy tin/HITL."""
+    lines = [
+        f"Mã: {out.symbol}",
+        f"Câu user: {out.question}",
+        f"Câu agent: {out.answer}",
+    ]
+    if out.news and out.news.articles:
+        lines.append(f"Tin crawl ({len(out.news.articles)}):")
+        for art in out.news.articles[:8]:
+            lines.append(f"- {art.title}")
+    if out.db:
+        lines.append(f"DB: {out.db.detail}")
+        if out.db.pending_writes:
+            lines.append("Lệnh chờ HITL (chưa COMMIT):")
+            for pw in out.db.pending_writes[:8]:
+                lines.append(f"- {pw.title}")
+    return "\n".join(lines)
+
+
 def evaluate_ask(out: Agent_Output) -> AgentEvalResult:
     """Chấm 1 lượt /pr/ask đã chạy xong — POST /pr/ask/evaluate."""
     task = out.question or (
         f"Phân tích biến động giá và tin tức liên quan đến mã {out.symbol} hôm nay."
     )
-    return evaluate_run(task, out.answer, extract_trajectory(out))
+    return evaluate_run(task, _payload_for_judge(out), extract_trajectory(out))

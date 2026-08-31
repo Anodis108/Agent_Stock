@@ -7,8 +7,11 @@ from __future__ import annotations
 
 from typing import Annotated, TypedDict
 
+import pytest
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
+
+from pydantic import ValidationError
 
 from app.agent_pr.craw_agent.schemas import Agent_Output as PriceOut
 from app.agent_pr.news_agent.schemas import Agent_Output as NewsOut
@@ -17,7 +20,7 @@ from app.agent_pr.supervisor_agent.nodes import (
     recall_memory,
     store_memory,
 )
-from app.agent_pr.supervisor_agent.schemas import AgentPlan
+from app.agent_pr.supervisor_agent.schemas import AgentPlan, Agent_Input
 from app.agent_pr.supervisor_agent.state import _append_trim
 
 
@@ -78,6 +81,135 @@ def test_pending_gather_gia_rong_thi_fetch_lai():
     assert _pending_gather(state, plan) == ["price_agent"]
 
 
+def test_pending_gather_db_khong_nam_trong_crawl():
+    plan = AgentPlan(
+        symbol="FPT",
+        use_price=False,
+        use_news=True,
+        use_db=True,
+        use_eval=False,
+        use_synth=True,
+        reasoning="ghi tin",
+    )
+    assert _pending_gather({"turn": "t1"}, plan) == ["news_agent"]
+
+
+def test_pending_gather_sau_khi_co_news_khong_goi_db():
+    plan = AgentPlan(
+        symbol="FPT",
+        use_price=False,
+        use_news=True,
+        use_db=True,
+        use_eval=False,
+        use_synth=True,
+        reasoning="ghi tin",
+    )
+    state = {
+        "turn": "t1",
+        "news": NewsOut(
+            symbol="FPT",
+            articles=[],
+        ),
+    }
+    assert _pending_gather(state, plan) == []
+
+
+def test_route_lookup_db_truoc():
+    from langgraph.types import Send
+
+    from app.agent_pr.supervisor_agent.nodes import route_coordinator
+
+    plan = AgentPlan(
+        symbol="FPT",
+        use_price=False,
+        use_news=True,
+        use_db=True,
+        use_eval=False,
+        use_synth=True,
+        reasoning="ghi tin",
+    )
+    sends = route_coordinator(
+        {
+            "next_wave": "db_lookup",
+            "symbol": "FPT",
+            "turn": "t1",
+            "plan": plan,
+        }
+    )
+    assert isinstance(sends, list) and len(sends) == 1
+    assert isinstance(sends[0], Send)
+    assert sends[0].node == "db_agent"
+    assert sends[0].arg["mode"] == "read"
+    assert sends[0].arg["candidate_news"] == []
+
+
+def test_route_db_write_kem_candidate_sau_news():
+    from langgraph.types import Send
+
+    from app.agent_pr.news_agent.schemas import NewsItem
+    from app.agent_pr.supervisor_agent.nodes import route_coordinator
+
+    plan = AgentPlan(
+        symbol="FPT",
+        use_price=False,
+        use_news=True,
+        use_db=True,
+        use_eval=False,
+        use_synth=True,
+        reasoning="ghi tin",
+    )
+    state = {
+        "next_wave": "db_write",
+        "symbol": "FPT",
+        "turn": "t1",
+        "plan": plan,
+        "news": NewsOut(
+            symbol="FPT",
+            articles=[NewsItem(title="Tin A", url="https://cafef.vn/a.chn")],
+        ),
+    }
+    sends = route_coordinator(state)
+    assert isinstance(sends, list) and len(sends) == 1
+    assert isinstance(sends[0], Send)
+    assert sends[0].node == "db_agent"
+    assert sends[0].arg["mode"] == "write"
+    assert sends[0].arg["candidate_news"] == [
+        {"title": "Tin A", "url": "https://cafef.vn/a.chn"}
+    ]
+    assert sends[0].arg["turn"] == "t1"
+
+
+def test_route_hitl_toi_commit():
+    from app.agent_pr.supervisor_agent.nodes import route_coordinator
+
+    assert route_coordinator({"next_wave": "hitl"}) == "hitl_commit"
+
+
+def test_hydrate_gia_tu_db():
+    from app.agent_pr.db_agent.schemas import Agent_Output as DbOut
+    from app.agent_pr.db_agent.schemas import PriceRow
+    from app.agent_pr.supervisor_agent.nodes import _hydrate_from_db
+
+    plan = AgentPlan(
+        symbol="HPG",
+        use_price=True,
+        use_news=False,
+        use_db=True,
+        use_eval=False,
+        use_synth=True,
+        reasoning="đọc kho",
+    )
+    db = DbOut(
+        symbol="HPG",
+        price_history=[PriceRow(trading_date="20260828", close=22100)],
+        detail="đọc",
+    )
+    extra = _hydrate_from_db({"db": db}, plan)
+    assert extra["price"].source == "db"
+    assert extra["price"].last == 22100
+    assert "news" not in extra
+
+
 def test_recall_khong_user_van_ghi_history():
     out = recall_memory({"question": "giá HPG", "user_id": ""})
     assert out["memories"] == []
@@ -99,10 +231,9 @@ def test_store_bo_qua_khi_khong_user():
 
 def test_store_luu_fact(monkeypatch):
     from app.agent_pr.supervisor_agent import nodes as n
-    from app.llm import completion
 
     saved: list[tuple[str, str]] = []
-    monkeypatch.setattr(completion, "chat", lambda *a, **k: "User theo dõi HPG.")
+    monkeypatch.setattr(n, "chat", lambda *a, **k: "User theo dõi HPG.")
     monkeypatch.setattr(
         n.memory, "save_to_long_term", lambda uid, fact: saved.append((uid, fact))
     )
@@ -131,8 +262,51 @@ def test_memory_fallback_tach_theo_user(monkeypatch):
     assert len(pr_memory.recall_long_term("alice", "HPG")) == 1
 
 
+def test_thread_id_bat_buoc():
+    """Giống /assistant: thiếu hoặc chỉ khoảng trắng → không nhận request."""
+    with pytest.raises(ValidationError):
+        Agent_Input(symbol="HPG")
+    from app.agent_pr.supervisor_agent.graph import _invoke_args
+
+    with pytest.raises(ValueError, match="thread_id"):
+        _invoke_args(Agent_Input(symbol="HPG", thread_id="   "))
+
+
+def test_interrupt_before_hitl_commit_giong_m2():
+    """Hub compile(interrupt_before=['hitl_commit']): dừng trước node, resume ainvoke(None)."""
+
+    class Mini(TypedDict, total=False):
+        staged: int
+        committed: bool
+
+    def stage(_state: Mini) -> dict:
+        return {"staged": 1}
+
+    def commit(_state: Mini) -> dict:
+        return {"committed": True}
+
+    graph = StateGraph(Mini)
+    graph.add_node("stage", stage)
+    graph.add_node("hitl_commit", commit)
+    graph.add_edge(START, "stage")
+    graph.add_edge("stage", "hitl_commit")
+    graph.add_edge("hitl_commit", END)
+    app = graph.compile(checkpointer=MemorySaver(), interrupt_before=["hitl_commit"])
+    cfg = {"configurable": {"thread_id": "pr-hitl-demo"}}
+
+    first = app.invoke({}, cfg)
+    snap = app.get_state(cfg)
+    assert snap.next == ("hitl_commit",)
+    assert first.get("committed") is None
+    assert first.get("staged") == 1
+
+    second = app.invoke(None, cfg)
+    assert second["committed"] is True
+    assert app.get_state(cfg).next == ()
+
+
 def test_short_term_cung_thread_id_nho_history():
-    """MemorySaver + thread_id: lượt 2 thấy history lượt 1 (sliding window)."""
+    """Reducer + thread_id: lượt 2 thấy history lượt 1 (mini-graph, không cần Postgres)."""
 
     class Mini(TypedDict, total=False):
         history: Annotated[list, _append_trim]

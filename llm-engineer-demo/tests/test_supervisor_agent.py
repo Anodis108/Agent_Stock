@@ -10,6 +10,7 @@ import sys
 import pytest
 
 from app.agent_pr.supervisor_agent import Agent_Input, AgentPlan, run_supervisor
+from app.agent_pr.supervisor_agent.graph import _step_event
 from app.agent_pr.supervisor_agent.nodes import _sanitize_plan
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -30,6 +31,20 @@ def test_sanitize_eval_can_gia_va_tin():
     assert plan.symbol == "HPG"
     assert plan.use_eval is False
     assert plan.use_news is True
+    assert plan.use_synth is True
+
+
+def test_sanitize_luon_bat_synth():
+    raw = AgentPlan(
+        symbol="FPT",
+        use_price=False,
+        use_news=True,
+        use_db=True,
+        use_eval=False,
+        use_synth=False,
+        reasoning="chỉ crawl ghi",
+    )
+    assert _sanitize_plan(raw, "").use_synth is True
 
 
 def test_sanitize_giu_ma_user_gui():
@@ -46,9 +61,22 @@ def test_sanitize_giu_ma_user_gui():
     assert plan.symbol == "HPG"
 
 
+def test_step_event_lay_dong_trace_cuoi():
+    ev = _step_event(
+        "coordinator",
+        {"next_wave": "gather", "trace": ["cũ", "Coordinator LLM: HPG · phân tích"]},
+    )
+    assert ev["type"] == "step"
+    assert ev["node"] == "coordinator"
+    assert "Coordinator" in ev["label"]
+    assert ev["detail"] == "Coordinator LLM: HPG · phân tích"
+
+
 @pytest.mark.asyncio
 async def test_hpg_online():
-    out = await run_supervisor(Agent_Input(symbol="HPG"))
+    out = await run_supervisor(
+        Agent_Input(symbol="HPG", thread_id="test-hpg-online", skip_hitl=True)
+    )
     print()
     print("answer:", out.answer)
     print("plan  :", out.plan.model_dump() if out.plan else None)
@@ -85,7 +113,12 @@ async def test_chi_gia_khong_goi_news(monkeypatch):
         "app.agent_pr.supervisor_agent.nodes._make_plan", fake_plan
     )
     out = await run_supervisor(
-        Agent_Input(symbol="HPG", question="giá HPG hôm nay bao nhiêu")
+        Agent_Input(
+            symbol="HPG",
+            question="giá HPG hôm nay bao nhiêu",
+            thread_id="test-chi-gia",
+            skip_hitl=True,
+        )
     )
     print()
     print("answer:", out.answer)
@@ -95,11 +128,11 @@ async def test_chi_gia_khong_goi_news(monkeypatch):
     assert out.price is not None and out.price.last > 0
     assert out.news is None
     assert out.eval is None
-    assert out.db is None
+    assert out.db is not None
     assert "HPG" in out.answer
 
 
 @pytest.mark.asyncio
 async def test_ma_sai():
     with pytest.raises(ValueError):
-        await run_supervisor(Agent_Input(symbol="HP"))
+        await run_supervisor(Agent_Input(symbol="HP", thread_id="test-ma-sai"))

@@ -10,7 +10,9 @@ tách raw_* / * để tránh cộng trùng.
 
 from __future__ import annotations
 
-from typing import Any, TypedDict
+from typing import Annotated, Any, TypedDict
+
+from langgraph.graph.message import add_messages
 
 from app.agent_pr.craw_agent.schemas import Agent_Output
 
@@ -24,5 +26,6 @@ class CrawlState(TypedDict, total=False):
 
     symbol: str                    # mã đã upper + đúng định dạng (normalize ghi)
     rows: list[dict[str, Any]]     # [{time, close}, ...] từ vnstock; close = nghìn đồng
-    quote: Agent_Output            # parse ghi; run_crawl lấy đúng field này trả caller
+    quote: Agent_Output            # pack ghi từ tool fetch_latest_close
+    messages: Annotated[list, add_messages]  # ReAct LLM ⇄ ToolNode
     _trace_span: Any               # span cha LangFuse — Send/cửa sổ phải truyền (xem GraphState)

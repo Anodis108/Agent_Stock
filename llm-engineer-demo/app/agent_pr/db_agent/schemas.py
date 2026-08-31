@@ -1,15 +1,8 @@
 """Hợp đồng vào/ra db_agent — HTTP / test / agent sau này đọc đúng type này.
 
-Agent_Input: symbol bắt buộc (ĐỌC luôn chạy cho mã này). `candidate_news`
-là tin NewsAgent/EvalAgent vừa tìm được, đưa qua đây để DBAgent SOẠN lệnh ghi
-— chưa ghi gì, chỉ tạo `PendingWrite` (giống prepare_pending_writes bên
-vn-stock-swarm/src/query/agents/db_agent.py). Để trống nếu chỉ cần đọc.
-
-Agent_Output: kết quả ĐỌC (tự động, không HITL) + danh sách PendingWrite vừa
-soạn (chưa commit). Ghi thật chỉ xảy ra qua `approve_pending_write()` ở
-graph.py, KHÔNG nằm trong graph tuyến tính này — xem docstring graph.py.
-
-Không nhét sqlite3.Row / Connection vào schema: graph chỉ đi dict/model.
+Hai lượt: ĐỌC (lookup, không HITL) và SOẠN ghi (candidate_*). COMMIT không
+nằm trong graph này — hub `hitl_commit` (interrupt_before) gọi
+`approve_pending_write` khi user đồng ý.
 """
 
 from __future__ import annotations
@@ -24,11 +17,20 @@ class CandidateNews(BaseModel):
     url: str = ""
 
 
-class Agent_Input(BaseModel):
-    """Đầu vào graph. `candidate_news` optional — không có thì chỉ ĐỌC."""
+class CandidatePrice(BaseModel):
+    """1 phiên giá do PriceAgent crawl, đưa cho DBAgent soạn lệnh ghi."""
 
-    symbol: str                                # mã CP thô, vd. "hpg" — normalize sẽ upper
-    candidate_news: list[CandidateNews] = []   # tin ứng viên cần soạn lệnh ghi (chưa lưu)
+    trading_date: str
+    close: float
+
+
+class Agent_Input(BaseModel):
+    """Đầu vào graph. Không có candidate thì chỉ ĐỌC."""
+
+    symbol: str
+    candidate_news: list[CandidateNews] = []
+    candidate_prices: list[CandidatePrice] = []
+    skip_hitl: bool = True  # giữ tương thích test; HITL ở hub, không trong graph này
 
 
 class PriceRow(BaseModel):
@@ -46,24 +48,25 @@ class SavedNews(BaseModel):
 
 
 class PendingWrite(BaseModel):
-    """1 lệnh ghi tin mới đang treo — soạn xong nhưng CHƯA commit vào DB.
+    """1 lệnh ghi đang treo — soạn xong nhưng CHƯA commit.
 
-    `id` ổn định theo (symbol, url): stage lại cùng tin trả cùng id — caller
-    duyệt retry không tạo lệnh thứ hai. `approve_pending_write(id)` tìm đúng
-    hàng đó.
+    `kind`: news | price. `id` ổn định trong từng bảng; duyệt phải gửi đúng kind.
     """
 
     id: int
     symbol: str
     title: str
-    url: str
+    url: str = ""
+    kind: str = "news"
+    trading_date: str = ""
+    close: float | None = None
 
 
 class Agent_Output(BaseModel):
-    """Đầu ra graph — ĐỌC xong (tự động) + lệnh ghi vừa soạn (chờ duyệt)."""
+    """Đầu ra graph — ĐỌC xong (tự động) + lệnh ghi vừa soạn (chờ HITL ở hub)."""
 
-    symbol: str                                # mã đã chuẩn hoá, vd. HPG
-    price_history: list[PriceRow] = []         # ĐỌC tự động, không HITL
-    saved_news: list[SavedNews] = []           # ĐỌC tự động — tin đã qua HITL từ trước
-    pending_writes: list[PendingWrite] = []    # SOẠN xong, chờ approve_pending_write()
-    detail: str = ""                           # tóm tắt 1 dòng: đã đọc/soạn bao nhiêu
+    symbol: str
+    price_history: list[PriceRow] = []
+    saved_news: list[SavedNews] = []
+    pending_writes: list[PendingWrite] = []
+    detail: str = ""

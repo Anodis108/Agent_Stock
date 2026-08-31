@@ -10,11 +10,11 @@ Cùng chiến lược `app.agent_m2.context` (Bài 3, Section 2-4), khác chỗ
             chỉ cặp user/assistant. Vẫn compact vì nhiều lượt hỏi +
             checkpointer giữ xuyên session.
 
-Không copy BaseMessage: history hub luôn là dict. Mọi lời gọi LLM ở đây
-dùng native `completion.chat` — không LangChain.
+Không copy BaseMessage: history hub luôn là dict. Coordinator plan dùng
+LangChain bind_tools (need_*). Compact/store vẫn native `completion.chat`.
 
 Trên graph: `compact_history` (persist) đứng sau `recall_memory`, trước
-`coordinator`. `_make_plan` chỉ shape TẠM (sliding + reinject) — giống
+`coordinator`. `_make_plan` chỉ shape TẠM (sliding) — giống
 tách compact_node / agent_node ở agent_m2.
 """
 

@@ -31,7 +31,13 @@ def current_span() -> Any:
 def _get_langfuse():
     """Lazy import + lazy client — tránh phụ thuộc cứng vào package `langfuse`
     khi MONITORING_ENABLED=false, và tránh tạo client ở import-time."""
+    import os
+
     from langfuse import Langfuse
+
+    cert = os.environ.get("SSL_CERT_FILE")
+    if cert and not os.path.isfile(cert):
+        os.environ.pop("SSL_CERT_FILE", None)
 
     return Langfuse(
         public_key=settings.langfuse_public_key,

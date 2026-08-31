@@ -174,6 +174,40 @@
   .msg-row.error .bubble { background: rgba(255, 92, 108, 0.12); border: 1px solid var(--error); color: var(--error); }
   .typing { color: var(--muted); font-style: italic; font-size: 13px; }
 
+  .live-steps {
+    list-style: none;
+    margin: 8px 0 0;
+    padding: 0;
+  }
+  .live-steps li {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    margin-top: 6px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .live-steps .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    margin-top: 5px;
+    flex-shrink: 0;
+  }
+  .live-steps li.current { color: var(--text); }
+  .live-steps li.current .dot { animation: step-pulse 1s ease-in-out infinite; }
+  .live-steps .step-label { font-weight: 600; color: var(--text); }
+  .live-steps .step-detail {
+    color: var(--muted);
+    font-size: 11px;
+    margin-top: 2px;
+  }
+  @keyframes step-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
   details.trace { margin-top: 8px; font-size: 12px; }
   details.trace summary { cursor: pointer; color: var(--accent); }
   .trace-step {
@@ -197,6 +231,42 @@
   }
   .eval-btn:hover { color: var(--accent); border-color: var(--accent); }
   .eval-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .hitl-box {
+    margin-top: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--warn);
+    border-radius: 8px;
+    background: rgba(217,164,65,0.08);
+    font-size: 13px;
+  }
+  .hitl-box p { margin: 0 0 8px; color: var(--muted); }
+  .hitl-item {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: flex-start;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+  }
+  .hitl-item:first-of-type { border-top: none; padding-top: 0; }
+  .hitl-item a { color: var(--accent); word-break: break-all; }
+  .hitl-item .hitl-meta { flex: 1; min-width: 160px; }
+  .hitl-actions { display: flex; gap: 6px; }
+  .hitl-actions button {
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    padding: 4px 10px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .hitl-actions .ok { color: #4caf6a; border-color: #4caf6a; }
+  .hitl-actions .no { color: var(--error); border-color: var(--error); }
+  .hitl-actions button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .hitl-note { font-size: 12px; color: var(--muted); margin-top: 4px; }
 
   .eval-card {
     margin-top: 8px;
@@ -472,6 +542,33 @@ function scrollToBottom() {
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
+function renderSteps(bubble, steps, { live } = {}) {
+  if (!steps || !steps.length) return;
+  const ol = document.createElement("ol");
+  ol.className = "live-steps";
+  steps.forEach((step, i) => {
+    const li = document.createElement("li");
+    if (live && i === steps.length - 1) li.className = "current";
+    const dot = document.createElement("span");
+    dot.className = "dot";
+    const body = document.createElement("div");
+    const label = document.createElement("div");
+    label.className = "step-label";
+    label.textContent = step.label || step.node || "";
+    body.appendChild(label);
+    if (step.detail) {
+      const detail = document.createElement("div");
+      detail.className = "step-detail";
+      detail.textContent = step.detail;
+      body.appendChild(detail);
+    }
+    li.appendChild(dot);
+    li.appendChild(body);
+    ol.appendChild(li);
+  });
+  bubble.appendChild(ol);
+}
+
 function renderTrace(bubble, msg) {
   const bits = [];
   if (msg.used && msg.used.length) bits.push("agent: " + msg.used.join(" · "));
@@ -482,11 +579,12 @@ function renderTrace(bubble, msg) {
     meta.textContent = bits.join(" — ");
     bubble.appendChild(meta);
   }
+  renderSteps(bubble, msg.steps, { live: false });
   if (!msg.trace || !msg.trace.length) return;
   const details = document.createElement("details");
   details.className = "trace";
   const summary = document.createElement("summary");
-  summary.textContent = `${msg.trace.length} bước điều phối`;
+  summary.textContent = `${msg.trace.length} dòng nhật ký hub`;
   details.appendChild(summary);
   msg.trace.forEach((step) => {
     const div = document.createElement("div");
@@ -579,6 +677,7 @@ function renderMessage(msg) {
   row.appendChild(bubble);
   if (msg.role === "bot") {
     renderTrace(bubble, msg);
+    renderHitl(bubble, msg);
     if (msg.evalResult) {
       bubble.appendChild(renderEvalCard(msg.evalResult));
     } else if (msg.evalError) {
@@ -614,6 +713,126 @@ function memoryPayload(question) {
   return { question, thread_id: threadId, user_id: userId };
 }
 
+function renderHitl(bubble, msg) {
+  const items = msg.pendingWrites || [];
+  if (!items.length) return;
+  const box = document.createElement("div");
+  box.className = "hitl-box";
+  const intro = document.createElement("p");
+  intro.textContent = "HITL — dữ liệu vừa crawl chưa có trong kho. Đồng ý thì COMMIT vào DB.";
+  box.appendChild(intro);
+  const bulk = document.createElement("div");
+  bulk.className = "hitl-actions";
+  const okAll = document.createElement("button");
+  okAll.className = "ok";
+  okAll.textContent = "Đồng ý lưu tất cả";
+  const noAll = document.createElement("button");
+  noAll.className = "no";
+  noAll.textContent = "Từ chối tất cả";
+  okAll.addEventListener("click", () => resolveAllPending(msg, true, okAll, noAll));
+  noAll.addEventListener("click", () => resolveAllPending(msg, false, okAll, noAll));
+  bulk.appendChild(okAll);
+  bulk.appendChild(noAll);
+  box.appendChild(bulk);
+  for (const pw of items) {
+    const row = document.createElement("div");
+    row.className = "hitl-item";
+    const meta = document.createElement("div");
+    meta.className = "hitl-meta";
+    const title = document.createElement("div");
+    title.textContent = (pw.symbol ? pw.symbol + " · " : "") + (pw.title || pw.url);
+    meta.appendChild(title);
+    if (pw.url) {
+      const a = document.createElement("a");
+      a.href = pw.url;
+      a.target = "_blank";
+      a.rel = "noopener";
+      a.textContent = pw.url;
+      meta.appendChild(a);
+    }
+    row.appendChild(meta);
+    if (pw.resolved) {
+      const note = document.createElement("div");
+      note.className = "hitl-note";
+      note.textContent = pw.resolved === "approved" ? "✓ Đã duyệt — ghi bảng news" : "✗ Đã từ chối";
+      row.appendChild(note);
+    } else {
+      const actions = document.createElement("div");
+      actions.className = "hitl-actions";
+      const ok = document.createElement("button");
+      ok.className = "ok";
+      ok.textContent = "Duyệt";
+      const no = document.createElement("button");
+      no.className = "no";
+      no.textContent = "Từ chối";
+      ok.addEventListener("click", () => resolvePending(msg, pw, true, ok, no));
+      no.addEventListener("click", () => resolvePending(msg, pw, false, ok, no));
+      actions.appendChild(ok);
+      actions.appendChild(no);
+      row.appendChild(actions);
+    }
+    box.appendChild(row);
+  }
+  bubble.appendChild(box);
+}
+
+async function resolvePending(msg, pw, approve, okBtn, noBtn) {
+  okBtn.disabled = true;
+  noBtn.disabled = true;
+  try {
+    const res = await fetch("/pr/approve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        pending_id: pw.id,
+        approve,
+        kind: pw.kind || "news",
+        thread_id: threadId,
+      }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.detail || `HTTP ${res.status}`);
+    pw.resolved = approve ? "approved" : "rejected";
+    if (Array.isArray(body.pending_writes)) {
+      msg.pendingWrites = body.pending_writes;
+    }
+    if (body.status === "done" && body.answer) {
+      msg.text = body.answer;
+    }
+  } catch (err) {
+    pw.resolved = null;
+    okBtn.disabled = false;
+    noBtn.disabled = false;
+    alert("Duyệt thất bại: " + err.message);
+    return;
+  }
+  saveSessions();
+  renderAll();
+}
+
+async function resolveAllPending(msg, approve, okBtn, noBtn) {
+  okBtn.disabled = true;
+  noBtn.disabled = true;
+  try {
+    const res = await fetch("/pr/approve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ approve, thread_id: threadId }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.detail || `HTTP ${res.status}`);
+    msg.pendingWrites = body.pending_writes || [];
+    if (body.answer) msg.text = body.answer;
+  } catch (err) {
+    okBtn.disabled = false;
+    noBtn.disabled = false;
+    alert("Duyệt thất bại: " + err.message);
+    return;
+  }
+  saveSessions();
+  renderAll();
+}
+
 async function runEvaluation(msg, btn) {
   btn.disabled = true;
   btn.textContent = "⏳ Đang đánh giá...";
@@ -633,6 +852,51 @@ async function runEvaluation(msg, btn) {
   renderAll();
 }
 
+async function readSse(response, onEvent) {
+  if (!response.body) throw new Error("Trình duyệt không đọc được stream");
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const parts = buf.split("\n\n");
+    buf = parts.pop() || "";
+    for (const part of parts) {
+      const line = part.split("\n").find((l) => l.startsWith("data: "));
+      if (!line) continue;
+      onEvent(JSON.parse(line.slice(6)));
+    }
+  }
+  if (buf.trim()) {
+    const line = buf.split("\n").find((l) => l.startsWith("data: "));
+    if (line) onEvent(JSON.parse(line.slice(6)));
+  }
+}
+
+function applyAskBody(body, question) {
+  if (body.thread_id && body.thread_id !== threadId) {
+    const s = currentSession();
+    if (s) s.id = body.thread_id;
+    threadId = body.thread_id;
+    localStorage.setItem(THREAD_KEY, threadId);
+    saveSessions();
+  }
+  renderSessionMeta();
+  return {
+    role: "bot",
+    text: body.answer,
+    question,
+    trace: body.trace,
+    used: body.used_agents,
+    reasoning: body.plan_reasoning,
+    steps: body.steps || [],
+    canEvaluate: true,
+    pendingWrites: body.pending_writes || [],
+  };
+}
+
 async function sendQuestion() {
   const question = questionEl.value.trim();
   if (!question) return;
@@ -647,40 +911,52 @@ async function sendQuestion() {
   renderAll();
 
   const { bubble } = renderMessage({ role: "bot", text: "" });
+  bubble.textContent = "";
   const typing = document.createElement("span");
   typing.className = "typing";
-  typing.textContent = "Hub đang chọn worker rồi thu thập...";
-  bubble.textContent = "";
+  typing.textContent = "Hub đang chạy — từng bước hiện bên dưới";
   bubble.appendChild(typing);
+  const liveWrap = document.createElement("div");
+  bubble.appendChild(liveWrap);
+  const liveSteps = [];
+  const paintLive = () => {
+    liveWrap.replaceChildren();
+    renderSteps(liveWrap, liveSteps, { live: true });
+    scrollToBottom();
+  };
   scrollToBottom();
 
   try {
-    const res = await fetch("/pr/ask", {
+    const res = await fetch("/pr/ask/stream", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
       body: JSON.stringify(memoryPayload(question)),
     });
-    const body = await res.json();
-    if (!res.ok) throw new Error(body.detail || `HTTP ${res.status}`);
-
-    if (body.thread_id && body.thread_id !== threadId) {
-      const s = currentSession();
-      if (s) s.id = body.thread_id;
-      threadId = body.thread_id;
-      localStorage.setItem(THREAD_KEY, threadId);
-      saveSessions();
+    if (!res.ok) {
+      let detail = `HTTP ${res.status}`;
+      try {
+        const errBody = await res.json();
+        detail = errBody.detail || detail;
+      } catch {
+        /* body không phải JSON */
+      }
+      throw new Error(detail);
     }
-    renderSessionMeta();
 
-    const botMsg = {
-      role: "bot",
-      text: body.answer,
-      question,
-      trace: body.trace,
-      used: body.used_agents,
-      reasoning: body.plan_reasoning,
-      canEvaluate: true,
-    };
+    let doneBody = null;
+    await readSse(res, (ev) => {
+      if (ev.type === "step") {
+        liveSteps.push({ node: ev.node, label: ev.label, detail: ev.detail });
+        paintLive();
+      } else if (ev.type === "error") {
+        throw new Error(ev.message || "Lỗi stream");
+      } else if (ev.type === "done" || ev.type === "hitl") {
+        doneBody = ev;
+      }
+    });
+    if (!doneBody) throw new Error("Stream kết thúc nhưng chưa có câu trả lời");
+    doneBody.steps = liveSteps;
+    const botMsg = applyAskBody(doneBody, question);
     touchSession((s) => s.messages.push(botMsg));
     renderAll();
   } catch (err) {

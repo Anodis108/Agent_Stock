@@ -5,7 +5,9 @@ Khác craw/news: không `rows` mạng. Input đã là 2 model; node `score` ghi 
 
 from __future__ import annotations
 
-from typing import Any, TypedDict
+from typing import Annotated, Any, TypedDict
+
+from langgraph.graph.message import add_messages
 
 from app.agent_pr.craw_agent.schemas import Agent_Output as PriceOut
 from app.agent_pr.eval_agent.schemas import Agent_Output
@@ -17,5 +19,6 @@ class EvalState(TypedDict, total=False):
 
     price: PriceOut                # run_eval đưa vào
     news: NewsOut                  # run_eval đưa vào
-    report: Agent_Output           # score ghi; run_eval lấy field này
+    report: Agent_Output           # pack từ tool score_price_vs_news
+    messages: Annotated[list, add_messages]
     _trace_span: Any               # span cha từ hub (trùng tên SupervisorState)

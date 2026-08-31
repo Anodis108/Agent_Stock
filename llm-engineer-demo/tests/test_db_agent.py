@@ -19,7 +19,7 @@ import time
 
 import pytest
 
-from app.agent_pr.db_agent import Agent_Input, CandidateNews, approve_pending_write, run_db
+from app.agent_pr.db_agent import Agent_Input, CandidateNews, CandidatePrice, approve_pending_write, run_db
 
 
 @pytest.fixture(autouse=True)
@@ -65,6 +65,25 @@ async def test_stage_then_approve():
     after = await run_db(Agent_Input(symbol="HPG"))
     print("sau duyet  :", [n.url for n in after.saved_news])
     assert url in [n.url for n in after.saved_news]
+
+
+@pytest.mark.asyncio
+async def test_stage_price_then_approve(tmp_path, monkeypatch):
+    from app.agent_pr.db_agent import nodes as db_nodes
+
+    monkeypatch.setattr(db_nodes, "_DB_PATH", tmp_path / "price.sqlite3")
+    staged = await run_db(
+        Agent_Input(
+            symbol="HPG",
+            candidate_prices=[CandidatePrice(trading_date="20260828", close=22100)],
+        )
+    )
+    prices = [pw for pw in staged.pending_writes if pw.kind == "price"]
+    assert len(prices) == 1
+    assert approve_pending_write(prices[0].id, approve=True, kind="price")
+    after = await run_db(Agent_Input(symbol="HPG"))
+    assert after.price_history
+    assert after.price_history[0].close == 22100
 
 
 @pytest.mark.asyncio

@@ -1,32 +1,32 @@
 """DBState — bảng dữ liệu chung của graph db_agent.
 
-State chảy qua 4 node: normalize → read → stage_writes → parse. Mỗi node
-nhận state, trả partial dict; LangGraph merge (giống CrawlState / NewsState).
+State chảy qua: normalize → read → (stage_writes?) → parse.
 
-Khác craw_agent/news_agent: có 2 node "việc thật" (read, stage_writes) thay vì
-1 (fetch) — vì DBAgent tách rõ ĐỌC (tự động) và SOẠN lệnh ghi (chờ duyệt,
-nhưng việc SOẠN thì vẫn tự động — chỉ COMMIT mới cần người, và COMMIT nằm
-ngoài graph này, xem graph.py). Vẫn tuyến tính, không Send/fan-out.
+HITL không còn trong graph này. Hub interrupt_before=["hitl_commit"] sau synth.
 """
 
 from __future__ import annotations
 
-from typing import Any, TypedDict
+from typing import Annotated, Any, TypedDict
 
-from app.agent_pr.db_agent.schemas import Agent_Output, CandidateNews
+from langgraph.graph.message import add_messages
+
+from app.agent_pr.db_agent.schemas import Agent_Output, CandidateNews, CandidatePrice
 
 
 class DBState(TypedDict, total=False):
     """State xuyên suốt graph đọc/soạn-ghi DB.
 
-    total=False: node chỉ trả field nó cập nhật (normalize → symbol;
-    read → price_rows/news_rows; stage_writes → pending_rows).
+    total=False: node chỉ trả field nó cập nhật.
     """
 
-    symbol: str                        # mã đã upper + đúng định dạng (normalize ghi)
-    candidate_news: list[CandidateNews]  # tin ứng viên cần xét soạn lệnh ghi (đầu vào, giữ nguyên)
-    price_rows: list[dict[str, Any]]   # [{trading_date, close}, ...] đọc từ bảng prices
-    news_rows: list[dict[str, Any]]    # [{title, url}, ...] đọc từ bảng news (đã duyệt)
-    pending_rows: list[dict[str, Any]]  # [{id, symbol, title, url}, ...] vừa soạn, chưa commit
-    result: Agent_Output               # parse ghi; run_db lấy đúng field này trả caller
-    _trace_span: Any                   # span cha LangFuse — Send/cửa sổ phải truyền
+    symbol: str
+    mode: str                          # read | write — hub ghi, lift phân turn
+    candidate_news: list[CandidateNews]
+    candidate_prices: list[CandidatePrice]
+    price_rows: list[dict[str, Any]]
+    news_rows: list[dict[str, Any]]
+    pending_rows: list[dict[str, Any]]
+    result: Agent_Output
+    messages: Annotated[list, add_messages]
+    _trace_span: Any

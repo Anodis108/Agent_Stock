@@ -25,21 +25,12 @@ _CAFEF_ORIGIN = "https://cafef.vn"
 _MAX_NEWS = 10
 
 
-# ── Chuẩn hoá mã ──────────────────────────────────────────────────────────────
-
-
 def normalize(state: NewsState) -> dict:
     """Upper + strip; raise ValueError nếu không giống mã niêm yết."""
     with trace_step(state.get("_trace_span"), "news_normalize", input=state.get("symbol", "")) as t:
         symbol = normalize_symbol(str(state.get("symbol") or ""))
         t["output"] = symbol
         return {"symbol": symbol}
-
-
-# ── Lấy rows ──────────────────────────────────────────────────────────────────
-#
-# GET News.ashx (JSON), không parse HTML — khối tin trên CafeF load bằng JS.
-# Field: Title, LinkDetail (path), DeployDate (/Date(ms)/). Hết data → ValueError.
 
 
 def _deploy_date(raw: str) -> str:
@@ -89,9 +80,6 @@ def fetch(state: NewsState) -> dict:
             return {"rows": []}
         t["output"] = {"n_rows": len(rows)}
         return {"rows": rows}
-
-
-# ── Parse ─────────────────────────────────────────────────────────────────────
 
 
 def parse(state: NewsState) -> dict:

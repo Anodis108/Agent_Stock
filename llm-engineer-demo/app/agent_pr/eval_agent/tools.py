@@ -1,0 +1,40 @@
+"""Tools EvalAgent — keyword Sơ đồ 3d. Hàm chấm ở nodes.score."""
+
+from __future__ import annotations
+
+import json
+
+from langchain_core.tools import tool
+
+from app.agent_pr.craw_agent.schemas import Agent_Output as PriceOut
+from app.agent_pr.eval_agent.nodes import _sentiment, score
+from app.agent_pr.news_agent.schemas import Agent_Output as NewsOut
+from app.agent_pr.news_agent.schemas import NewsItem
+
+
+@tool
+def classify_headline(title: str) -> str:
+    """Chấm 1 tiêu đề: negative | positive | neutral (từ khoá cố định)."""
+    return _sentiment(title or "")
+
+
+@tool
+def score_price_vs_news(price_json: str, news_json: str) -> str:
+    """Chấm cả gói giá + tin (JSON Agent_Output craw/news) → báo cáo eval JSON."""
+    price = PriceOut.model_validate_json(price_json)
+    raw = json.loads(news_json)
+    news = NewsOut.model_validate(raw)
+    report = score({"price": price, "news": news})["report"]
+    return report.model_dump_json()
+
+
+@tool
+def list_eval_keywords() -> str:
+    """Liệt kê từ khoá tiêu cực/tích cực EvalAgent dùng."""
+    return (
+        "negative: xả hàng, bán ròng, giảm sàn, cắt lỗ. "
+        "positive: tăng trưởng, lợi nhuận, khuyến nghị mua."
+    )
+
+
+TOOLS = [classify_headline, score_price_vs_news, list_eval_keywords]

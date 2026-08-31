@@ -5,18 +5,29 @@ Tách khỏi /multi-agent và /ask của vn-stock-swarm.
 
 from __future__ import annotations
 
+import json
+from collections.abc import AsyncIterator
+
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 
 from app.agent_pr.craw_agent import Agent_Input as CrawlIn
 from app.agent_pr.craw_agent import run_crawl
 from app.agent_pr.eval import evaluate_ask, extract_trajectory
 from app.agent_pr.supervisor_agent import Agent_Input as SuperIn
 from app.agent_pr.supervisor_agent import Agent_Output as SuperOut
-from app.agent_pr.supervisor_agent import run_supervisor
+from app.agent_pr.supervisor_agent import (
+    last_supervisor_output,
+    resume_supervisor,
+    run_supervisor,
+    run_supervisor_stream,
+)
 from app.api.schemas import (
     AskEvaluateResponse,
     AskRequest,
     AskResponse,
+    DbApproveRequest,
+    DbApproveResponse,
     PriceRequest,
     PriceResponse,
 )
@@ -64,17 +75,10 @@ def _used_agents(out: SuperOut) -> list[str]:
     return names
 
 
-@router.post("/ask", response_model=AskResponse)
-async def ask(req: AskRequest) -> AskResponse:
-    """Hub LLM chọn worker, rồi chạy đúng agent đó."""
-    try:
-        out = await run_supervisor(_ask_input(req))
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(
-            status_code=503, detail=f"Không lấy được dữ liệu: {exc}"
-        ) from exc
+def _ask_response(out: SuperOut, *, status: str = "done") -> AskResponse:
+    pending = list(out.db.pending_writes) if out.db else []
+    if status == "done" and pending and "chờ duyệt HITL" in (out.answer or ""):
+        status = "pending_approval"
     return AskResponse(
         symbol=out.symbol,
         answer=out.answer,
@@ -87,18 +91,101 @@ async def ask(req: AskRequest) -> AskResponse:
         plan_reasoning=out.plan.reasoning if out.plan else "",
         thread_id=out.thread_id,
         user_id=out.user_id,
+        pending_writes=pending,
+        status=status,
+    )
+
+
+@router.post("/ask", response_model=AskResponse)
+async def ask(req: AskRequest) -> AskResponse:
+    """Hub LLM chọn worker, rồi chạy đúng agent đó — đợi xong mới trả (không stepper)."""
+    try:
+        out = await run_supervisor(_ask_input(req))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503, detail=f"Không lấy được dữ liệu: {exc}"
+        ) from exc
+    return _ask_response(out)
+
+
+@router.post("/approve", response_model=DbApproveResponse)
+async def approve_db_write(req: DbApproveRequest) -> DbApproveResponse:
+    """HITL: resume interrupt_before hitl_commit — COMMIT hoặc từ chối."""
+    try:
+        out = await resume_supervisor(
+            req.thread_id,
+            approve=req.approve,
+            pending_id=req.pending_id,
+            kind=req.kind or "news",
+            user_id="",
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=409, detail=str(exc) or "Resume HITL thất bại") from exc
+    pending = list(out.db.pending_writes) if out.db else []
+    status = "pending_approval" if pending else "done"
+    return DbApproveResponse(
+        ok=True,
+        pending_id=req.pending_id or 0,
+        approve=req.approve,
+        status=status,
+        pending_writes=pending,
+        answer=out.answer,
+    )
+
+
+@router.post("/ask/stream")
+async def ask_stream(req: AskRequest) -> StreamingResponse:
+    """Cùng graph `/ask` nhưng SSE: mỗi node xong → 1 `step`, cuối cùng `done`.
+
+    UI mặc định (agent_pr.html) dùng endpoint này để hiện stepper khi hub chạy.
+    `/ask` giữ nguyên cho curl / evaluate / client không stream.
+    """
+
+    async def events() -> AsyncIterator[str]:
+        try:
+            async for ev in run_supervisor_stream(_ask_input(req)):
+                if ev.get("type") == "done":
+                    payload = {"type": "done", **_ask_response(ev["output"]).model_dump()}
+                elif ev.get("type") == "hitl":
+                    payload = {
+                        "type": "hitl",
+                        **_ask_response(ev["output"], status="pending_approval").model_dump(),
+                    }
+                else:
+                    payload = ev
+                yield f"data: {json.dumps(payload, ensure_ascii=False, default=str)}\n\n"
+        except ValueError as exc:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(exc)}, ensure_ascii=False)}\n\n"
+        except Exception as exc:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(exc)}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 
 @router.post("/ask/evaluate", response_model=AskEvaluateResponse)
 async def ask_evaluate(req: AskRequest) -> AskEvaluateResponse:
-    """Chạy supervisor rồi chấm task success + trajectory (giống /assistant/evaluate).
+    """Chấm lượt ask đã có trên thread (không chạy graph lại). Chưa có output → chạy ask.
 
-    Tách khỏi /ask — 2 lời gọi LLM judge, không bật ngầm. Trajectory dựng từ
-    output hub (extract_trajectory), không nhận từ client.
+    UI Đánh giá gửi cùng thread_id + question. Khớp câu hỏi checkpoint → chấm
+    đúng câu user vừa thấy. Không khớp / chưa ask → run_supervisor rồi chấm.
     """
     try:
-        out = await run_supervisor(_ask_input(req))
+        cached = await last_supervisor_output(req.thread_id)
+        q = (req.question or "").strip()
+        if cached is not None and (not q or q == (cached.question or "").strip()):
+            out = cached
+        else:
+            out = await run_supervisor(_ask_input(req))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:

@@ -55,7 +55,7 @@ Test cho cả 2 module nằm chung trong `tests/` (`test_chat.py`, `test_rag.py`
 
 ```bash
 docker compose up --build app
-# POST http://localhost:8000/pr/ask  {"question":"Tại sao HPG giảm?"}
+# POST http://localhost:8000/pr/ask  {"question":"Tại sao HPG giảm?","thread_id":"sess-1"}
 ```
 
 Chi tiết: [README.agent_pr.md](README.agent_pr.md).

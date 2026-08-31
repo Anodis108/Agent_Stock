@@ -17,6 +17,7 @@ data/legal_docs/*
 !data/legal_docs/*.md
 data/vectorstore/
 data/qdrant/        # Qdrant storage (docker compose)
+data/postgres/      # PostgresSaver checkpoints (docker compose)
 
 # Training output (Buổi 3) — checkpoint/adapter nặng, không commit
 training/output/

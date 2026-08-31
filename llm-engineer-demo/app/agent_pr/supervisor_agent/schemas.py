@@ -21,8 +21,9 @@ class Agent_Input(BaseModel):
 
     symbol: str = ""
     question: str = ""
-    thread_id: str = ""               # short-term: trống → server cấp uuid
+    thread_id: str = Field(min_length=1, description="Short-term: id phiên. Client bắt buộc gửi.")
     user_id: str = ""                 # long-term: trống → không recall/store
+    skip_hitl: bool = False           # True: pytest — không interrupt_before hitl_commit
 
 
 class AgentPlan(BaseModel):
