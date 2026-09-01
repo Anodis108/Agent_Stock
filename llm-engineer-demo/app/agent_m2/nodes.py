@@ -30,7 +30,6 @@ def`, graph.py dùng `ainvoke` thay vì `invoke` (khác Bài 2-3 vốn sync hoà
 from __future__ import annotations
 
 from datetime import date
-from functools import lru_cache
 
 from langgraph.graph import END
 
@@ -38,6 +37,7 @@ from app.agent_m2 import context, memory
 from app.agent_m2.state import AssistantState
 from app.agent_m2.tool_selection import retrieve_relevant_tools
 from app.config import settings
+from app.agent_m2.multi_agent._llm import base_llm as _base_llm
 
 # Chỉ dẫn cốt lõi — dùng CẢ cho system prompt (đầu context) VÀ re-injection
 # (cuối context, chống instruction fade-out khi hội thoại dài — Section 4).
@@ -55,26 +55,6 @@ def _system_prompt() -> str:
     return (
         "Bạn là trợ lý cá nhân tiếng Việt, thân thiện và ngắn gọn. "
         f"Hôm nay là {date.today().isoformat()}. " + CORE_INSTRUCTIONS
-    )
-
-
-@lru_cache(maxsize=1)
-def _base_llm():
-    """LLM chưa bind tool — dùng chung, chỉ khởi tạo client 1 lần (Bài 4: bind
-    tool đổi theo từng lượt qua retrieval nên không thể cache llm.bind_tools()
-    như Bài 2-3 nữa, nhưng client HTTP vẫn nên tái dùng).
-
-    Truyền thẳng `api_key` từ settings.api_keys[0] thay vì để ChatOpenAI tự đọc
-    biến môi trường OPENAI_API_KEY — repo này dùng OPENAI_API_KEYS (số nhiều,
-    hỗ trợ key rotation ở app/llm/client.py), không phải biến số ít mặc định
-    của langchain_openai.
-    """
-    from langchain_openai import ChatOpenAI
-
-    return ChatOpenAI(
-        model=settings.llm_model,
-        temperature=settings.llm_temperature,
-        api_key=settings.api_keys[0] if settings.api_keys else None,
     )
 
 

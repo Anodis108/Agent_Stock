@@ -1,10 +1,24 @@
-"""Nodes hub — LLM chọn worker bằng tool (bind_tools + retrieval), không crawl.
+"""Nodes hub — coordinator là máy trạng thái, không phải crawler.
 
-Giống agent_m2: model thấy top-k tool need_price/need_news/... rồi tool_calls.
-Hub vẫn Send subgraph (mỗi worker là ReAct riêng). HITL ghi DB không đổi.
+Giống agent_m2 `agent_node`: LLM `bind_tools` + retrieval (`need_*`). Khác chỗ
+tool *không chạy việc*: `need_price` chỉ trả mã; `route_coordinator` `Send`
+subgraph PriceAgent (ReAct + vnstock). Lý do: HITL ghi DB phải đứng ở hub
+(`interrupt_before=["hitl_commit"]`) — nếu PriceAgent tự HITL thì 5 chỗ dừng.
+
+`rewrite_question` (đầu graph): cùng ý `retriever._rewrite_query` — viết lại
+câu user trước recall + lập plan; `question` gốc giữ cho history/eval.
+
+`coordinator` chạy lại mỗi sóng (DB → crawl → eval → synth → HITL → reply).
+`plan_turn == turn` thì không gọi LLM plan lần nữa — chỉ đọc `next_wave`.
+`Send` đợt gather (price+news) hội tụ `after_wave1` rồi về hub; eval/synth
+một nhánh, về thẳng coordinator.
+
+`_hydrate_from_db`: cache hit → biến hàng sqlite thành price/news, khỏi crawl.
 """
 
 from __future__ import annotations
+
+from datetime import date
 
 from langgraph.types import Send
 
@@ -15,32 +29,91 @@ from app.agent_pr.db_agent.schemas import Agent_Output as DbOut
 from app.agent_pr.db_agent.schemas import PendingWrite
 from app.agent_pr.news_agent.schemas import Agent_Output as NewsOut
 from app.agent_pr.news_agent.schemas import NewsItem
-from app.agent_pr.symbol import normalize_symbol
-from app.agent_pr.supervisor_agent.schemas import Agent_Output, AgentPlan
+from app.agent_pr.supervisor_agent.schemas import Agent_Output, AgentPlan, MemoryFact, RewrittenQuery
 from app.agent_pr.supervisor_agent.state import SupervisorState
 from app.config import settings
-from app.llm.completion import chat
+from app.llm.completion import chat_parsed
 from app.llm.params import DETERMINISTIC
-from app.agent_pr.react import base_llm, use_offline_tools
+from app.agent_pr._llm import invoke_with_tools
+from app.agent_pr.react import use_offline_tools
+from app.guardrails.injection import bound_messages
 from app.agent_pr.supervisor_agent.tools import TOOLS as SUPERVISOR_TOOLS
 from app.agent_pr.tool_selection import select_tools
 from app.monitoring.tracing import trace_step
 
-_PLAN_SYSTEM = """Bạn là Hierarchical Coordinator hỏi–đáp cổ phiếu niêm yết VN.
+# Giống LEGAL_SYSTEM_PROMPT (persona + quy tắc) và _SUPERVISOR_SYSTEM agent_m2
+# (worker không nói với nhau; chỉ chọn việc, không tự làm).
+_PLAN_SYSTEM = """Bạn là Hierarchical Coordinator hỏi–đáp cổ phiếu niêm yết Việt Nam.
 
-Gọi tool need_* cho MỌI loại dữ liệu câu hỏi cần (có thể nhiều tool).
-need_price = giá; need_news = tin CafeF; need_db = lịch sử DB;
-need_eval = chấm tin vs giá (chỉ khi cũng need_price và need_news);
-need_synth = ghép câu (gần như luôn).
-Tách mã (HPG, VNM, …) đưa vào argument symbol. Không bịa số liệu."""
+Nhiệm vụ: CHỈ đánh dấu loại dữ liệu cần qua tool need_* — không crawl, không chấm, không ghép câu.
+Worker (Price/News/DB/Eval/Synth) không nói với nhau; bạn giao việc, họ báo cáo hub.
+
+Quy tắc:
+- Gọi MỌI need_* mà câu hỏi thật sự cần (có thể nhiều tool cùng lúc). Bạn chỉ thấy một phần catalog.
+- need_price = giá đóng cửa / % phiên trước. need_news = tin CafeF thô.
+- need_db = nêu lịch sử đã lưu. need_eval = chấm tin vs giá — CHỈ khi cũng need_price VÀ need_news.
+- need_synth = ghép câu cho user (gần như luôn).
+- Argument symbol: mã HOSE/HNX/UPCOM (thường 3 chữ: HPG, VNM, FPT). Tách từ câu hoặc hội thoại. Không bịa mã.
+- Không bịa số liệu. Không gọi tool ngoài need_*.
+
+Ví dụ:
+- "giá HPG bao nhiêu" → need_price + need_synth
+- "tin FPT" → need_news + need_synth
+- "tại sao HPG giảm" → need_price + need_news + need_eval + need_synth
+- "lưu/ghi tin chưa có" → need_news + need_db + need_synth
+- follow-up "còn LPB thì sao?" → lấy mã LPB từ câu, cùng loại dữ liệu lượt trước nếu rõ"""
+
+# Cùng ý retriever._rewrite_query + ngày hiện tại (agent_m2 _system_prompt).
+_REWRITE_SYSTEM = """Bạn là chuyên gia tìm kiếm thông tin cổ phiếu niêm yết Việt Nam.
+
+Viết lại câu hỏi thành MỘT query rõ ràng để điều phối agent (giá vnstock, tin CafeF, lịch sử DB).
+Giữ / tách mã CP nếu nhận ra (HPG, FPT, …). Làm rõ đại từ ("nó", "mã đó") từ hội thoại gần đây.
+Không trả lời câu hỏi. Không bịa mã. Chỉ trả về câu đã viết lại, không giải thích."""
+
+
+def _query_for_plan(state: SupervisorState) -> str:
+    return str(state.get("rewritten_question") or state.get("question") or "").strip()
+
+
+def rewrite_question(state: SupervisorState) -> dict:
+    """Viết lại câu hỏi — cùng kiểu retriever._rewrite_query. Giữ `question` gốc."""
+    original = str(state.get("question") or "").strip()
+    with trace_step(state.get("_trace_span"), "rewrite_question", input=original) as t:
+        rewritten = original
+        extra_symbol = ""
+        if original and not use_offline_tools():
+            history = list(state.get("history") or [])
+            user = f"Hôm nay: {date.today().isoformat()}\nCâu hỏi: {original}"
+            if history:
+                shaped = context.sliding_window(history, settings.agent_keep_recent_messages)
+                user = (
+                    f"Hôm nay: {date.today().isoformat()}\n"
+                    f"Hội thoại gần đây:\n{context.format_messages(shaped)}\n\n"
+                    f"Câu hỏi hiện tại: {original}"
+                )
+            try:
+                parsed = chat_parsed(
+                    bound_messages(_REWRITE_SYSTEM, user),
+                    RewrittenQuery,
+                    DETERMINISTIC,
+                )
+                rewritten = (parsed.query or "").strip() or original
+                extra_symbol = parsed.symbol
+            except Exception:
+                rewritten = original
+                extra_symbol = ""
+        t["output"] = rewritten or "skip"
+        out: dict = {"rewritten_question": rewritten}
+        if extra_symbol and not str(state.get("symbol") or "").strip():
+            out["symbol"] = extra_symbol
+        if rewritten and rewritten != original:
+            out["trace"] = list(state.get("trace") or []) + [f"Rewrite: {rewritten}"]
+        return out
 
 
 def _sanitize_plan(raw: AgentPlan, hint: str) -> AgentPlan:
-    """Chốt mã hợp lệ; Eval bắt buộc có giá+tin; không để plan rỗng."""
-    if hint:
-        symbol = normalize_symbol(hint)
-    else:
-        symbol = normalize_symbol(raw.symbol)
+    """Hint user thắng LLM; eval cần giá+tin; luôn bật synth."""
+    symbol = (hint or raw.symbol or "").strip().upper()
     use_price, use_news, use_db = raw.use_price, raw.use_news, raw.use_db
     use_eval = bool(raw.use_eval and use_price and use_news)
     use_synth = True
@@ -85,14 +158,17 @@ def _plan_from_tool_calls(calls: list, hint: str, question: str) -> AgentPlan:
     return _sanitize_plan(raw, hint or symbol)
 
 
-async def _make_plan(
+def _make_plan(
     question: str,
     hint: str,
     history: list | None = None,
     memories: list | None = None,
 ) -> AgentPlan:
     """LLM bind top-k tool need_* (retrieval) — không chat_parsed."""
-    parts = [f"Câu hỏi: {question}\nMã gợi ý (có thể trống): {hint or '(không có)'}"]
+    parts = [
+        f"Hôm nay: {date.today().isoformat()}",
+        f"Câu hỏi: {question}\nMã gợi ý (có thể trống): {hint or '(không có)'}",
+    ]
     if memories:
         parts.append("Đã biết về user:\n" + "\n".join(f"- {m}" for m in memories))
     if history:
@@ -109,13 +185,17 @@ async def _make_plan(
             {"name": "need_synth", "args": {"symbol": hint or "HPG"}},
         ]
         return _plan_from_tool_calls(calls, hint, question)
-    llm = base_llm().bind_tools(relevant or SUPERVISOR_TOOLS)
-    response = await llm.ainvoke(
-        [
-            {"role": "system", "content": _PLAN_SYSTEM},
-            {"role": "user", "content": user},
+    try:
+        response = invoke_with_tools(
+            bound_messages(_PLAN_SYSTEM, user),
+            relevant or SUPERVISOR_TOOLS,
+        )
+    except Exception:
+        calls = [
+            {"name": "need_price", "args": {"symbol": hint or "HPG"}},
+            {"name": "need_synth", "args": {"symbol": hint or "HPG"}},
         ]
-    )
+        return _plan_from_tool_calls(calls, hint, question)
     calls = getattr(response, "tool_calls", None) or []
     if not calls:
         calls = [
@@ -145,7 +225,7 @@ def _has_news(state: SupervisorState, symbol: str) -> bool:
 
 
 def _news_candidates(news: object | None) -> list[dict]:
-    """NewsItem → dict title/url cho DbWindow.stage_writes. Bỏ tin lấy từ DB."""
+    """NewsItem → dict title/url cho stage_writes. Bỏ tin lấy từ DB."""
     if news is None or _from_db(news):
         return []
     articles = getattr(news, "articles", None) or []
@@ -248,109 +328,125 @@ def _pending_list(db: object | None) -> list[PendingWrite]:
     return list(getattr(db, "pending_writes", None) or [])
 
 
-async def coordinator(state: SupervisorState) -> dict:
-    """Hub. Lần đầu: LLM lập plan. Mọi lần: DB → crawl nếu thiếu → eval → synth → HITL."""
+def coordinator(state: SupervisorState) -> dict:
+    """Hub. Lần đầu: LLM lập plan. Mọi lần: DB → crawl nếu thiếu → eval → synth → HITL.
+
+    Span con dưới `_trace_span` — worker kế thừa cùng cha (Send copy field).
+    """
+    with trace_step(
+        state.get("_trace_span"),
+        "coordinator",
+        input=str(state.get("question") or state.get("symbol") or ""),
+    ) as t:
+        out = _coordinate(state)
+        t["output"] = out.get("next_wave")
+        return out
+
+
+def _coordinate(state: SupervisorState) -> dict:
     hint = str(state.get("symbol") or "").strip().upper()
     question = str(state.get("question") or hint or "").strip()
+    if not question:
+        from app.agent_pr.synthesis_agent.schemas import Agent_Output as SynthOut
 
-    with trace_step(None, "coordinator", input=question or hint) as t:
-        if not question:
-            raise ValueError("Cần symbol hoặc question")
+        msg = "Lỗi: cần mã cổ phiếu hoặc câu hỏi. Hãy nêu rõ (vd. HPG hôm nay sao)."
+        return {
+            "next_wave": "done",
+            "trace": list(state.get("trace") or []) + [msg],
+            "draft": SynthOut(answer=msg),
+        }
+    plan_query = _query_for_plan(state) or question
 
-        trace = list(state.get("trace") or [])
-        turn = str(state.get("turn") or "")
-        extra: dict = {}
-        fresh_plan = state.get("plan_turn") != turn
+    turn = str(state.get("turn") or "")
+    fresh_plan = state.get("plan_turn") != turn
+    trace = list(state.get("trace") or [])
+    extra: dict = {}
 
-        if fresh_plan:
-            if hint:
-                hint = normalize_symbol(hint)
-            plan = _make_plan(
-                question,
-                hint,
-                history=list(state.get("history") or []),
-                memories=list(state.get("memories") or []),
-            )
-            if hasattr(plan, "__await__"):
-                plan = await plan
-            trace.append(f"Coordinator LLM: {plan.symbol} · {plan.reasoning}")
-            extra = {
-                "symbol": plan.symbol,
-                "question": question,
-                "plan": plan,
-                "plan_turn": turn,
-            }
-            state = {**state, **extra}
-        else:
-            plan = state["plan"]
+    if fresh_plan:
+        plan = _make_plan(
+            plan_query,
+            hint,
+            history=list(state.get("history") or []),
+            memories=list(state.get("memories") or []),
+        )
+        trace.append(f"Coordinator LLM: {plan.symbol} · {plan.reasoning}")
+        extra = {
+            "symbol": plan.symbol,
+            "question": question,
+            "plan": plan,
+            "plan_turn": turn,
+        }
+        state = {**state, **extra}
+    else:
+        plan = state["plan"]
 
-        hydrated = _hydrate_from_db(state, plan)
-        if hydrated:
-            extra = {**extra, **hydrated}
-            state = {**state, **hydrated}
-            if not fresh_plan:
-                used = [k for k in ("price", "news") if k in hydrated]
-                if used:
-                    trace.append("DB đã có " + " + ".join(used) + " — dùng luôn")
-
-        if _needs_lookup(plan) and not _lookup_done(state, turn, plan.symbol):
-            if not fresh_plan:
-                trace.append("Đọc DB trước")
-            t["output"] = {"next_wave": "db_lookup", "plan": plan.model_dump() if fresh_plan else {}}
-            return {**extra, "next_wave": "db_lookup", "trace": trace}
-
-        pending = _pending_gather(state, plan)
-        if pending:
-            if not fresh_plan:
-                trace.append(f"DB chưa đủ → crawl {', '.join(pending)}")
-            t["output"] = {"next_wave": "gather", "pending": pending}
-            return {**extra, "next_wave": "gather", "trace": trace}
-
-        if (
-            plan.use_eval
-            and state.get("eval_turn") != turn
-            and _same_symbol(state.get("price"), plan.symbol)
-            and _same_symbol(state.get("news"), plan.symbol)
-        ):
-            if not fresh_plan:
-                trace.append("Giao EvalAgent")
-            t["output"] = {"next_wave": "eval"}
-            return {**extra, "next_wave": "eval", "trace": trace}
-
-        if plan.use_synth and state.get("synth_turn") != turn:
-            n = len(state["db"].price_history) if state.get("db") else 0
-            if not fresh_plan:
-                trace.append("Giao SynthesisAgent")
-            t["output"] = {"next_wave": "synth"}
-            return {**extra, "next_wave": "synth", "n_history": n, "trace": trace}
-
-        skip_hitl = bool(state.get("skip_hitl"))
-        if _should_stage(state, plan) and not _write_done(state, turn):
-            if not fresh_plan:
-                trace.append("Soạn lệnh ghi dữ liệu vừa crawl")
-            t["output"] = {"next_wave": "db_write"}
-            return {**extra, "next_wave": "db_write", "trace": trace}
-
-        if _pending_list(state.get("db")) and not skip_hitl:
-            if not fresh_plan:
-                trace.append("HITL — chờ duyệt trước khi ghi DB")
-            t["output"] = {"next_wave": "hitl"}
-            return {**extra, "next_wave": "hitl", "trace": trace}
-
+    hydrated = _hydrate_from_db(state, plan)
+    if hydrated:
+        extra = {**extra, **hydrated}
+        state = {**state, **hydrated}
         if not fresh_plan:
-            trace.append("Đủ theo plan → trả user")
-        t["output"] = {"next_wave": "done"}
-        return {**extra, "next_wave": "done", "trace": trace}
+            used = [k for k in ("price", "news") if k in hydrated]
+            if used:
+                trace.append("DB đã có " + " + ".join(used) + " — dùng luôn")
+
+    if _needs_lookup(plan) and not _lookup_done(state, turn, plan.symbol):
+        if not fresh_plan:
+            trace.append("Đọc DB trước")
+        return {**extra, "next_wave": "db_lookup", "trace": trace}
+
+    pending = _pending_gather(state, plan)
+    if pending:
+        if not fresh_plan:
+            trace.append(f"DB chưa đủ → crawl {', '.join(pending)}")
+        return {**extra, "next_wave": "gather", "trace": trace}
+
+    if (
+        plan.use_eval
+        and state.get("eval_turn") != turn
+        and _same_symbol(state.get("price"), plan.symbol)
+        and _same_symbol(state.get("news"), plan.symbol)
+    ):
+        if not fresh_plan:
+            trace.append("Giao EvalAgent")
+        return {**extra, "next_wave": "eval", "trace": trace}
+
+    if plan.use_synth and state.get("synth_turn") != turn:
+        n = len(state["db"].price_history) if state.get("db") else 0
+        if not fresh_plan:
+            trace.append("Giao SynthesisAgent")
+        return {**extra, "next_wave": "synth", "n_history": n, "trace": trace}
+
+    skip_hitl = bool(state.get("skip_hitl"))
+    if _should_stage(state, plan) and not _write_done(state, turn):
+        if not fresh_plan:
+            trace.append("Soạn lệnh ghi dữ liệu vừa crawl")
+        return {**extra, "next_wave": "db_write", "trace": trace}
+
+    if _pending_list(state.get("db")) and not skip_hitl:
+        if not fresh_plan:
+            trace.append("HITL — chờ duyệt trước khi ghi DB")
+        return {**extra, "next_wave": "hitl", "trace": trace}
+
+    if not fresh_plan:
+        trace.append("Đủ theo plan → trả user")
+    return {**extra, "next_wave": "done", "trace": trace}
+
+
+def _send(state: SupervisorState, node: str, payload: dict) -> Send:
+    """Nhánh Send chỉ thấy payload — copy span cha để worker `trace_step` lồng cây."""
+    payload["_trace_span"] = state.get("_trace_span")
+    return Send(node, payload)
 
 
 def route_coordinator(state: SupervisorState) -> str | list[Send]:
-    """Một đợt một loại: lookup / crawl / eval / synth / soạn ghi / HITL / reply."""
+    """Map `next_wave` → node hoặc Send. Gather: một worker / vòng (dễ debug)."""
     wave = state["next_wave"]
     symbol = str(state.get("symbol") or "")
     turn = str(state.get("turn") or "")
     if wave == "db_lookup":
         return [
-            Send(
+            _send(
+                state,
                 "db_agent",
                 {
                     "symbol": symbol,
@@ -362,11 +458,12 @@ def route_coordinator(state: SupervisorState) -> str | list[Send]:
             )
         ]
     if wave == "gather":
-        sends = [Send(name, {"symbol": symbol}) for name in _pending_gather(state, state["plan"])]
-        return sends or "reply"
+        names = _pending_gather(state, state["plan"])
+        return [_send(state, names[0], {"symbol": symbol})] if names else "reply"
     if wave == "db_write":
         return [
-            Send(
+            _send(
+                state,
                 "db_agent",
                 {
                     "symbol": symbol,
@@ -392,31 +489,39 @@ def hitl_commit(state: SupervisorState) -> dict:
     Duyệt lệnh status=pending. Lệnh user đã từ chối qua /pr/approve giữ rejected
     (approve_pending_write không đảo).
     """
+    with trace_step(state.get("_trace_span"), "hitl_commit", input=str(state.get("symbol") or "")) as t:
+        out = _hitl_commit(state)
+        t["output"] = out.get("trace", [""])[-1] if out.get("trace") else ""
+        return out
+
+
+def _hitl_commit(state: SupervisorState) -> dict:
     db = state.get("db")
     pending = _pending_list(db)
     symbol = str(state.get("symbol") or (getattr(db, "symbol", "") if db else ""))
-    with trace_step(None, "hitl_commit", input=symbol) as t:
-        n_ok = 0
-        for pw in pending:
+    n_ok = 0
+    for pw in pending:
+        try:
             if approve_pending_write(pw.id, approve=True, kind=pw.kind or "news"):
                 n_ok += 1
-        from app.agent_pr.db_agent.nodes import _read_rows
-        from app.agent_pr.db_agent.schemas import PriceRow, SavedNews
+        except Exception:
+            continue
+    from app.agent_pr.db_agent.nodes import _read_rows
+    from app.agent_pr.db_agent.schemas import PriceRow, SavedNews
 
-        rows = _read_rows(symbol) if symbol else {"price_rows": [], "news_rows": []}
-        refreshed = DbOut(
-            symbol=symbol,
-            price_history=[PriceRow(**row) for row in rows["price_rows"]],
-            saved_news=[SavedNews(**row) for row in rows["news_rows"]],
-            pending_writes=[],
-            detail=f"HITL: đã COMMIT {n_ok} lệnh vào DB",
-        )
-        line = refreshed.detail
-        t["output"] = line
-        return {
-            "db": refreshed,
-            "trace": list(state.get("trace") or []) + [line],
-        }
+    rows = _read_rows(symbol) if symbol else {"price_rows": [], "news_rows": []}
+    refreshed = DbOut(
+        symbol=symbol,
+        price_history=[PriceRow(**row) for row in rows["price_rows"]],
+        saved_news=[SavedNews(**row) for row in rows["news_rows"]],
+        pending_writes=[],
+        detail=f"HITL: đã COMMIT {n_ok} lệnh vào DB",
+    )
+    line = refreshed.detail
+    return {
+        "db": refreshed,
+        "trace": list(state.get("trace") or []) + [line],
+    }
 
 
 def after_wave1(state: SupervisorState) -> dict:
@@ -433,13 +538,19 @@ def after_wave1(state: SupervisorState) -> dict:
             db_bit += f" · {n_pending} lệnh chờ HITL"
         bits.append(db_bit)
     line = "gather về hub: " + (" + ".join(bits) if bits else "(trống)")
-    with trace_step(state.get("_trace_span"), "after_wave1", input=state.get("symbol", "")) as t:
-        t["output"] = line
-        return {"trace": list(state.get("trace") or []) + [line]}
+    return {"trace": list(state.get("trace") or []) + [line]}
 
 
 def reply(state: SupervisorState) -> dict:
     """Đóng gói. Có draft thì dùng; không thì 1 câu tối thiểu từ báo cáo đã có."""
+    with trace_step(state.get("_trace_span"), "reply", input=str(state.get("question") or "")) as t:
+        out = _reply(state)
+        output = out.get("output")
+        t["output"] = getattr(output, "answer", None)
+        return out
+
+
+def _reply(state: SupervisorState) -> dict:
     plan = state.get("plan")
     symbol = str(state.get("symbol") or (plan.symbol if plan else ""))
     draft = state.get("draft")
@@ -480,87 +591,84 @@ def reply(state: SupervisorState) -> dict:
         trace=list(state.get("trace") or []),
         plan=plan,
     )
-    with trace_step(None, "reply", input=symbol) as t:
-        t["output"] = output.answer
-        return {
-            "output": output,
-            "history": [{"role": "assistant", "content": output.answer}],
-        }
+    return {
+        "output": output,
+        "history": [{"role": "assistant", "content": output.answer}],
+    }
 
 
 def compact_history(state: SupervisorState) -> dict:
-    """Sau recall: history vượt 40% window → tóm tắt phần cũ, GHI ĐÈ state.
-
-    Giống compact_node agent_m2: persist bản nén để lượt sau không gọi LLM
-    tóm tắt lại. Dưới ngưỡng → {}. Reducer chỉ thay list khi nhận set_history.
-    """
+    """Chỉ chạy khi should_compact_route chọn node này (>40% window)."""
     history = list(state.get("history") or [])
-    with trace_step(None, "compact_history", input={"n": len(history)}) as t:
-        if not context.should_compact(history, settings.agent_context_window_tokens):
-            t["output"] = "skip"
-            return {}
-        compacted = context.summarize_old_messages(
-            history, settings.agent_keep_recent_messages
-        )
-        t["output"] = {"n_before": len(history), "n_after": len(compacted)}
-        return {"history": context.set_history(compacted)}
+    compacted = context.summarize_old_messages(
+        history, settings.agent_keep_recent_messages
+    )
+    return {"history": context.set_history(compacted)}
+
+
+def should_compact_route(state: SupervisorState) -> str:
+    """Nguyên tắc 40–60%: vượt 40% window → compact; không thì thẳng coordinator."""
+    history = list(state.get("history") or [])
+    if context.should_compact(history, settings.agent_context_window_tokens):
+        return "compact_history"
+    return "coordinator"
 
 
 def recall_memory(state: SupervisorState) -> dict:
     """Đầu lượt: đọc long-term (Qdrant user_memory) theo user_id. Không user → bỏ qua."""
+    with trace_step(state.get("_trace_span"), "recall_memory", input=str(state.get("user_id") or "")) as t:
+        out = _recall_memory(state)
+        t["output"] = {"n_memories": len(out.get("memories") or [])}
+        return out
+
+
+def _recall_memory(state: SupervisorState) -> dict:
     user_id = str(state.get("user_id") or "").strip()
-    question = str(state.get("question") or "")
-    with trace_step(None, "recall_memory", input=user_id or "(none)") as t:
-        memories: list[str] = []
-        if user_id:
-            try:
-                memories = memory.recall_long_term(user_id, question)
-                t["output"] = {"n": len(memories)}
-            except Exception as exc:
-                t["output"] = {"n": 0, "error": str(exc)}
-        else:
-            t["output"] = {"n": 0}
-        updates: dict = {"memories": memories}
-        if question:
-            updates["history"] = [{"role": "user", "content": question}]
-        return updates
+    original = str(state.get("question") or "")
+    query = _query_for_plan(state) or original
+    memories: list[str] = []
+    if user_id:
+        try:
+            memories = memory.recall_long_term(user_id, query)
+        except Exception:
+            memories = []
+    updates: dict = {"memories": memories}
+    if original:
+        updates["history"] = [{"role": "user", "content": original}]
+    return updates
 
 
 def store_memory(state: SupervisorState) -> dict:
     """Cuối lượt: trích 1 sự thật dài hạn về user (mã theo dõi, khẩu vị) → vector store."""
+    with trace_step(state.get("_trace_span"), "store_memory", input=str(state.get("user_id") or "")) as t:
+        out = _store_memory(state)
+        t["output"] = bool(out)
+        return out
+
+
+def _store_memory(state: SupervisorState) -> dict:
     user_id = str(state.get("user_id") or "").strip()
-    with trace_step(None, "store_memory", input=user_id or "(none)") as t:
-        if not user_id:
-            t["output"] = "skip"
-            return {}
-        recent = context.sliding_window(
-            list(state.get("history") or []), settings.agent_keep_recent_messages
-        )
-        if not recent:
-            t["output"] = "empty"
-            return {}
-        lines = context.format_messages(recent)
-        try:
-            fact = chat(
-                [
-                    {
-                        "role": "user",
-                        "content": (
-                            "Trích 1 sự thật DÀI HẠN về user từ hội thoại cổ phiếu "
-                            "(mã đang theo dõi, sở thích, khẩu vị rủi ro). "
-                            'Một câu, hoặc "NONE".\n\n'
-                            + lines
-                        ),
-                    }
-                ],
-                DETERMINISTIC,
-            ).strip()
-        except Exception as exc:
-            t["output"] = f"error: {exc}"
-            return {}
-        if fact and fact.upper() != "NONE":
-            memory.save_to_long_term(user_id, fact)
-            t["output"] = fact
-        else:
-            t["output"] = "NONE"
+    if not user_id:
         return {}
+    recent = context.sliding_window(
+        list(state.get("history") or []), settings.agent_keep_recent_messages
+    )
+    if not recent:
+        return {}
+    lines = context.format_messages(recent)
+    try:
+        parsed = chat_parsed(
+            bound_messages(
+                "Trích sự thật DÀI HẠN về user từ hội thoại cổ phiếu. "
+                "Chỉ mã theo dõi, khẩu vị rủi ro, quyết định đã chốt — không tóm giá/tin phiên.",
+                lines,
+            ),
+            MemoryFact,
+            DETERMINISTIC,
+        )
+    except Exception:
+        return {}
+    fact = (parsed.fact or "").strip()
+    if parsed.worth_saving and fact and fact.upper() != "NONE":
+        memory.save_to_long_term(user_id, fact)
+    return {}

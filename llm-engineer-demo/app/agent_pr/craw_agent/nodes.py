@@ -11,20 +11,13 @@ from __future__ import annotations
 
 from app.agent_pr.craw_agent.schemas import Agent_Output
 from app.agent_pr.craw_agent.state import CrawlState
-from app.agent_pr.symbol import normalize_symbol
 from app.monitoring.tracing import trace_step
 
 
-# ── Chuẩn hoá mã ──────────────────────────────────────────────────────────────
-#
-# Cổng vào graph: "hpg" / " HPG " → "HPG". Sai định dạng raise ngay — không
-# tốn lời gọi vnstock (cùng ý với guardrail_input ở app/agent: fail sớm).
-
-
 def normalize(state: CrawlState) -> dict:
-    """Upper + strip; raise ValueError nếu không giống mã niêm yết."""
+    """Upper + strip — mã hợp lệ do agent/tool quyết, không regex."""
     with trace_step(state.get("_trace_span"), "craw_normalize", input=state.get("symbol", "")) as t:
-        symbol = normalize_symbol(str(state.get("symbol") or ""))
+        symbol = str(state.get("symbol") or "").strip().upper()
         t["output"] = symbol
         return {"symbol": symbol}
 
@@ -47,7 +40,7 @@ def fetch(state: CrawlState) -> dict:
             df = Quote(symbol=symbol, source="KBS").history(length="5", interval="d")
         except Exception as exc:
             t["output"] = {"error": str(exc)}
-            return {"rows": []}
+            return {"rows": [], "error": f"Lỗi vnstock {symbol}: {exc}. Thử lại hoặc dùng DB."}
         if df is None or df.empty:
             t["output"] = {"n_rows": 0}
             return {"rows": []}
@@ -71,7 +64,11 @@ def parse(state: CrawlState) -> dict:
     symbol = state["symbol"]
     with trace_step(state.get("_trace_span"), "craw_parse", input=symbol) as t:
         if not rows:
-            quote = Agent_Output(symbol=symbol, last=0, source="vnstock (không lấy được)")
+            quote = Agent_Output(
+                symbol=symbol,
+                last=0,
+                source=str(state.get("error") or "vnstock (không lấy được)"),
+            )
             t["output"] = {"last": 0, "empty": True}
             return {"quote": quote}
         last = float(rows[-1]["close"]) * 1000

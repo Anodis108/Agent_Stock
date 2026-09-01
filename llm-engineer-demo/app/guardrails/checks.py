@@ -1,14 +1,11 @@
 """Guardrails — Buổi 7 (Evaluation & Guardrails).
 
-check_input(): chạy TRƯỚC khi gọi LLM — phát hiện prompt injection + PII trong
-câu hỏi người dùng. Raise GuardrailViolation nếu phát hiện injection nghiêm
-trọng (regex match) — pipeline dừng lại, không tốn 1 lời gọi LLM cho request
-độc hại. API layer bắt exception này và trả HTTP 400 (xem api/routes_chat.py).
+check_input(): chạy TRƯỚC khi gọi LLM — injection, toxic, (tuỳ chọn) topic scope.
+Raise GuardrailViolation nếu chặn cứng. PII không chặn; caller có thể redact.
 
-check_output(): chạy SAU khi có câu trả lời — kiểm tra độ dài, ngôn ngữ, và
-groundedness đơn giản (số liệu trong answer có xuất hiện trong context không).
-KHÔNG raise — output đã sinh rồi, raise không giúp gì; thay vào đó trả về
-OutputCheckResult để caller quyết định giữ answer gốc hay dùng fallback.
+check_output(): chạy SAU khi có câu trả lời — độ dài, ngôn ngữ, groundedness số,
+toxicity/moderation, PII. KHÔNG raise — trả OutputCheckResult để caller giữ
+answer, disclaimer, hoặc fallback.
 """
 
 from __future__ import annotations
@@ -18,7 +15,10 @@ from dataclasses import dataclass, field
 
 from app.config import settings
 from app.guardrails.injection import detect_prompt_injection
-from app.guardrails.pii import detect_pii
+from app.guardrails.language import looks_vietnamese
+from app.guardrails.pii import detect_pii, redact_pii
+from app.guardrails.safety import detect_toxicity, moderation_flagged
+from app.guardrails.scope import in_topic_scope
 
 
 class GuardrailViolation(Exception):
@@ -42,18 +42,36 @@ _FALLBACK_RESPONSE = (
     "Vui lòng thử diễn đạt lại câu hỏi hoặc tham khảo trực tiếp văn bản luật."
 )
 
+_DISCLAIMER = " (Lưu ý: một số số liệu chưa khớp nguồn đã thu thập trong lượt này.)"
 
-def check_input(text: str) -> None:
-    """Raise GuardrailViolation nếu phát hiện prompt injection qua regex.
 
-    Chỉ dùng regex ở đường chặn cứng (nhanh, không tốn LLM call). LLM-based
-    check (injection.llm_injection_check) mạnh hơn nhưng chậm — bật thêm qua
-    GUARDRAILS_LLM_INJECTION_CHECK cho các luồng chấp nhận latency cao hơn.
+def check_input(
+    text: str,
+    *,
+    topic_keywords: frozenset[str] | None = None,
+    extra_scope: str = "",
+) -> None:
+    """Raise GuardrailViolation nếu injection / toxic / ngoài phạm vi.
+
+    Regex chặn cứng (nhanh, không tốn LLM). LLM-based injection bật qua
+    GUARDRAILS_LLM_INJECTION_CHECK. `topic_keywords` None → không check scope
+    (pipeline pháp lý giữ hành vi cũ).
     """
     if detect_prompt_injection(text):
         raise GuardrailViolation(
             "prompt_injection_detected",
             {"pattern_match": True},
+        )
+
+    if detect_toxicity(text):
+        raise GuardrailViolation("unsafe_content", {"pattern_match": True})
+
+    if topic_keywords is not None and not in_topic_scope(
+        text, topic_keywords, extra=extra_scope
+    ):
+        raise GuardrailViolation(
+            "out_of_scope",
+            {"hint": "Câu hỏi không thuộc phạm vi cổ phiếu niêm yết Việt Nam."},
         )
 
     if settings.guardrails_llm_injection_check:
@@ -68,29 +86,84 @@ def check_input(text: str) -> None:
 
     pii_found = detect_pii(text)
     if pii_found:
-        # PII trong câu hỏi không tự nó là injection — không chặn, chỉ để lại
-        # dấu vết cho caller log nếu cần (không raise ở đây theo thiết kế).
+        # PII không phải injection — không chặn; prepare_input mới redact.
         pass
 
 
-def check_output(answer: str, context: list[str]) -> OutputCheckResult:
-    """Kiểm tra output trước khi trả về user. Không raise — trả kết quả có
-    thể sửa (fallback) để pipeline quyết định dùng answer gốc hay fallback."""
-    issues: list[str] = []
+def prepare_input(
+    text: str,
+    *,
+    redact: bool = False,
+    topic_keywords: frozenset[str] | None = None,
+    extra_scope: str = "",
+) -> str:
+    """check_input rồi (tuỳ chọn) che PII trước khi đưa vào LLM."""
+    check_input(text, topic_keywords=topic_keywords, extra_scope=extra_scope)
+    return redact_pii(text) if redact else text
 
-    if len(answer) < settings.guardrails_min_answer_len:
+
+def check_output(
+    answer: str,
+    context: list[str],
+    *,
+    redact: bool = False,
+    require_vietnamese: bool = False,
+    check_toxicity: bool = True,
+    unverified_mode: str = "fallback",
+    fallback: str | None = None,
+    disclaimer: str | None = None,
+) -> OutputCheckResult:
+    """Kiểm tra output trước khi trả user. Không raise.
+
+    `unverified_mode`:
+      - fallback: số không có trong context → thay cả câu (pipeline pháp lý).
+      - disclaimer: giữ câu, gắn cảnh báo (agent cổ phiếu — % có thể làm tròn).
+    """
+    issues: list[str] = []
+    text = answer or ""
+    fallback_text = fallback if fallback is not None else _FALLBACK_RESPONSE
+    disclaimer_text = disclaimer if disclaimer is not None else _DISCLAIMER
+
+    if len(text) < settings.guardrails_min_answer_len:
         issues.append("answer_too_short")
 
-    # Groundedness đơn giản: số liệu cụ thể trong answer phải xuất hiện trong
-    # context — cách rẻ để bắt hallucination về con số (điều luật, mốc thời
-    # gian...) mà không cần gọi thêm LLM.
+    if check_toxicity:
+        if detect_toxicity(text):
+            issues.append("toxic_output")
+        if moderation_flagged(text):
+            issues.append("moderation_flagged")
+
+    if require_vietnamese and text.strip() and not looks_vietnamese(text):
+        issues.append("not_vietnamese")
+
     if context:
         context_text = " ".join(context)
-        numbers_in_answer = re.findall(r"\b\d+\b", answer)
+        numbers_in_answer = re.findall(r"\b\d+\b", text)
         for num in numbers_in_answer:
             if num not in context_text:
                 issues.append(f"unverified_number_{num}")
 
-    if issues:
-        return OutputCheckResult(valid=False, issues=issues, answer=_FALLBACK_RESPONSE)
-    return OutputCheckResult(valid=True, issues=[], answer=answer)
+    blocking = {"answer_too_short", "toxic_output", "moderation_flagged", "not_vietnamese"}
+    unverified = [i for i in issues if i.startswith("unverified_number_")]
+    hard = [i for i in issues if i in blocking]
+    if unverified_mode == "fallback":
+        hard.extend(unverified)
+
+    if hard:
+        return OutputCheckResult(valid=False, issues=issues, answer=fallback_text)
+
+    if unverified:
+        text = text.rstrip() + disclaimer_text
+
+    max_len = int(settings.guardrails_max_answer_len or 0)
+    if max_len and len(text) > max_len:
+        issues.append("answer_too_long")
+        text = text[:max_len].rstrip() + "…"
+
+    if redact:
+        redacted = redact_pii(text)
+        if redacted != text:
+            issues.append("pii_redacted")
+            text = redacted
+
+    return OutputCheckResult(valid=not issues, issues=issues, answer=text)

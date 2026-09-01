@@ -104,6 +104,10 @@ class Settings(BaseSettings):
         default=False, alias="GUARDRAILS_LLM_INJECTION_CHECK"
     )
     guardrails_min_answer_len: int = Field(default=10, alias="GUARDRAILS_MIN_ANSWER_LEN")
+    # Trần độ dài câu trả lời (Class 7: output length). 0 = không cắt.
+    guardrails_max_answer_len: int = Field(default=4000, alias="GUARDRAILS_MAX_ANSWER_LEN")
+    # OpenAI Moderation API trên output (Class 7 slide 27). Tắt mặc định — local/ollama không có.
+    guardrails_moderation: bool = Field(default=False, alias="GUARDRAILS_MODERATION")
 
     # ── Monitoring — LangFuse (Buổi 7, Section 4) ────────────────────────────
     # Tắt mặc định: khi chưa điền LANGFUSE_* thật, tracing là no-op, không bắt

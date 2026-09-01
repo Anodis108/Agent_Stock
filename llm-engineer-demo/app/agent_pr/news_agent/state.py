@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any, TypedDict
 
+from langgraph.channels.untracked_value import UntrackedValue
 from langgraph.graph.message import add_messages
 
 from app.agent_pr.news_agent.schemas import Agent_Output
@@ -25,5 +26,6 @@ class NewsState(TypedDict, total=False):
     symbol: str                    # mã đã upper + đúng định dạng (normalize ghi)
     rows: list[dict[str, Any]]     # [{title, url, publish_time}, ...] từ CafeF News.ashx
     news: Agent_Output             # pack ghi từ tool fetch_cafef_news
+    error: str                     # fetch ghi khi CafeF lỗi — parse đưa vào source
     messages: Annotated[list, add_messages]
-    _trace_span: Any               # span cha LangFuse — Send phải gửi kèm (nhánh chỉ thấy payload)
+    _trace_span: Annotated[Any, UntrackedValue(object, guard=False)]  # span cha hub — Send phải copy

@@ -16,8 +16,10 @@ from pydantic import ValidationError
 from app.agent_pr.craw_agent.schemas import Agent_Output as PriceOut
 from app.agent_pr.news_agent.schemas import Agent_Output as NewsOut
 from app.agent_pr.supervisor_agent.nodes import (
+    _coordinate,
     _pending_gather,
     recall_memory,
+    rewrite_question,
     store_memory,
 )
 from app.agent_pr.supervisor_agent.schemas import AgentPlan, Agent_Input
@@ -128,12 +130,14 @@ def test_route_lookup_db_truoc():
         use_synth=True,
         reasoning="ghi tin",
     )
+    parent = object()
     sends = route_coordinator(
         {
             "next_wave": "db_lookup",
             "symbol": "FPT",
             "turn": "t1",
             "plan": plan,
+            "_trace_span": parent,
         }
     )
     assert isinstance(sends, list) and len(sends) == 1
@@ -141,6 +145,7 @@ def test_route_lookup_db_truoc():
     assert sends[0].node == "db_agent"
     assert sends[0].arg["mode"] == "read"
     assert sends[0].arg["candidate_news"] == []
+    assert sends[0].arg["_trace_span"] is parent
 
 
 def test_route_db_write_kem_candidate_sau_news():
@@ -168,11 +173,14 @@ def test_route_db_write_kem_candidate_sau_news():
             articles=[NewsItem(title="Tin A", url="https://cafef.vn/a.chn")],
         ),
     }
+    parent = object()
+    state["_trace_span"] = parent
     sends = route_coordinator(state)
     assert isinstance(sends, list) and len(sends) == 1
     assert isinstance(sends[0], Send)
     assert sends[0].node == "db_agent"
     assert sends[0].arg["mode"] == "write"
+    assert sends[0].arg["_trace_span"] is parent
     assert sends[0].arg["candidate_news"] == [
         {"title": "Tin A", "url": "https://cafef.vn/a.chn"}
     ]
@@ -216,6 +224,54 @@ def test_recall_khong_user_van_ghi_history():
     assert out["history"] == [{"role": "user", "content": "giá HPG"}]
 
 
+def test_rewrite_offline_giu_nguyen():
+    """Pytest / không key: không gọi LLM, rewritten = câu gốc."""
+    out = rewrite_question({"question": "HPG sao rồi", "turn": "t1"})
+    assert out["rewritten_question"] == "HPG sao rồi"
+    assert "trace" not in out
+
+
+def test_coordinator_thieu_cau_khong_raise():
+    out = _coordinate({"question": "", "symbol": "", "trace": []})
+    assert out["next_wave"] == "done"
+    assert "Lỗi" in out["draft"].answer
+
+
+def test_rewrite_llm_viet_lai(monkeypatch):
+    from app.agent_pr.supervisor_agent import nodes as n
+
+    class _Parsed:
+        query = "Giá và tin mới nhất của HPG?"
+        symbol = "HPG"
+
+    monkeypatch.setattr(n, "use_offline_tools", lambda: False)
+    monkeypatch.setattr(n, "chat_parsed", lambda *a, **k: _Parsed())
+    out = rewrite_question({"question": "HPG sao rồi", "trace": []})
+    assert out["rewritten_question"] == "Giá và tin mới nhất của HPG?"
+    assert out["symbol"] == "HPG"
+    assert out["trace"][-1].startswith("Rewrite:")
+
+
+def test_recall_dung_cau_rewrite(monkeypatch):
+    from app.agent_pr.supervisor_agent import nodes as n
+
+    seen: list[str] = []
+    monkeypatch.setattr(
+        n.memory,
+        "recall_long_term",
+        lambda uid, q, k=3: seen.append(q) or ["theo dõi HPG"],
+    )
+    out = recall_memory(
+        {
+            "question": "nó sao rồi",
+            "rewritten_question": "Giá HPG hôm nay?",
+            "user_id": "u1",
+        }
+    )
+    assert seen == ["Giá HPG hôm nay?"]
+    assert out["history"][0]["content"] == "nó sao rồi"
+
+
 def test_recall_co_user(monkeypatch):
     from app.agent_pr.supervisor_agent import nodes as n
 
@@ -232,8 +288,12 @@ def test_store_bo_qua_khi_khong_user():
 def test_store_luu_fact(monkeypatch):
     from app.agent_pr.supervisor_agent import nodes as n
 
+    class _Parsed:
+        worth_saving = True
+        fact = "User theo dõi HPG."
+
     saved: list[tuple[str, str]] = []
-    monkeypatch.setattr(n, "chat", lambda *a, **k: "User theo dõi HPG.")
+    monkeypatch.setattr(n, "chat_parsed", lambda *a, **k: _Parsed())
     monkeypatch.setattr(
         n.memory, "save_to_long_term", lambda uid, fact: saved.append((uid, fact))
     )
@@ -266,10 +326,10 @@ def test_thread_id_bat_buoc():
     """Giống /assistant: thiếu hoặc chỉ khoảng trắng → không nhận request."""
     with pytest.raises(ValidationError):
         Agent_Input(symbol="HPG")
-    from app.agent_pr.supervisor_agent.graph import _invoke_args
+    from app.agent_pr.supervisor_agent.graph import run_supervisor
 
     with pytest.raises(ValueError, match="thread_id"):
-        _invoke_args(Agent_Input(symbol="HPG", thread_id="   "))
+        run_supervisor(Agent_Input(symbol="HPG", thread_id="   "))
 
 
 def test_interrupt_before_hitl_commit_giong_m2():

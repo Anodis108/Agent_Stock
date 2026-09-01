@@ -1,0 +1,32 @@
+---
+description: ChatOpenAI nằm cạnh agent; app/llm chỉ native SDK; code ngắn dễ đọc
+alwaysApply: true
+---
+
+# LLM — native vs ChatOpenAI
+
+`app/llm` chỉ native OpenAI SDK (`completion.chat`, `get_client`). **Không** thêm file LangChain vào `app/llm`.
+
+Cần `bind_tools` / ToolNode → viết ChatOpenAI **cạnh agent** (`app/agent_pr/_llm.py`), không extract ra thư mục dùng chung.
+
+Text (rewrite, eval sentiment, synth grounded, compact, memory) → `completion.chat_parsed` (Bài 1 structured + Bài 5 citations). ReAct / coordinator plan → `invoke_with_tools` (function calling, không parse free-text).
+
+## Code ngắn
+
+Ít hàm phụ, ít abstraction. Một vòng retry đọc được từ trên xuống. Comment nói **vì sao**, không kể từng dòng.
+
+```python
+# ❌ BAD — file mới app/llm/langchain_chat.py, lru_cache, keys[0]
+@lru_cache
+def base_llm():
+    return ChatOpenAI(api_key=settings.api_keys[0])
+
+# ✅ GOOD — agent_pr/_llm.py, get_client() mỗi lần (xoay key + Ollama/vLLM)
+def base_llm(client=None):
+    client = client or get_client()
+    return ChatOpenAI(api_key=client.api_key, max_retries=0, ...)
+```
+
+- Không `@lru_cache` trên ChatOpenAI: cache kẹt key đầu.
+- `max_retries=0` trên ChatOpenAI; 429 thì `mark_current_key_limited` rồi thử key khác.
+- Không hardcode `settings.api_keys[0]`.

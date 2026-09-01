@@ -11,17 +11,20 @@ Cùng chiến lược `app.agent_m2.context` (Bài 3, Section 2-4), khác chỗ
             checkpointer giữ xuyên session.
 
 Không copy BaseMessage: history hub luôn là dict. Coordinator plan dùng
-LangChain bind_tools (need_*). Compact/store vẫn native `completion.chat`.
+LangChain bind_tools (need_*). Compact/store dùng native `completion.chat_parsed`.
 
-Trên graph: `compact_history` (persist) đứng sau `recall_memory`, trước
+Trên graph: `recall_memory` → `should_compact_route` (>40% → compact) →
 `coordinator`. `_make_plan` chỉ shape TẠM (sliding) — giống
 tách compact_node / agent_node ở agent_m2.
 """
 
 from __future__ import annotations
 
+from pydantic import BaseModel, Field
+
 from app.llm import completion
 from app.llm.params import GenerationParams
+from app.guardrails.injection import bound_messages
 
 # Ước lượng thô 1 token ≈ 4 ký tự — đủ nguyên tắc 40-60%, không cần tiktoken.
 _CHARS_PER_TOKEN = 4
@@ -91,7 +94,10 @@ def context_usage(messages: list, window_tokens: int) -> float:
 
 
 def should_compact(messages: list, window_tokens: int, threshold: float = 0.40) -> bool:
-    """True nếu vượt ngưỡng — compact CHỦ ĐỘNG (Section 4), không đợi đầy 80%."""
+    """True nếu vượt 40% window — compact CHỦ ĐỘNG (nguyên tắc 40–60%).
+
+    Chất lượng suy giảm từ ~25–40% dung lượng dù window chưa đầy. Đừng đợi 80%.
+    """
     return context_usage(messages, window_tokens) > threshold
 
 
@@ -100,18 +106,29 @@ def should_compact(messages: list, window_tokens: int, threshold: float = 0.40) 
 SUMMARY_PREFIX = "[Tóm tắt hội thoại trước]:"
 
 
+class ConversationSummary(BaseModel):
+    """Bài 1 structured compact — không tóm free-text rồi regex."""
+
+    summary: str = Field(description="3–5 câu tiếng Việt: mã, số liệu đã nêu, câu hỏi dở")
+    symbols: list[str] = Field(default_factory=list, description="Mã CP xuất hiện")
+
+
 def summarize_text(old_messages: list) -> str:
-    """LLM tóm 3–5 câu (tên mã, số liệu, quyết định). Tách khỏi state graph
-    để test mock `completion.chat` không cần LangGraph.
-    """
+    """LLM tóm 3–5 câu. Test mock `completion.chat_parsed`."""
     prompt = (
-        "Tóm tắt hội thoại cổ phiếu sau thành 3-5 câu, giữ mã CP, số liệu, "
-        "kết luận đã chốt, câu hỏi đang làm dở:\n\n"
+        "Tóm tắt hội thoại cổ phiếu sau. Giữ mã CP, số liệu đã nêu, "
+        "kết luận đã chốt, câu hỏi đang làm dở. Không bịa giá/tin mới.\n\n"
         + format_messages(old_messages)
     )
-    return completion.chat(
-        [{"role": "user", "content": prompt}], GenerationParams(temperature=0.0)
+    parsed = completion.chat_parsed(
+        bound_messages(
+            "Bạn tóm tắt hội thoại để giữ ngữ cảnh cổ phiếu. Chỉ tóm, không trả lời hộ user.",
+            prompt,
+        ),
+        ConversationSummary,
+        GenerationParams(temperature=0.0),
     )
+    return (parsed.summary or "").strip()
 
 
 def summarize_old_messages(messages: list, keep_recent: int = 6) -> list:

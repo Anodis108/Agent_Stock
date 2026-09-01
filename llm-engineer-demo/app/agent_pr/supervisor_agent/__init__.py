@@ -4,7 +4,6 @@ from app.agent_pr.supervisor_agent.graph import (
     last_supervisor_output,
     resume_supervisor,
     run_supervisor,
-    run_supervisor_stream,
 )
 from app.agent_pr.supervisor_agent.schemas import Agent_Input, Agent_Output, AgentPlan
 
@@ -15,5 +14,4 @@ __all__ = [
     "last_supervisor_output",
     "resume_supervisor",
     "run_supervisor",
-    "run_supervisor_stream",
 ]

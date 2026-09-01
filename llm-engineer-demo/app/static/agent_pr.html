@@ -399,6 +399,19 @@ const sessionListEl = document.getElementById("session-list");
 const newThreadBtn = document.getElementById("new-thread");
 const appEl = document.getElementById("app");
 
+function httpErrorMessage(body, status) {
+  const reason = body && body.reason;
+  const map = {
+    prompt_injection_detected: "Câu hỏi bị chặn (nghi ngờ prompt injection).",
+    prompt_injection_detected_llm: "Câu hỏi bị chặn (nghi ngờ prompt injection).",
+    out_of_scope: "Chỉ hỗ trợ câu hỏi cổ phiếu niêm yết Việt Nam.",
+    unsafe_content: "Câu hỏi chứa nội dung không an toàn.",
+  };
+  if (reason) return map[reason] || ("Bị chặn bởi guardrails: " + reason);
+  if (typeof (body && body.detail) === "string") return body.detail;
+  return "HTTP " + status;
+}
+
 function storageId(key) {
   let v = localStorage.getItem(key);
   if (!v) {
@@ -580,9 +593,11 @@ function renderTrace(bubble, msg) {
     bubble.appendChild(meta);
   }
   renderSteps(bubble, msg.steps, { live: false });
+  if (msg.steps && msg.steps.length) return;
   if (!msg.trace || !msg.trace.length) return;
   const details = document.createElement("details");
   details.className = "trace";
+  details.open = true;
   const summary = document.createElement("summary");
   summary.textContent = `${msg.trace.length} dòng nhật ký hub`;
   details.appendChild(summary);
@@ -852,29 +867,6 @@ async function runEvaluation(msg, btn) {
   renderAll();
 }
 
-async function readSse(response, onEvent) {
-  if (!response.body) throw new Error("Trình duyệt không đọc được stream");
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buf = "";
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buf += decoder.decode(value, { stream: true });
-    const parts = buf.split("\n\n");
-    buf = parts.pop() || "";
-    for (const part of parts) {
-      const line = part.split("\n").find((l) => l.startsWith("data: "));
-      if (!line) continue;
-      onEvent(JSON.parse(line.slice(6)));
-    }
-  }
-  if (buf.trim()) {
-    const line = buf.split("\n").find((l) => l.startsWith("data: "));
-    if (line) onEvent(JSON.parse(line.slice(6)));
-  }
-}
-
 function applyAskBody(body, question) {
   if (body.thread_id && body.thread_id !== threadId) {
     const s = currentSession();
@@ -891,7 +883,7 @@ function applyAskBody(body, question) {
     trace: body.trace,
     used: body.used_agents,
     reasoning: body.plan_reasoning,
-    steps: body.steps || [],
+    steps: (body.trace || []).map((line) => ({ label: line })),
     canEvaluate: true,
     pendingWrites: body.pending_writes || [],
   };
@@ -914,49 +906,19 @@ async function sendQuestion() {
   bubble.textContent = "";
   const typing = document.createElement("span");
   typing.className = "typing";
-  typing.textContent = "Hub đang chạy — từng bước hiện bên dưới";
+  typing.textContent = "Hub đang chạy…";
   bubble.appendChild(typing);
-  const liveWrap = document.createElement("div");
-  bubble.appendChild(liveWrap);
-  const liveSteps = [];
-  const paintLive = () => {
-    liveWrap.replaceChildren();
-    renderSteps(liveWrap, liveSteps, { live: true });
-    scrollToBottom();
-  };
   scrollToBottom();
 
   try {
-    const res = await fetch("/pr/ask/stream", {
+    const res = await fetch("/pr/ask", {
       method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(memoryPayload(question)),
     });
-    if (!res.ok) {
-      let detail = `HTTP ${res.status}`;
-      try {
-        const errBody = await res.json();
-        detail = errBody.detail || detail;
-      } catch {
-        /* body không phải JSON */
-      }
-      throw new Error(detail);
-    }
-
-    let doneBody = null;
-    await readSse(res, (ev) => {
-      if (ev.type === "step") {
-        liveSteps.push({ node: ev.node, label: ev.label, detail: ev.detail });
-        paintLive();
-      } else if (ev.type === "error") {
-        throw new Error(ev.message || "Lỗi stream");
-      } else if (ev.type === "done" || ev.type === "hitl") {
-        doneBody = ev;
-      }
-    });
-    if (!doneBody) throw new Error("Stream kết thúc nhưng chưa có câu trả lời");
-    doneBody.steps = liveSteps;
-    const botMsg = applyAskBody(doneBody, question);
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(httpErrorMessage(body, res.status));
+    const botMsg = applyAskBody(body, question);
     touchSession((s) => s.messages.push(botMsg));
     renderAll();
   } catch (err) {

@@ -5,11 +5,7 @@ Tách khỏi /multi-agent và /ask của vn-stock-swarm.
 
 from __future__ import annotations
 
-import json
-from collections.abc import AsyncIterator
-
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import StreamingResponse
 
 from app.agent_pr.craw_agent import Agent_Input as CrawlIn
 from app.agent_pr.craw_agent import run_crawl
@@ -20,8 +16,8 @@ from app.agent_pr.supervisor_agent import (
     last_supervisor_output,
     resume_supervisor,
     run_supervisor,
-    run_supervisor_stream,
 )
+from app.guardrails.checks import GuardrailViolation
 from app.api.schemas import (
     AskEvaluateResponse,
     AskRequest,
@@ -38,7 +34,7 @@ router = APIRouter(prefix="/pr", tags=["agent-pr"])
 @router.post("/price", response_model=PriceResponse)
 async def fetch_price(req: PriceRequest) -> PriceResponse:
     try:
-        quote = await run_crawl(CrawlIn(symbol=req.symbol))
+        quote = run_crawl(CrawlIn(symbol=req.symbol))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
@@ -98,9 +94,11 @@ def _ask_response(out: SuperOut, *, status: str = "done") -> AskResponse:
 
 @router.post("/ask", response_model=AskResponse)
 async def ask(req: AskRequest) -> AskResponse:
-    """Hub LLM chọn worker, rồi chạy đúng agent đó — đợi xong mới trả (không stepper)."""
+    """Hub LLM chọn worker — đợi xong mới trả. UI hiện `trace` (quy trình đầy đủ)."""
     try:
-        out = await run_supervisor(_ask_input(req))
+        out = run_supervisor(_ask_input(req))
+    except GuardrailViolation:
+        raise
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
@@ -114,7 +112,7 @@ async def ask(req: AskRequest) -> AskResponse:
 async def approve_db_write(req: DbApproveRequest) -> DbApproveResponse:
     """HITL: resume interrupt_before hitl_commit — COMMIT hoặc từ chối."""
     try:
-        out = await resume_supervisor(
+        out = resume_supervisor(
             req.thread_id,
             approve=req.approve,
             pending_id=req.pending_id,
@@ -135,43 +133,6 @@ async def approve_db_write(req: DbApproveRequest) -> DbApproveResponse:
     )
 
 
-@router.post("/ask/stream")
-async def ask_stream(req: AskRequest) -> StreamingResponse:
-    """Cùng graph `/ask` nhưng SSE: mỗi node xong → 1 `step`, cuối cùng `done`.
-
-    UI mặc định (agent_pr.html) dùng endpoint này để hiện stepper khi hub chạy.
-    `/ask` giữ nguyên cho curl / evaluate / client không stream.
-    """
-
-    async def events() -> AsyncIterator[str]:
-        try:
-            async for ev in run_supervisor_stream(_ask_input(req)):
-                if ev.get("type") == "done":
-                    payload = {"type": "done", **_ask_response(ev["output"]).model_dump()}
-                elif ev.get("type") == "hitl":
-                    payload = {
-                        "type": "hitl",
-                        **_ask_response(ev["output"], status="pending_approval").model_dump(),
-                    }
-                else:
-                    payload = ev
-                yield f"data: {json.dumps(payload, ensure_ascii=False, default=str)}\n\n"
-        except ValueError as exc:
-            yield f"data: {json.dumps({'type': 'error', 'message': str(exc)}, ensure_ascii=False)}\n\n"
-        except Exception as exc:
-            yield f"data: {json.dumps({'type': 'error', 'message': str(exc)}, ensure_ascii=False)}\n\n"
-
-    return StreamingResponse(
-        events(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
-    )
-
-
 @router.post("/ask/evaluate", response_model=AskEvaluateResponse)
 async def ask_evaluate(req: AskRequest) -> AskEvaluateResponse:
     """Chấm lượt ask đã có trên thread (không chạy graph lại). Chưa có output → chạy ask.
@@ -180,12 +141,14 @@ async def ask_evaluate(req: AskRequest) -> AskEvaluateResponse:
     đúng câu user vừa thấy. Không khớp / chưa ask → run_supervisor rồi chấm.
     """
     try:
-        cached = await last_supervisor_output(req.thread_id)
+        cached = last_supervisor_output(req.thread_id)
         q = (req.question or "").strip()
         if cached is not None and (not q or q == (cached.question or "").strip()):
             out = cached
         else:
-            out = await run_supervisor(_ask_input(req))
+            out = run_supervisor(_ask_input(req))
+    except GuardrailViolation:
+        raise
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:

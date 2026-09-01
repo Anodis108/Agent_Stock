@@ -10,7 +10,6 @@ import sys
 import pytest
 
 from app.agent_pr.supervisor_agent import Agent_Input, AgentPlan, run_supervisor
-from app.agent_pr.supervisor_agent.graph import _step_event
 from app.agent_pr.supervisor_agent.nodes import _sanitize_plan
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -61,20 +60,8 @@ def test_sanitize_giu_ma_user_gui():
     assert plan.symbol == "HPG"
 
 
-def test_step_event_lay_dong_trace_cuoi():
-    ev = _step_event(
-        "coordinator",
-        {"next_wave": "gather", "trace": ["cũ", "Coordinator LLM: HPG · phân tích"]},
-    )
-    assert ev["type"] == "step"
-    assert ev["node"] == "coordinator"
-    assert "Coordinator" in ev["label"]
-    assert ev["detail"] == "Coordinator LLM: HPG · phân tích"
-
-
-@pytest.mark.asyncio
-async def test_hpg_online():
-    out = await run_supervisor(
+def test_hpg_online():
+    out = run_supervisor(
         Agent_Input(symbol="HPG", thread_id="test-hpg-online", skip_hitl=True)
     )
     print()
@@ -94,8 +81,7 @@ async def test_hpg_online():
     assert "giảm" in out.answer or "tăng" in out.answer
 
 
-@pytest.mark.asyncio
-async def test_chi_gia_khong_goi_news(monkeypatch):
+def test_chi_gia_khong_goi_news(monkeypatch):
     """Plan tắt news/eval/db → graph không chạy các worker đó."""
 
     def fake_plan(question: str, hint: str, **_kwargs) -> AgentPlan:
@@ -112,7 +98,7 @@ async def test_chi_gia_khong_goi_news(monkeypatch):
     monkeypatch.setattr(
         "app.agent_pr.supervisor_agent.nodes._make_plan", fake_plan
     )
-    out = await run_supervisor(
+    out = run_supervisor(
         Agent_Input(
             symbol="HPG",
             question="giá HPG hôm nay bao nhiêu",
@@ -132,7 +118,18 @@ async def test_chi_gia_khong_goi_news(monkeypatch):
     assert "HPG" in out.answer
 
 
-@pytest.mark.asyncio
-async def test_ma_sai():
-    with pytest.raises(ValueError):
-        await run_supervisor(Agent_Input(symbol="HP", thread_id="test-ma-sai"))
+def test_ma_sai():
+    """Không regex-chặn mã — coordinator nhận HP, agent/tool tự xử lý."""
+    plan = _sanitize_plan(
+        AgentPlan(
+            symbol="HP",
+            use_price=True,
+            use_news=False,
+            use_db=False,
+            use_eval=False,
+            use_synth=True,
+            reasoning="user gửi HP",
+        ),
+        "",
+    )
+    assert plan.symbol == "HP"

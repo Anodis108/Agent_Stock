@@ -8,7 +8,7 @@ thu báo cáo, trả user. Worker không nói với nhau.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.agent_pr.craw_agent.schemas import Agent_Output as PriceOut
 from app.agent_pr.db_agent.schemas import Agent_Output as DbOut
@@ -24,6 +24,25 @@ class Agent_Input(BaseModel):
     thread_id: str = Field(min_length=1, description="Short-term: id phiên. Client bắt buộc gửi.")
     user_id: str = ""                 # long-term: trống → không recall/store
     skip_hitl: bool = False           # True: pytest — không interrupt_before hitl_commit
+
+
+class RewrittenQuery(BaseModel):
+    """Bài 1 structured output — rewrite không parse free-text."""
+
+    query: str = Field(description="Một câu đã viết lại, tiếng Việt, giữ mã CP nếu có")
+    symbol: str = Field(default="", description="Mã CP nếu nhận ra (HPG); để trống nếu không chắc")
+
+    @field_validator("symbol")
+    @classmethod
+    def _upper_symbol(cls, v: str) -> str:
+        return (v or "").strip().upper()
+
+
+class MemoryFact(BaseModel):
+    """Trích 1 sự thật dài hạn — schema ép, không regex 'NONE'."""
+
+    worth_saving: bool = Field(description="True nếu đáng nhớ xuyên phiên")
+    fact: str = Field(default="", description="Một câu; rỗng nếu không đáng nhớ")
 
 
 class AgentPlan(BaseModel):

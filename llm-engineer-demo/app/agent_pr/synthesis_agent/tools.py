@@ -17,21 +17,23 @@ def compose_user_answer(
     eval_json: str = "",
     n_history: int = 0,
 ) -> str:
-    """Ghép câu trả lời tiếng Việt từ JSON giá + tin + eval (không crawl, không chấm lại)."""
+    """Bắt buộc khi ghép câu: tiếng Việt từ JSON giá + tin + eval. Không crawl, không bịa tin/số."""
+    try:
+        def _load(cls, raw: str):
+            text = (raw or "").strip()
+            if not text or text == "{}":
+                return None
+            return cls.model_validate_json(text)
 
-    def _load(cls, raw: str):
-        text = (raw or "").strip()
-        if not text or text == "{}":
-            return None
-        return cls.model_validate_json(text)
-
-    st = {
-        "price": _load(PriceOut, price_json),
-        "news": _load(NewsOut, news_json),
-        "eval": _load(EvalOut, eval_json),
-        "n_history": int(n_history or 0),
-    }
-    return compose(st)["result"].answer
+        st = {
+            "price": _load(PriceOut, price_json),
+            "news": _load(NewsOut, news_json),
+            "eval": _load(EvalOut, eval_json),
+            "n_history": int(n_history or 0),
+        }
+        return compose(st)["result"].answer
+    except Exception as exc:
+        return f"Lỗi ghép câu: {exc}. Thử lại với JSON đủ giá/tin/eval."
 
 
 @tool

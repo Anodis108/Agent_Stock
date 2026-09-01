@@ -13,7 +13,6 @@ from pathlib import Path
 
 from app.agent_pr.db_agent.schemas import Agent_Output, PendingWrite, PriceRow, SavedNews
 from app.agent_pr.db_agent.state import DBState
-from app.agent_pr.symbol import normalize_symbol
 from app.monitoring.tracing import trace_step
 
 _DB_PATH = Path(__file__).resolve().parents[3] / "data" / "agent_pr.sqlite3"
@@ -96,7 +95,7 @@ def _ensure_unique_keys(conn: sqlite3.Connection) -> None:
 
 def normalize(state: DBState) -> dict:
     with trace_step(state.get("_trace_span"), "db_normalize", input=state.get("symbol", "")) as t:
-        symbol = normalize_symbol(str(state.get("symbol") or ""))
+        symbol = str(state.get("symbol") or "").strip().upper()
         t["output"] = symbol
         return {"symbol": symbol}
 

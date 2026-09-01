@@ -37,17 +37,15 @@ def _eval(*, n_pos: int = 0, n_neg: int = 0, match: bool | None = None) -> EvalO
     )
 
 
-@pytest.mark.asyncio
-async def test_neu_chieu_va_phan_tram():
-    out = await run_synthesis(Agent_Input(price=_price(-4.2), news=_news(), eval=_eval()))
+def test_neu_chieu_va_phan_tram():
+    out = run_synthesis(Agent_Input(price=_price(-4.2), news=_news(), eval=_eval()))
     print(out.answer)
     assert "giảm" in out.answer and "4.2" in out.answer
     assert "chưa tìm thấy tin" in out.answer
 
 
-@pytest.mark.asyncio
-async def test_canh_bao_lech():
-    out = await run_synthesis(
+def test_canh_bao_lech():
+    out = run_synthesis(
         Agent_Input(
             price=_price(-4.2),
             news=_news("HPG báo lợi nhuận tăng trưởng"),
@@ -57,9 +55,34 @@ async def test_canh_bao_lech():
     assert "KHÔNG khớp" in out.answer
 
 
-@pytest.mark.asyncio
-async def test_co_lich_su_db():
-    out = await run_synthesis(
+def test_llm_grounded_answer(monkeypatch):
+    from app.agent_pr.synthesis_agent import nodes as n
+    from app.agent_pr.synthesis_agent.schemas import Citation, StockAnswer
+
+    monkeypatch.setattr(n, "use_offline_tools", lambda: False)
+    monkeypatch.setattr(
+        n,
+        "chat_parsed",
+        lambda *a, **k: StockAnswer(
+            answer="HPG giảm 4.2% (grounded).",
+            confidence=0.9,
+            citations=[Citation(source="price", quote="pct -4.2")],
+        ),
+    )
+    out = n.compose(
+        {
+            "price": _price(-4.2),
+            "news": _news(),
+            "eval": _eval(),
+        }
+    )["result"]
+    assert out.answer == "HPG giảm 4.2% (grounded)."
+    assert out.confidence == 0.9
+    assert out.citations[0].source == "price"
+
+
+def test_co_lich_su_db():
+    out = run_synthesis(
         Agent_Input(price=_price(1.5), news=_news(), eval=_eval(), n_history=5)
     )
     assert "5 phiên" in out.answer

@@ -64,13 +64,14 @@ _TASK_SUCCESS_SYSTEM = """Bạn là giám khảo đánh giá Hierarchical Coordi
 
 Chỉ chấm KẾT QUẢ CUỐI so với nhiệm vụ — không quan tâm hub giao worker nào
 (điều đó chấm ở trajectory). Rubric tuyệt đối: không thưởng câu dài, không
-so sánh với câu trả lời khác.
+so sánh với câu trả lời khác (cùng nguyên tắc LLM-as-Judge Module I).
 
 Đạt mục tiêu khi câu trả lời:
 - nêu đúng mã được hỏi
 - khớp phạm vi nhiệm vụ (chỉ hỏi giá thì không bắt buộc tin; hỏi tin thì không bắt buộc %)
-- không bịa mã khác, không bịa số liệu không có trong kết quả agent
-- câu lưu/ghi tin: đạt nếu đúng mã + đã soạn lệnh chờ HITL (chưa COMMIT là đúng thiết kế, không phải thiếu)"""
+- grounded: không bịa mã khác, không bịa số liệu không có trong kết quả agent
+- câu lưu/ghi tin: đạt nếu đúng mã + đã soạn lệnh chờ HITL (chưa COMMIT là đúng thiết kế, không phải thiếu)
+- tiếng Việt, rõ; thiếu dữ liệu mà agent nói thiếu vẫn đạt nếu đúng phạm vi"""
 
 _SUCCESS_CRITERIA = (
     "Câu trả lời tiếng Việt, đúng mã, đúng phạm vi câu hỏi, không bịa số liệu."

@@ -1,7 +1,15 @@
-"""Tool retrieval cho từng agent_pr — cùng ý agent_m2, catalog truyền vào.
+"""Tool retrieval từng agent_pr — cùng ý agent_m2 Bài 4, catalog *truyền vào*.
 
-Không MCP. Index theo tên tool (cache). Không embed được → trả catalog[:k]
-(test/offline vẫn bind được tool).
+agent_m2 index TOÀN BỘ tool (nội bộ + MCP) rồi lấy top-k. Ở đây mỗi worker
+chỉ được thấy tool của mình: PriceAgent không bind `fetch_cafef_news`.
+`select_tools(query, catalog)` embed mô tả trong `catalog`, không đụng catalog
+agent khác.
+
+Không MCP (không wellness server). Không Hierarchical Grouping — catalog
+đã là 1 domain, grouping sẽ thừa.
+
+Không embed được (test/offline) → `catalog[:k]` để bind_tools vẫn có tool.
+`reset_cache` xoá index giữa các test (đổi mô tả tool / mock embedding).
 """
 
 from __future__ import annotations
@@ -14,6 +22,7 @@ _index: dict[tuple[str, ...], list[tuple[str, list[float]]]] = {}
 
 
 def _desc(t) -> str:
+    # Description viết theo câu user hỏi — chất lượng retrieval phụ thuộc vào đây.
     return f"{getattr(t, 'name', '')}: {getattr(t, 'description', '') or ''}"
 
 
@@ -58,4 +67,5 @@ def select_tools(query: str, catalog: list, k: int | None = None) -> list:
 
 
 def reset_cache() -> None:
+    """Test — xoá index để mock lại embedding giữa các case."""
     _index.clear()

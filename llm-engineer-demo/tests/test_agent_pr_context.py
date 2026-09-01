@@ -44,7 +44,11 @@ def test_should_compact_triggers_above_threshold():
 
 
 def test_summarize_old_messages_replaces_old_keeps_recent(monkeypatch):
-    monkeypatch.setattr(context.completion, "chat", lambda messages, params: "TÓM TẮT")
+    class _S:
+        summary = "TÓM TẮT"
+        symbols = []
+
+    monkeypatch.setattr(context.completion, "chat_parsed", lambda *a, **k: _S())
     msgs = [{"role": "user", "content": f"m{i}"} for i in range(20)]
     out = context.summarize_old_messages(msgs, keep_recent=6)
     assert out[0]["role"] == "system"
@@ -55,7 +59,7 @@ def test_summarize_old_messages_replaces_old_keeps_recent(monkeypatch):
 
 def test_summarize_noop_when_short(monkeypatch):
     called = {"n": 0}
-    monkeypatch.setattr(context.completion, "chat", lambda *a, **k: called.update(n=1))
+    monkeypatch.setattr(context.completion, "chat_parsed", lambda *a, **k: called.update(n=1))
     msgs = [{"role": "user", "content": "a"}]
     assert context.summarize_old_messages(msgs, keep_recent=6) == msgs
     assert called["n"] == 0
@@ -89,8 +93,12 @@ def test_append_trim_van_noi_list_thuong():
 
 
 def test_compact_history_skip_khi_ngan():
-    out = nodes.compact_history({"history": [{"role": "user", "content": "giá HPG"}]})
-    assert out == {}
+    assert nodes.should_compact_route({"history": [{"role": "user", "content": "giá HPG"}]}) == "coordinator"
+
+
+def test_should_compact_route_khi_dai(monkeypatch):
+    monkeypatch.setattr(nodes.context, "should_compact", lambda *a, **k: True)
+    assert nodes.should_compact_route({"history": [{"role": "user", "content": "x"}]}) == "compact_history"
 
 
 def test_compact_history_persist_set_history(monkeypatch):

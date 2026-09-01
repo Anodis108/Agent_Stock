@@ -17,10 +17,9 @@ import pytest
 from app.agent_pr.craw_agent import Agent_Input, run_crawl
 
 
-@pytest.mark.asyncio
-async def test_hpg_online():
+def test_hpg_online():
     """HPG — graph chạy hết, in 6 field Agent_Output."""
-    q = await run_crawl(Agent_Input(symbol="HPG"))
+    q = run_crawl(Agent_Input(symbol="HPG"))
     print()
     print("symbol      :", q.symbol)
     print("last (VND)  :", q.last)
@@ -36,8 +35,8 @@ async def test_hpg_online():
     assert q.source == "vnstock"
 
 
-@pytest.mark.asyncio
-async def test_ma_sai():
-    """Sai định dạng mã — normalize raise trước khi gọi vnstock."""
-    with pytest.raises(ValueError):
-        await run_crawl(Agent_Input(symbol="HP"))
+def test_ma_sai():
+    """Không chặn regex — chỉ upper/strip."""
+    from app.agent_pr.craw_agent.nodes import normalize
+
+    assert normalize({"symbol": "hp"})["symbol"] == "HP"

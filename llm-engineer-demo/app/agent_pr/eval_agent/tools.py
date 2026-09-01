@@ -8,8 +8,8 @@ from langchain_core.tools import tool
 
 from app.agent_pr.craw_agent.schemas import Agent_Output as PriceOut
 from app.agent_pr.eval_agent.nodes import _sentiment, score
+from app.agent_pr.eval_agent.schemas import Agent_Output
 from app.agent_pr.news_agent.schemas import Agent_Output as NewsOut
-from app.agent_pr.news_agent.schemas import NewsItem
 
 
 @tool
@@ -20,12 +20,19 @@ def classify_headline(title: str) -> str:
 
 @tool
 def score_price_vs_news(price_json: str, news_json: str) -> str:
-    """Chấm cả gói giá + tin (JSON Agent_Output craw/news) → báo cáo eval JSON."""
-    price = PriceOut.model_validate_json(price_json)
-    raw = json.loads(news_json)
-    news = NewsOut.model_validate(raw)
-    report = score({"price": price, "news": news})["report"]
-    return report.model_dump_json()
+    """Bắt buộc khi chấm: JSON giá + tin (Agent_Output craw/news) → báo cáo eval. Không sửa số, không bịa sentiment."""
+    try:
+        price = PriceOut.model_validate_json(price_json) if (price_json or "").strip() not in ("", "{}") else None
+        news = None
+        if (news_json or "").strip() not in ("", "{}"):
+            news = NewsOut.model_validate(json.loads(news_json))
+        report = score({"price": price, "news": news})["report"]
+        return report.model_dump_json()
+    except Exception as exc:
+        return Agent_Output(
+            symbol="",
+            detail=f"Lỗi chấm eval: {exc}. Kiểm tra JSON giá/tin rồi gọi lại.",
+        ).model_dump_json()
 
 
 @tool

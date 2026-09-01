@@ -19,10 +19,9 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 
-@pytest.mark.asyncio
-async def test_hpg_online():
+def test_hpg_online():
     """HPG — graph chạy hết, mỗi tin có title + url CafeF."""
-    out = await run_news(Agent_Input(symbol="HPG"))
+    out = run_news(Agent_Input(symbol="HPG"))
     print()
     print("symbol :", out.symbol)
     print("source :", out.source)
@@ -38,8 +37,8 @@ async def test_hpg_online():
     assert out.articles[0].url.startswith("https://cafef.vn/")
 
 
-@pytest.mark.asyncio
-async def test_ma_sai():
-    """Sai định dạng mã — normalize raise trước khi gọi CafeF."""
-    with pytest.raises(ValueError):
-        await run_news(Agent_Input(symbol="HP"))
+def test_ma_sai():
+    """Không chặn regex — chỉ upper/strip."""
+    from app.agent_pr.news_agent.nodes import normalize
+
+    assert normalize({"symbol": "hp"})["symbol"] == "HP"

@@ -102,9 +102,9 @@ curl -s -X POST http://localhost:8000/pr/ask \
   -d '{"question":"Tại sao HPG giảm?","thread_id":"sess-1","user_id":"alice"}'
 ```
 
-LangFuse (`MONITORING_ENABLED=true`): span cha `agent_pr_ask` + span con từng node
-(`coordinator`, `craw_*`, `news_*`, `db_*`, `eval_score`, `synth_compose`, `reply`).
-`POST /pr/price` → `agent_pr_price`.
+LangFuse (`MONITORING_ENABLED=true`): 2 span cha giống agent_m2 —
+`assistant_message` (`/pr/ask`) và `assistant_resume` (HITL). Worker là span con
+(`agent_pr_price` / `news` / `eval` / `db` / `synth` + `coordinator`, `craw_*`, …).
 
 Chấm chất lượng (LLM-as-judge, 2 chiều như `app/agent_m2/eval.py`):
 

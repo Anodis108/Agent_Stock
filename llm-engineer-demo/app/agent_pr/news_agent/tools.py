@@ -5,6 +5,7 @@ from __future__ import annotations
 from langchain_core.tools import tool
 
 from app.agent_pr.news_agent.nodes import fetch, normalize, parse
+from app.agent_pr.news_agent.schemas import Agent_Output
 
 
 @tool
@@ -15,11 +16,18 @@ def normalize_ticker(symbol: str) -> str:
 
 @tool
 def fetch_cafef_news(symbol: str) -> str:
-    """Lấy tin bài mới nhất trên trang mã CafeF (News.ashx, không chấm sentiment)."""
-    st = normalize({"symbol": symbol})
-    st.update(fetch(st))
-    st.update(parse(st))
-    return st["news"].model_dump_json()
+    """Bắt buộc khi cần tin: bài mới trên trang mã CafeF (News.ashx). Không chấm sentiment, không bịa tiêu đề."""
+    try:
+        st = normalize({"symbol": symbol})
+        st.update(fetch(st))
+        st.update(parse(st))
+        return st["news"].model_dump_json()
+    except Exception as exc:
+        return Agent_Output(
+            symbol=str(symbol or "").strip().upper(),
+            articles=[],
+            source=f"Lỗi CafeF: {exc}. Thử lại hoặc dùng tin đã lưu trong DB.",
+        ).model_dump_json()
 
 
 @tool

@@ -1,0 +1,29 @@
+---
+description: agent_pr — 4 thành phần, không raise trong graph, idempotency, compact 40–60%
+globs: app/agent_pr/**/*.py
+alwaysApply: false
+---
+
+# agent_pr — thiết kế agent
+
+Mọi agent (hub + 5 worker) đủ **4 thành phần**: LLM Brain, Tools, Memory, Planning Loop. Hub: `chat`/`bind_tools`, `need_*`, recall/store + checkpointer, coordinator loop. Worker: `agent_node`, catalog tool, `messages` (short-term), ReAct `agent ⇄ tools`.
+
+## Error handling — không crash graph
+
+Node/tool **không raise**. Trả text/JSON lỗi để model tự đọc (thử lại, hỏi user, đổi tool). HTTP `thread_id` vẫn validate ở cửa API.
+
+```python
+# ❌ BAD
+raise ValueError("Eval cần cả price và news")
+
+# ✅ GOOD
+return Agent_Output(symbol="", detail="Lỗi: Eval cần cả price và news. Gọi lại khi đủ dữ liệu.")
+```
+
+## Idempotency — side-effect
+
+Tool ghi/xoá/gửi nhận `idempotency_key` (trống thì backend tự hash payload). Gọi lại không nhân đôi: `stage_new_rows` dùng UNIQUE `(symbol, url/date)` + `INSERT OR IGNORE`. Đọc (vnstock, CafeF) không cần key.
+
+## Context rot — nguyên tắc 40–60%
+
+Compact **chủ động** khi `should_compact` > 40% window — đừng đợi đầy. `recall` → compact (nếu cần) → plan. History: `set_history` ghi đè; sliding window cắt `messages`. Worker invoke cũng cắt `agent_max_messages`.

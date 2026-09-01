@@ -30,32 +30,57 @@ def _news(*titles: str) -> NewsOut:
     return NewsOut(symbol="HPG", articles=[NewsItem(title=t) for t in titles])
 
 
-@pytest.mark.asyncio
-async def test_gia_giam_tin_xau_khop():
+def test_gia_giam_tin_xau_khop():
     """Sơ đồ 3d: −4.2% + xả hàng / giảm sàn → khớp."""
-    out = await run_eval(Agent_Input(price=_price(-4.2), news=_news("Khối ngoại xả hàng HPG", "HPG giảm sàn")))
+    out = run_eval(Agent_Input(price=_price(-4.2), news=_news("Khối ngoại xả hàng HPG", "HPG giảm sàn")))
     print("offline:", out.detail)
     assert out.negative_count == 2 and out.price_matches_news is True
 
 
-@pytest.mark.asyncio
-async def test_gia_giam_tin_tot_lech():
-    out = await run_eval(Agent_Input(price=_price(-4.2), news=_news("HPG báo lợi nhuận tăng trưởng mạnh")))
+def test_gia_giam_tin_tot_lech():
+    out = run_eval(Agent_Input(price=_price(-4.2), news=_news("HPG báo lợi nhuận tăng trưởng mạnh")))
     assert out.price_matches_news is False
 
 
-@pytest.mark.asyncio
-async def test_thieu_pct_chua_ro():
-    out = await run_eval(Agent_Input(price=_price(None), news=_news("Khối ngoại xả hàng HPG")))
+def test_eval_llm_sentiment(monkeypatch):
+    from app.agent_pr.eval_agent import nodes as n
+    from app.agent_pr.eval_agent.schemas import HeadlineBatch, ScoredItem
+
+    monkeypatch.setattr(n, "use_offline_tools", lambda: False)
+    monkeypatch.setattr(
+        n,
+        "chat_parsed",
+        lambda *a, **k: HeadlineBatch(
+            items=[ScoredItem(title="HPG họp ĐHĐCĐ", sentiment="negative")]
+        ),
+    )
+    out = n.score(
+        {
+            "price": _price(-2.0),
+            "news": _news("HPG họp ĐHĐCĐ"),
+        }
+    )["report"]
+    assert out.negative_count == 1
+    assert out.price_matches_news is True
+
+
+def test_eval_thieu_du_lieu_khong_raise():
+    from app.agent_pr.eval_agent.nodes import score
+
+    out = score({"price": None, "news": None})["report"]
+    assert "Lỗi" in out.detail
+
+
+def test_thieu_pct_chua_ro():
+    out = run_eval(Agent_Input(price=_price(None), news=_news("Khối ngoại xả hàng HPG")))
     assert out.price_matches_news is None
 
 
-@pytest.mark.asyncio
-async def test_hpg_online():
+def test_hpg_online():
     """CafeF thật: nhiều tin neutral vì từ khoá hẹp — in để đối chiếu."""
-    price = await run_crawl(CrawlIn(symbol="HPG"))
-    news = await run_news(NewsIn(symbol="HPG"))
-    out = await run_eval(Agent_Input(price=price, news=news))
+    price = run_crawl(CrawlIn(symbol="HPG"))
+    news = run_news(NewsIn(symbol="HPG"))
+    out = run_eval(Agent_Input(price=price, news=news))
     print()
     print(out.symbol, "pct", price.pct_change, "|", out.detail)
     for i, item in enumerate(out.items, 1):

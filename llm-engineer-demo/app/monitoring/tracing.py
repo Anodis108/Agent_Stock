@@ -4,6 +4,9 @@ Tối thiểu: 1 trace cho mỗi lần gọi pipeline.answer*(), gắn question/
 latency/lỗi. Lời gọi LLM dùng cùng `trace_step(..., model=, usage=)` — type
 `generation` + token usage để Langfuse tính cost. KHÔNG bọc qua LangChain.
 
+Langfuse 4: `trace_step` chỉ `parent.start_observation` (con của `trace_answer`).
+Không `start_as_current_observation` — API đó mở trace gốc khi OTEL current trống.
+
 Mặc định tắt (MONITORING_ENABLED=false) nên khi chưa điền LANGFUSE_* trong
 .env, toàn bộ hàm ở đây là no-op — không ai bắt buộc phải cài/kích hoạt
 LangFuse để chạy phần còn lại của codebase.
@@ -21,6 +24,7 @@ from app.config import settings
 
 # Không ghi span vào graph state — MemorySaver/msgpack không serialize LangfuseSpan.
 _parent_span: ContextVar[Any] = ContextVar("langfuse_parent", default=None)
+_client: Any = None
 
 
 def current_span() -> Any:
@@ -77,10 +81,7 @@ def trace_answer(name: str, question: str, metadata: dict[str, Any] | None = Non
         _parent_span.reset(token)
         span.update(output=box.get("output"), metadata={"latency_s": time.perf_counter() - start})
         span.end()
-        try:
-            langfuse.flush()
-        except Exception:
-            pass
+        langfuse.flush()
 
 
 @contextmanager
@@ -110,15 +111,11 @@ def trace_step(
         with trace_step(None, "llm.chat", input=messages, model=..., usage=resp.usage) as t:
             t["output"] = text
     """
-    if not settings.monitoring_enabled:
-        yield {}
-        return
-    parent = parent_span if parent_span is not None else _parent_span.get()
-    if parent is None:
+    if parent_span is None or not settings.monitoring_enabled:
         yield {}
         return
 
-    span = parent.start_observation(
+    span = parent_span.start_observation(
         name=name,
         input=input,
         metadata=metadata or {},
@@ -183,5 +180,3 @@ def _usage_details(usage: Any) -> dict[str, int] | None:
         return None
     inp, out = int(prompt), int(completion or 0)
     return {"input": inp, "output": out, "total": int(total if total is not None else inp + out)}
-
-

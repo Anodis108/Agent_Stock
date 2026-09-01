@@ -16,7 +16,6 @@ from urllib.parse import urljoin
 
 from app.agent_pr.news_agent.schemas import Agent_Output, NewsItem
 from app.agent_pr.news_agent.state import NewsState
-from app.agent_pr.symbol import normalize_symbol
 from app.monitoring.tracing import trace_step
 
 # NewsType=0 = tin bài trên trang mã (không phải CBTT type 1–4).
@@ -26,9 +25,9 @@ _MAX_NEWS = 10
 
 
 def normalize(state: NewsState) -> dict:
-    """Upper + strip; raise ValueError nếu không giống mã niêm yết."""
+    """Upper + strip — mã do agent quyết."""
     with trace_step(state.get("_trace_span"), "news_normalize", input=state.get("symbol", "")) as t:
-        symbol = normalize_symbol(str(state.get("symbol") or ""))
+        symbol = str(state.get("symbol") or "").strip().upper()
         t["output"] = symbol
         return {"symbol": symbol}
 
@@ -60,7 +59,7 @@ def fetch(state: NewsState) -> dict:
             payload = resp.json()
         except Exception as exc:
             t["output"] = {"error": str(exc)}
-            return {"rows": []}
+            return {"rows": [], "error": f"Lỗi CafeF {symbol}: {exc}. Thử lại hoặc dùng tin trong DB."}
         items = payload.get("Data") or []
         rows = []
         for it in items:
@@ -88,7 +87,11 @@ def parse(state: NewsState) -> dict:
     symbol = state["symbol"]
     with trace_step(state.get("_trace_span"), "news_parse", input=symbol) as t:
         if not rows:
-            news = Agent_Output(symbol=symbol, articles=[])
+            news = Agent_Output(
+                symbol=symbol,
+                articles=[],
+                source=str(state.get("error") or "cafef"),
+            )
             t["output"] = {"n_articles": 0}
             return {"news": news}
         news = Agent_Output(

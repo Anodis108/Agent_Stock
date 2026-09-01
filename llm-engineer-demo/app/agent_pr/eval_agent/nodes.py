@@ -1,20 +1,54 @@
-"""Nodes eval_agent — không gọi mạng.
+"""Nodes eval_agent — keyword offline; online chat_parsed(HeadlineBatch).
 
-Một node `score`: khớp từ khoá title → đếm → đối chiếu pct_change.
-Cùng ý Sơ đồ 3d / vn-stock-swarm eval_agent.py. Không LLM.
-
-Từ khoá cố ý hẹp: tin CafeF thật hay ra neutral = "chưa rõ", không phải lỗi.
+Một node `score`: chấm title → đếm → đối chiếu pct_change.
+Cùng ý Sơ đồ 3d. Từ khoá hẹp = fallback; LLM structured khi có key.
 """
 
 from __future__ import annotations
 
-from app.agent_pr.eval_agent.schemas import Agent_Output, ScoredItem
+from app.agent_pr.eval_agent.schemas import Agent_Output, HeadlineBatch, ScoredItem
 from app.agent_pr.eval_agent.state import EvalState
+from app.agent_pr.react import use_offline_tools
+from app.guardrails.injection import bound_messages
+from app.llm.completion import chat_parsed
+from app.llm.params import DETERMINISTIC
 from app.monitoring.tracing import trace_step
 
 # Đúng list Sơ đồ 3d — không thêm "lãi"/"lỗ" (tránh lệch map).
 _NEGATIVE = ("xả hàng", "bán ròng", "giảm sàn", "cắt lỗ")
 _POSITIVE = ("tăng trưởng", "lợi nhuận", "khuyến nghị mua")
+
+
+_SENTIMENT_SYSTEM = """Phân loại từng tiêu đề tin cổ phiếu VN (giống ProductReview Bài 1).
+Few-shot:
+- "Khối ngoại xả hàng HPG" → negative
+- "HPG báo lợi nhuận tăng trưởng mạnh" → positive
+- "HPG họp ĐHĐCĐ thường niên" → neutral
+Chỉ negative | positive | neutral. Không bịa tiêu đề. Đúng số lượng / thứ tự đã gửi."""
+
+
+def _llm_items(articles: list) -> list[ScoredItem] | None:
+    """Một lần chat_parsed cho cả lô — type-safe, không regex."""
+    if not articles:
+        return []
+    numbered = "\n".join(f"{i + 1}. {a.title}" for i, a in enumerate(articles))
+    batch = chat_parsed(
+        bound_messages(_SENTIMENT_SYSTEM, numbered),
+        HeadlineBatch,
+        DETERMINISTIC,
+    )
+    if len(batch.items) != len(articles):
+        return None
+    out: list[ScoredItem] = []
+    for art, item in zip(articles, batch.items):
+        out.append(
+            ScoredItem(
+                title=art.title,
+                url=getattr(art, "url", "") or "",
+                sentiment=item.sentiment,
+            )
+        )
+    return out
 
 
 def _sentiment(title: str) -> str:
@@ -30,7 +64,7 @@ def _sentiment(title: str) -> str:
 
 
 def score(state: EvalState) -> dict:
-    """price + news → report. Thiếu một phía / lệch mã → ValueError.
+    """price + news → report. Thiếu / lệch mã → report.detail lỗi, không raise.
 
     price_matches_news:
       True  = cùng chiều (giá↓ + tin xấu, hoặc giá không↓ + tin tốt)
@@ -40,11 +74,31 @@ def score(state: EvalState) -> dict:
     price, news = state.get("price"), state.get("news")
     with trace_step(state.get("_trace_span"), "eval_score", input=getattr(price, "symbol", "")) as t:
         if price is None or news is None:
-            raise ValueError("Eval cần cả price và news")
+            report = Agent_Output(
+                symbol=str(getattr(price, "symbol", None) or getattr(news, "symbol", None) or ""),
+                detail="Lỗi: Eval cần cả price và news. Gọi lại khi đủ dữ liệu.",
+            )
+            t["output"] = report.detail
+            return {"report": report}
         if price.symbol != news.symbol:
-            raise ValueError(f"Lệch mã giá={price.symbol} tin={news.symbol}")
+            report = Agent_Output(
+                symbol=price.symbol,
+                detail=(
+                    f"Lỗi: lệch mã giá={price.symbol} tin={news.symbol}. "
+                    "Chấm lại khi hai phía cùng mã."
+                ),
+            )
+            t["output"] = report.detail
+            return {"report": report}
 
         items = [ScoredItem(title=a.title, url=a.url, sentiment=_sentiment(a.title)) for a in news.articles]
+        if items and not use_offline_tools():
+            try:
+                llm_items = _llm_items(news.articles)
+                if llm_items:
+                    items = llm_items
+            except Exception:
+                pass
         n_neg = sum(i.sentiment == "negative" for i in items)
         n_pos = sum(i.sentiment == "positive" for i in items)
         n_neu = sum(i.sentiment == "neutral" for i in items)

@@ -7,13 +7,14 @@ vnstock/CafeF (lẫn trách nhiệm với 2 agent kia).
 Agent_Output: sentiment từng tin + đủ chứng + khớp chiều giá. Synthesis
 (slice sau) ghép câu, không chấm lại.
 
-Từ khoá 3 lớp lấy đúng Sơ đồ 3d (swarm eval_agent.py), không bịa thêm —
-heuristic demo, chưa LLM.
+Từ khoá 3 lớp = fallback offline. Online: `chat_parsed(HeadlineBatch)` (Bài 1).
 """
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+from typing import Literal
+
+from pydantic import BaseModel, Field
 
 from app.agent_pr.craw_agent.schemas import Agent_Output as PriceOut
 from app.agent_pr.news_agent.schemas import Agent_Output as NewsOut
@@ -31,7 +32,13 @@ class ScoredItem(BaseModel):
 
     title: str
     url: str = ""
-    sentiment: str                        # negative | positive | neutral
+    sentiment: Literal["negative", "positive", "neutral"] = "neutral"
+
+
+class HeadlineBatch(BaseModel):
+    """Bài 1 ProductReview — chấm cả lô tiêu đề, không parse free-text."""
+
+    items: list[ScoredItem] = Field(description="Đúng thứ tự tiêu đề đã gửi, không thêm/bớt")
 
 
 class Agent_Output(BaseModel):

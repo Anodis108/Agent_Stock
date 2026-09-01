@@ -45,6 +45,28 @@ def test_base_url_override_wins(monkeypatch):
     assert "remote-gpu:9000" in str(c.base_url)
 
 
+def test_pr_llm_follows_get_client(monkeypatch):
+    """agent_pr ChatOpenAI lấy key + base_url từ get_client."""
+    import sys
+    from types import SimpleNamespace
+
+    from app.agent_pr import _llm as pr_llm
+
+    fake = SimpleNamespace(api_key="sk-rotated", base_url="http://localhost:11434/v1")
+    captured: dict = {}
+
+    class FakeChat:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setitem(sys.modules, "langchain_openai", SimpleNamespace(ChatOpenAI=FakeChat))
+    monkeypatch.setattr(pr_llm, "get_client", lambda: fake)
+    pr_llm.base_llm()
+    assert captured["api_key"] == "sk-rotated"
+    assert "11434" in captured["base_url"]
+    assert captured["max_retries"] == 0
+
+
 def test_mark_limited_is_noop_for_local(monkeypatch):
     """Local backend: mark_current_key_limited không đụng pool (không lỗi khi thiếu key)."""
     monkeypatch.setattr(client_module.settings, "llm_backend", "ollama")

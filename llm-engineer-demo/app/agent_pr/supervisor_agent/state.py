@@ -1,9 +1,8 @@
 """SupervisorState — blackboard của Hierarchical Coordinator (Sơ đồ 3).
 
 Khác bản pipeline cũ (mọi worker ghi thẳng lên cùng 1 state): mỗi worker là
-SUBGRAPH riêng. LangGraph chỉ copy field TRÙNG TÊN giữa SupervisorState và
-cửa sổ worker — `rows` của craw/news, `quote`, `report`, `result` nội bộ
-không lộ lên hub. Đó là ranh giới cơ chế, giống hierarchical.py.
+SUBGRAPH riêng. LangGraph chỉ copy field TRÙNG TÊN — `rows`/`quote`/`report`
+nội bộ không lộ lên hub. Pack worker ghi `price`/`eval`/`draft`/`db`.
 
 Không nhét `rows` / `quote` / `report` vào đây — craw và news cùng tên `rows`
 sẽ đè nhau nếu share 1 blackboard.
@@ -13,7 +12,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any, TypedDict
 
-from langgraph.graph.message import add_messages
+from langgraph.channels.untracked_value import UntrackedValue
 
 
 def _last(_left, right):
@@ -43,7 +42,6 @@ def _append_trim(left, right):
 
 from app.agent_pr.craw_agent.schemas import Agent_Output as PriceOut
 from app.agent_pr.db_agent.schemas import Agent_Output as DbOut
-from app.agent_pr.db_agent.schemas import CandidateNews
 from app.agent_pr.eval_agent.schemas import Agent_Output as EvalOut
 from app.agent_pr.news_agent.schemas import Agent_Output as NewsOut
 from app.agent_pr.supervisor_agent.schemas import Agent_Output, AgentPlan
@@ -51,102 +49,43 @@ from app.agent_pr.synthesis_agent.schemas import Agent_Output as SynthOut
 
 
 class SupervisorState(TypedDict, total=False):
-    """total=False: coordinator / worker chỉ trả field mình ghi.
+    """total=False: node chỉ trả field mình ghi. Subgraph chỉ nhận field trùng tên."""
 
-    `output` (không đặt tên `result`) — synth/db subgraph cũng ghi `result`,
-    trùng tên sẽ lẫn kiểu Pydantic khi nhúng.
-    """
+    # hub — session / context (không worker nào khai)
+    question: str                  # câu user gốc (rewrite/history/output)
+    rewritten_question: str        # rewrite; recall+plan đọc
+    user_id: str                   # Qdrant long-term; rỗng = skip
+    history: Annotated[list, _append_trim]  # short-term; compact ghi đè
+    memories: list[str]            # recall lượt này; plan đọc
+    plan: AgentPlan                # cờ worker; LLM 1 lần/HTTP
+    plan_turn: str                 # == turn → không lập plan lại
+    next_wave: str                 # db_lookup|gather|eval|synth|db_write|hitl|done
+    skip_hitl: bool                # pytest: soạn pending, không interrupt
+    turn: str                      # uuid mỗi HTTP; Send db; Eval+Synth cạnh copy → *_turn
+    symbol: Annotated[str, _last]  # mã CP; Send: price/news/db; `_last` vì gather 3 nhánh/step
+    _trace_span: Annotated[Any, UntrackedValue(object, guard=False)]  # span cha; mọi worker; không checkpoint
 
-    symbol: Annotated[str, _last]
-    question: str
-    turn: str                      # uuid mỗi HTTP — tách plan/eval/synth khỏi checkpoint cũ
-    user_id: str                   # long-term: rỗng = không recall/store
-    history: Annotated[list, _append_trim]  # short-term; compact ghi đè qua set_history
-    memories: list[str]            # long-term đã recall lượt này
-    plan: AgentPlan
-    plan_turn: str
-    next_wave: str
-    price: PriceOut
-    news: NewsOut
-    db: DbOut
-    db_lookup_turn: str           # đã đọc DB lượt HTTP này
-    db_write_turn: str            # đã soạn lệnh ghi lượt này
-    skip_hitl: bool               # True: pytest — soạn pending nhưng không pause
-    eval: EvalOut
-    eval_turn: str
-    n_history: int
-    draft: SynthOut
-    synth_turn: str
-    output: Agent_Output
-    trace: list[str]
-    # Không có `_trace_span` trên hub — checkpointer không serialize được
-    # LangfuseSpan. Hub lấy span qua tracing.current_span(); worker nhận qua Send.
+    # PriceAgent
+    price: PriceOut                # pack ghi; Eval+Synth đọc (cạnh); hub hydrate từ DB
 
+    # NewsAgent
+    news: NewsOut                  # pack ghi; Eval+Synth đọc; db_write → candidate_*
 
-class PriceWindow(TypedDict, total=False):
-    """Cửa sổ PriceAgent. `rows`/`quote`/`messages` ở lại đây, hub chỉ thấy `price`."""
+    # DBAgent
+    db: DbOut                      # pack (lookup/write); hitl/reply đọc pending
+    db_lookup_turn: str            # pack khi mode=read; == turn → khỏi đọc lại
+    db_write_turn: str             # pack khi mode=write
 
-    symbol: str
-    rows: list[dict[str, Any]]
-    quote: PriceOut
-    price: PriceOut
-    messages: Annotated[list, add_messages]
-    _trace_span: Any
+    # EvalAgent
+    eval: EvalOut                  # pack ghi; Synth đọc
+    eval_turn: str                 # pack; == turn → khỏi chấm lại
 
+    # SynthesisAgent
+    draft: SynthOut                # pack ghi; chỉ reply đọc
+    n_history: int                 # số phiên DB; Synth nhận (cạnh, trùng tên)
+    synth_turn: str                # pack; == turn → khỏi ghép lại
 
-class NewsWindow(TypedDict, total=False):
-    """Cửa sổ NewsAgent — messages ReAct không lộ lên hub."""
-
-    symbol: str
-    rows: list[dict[str, Any]]
-    news: NewsOut
-    messages: Annotated[list, add_messages]
-    _trace_span: Any
-
-
-class EvalWindow(TypedDict, total=False):
-    """Cửa sổ EvalAgent. `report` nội bộ → `eval` cho hub."""
-
-    price: PriceOut
-    news: NewsOut
-    report: EvalOut
-    eval: EvalOut
-    turn: str
-    eval_turn: str
-    messages: Annotated[list, add_messages]
-    _trace_span: Any
-
-
-class SynthWindow(TypedDict, total=False):
-    """Cửa sổ Synthesis. `result` nội bộ → `draft` (tránh đụng output của hub)."""
-
-    price: PriceOut
-    news: NewsOut
-    eval: EvalOut
-    db: DbOut
-    n_history: int
-    result: SynthOut
-    draft: SynthOut
-    turn: str
-    synth_turn: str
-    messages: Annotated[list, add_messages]
-    _trace_span: Any
-
-
-class DbWindow(TypedDict, total=False):
-    """Cửa sổ DBAgent. `result` nội bộ → `db` (tránh đụng output của hub)."""
-
-    symbol: str
-    mode: str
-    candidate_news: list[CandidateNews]
-    candidate_prices: list
-    price_rows: list[dict[str, Any]]
-    news_rows: list[dict[str, Any]]
-    pending_rows: list[dict[str, Any]]
-    result: DbOut
-    db: DbOut
-    turn: str
-    db_lookup_turn: str
-    db_write_turn: str
-    messages: Annotated[list, add_messages]
-    _trace_span: Any
+    # hub — ra HTTP
+    output: Agent_Output           # reply ghi; không đặt `result` (trùng db/synth)
+    output_issues: list[str]       # guardrail_output: quá ngắn / số lạ / PII / toxic
+    trace: list[str]               # log coordinator/after_wave1/reply
