@@ -1,0 +1,1014 @@
+<title>Ôn Tập Capstone</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg: #f6f4ef;
+    --bg-raised: #ffffff;
+    --ink: #201d18;
+    --ink-soft: #55503f;
+    --ink-faint: #8a8471;
+    --line: #ddd6c4;
+    --accent: #b5762c;
+    --accent-soft: #f0e3cb;
+    --accent-ink: #6e4315;
+    --done-bg: #e9f0e3;
+    --done-ink: #4a6b3a;
+    --code-bg: #eee9db;
+    --shadow: rgba(40, 32, 10, 0.08);
+    --gap: #7a8fae;
+    --gap-soft: #e4e9f2;
+    --gap-ink: #3d5378;
+  }
+  :root:not([data-theme="light"]) {
+    @media (prefers-color-scheme: dark) {
+      --bg: #17140f;
+      --bg-raised: #211d16;
+      --ink: #ece7d9;
+      --ink-soft: #b8b09b;
+      --ink-faint: #7d765f;
+      --line: #38321f;
+      --accent: #d99a4e;
+      --accent-soft: #3a2c14;
+      --accent-ink: #f0c98a;
+      --done-bg: #24301f;
+      --done-ink: #9bc283;
+      --code-bg: #1e1a12;
+      --shadow: rgba(0, 0, 0, 0.35);
+      --gap: #7e97c2;
+      --gap-soft: #202839;
+      --gap-ink: #a9bee0;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #17140f;
+    --bg-raised: #211d16;
+    --ink: #ece7d9;
+    --ink-soft: #b8b09b;
+    --ink-faint: #7d765f;
+    --line: #38321f;
+    --accent: #d99a4e;
+    --accent-soft: #3a2c14;
+    --accent-ink: #f0c98a;
+    --done-bg: #24301f;
+    --done-ink: #9bc283;
+    --code-bg: #1e1a12;
+    --shadow: rgba(0, 0, 0, 0.35);
+    --gap: #7e97c2;
+    --gap-soft: #202839;
+    --gap-ink: #a9bee0;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Inter', system-ui, sans-serif;
+    line-height: 1.55;
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    max-width: 1280px;
+    margin: 0 auto;
+  }
+
+  /* ---------- Sidebar ---------- */
+  aside {
+    position: sticky;
+    top: 0;
+    align-self: start;
+    height: 100vh;
+    overflow-y: auto;
+    padding: 2rem 1.25rem 2rem 1.5rem;
+    border-right: 1px solid var(--line);
+  }
+  .brand {
+    font-family: 'Source Serif 4', Georgia, serif;
+    font-weight: 700;
+    font-size: 1.15rem;
+    margin: 0 0 0.15rem;
+    text-wrap: balance;
+  }
+  .brand-sub {
+    font-size: 0.78rem;
+    color: var(--ink-faint);
+    margin: 0 0 1.5rem;
+  }
+  .progress-wrap {
+    margin-bottom: 1.5rem;
+  }
+  .progress-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.72rem;
+    color: var(--ink-soft);
+    margin-bottom: 0.35rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .progress-track {
+    height: 6px;
+    background: var(--line);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 999px;
+    width: 0%;
+    transition: width 0.4s ease;
+  }
+  nav.toc {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+  nav.toc a {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    padding: 0.4rem 0.5rem;
+    border-radius: 6px;
+    color: var(--ink-soft);
+    text-decoration: none;
+    font-size: 0.85rem;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  nav.toc a:hover { background: var(--accent-soft); color: var(--ink); }
+  nav.toc a .n {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--ink-faint);
+    min-width: 1.4em;
+  }
+  nav.toc a.is-done { color: var(--done-ink); }
+  nav.toc a.is-done .n { color: var(--done-ink); }
+
+  /* ---------- Main ---------- */
+  main { padding: 2.5rem 3rem 6rem; min-width: 0; }
+
+  header.hero {
+    margin-bottom: 2.75rem;
+    padding-bottom: 1.75rem;
+    border-bottom: 1px solid var(--line);
+  }
+  .eyebrow {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent-ink);
+    margin: 0 0 0.75rem;
+  }
+  h1 {
+    font-family: 'Source Serif 4', Georgia, serif;
+    font-weight: 700;
+    font-size: clamp(1.7rem, 3vw, 2.4rem);
+    margin: 0 0 0.75rem;
+    text-wrap: balance;
+    max-width: 30ch;
+  }
+  .hero-desc {
+    color: var(--ink-soft);
+    max-width: 62ch;
+    font-size: 1rem;
+  }
+  .hero-meta {
+    display: flex;
+    gap: 1.5rem;
+    margin-top: 1.25rem;
+    flex-wrap: wrap;
+  }
+  .hero-meta div { font-size: 0.82rem; color: var(--ink-faint); }
+  .hero-meta b { color: var(--ink); font-weight: 600; }
+
+  .section {
+    margin-bottom: 2.25rem;
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 1.75rem 1.9rem;
+    box-shadow: 0 1px 3px var(--shadow);
+    scroll-margin-top: 1.5rem;
+  }
+  .section-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.6rem;
+  }
+  .section-title-row {
+    display: flex;
+    align-items: baseline;
+    gap: 0.65rem;
+  }
+  .index {
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--accent);
+    font-size: 0.95rem;
+    font-weight: 500;
+  }
+  h2 {
+    font-family: 'Source Serif 4', Georgia, serif;
+    font-size: 1.3rem;
+    margin: 0;
+    font-weight: 600;
+    text-wrap: balance;
+  }
+  .tag {
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--ink-faint);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 0.15rem 0.6rem;
+    white-space: nowrap;
+    margin-top: 0.2rem;
+  }
+  .desc { color: var(--ink-soft); margin: 0.5rem 0 1.1rem; max-width: 68ch; }
+  .desc b { color: var(--ink); font-weight: 600; }
+
+  .locs {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    margin-bottom: 1.1rem;
+  }
+  .loc {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.5rem 1rem;
+    align-items: start;
+    padding: 0.6rem 0.75rem;
+    background: var(--code-bg);
+    border-radius: 8px;
+    font-size: 0.85rem;
+  }
+  .loc-path {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.78rem;
+    color: var(--accent-ink);
+    word-break: break-word;
+  }
+  .loc-what { color: var(--ink-soft); font-size: 0.85rem; }
+
+  .check-row {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding-top: 0.9rem;
+    border-top: 1px dashed var(--line);
+  }
+  .check-row label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+    cursor: pointer;
+    user-select: none;
+  }
+  .check-row input[type="checkbox"] {
+    width: 17px;
+    height: 17px;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+  .section.is-done { border-color: var(--done-ink); background: linear-gradient(180deg, var(--done-bg) 0%, var(--bg-raised) 90px); }
+
+  .gap-section {
+    margin-bottom: 2.25rem;
+    background: var(--bg-raised);
+    border: 1px solid var(--gap);
+    border-radius: 14px;
+    padding: 1.75rem 1.9rem;
+    box-shadow: 0 1px 3px var(--shadow);
+    scroll-margin-top: 1.5rem;
+  }
+  .gap-section.is-picked { background: linear-gradient(180deg, var(--gap-soft) 0%, var(--bg-raised) 90px); }
+  .gap-badge {
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--gap-ink);
+    border: 1px solid var(--gap);
+    background: var(--gap-soft);
+    border-radius: 999px;
+    padding: 0.15rem 0.6rem;
+    white-space: nowrap;
+    margin-top: 0.2rem;
+  }
+  .gap-current, .gap-suggest {
+    margin: 0.6rem 0;
+    padding: 0.7rem 0.9rem;
+    border-radius: 8px;
+    font-size: 0.85rem;
+  }
+  .gap-current { background: var(--code-bg); color: var(--ink-soft); }
+  .gap-suggest { background: var(--gap-soft); color: var(--ink); }
+  .gap-current b, .gap-suggest b { color: var(--ink); font-weight: 600; }
+  .gap-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-faint); display: block; margin-bottom: 0.25rem; }
+  .gap-check-row {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding-top: 0.9rem;
+    margin-top: 0.9rem;
+    border-top: 1px dashed var(--line);
+  }
+  .gap-check-row label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+    cursor: pointer;
+    user-select: none;
+  }
+  .gap-check-row input[type="checkbox"] {
+    width: 17px;
+    height: 17px;
+    accent-color: var(--gap-ink);
+    cursor: pointer;
+  }
+  .gap-summary {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 0.35rem;
+    font-size: 0.72rem;
+    color: var(--ink-soft);
+    font-variant-numeric: tabular-nums;
+  }
+
+  footer.note {
+    margin-top: 2.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--line);
+    color: var(--ink-faint);
+    font-size: 0.8rem;
+    max-width: 68ch;
+  }
+
+  .roadmap-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+    margin: 1rem 0 0.5rem;
+  }
+  .roadmap-table th,
+  .roadmap-table td {
+    border: 1px solid var(--line);
+    padding: 0.55rem 0.65rem;
+    text-align: left;
+    vertical-align: top;
+  }
+  .roadmap-table th {
+    background: var(--code-bg);
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .roadmap-table td { color: var(--ink-soft); }
+  .prio {
+    display: inline-block;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.68rem;
+    font-weight: 500;
+    padding: 0.1rem 0.45rem;
+    border-radius: 4px;
+    white-space: nowrap;
+  }
+  .prio-p1 { background: #f5d4c4; color: #7a3010; }
+  .prio-p2 { background: var(--accent-soft); color: var(--accent-ink); }
+  .prio-p3 { background: var(--gap-soft); color: var(--gap-ink); }
+  .prio-p4 { background: var(--done-bg); color: var(--done-ink); }
+  :root[data-theme="dark"] .prio-p1,
+  :root:not([data-theme="light"]) .prio-p1 {
+    @media (prefers-color-scheme: dark) {
+      background: #4a2818;
+      color: #f0b090;
+    }
+  }
+  .roadmap-list {
+    margin: 0.75rem 0 0;
+    padding-left: 1.25rem;
+    color: var(--ink-soft);
+    font-size: 0.85rem;
+  }
+  .roadmap-list li { margin-bottom: 0.35rem; }
+  .toc-divider {
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-faint);
+    margin: 1rem 0 0.35rem 0.5rem;
+  }
+
+  @media (max-width: 880px) {
+    .layout { grid-template-columns: 1fr; }
+    aside { position: relative; height: auto; border-right: none; border-bottom: 1px solid var(--line); }
+    main { padding: 2rem 1.25rem 4rem; }
+  }
+</style>
+
+<div class="layout">
+  <aside>
+    <p class="brand">Bản đồ ôn tập capstone</p>
+    <p class="brand-sub">vn-stock-swarm · llm-engineer-demo</p>
+    <div class="progress-wrap">
+      <div class="progress-label"><span>Tiến độ ôn tập</span><span id="progress-text">0/12</span></div>
+      <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+    </div>
+    <nav class="toc" id="toc"></nav>
+  </aside>
+
+  <main>
+    <header class="hero">
+      <p class="eyebrow">Chuẩn bị bảo vệ đồ án cuối khóa</p>
+      <h1>12 kỹ thuật LLM Engineering trong hệ thống agent_pr</h1>
+      <p class="hero-desc">
+        Đây là bản kiểm kê toàn bộ pattern kỹ thuật đã dùng trong module <b style="font-weight:600">app/agent_pr</b> —
+        hệ thống multi-agent phân tích chứng khoán VN (Hierarchical Coordinator điều phối 5 worker: giá, tin tức, DB, đánh giá, tổng hợp).
+        Mỗi mục dưới đây nêu tên kỹ thuật, cách nó được cài đặt <i>cụ thể trong code này</i>, và vị trí file:dòng để bạn tra cứu lại.
+        Tick vào ô "Đã ôn xong" khi bạn tự tin giải thích được — trạng thái được lưu ngay trên trình duyệt này.
+      </p>
+      <div class="hero-meta">
+        <div><b>12</b> nhóm kỹ thuật</div>
+        <div><b>5</b> worker agent + 1 coordinator</div>
+        <div>Commit gốc: <b>9de6c26</b></div>
+      </div>
+    </header>
+
+    <div id="sections"></div>
+
+    <header class="hero" style="margin-top: 1rem;">
+      <p class="eyebrow">Đối chiếu với Mục lục chi tiết các bài học</p>
+      <h1 style="max-width: 40ch;">Những tối ưu chưa áp dụng trong agent_pr</h1>
+      <p class="hero-desc">
+        So với giáo trình Module I/II (<code>README.module1.md</code>, <code>README.module2.md</code>) và vision
+        (<code>README.agent_pr.md</code>), module <code>app/optimization/*</code> (Lesson 8) đã có sẵn code
+        nhưng <b style="font-weight:600">không được <code>agent_pr</code> gọi tới</b> — mọi lời gọi LLM trong 5 worker + coordinator
+        đều đi thẳng qua <code>chat_parsed</code>/<code>invoke_with_tools</code> ở
+        <code>app/llm/completion.py</code> và <code>app/agent_pr/_llm.py</code>.
+        Dưới đây là <span id="gap-total-inline">17</span> khoảng trống / hướng phát triển — tick "Muốn thêm" cho phần bạn quyết định làm.
+        Cuối trang có bảng tóm tắt ưu tiên ROI.
+      </p>
+      <div class="hero-meta" id="gap-summary-meta">
+        <div><b id="gap-picked-count">0</b>/<span id="gap-total-count">0</span> mục đã chọn để bổ sung</div>
+      </div>
+    </header>
+
+    <div id="gap-sections"></div>
+
+    <header class="hero" style="margin-top: 2.5rem;">
+      <p class="eyebrow">Roadmap · Phát triển tương lai</p>
+      <h1 style="max-width: 42ch;">Tổng hợp ưu tiên &amp; đối chiếu giáo trình</h1>
+      <p class="hero-desc">
+        Bản đồ dưới đây tổng hợp kết quả đối chiếu <code>agent_pr</code> với
+        <code>README.module1.md</code>, <code>README.module2.md</code> và tài liệu vision
+        (<code>README.agent_pr.md</code>, <code>tests/QUESTIONS.agent_pr.md</code>).
+        <b style="font-weight:600">Xương sống agent đã đủ</b> (hub + 5 worker, HITL, memory, guardrails, tracing, eval judge).
+        Các mục còn lại là tối ưu production, vision vn-stock-swarm, hoặc polish — tick ở các card phía trên khi quyết định làm.
+      </p>
+    </header>
+
+    <section class="section" id="roadmap-summary">
+      <div class="section-head">
+        <div class="section-title-row"><h2>Đã có vs còn thiếu (tóm tắt)</h2></div>
+        <span class="tag">Đối chiếu M1 + M2</span>
+      </div>
+      <table class="roadmap-table">
+        <thead>
+          <tr><th>Chủ đề giáo trình</th><th>Trong agent_pr</th><th>Ghi chú</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><b>M2 Bài 2–6</b> — Agent, memory, tool, eval, multi-agent</td>
+            <td>✓ Đủ pattern Hierarchical</td>
+            <td>ReAct worker, tool retrieval, HITL hub, <code>/pr/ask/evaluate</code></td>
+          </tr>
+          <tr>
+            <td><b>M1 Bài 7</b> — Guardrails + LangFuse</td>
+            <td>✓ Đã nối hub</td>
+            <td><code>agent_span</code> theo <code>turn</code> — cây trace theo agent</td>
+          </tr>
+          <tr>
+            <td><b>M1 Bài 8</b> — Optimization</td>
+            <td>✗ Chưa gọi</td>
+            <td><code>app/optimization/*</code> chỉ Module I <code>/chat</code></td>
+          </tr>
+          <tr>
+            <td><b>M1 Bài 6–7</b> — CRAG / RAGAS batch</td>
+            <td>△ Một phần</td>
+            <td>Grounding ở synthesis; chưa RAGAS offline + eval gate CI</td>
+          </tr>
+          <tr>
+            <td><b>Vision vn-stock</b> — Swarm crawl, TTL cache</td>
+            <td>✗ Chưa có</td>
+            <td>Hiện chỉ vnstock KBS + CafeF Ajax; docstring ghi <em>chưa Swarm</em></td>
+          </tr>
+          <tr>
+            <td><b>README.agent_pr</b> — PostgresSaver</td>
+            <td>✗ Chưa wire</td>
+            <td>Docker có Postgres; graph vẫn <code>MemorySaver</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="section" id="roadmap-priority">
+      <div class="section-head">
+        <div class="section-title-row"><h2>Thứ tự ưu tiên đề xuất (ROI)</h2></div>
+        <span class="tag">Latency · cost · reliability</span>
+      </div>
+      <table class="roadmap-table">
+        <thead>
+          <tr><th>Ưu tiên</th><th>Hạng mục</th><th>Lý do</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="prio prio-p1">P1</span></td>
+            <td>Gather song song price + news</td>
+            <td><code>route_coordinator</code> hiện <code>Send</code> 1 worker/vòng — latency tăng ~2× so với fan-out thật</td>
+          </tr>
+          <tr>
+            <td><span class="prio prio-p1">P1</span></td>
+            <td>Semantic cache + model routing</td>
+            <td>Câu lặp / câu đơn giản vẫn chạy full pipeline 5–8 lần LLM (~50s)</td>
+          </tr>
+          <tr>
+            <td><span class="prio prio-p2">P2</span></td>
+            <td>PostgresSaver khi có <code>CHECKPOINT_POSTGRES_URI</code></td>
+            <td>Restart container không mất session / HITL đang chờ</td>
+          </tr>
+          <tr>
+            <td><span class="prio prio-p2">P2</span></td>
+            <td><code>compress_tool_result</code> + <code>reinject_instructions</code></td>
+            <td>Tin CafeF dài phình ReAct; chỉ dẫn coordinator fade khi history dài</td>
+          </tr>
+          <tr>
+            <td><span class="prio prio-p3">P3</span></td>
+            <td>RAGAS offline + dataset eval stock</td>
+            <td>Judge on-demand có; thiếu gate CI như <code>scripts/eval_demo</code></td>
+          </tr>
+          <tr>
+            <td><span class="prio prio-p3">P3</span></td>
+            <td>Tracing polish (tên span theo wave, parent cho plan LLM)</td>
+            <td>Debug LangFuse: nhiều <code>coordinator</code> cùng tên; <code>_make_plan</code> chưa truyền parent span</td>
+          </tr>
+          <tr>
+            <td><span class="prio prio-p4">P4</span></td>
+            <td>Swarm crawl (Api/Render/Scout), TTL 15 phút, multi-mã</td>
+            <td>Vision <code>QUESTIONS.agent_pr.md</code> — roadmap dài hạn, không chặn capstone hiện tại</td>
+          </tr>
+        </tbody>
+      </table>
+      <ul class="roadmap-list">
+        <li><b>Latency:</b> gather parallel → streaming/SSE progress (UX, không giảm cost).</li>
+        <li><b>Cost:</b> prompt cache prefix tĩnh cho coordinator / eval few-shot / synth grounding.</li>
+        <li><b>Eval:</b> trajectory từ checkpointer (như <code>agent_m2</code>) chính xác hơn <code>extract_trajectory()</code> dựng từ output.</li>
+        <li><b>Test:</b> thêm pytest offline cho <code>/pr/ask/evaluate</code>, tracing tree, PostgresSaver.</li>
+      </ul>
+    </section>
+
+    <footer class="note">
+      Ghi chú: đường dẫn file là tương đối so với <code>llm-engineer-demo/</code>. Số dòng có thể lệch vài dòng nếu code đã được sửa sau lần khảo sát này — dùng chúng như điểm bắt đầu tìm kiếm, không phải tọa độ tuyệt đối.
+      Phần <em>Phát triển tương lai</em> đối chiếu <code>README.module1.md</code>, <code>README.module2.md</code>, <code>README.agent_pr.md</code> — cập nhật tháng 9/2026.
+    </footer>
+  </main>
+</div>
+
+<script>
+const DATA = [
+  {
+    id: "structured-outputs",
+    title: "Structured Outputs",
+    tag: "Pydantic / function-calling",
+    desc: "Toàn bộ giao tiếp giữa các agent và LLM đều đi qua schema Pydantic thay vì parse JSON thủ công — dùng <b>chat_parsed()</b> (OpenAI <code>.chat.completions.parse()</code>) cho mọi output có cấu trúc: kế hoạch điều phối, câu hỏi viết lại, trích xuất bộ nhớ dài hạn, phân loại tin tức, câu trả lời cuối kèm trích dẫn.",
+    locs: [
+      ["app/llm/completion.py:84-112", "chat_parsed() — wrapper .parse() dùng response_format Pydantic"],
+      ["app/agent_pr/supervisor_agent/schemas.py:29-38", "RewrittenQuery — schema viết lại câu hỏi"],
+      ["app/agent_pr/supervisor_agent/schemas.py:48-57", "AgentPlan — schema quyết định điều phối worker nào"],
+      ["app/agent_pr/supervisor_agent/schemas.py:41-45", "MemoryFact — trích xuất fact bộ nhớ dài hạn có cấu trúc"],
+      ["app/agent_pr/eval_agent/schemas.py:30-41", "HeadlineBatch/ScoredItem — phân loại sentiment hàng loạt"],
+      ["app/agent_pr/synthesis_agent/schemas.py:27-42", "StockAnswer/Citation — câu trả lời cuối kèm trích dẫn"],
+      ["app/agent_pr/context.py:109-114", "ConversationSummary — nén hội thoại có cấu trúc"]
+    ]
+  },
+  {
+    id: "guardrails",
+    title: "Guardrails",
+    tag: "Input / Processing / Output",
+    desc: "Ba lớp bảo vệ: <b>đầu vào</b> (chặn prompt injection, PII, câu hỏi lạc đề), <b>xử lý</b> (bọc system prompt chống ghi đè), <b>đầu ra</b> (kiểm tra ngôn ngữ, độ dài, số liệu vô căn cứ, độc hại). Có thư viện guardrail dùng chung ở <code>app/guardrails/</code> và lớp nối riêng cho domain chứng khoán ở <code>app/agent_pr/guardrails.py</code>.",
+    locs: [
+      ["app/guardrails/injection.py:20-38", "Regex chống prompt injection (EN+VI)"],
+      ["app/guardrails/injection.py:67-92", "wrap_safe_prompt / bound_messages / bound_system — ranh giới system/user"],
+      ["app/guardrails/pii.py:12-35", "Phát hiện & redact PII (SĐT, CCCD, email VN)"],
+      ["app/guardrails/safety.py:13-42", "Kiểm tra độc hại (regex + OpenAI Moderation, fail-open)"],
+      ["app/guardrails/scope.py:10-26", "Giới hạn phạm vi chủ đề (allowlist mã cổ phiếu/từ khóa)"],
+      ["app/guardrails/checks.py:48-102", "check_input()/prepare_input() — orchestrator, raise GuardrailViolation"],
+      ["app/guardrails/checks.py:105-169", "check_output() — trả OutputCheckResult, có disclaimer fallback"],
+      ["app/agent_pr/guardrails.py:110-154", "Nối guardrail_input/guardrail_output vào graph coordinator"],
+      ["app/agent_pr/supervisor_agent/graph.py:131-133,148-149,181-182", "Vị trí node guardrail trong graph chính"]
+    ]
+  },
+  {
+    id: "error-handling",
+    title: "Error Handling & Retries",
+    tag: "Resilience",
+    desc: "Backoff theo cấp số nhân + jitter khi gặp rate limit, xoay vòng nhiều API key khi một key bị cooldown, và mọi lỗi ở tầng worker đều <b>xuống cấp nhẹ nhàng</b> (trả giá trị lỗi/rỗng) thay vì làm sập cả graph.",
+    locs: [
+      ["app/llm/resilience.py:55-81", "retry_with_backoff — công thức 2^attempt + random(0,1)"],
+      ["app/llm/resilience.py:23-53", "RotatingKeyPool — xoay vòng key, cooldown khi 429"],
+      ["app/llm/completion.py:45-49,72-76,104-108,136-139", "4 hàm gọi LLM đều bọc retry_with_backoff"],
+      ["app/agent_pr/_llm.py:36-57", "invoke_with_tools() — retry riêng cho LangChain bind_tools"],
+      ["app/agent_pr/craw_agent/nodes.py:39-43", "Lỗi crawl giá → trả source lỗi thay vì raise"],
+      ["app/agent_pr/react.py:104-115", "Lỗi gọi LLM trong ReAct → trả AIMessage thay vì crash"],
+      ["app/agent_pr/react.py:128-136", "parse_tool_output — JSON hỏng trả None an toàn"]
+    ]
+  },
+  {
+    id: "idempotency",
+    title: "Idempotency",
+    tag: "Dedup / staged writes",
+    desc: "Chống ghi trùng dữ liệu khi crawl lại, và chống chạy lại các bước tốn kém (plan/eval/synth/db) nhiều lần trong cùng một lượt hỏi — dùng UNIQUE index ở SQLite và một UUID <code>turn</code> để đánh dấu lượt.",
+    locs: [
+      ["app/agent_pr/db_agent/nodes.py:56-62", "UNIQUE index chống trùng (symbol,url)/(symbol,date)"],
+      ["app/agent_pr/db_agent/nodes.py:310-369", "approve/reject pending write — idempotent theo (kind, pending_id)"],
+      ["app/agent_pr/supervisor_agent/state.py:59-87", "Các cờ *_turn (plan_turn, eval_turn...) để dedup trong 1 request"],
+      ["app/agent_pr/supervisor_agent/nodes.py:367,398,411,419,426", "Kiểm tra cờ turn trước khi chạy lại bước"],
+      ["app/agent_pr/supervisor_agent/nodes.py:285-299", "_hydrate_from_db — dùng cache DB thay vì crawl lại"],
+      ["app/agent_pr/db_agent/nodes.py:172-176,236-240", "INSERT OR IGNORE khi staging dữ liệu chờ duyệt"]
+    ]
+  },
+  {
+    id: "prompt-engineering",
+    title: "Prompt Engineering & Rewriting",
+    tag: "System prompts / few-shot",
+    desc: "Mỗi agent có system prompt riêng với ràng buộc cứng (không bịa số liệu, chỉ gọi tool đúng 1 lần). Có <b>viết lại câu hỏi</b> (query rewriting) trước khi lập kế hoạch, <b>few-shot</b> cho phân loại sentiment, và kỹ thuật chống \"lost-in-the-middle\" bằng cách bơm lại chỉ dẫn ở cuối ngữ cảnh dài.",
+    locs: [
+      ["app/agent_pr/supervisor_agent/nodes.py:66-111", "rewrite_question() — viết lại câu hỏi mơ hồ/có đại từ"],
+      ["app/agent_pr/eval_agent/nodes.py:22-27", "Few-shot 3 ví dụ có nhãn cho phân loại sentiment"],
+      ["app/agent_pr/synthesis_agent/nodes.py:17-23", "_GROUNDING — prompt bắt buộc chỉ dùng dữ liệu đã cho"],
+      ["app/agent_pr/supervisor_agent/nodes.py:46-64", "Prompt lập kế hoạch điều phối của coordinator"],
+      ["app/agent_pr/context.py:153-159", "reinject_instructions() — chống lost-in-the-middle"],
+      ["app/llm/params.py:34-36", "Preset nhiệt độ theo tác vụ: DETERMINISTIC/BALANCED/CREATIVE"]
+    ]
+  },
+  {
+    id: "memory-context",
+    title: "Memory & Context Management",
+    tag: "Short-term + long-term",
+    desc: "Bộ nhớ ngắn hạn qua LangGraph checkpointer theo <code>thread_id</code>; bộ nhớ dài hạn qua Qdrant theo <code>user_id</code>. Có cửa sổ trượt giới hạn ngữ cảnh, ước lượng % dùng context để tự động nén hội thoại, và cơ chế Human-in-the-Loop (HITL) để tạm dừng graph chờ người duyệt.",
+    locs: [
+      ["app/agent_pr/supervisor_agent/graph.py:42,71,185", "MemorySaver — checkpointer bộ nhớ ngắn hạn"],
+      ["app/agent_pr/memory.py", "Toàn bộ file — lưu/truy hồi bộ nhớ dài hạn qua Qdrant"],
+      ["app/agent_pr/supervisor_agent/nodes.py:625-682", "recall_memory/store_memory — node nối bộ nhớ vào graph"],
+      ["app/agent_pr/context.py:68-78", "Cửa sổ trượt giữ N tin nhắn gần nhất"],
+      ["app/agent_pr/context.py:84-101", "Ước lượng % dùng context, ngưỡng nén chủ động 40%"],
+      ["app/agent_pr/supervisor_agent/state.py:16-39", "Custom reducer _last / _append_trim cho state song song"],
+      ["app/agent_pr/supervisor_agent/graph.py:185", "interrupt_before=['hitl_commit'] — điểm dừng HITL"],
+      ["app/agent_pr/supervisor_agent/nodes.py:266-320", "resume_supervisor() — tiếp tục graph sau khi người duyệt"]
+    ]
+  },
+  {
+    id: "multi-agent",
+    title: "Multi-Agent Orchestration",
+    tag: "LangGraph StateGraph",
+    desc: "Mô hình <b>Hierarchical Coordinator</b> (hub-and-spoke): 5 worker không nói chuyện trực tiếp với nhau, chỉ báo cáo về hub. Điều phối động qua LLM tool-calling (tool chỉ để đánh dấu ý định, không thực thi), routing bằng conditional edges, và fan-out/fan-in song song bằng <code>Send</code>.",
+    locs: [
+      ["app/agent_pr/supervisor_agent/graph.py:126-185", "Toàn bộ định nghĩa graph coordinator"],
+      ["app/agent_pr/supervisor_agent/tools.py:16-46", "Các tool ý định need_price/need_news/need_db/..."],
+      ["app/agent_pr/supervisor_agent/nodes.py:133-205", "_make_plan()/_plan_from_tool_calls() — lập kế hoạch từ tool calls"],
+      ["app/agent_pr/supervisor_agent/nodes.py:449-491", "route_coordinator() — quyết định node/Send tiếp theo"],
+      ["app/agent_pr/supervisor_agent/nodes.py:441-447,535-549", "_send() và after_wave1() — fan-out/fan-in song song"],
+      ["app/agent_pr/craw_agent/graph.py:70-82", "Ví dụ worker được gọi như node từ hub (mở span quan sát)"],
+      ["app/agent_pr/supervisor_agent/graph.py:126-127", "@lru_cache(maxsize=1) — cache singleton graph đã compile"]
+    ]
+  },
+  {
+    id: "react-tools",
+    title: "ReAct & Tool Use",
+    tag: "bind_tools / ToolNode",
+    desc: "Cả 5 worker đều dùng chung một vòng lặp ReAct: <code>seed → agent ⇄ tools → pack</code>. Có chọn tool động theo embedding để không đưa quá nhiều tool cho model cùng lúc, và có chế độ giả lập tool-call để test không tốn API thật.",
+    locs: [
+      ["app/agent_pr/react.py:139-173", "build_react_subgraph() — khung ReAct dùng chung"],
+      ["app/agent_pr/react.py:45-51", "should_continue() — kiểm tra tool_calls để rẽ nhánh"],
+      ["app/agent_pr/_llm.py:36-57", "invoke_with_tools() — bind_tools qua LangChain adapter"],
+      ["app/agent_pr/tool_selection.py:42-66", "Chọn top-k tool theo embedding (giữ 5-7 tool tối ưu)"],
+      ["app/agent_pr/craw_agent/tools.py:26-27", "InjectedState — truyền context ẩn (turn id) vào tool"],
+      ["app/agent_pr/react.py:27-29,74-95", "use_offline_tools() — giả lập tool-call khi chạy test"]
+    ]
+  },
+  {
+    id: "rag",
+    title: "RAG (kế thừa từ Module I/II)",
+    tag: "Embeddings / Vector store",
+    desc: "Hạ tầng RAG đầy đủ (chunking, embedding, retriever, rerank) được xây ở module I cho trợ lý pháp lý, và <b>agent_pr tái sử dụng</b> đúng phần embeddings + Qdrant cho hai việc: chọn tool động và tìm kiếm bộ nhớ dài hạn — không dùng RAG tài liệu trực tiếp trong luồng chứng khoán.",
+    locs: [
+      ["app/retrieval/embeddings.py:33-49", "Embedding OpenAI text-embedding-3-small"],
+      ["app/agent_pr/tool_selection.py:54-59", "Tái sử dụng embedding cho chọn tool"],
+      ["app/agent_pr/memory.py:79-83,115-119", "Tái sử dụng embedding cho tìm kiếm bộ nhớ dài hạn"],
+      ["app/retrieval/vectorstore.py", "Cấu hình Qdrant vector store dùng chung"],
+      ["app/agent_pr/memory.py:25-46", "Kết nối Qdrant trực tiếp cho collection user_memory"]
+    ]
+  },
+  {
+    id: "observability",
+    title: "Observability & Tracing",
+    tag: "LangFuse spans",
+    desc: "Dùng LangFuse, tự dựng cây span (root → agent → step) qua registry theo <code>turn</code> vì các nhánh song song của LangGraph không giữ được context var đáng tin cậy. Toàn bộ tracing tắt hoàn toàn (no-op) khi <code>MONITORING_ENABLED=false</code>.",
+    locs: [
+      ["app/monitoring/tracing.py:22-23", "Registry _roots/_agents theo turn"],
+      ["app/monitoring/tracing.py:63-89", "trace_answer — root span cho mỗi request"],
+      ["app/monitoring/tracing.py:91-116", "agent_span — span con cho mỗi worker"],
+      ["app/monitoring/tracing.py:136-174", "trace_step — span cấp generation, ghi token usage"],
+      ["app/monitoring/tracing.py:66-68,99,148", "No-op khi tắt monitoring"],
+      ["tests/test_monitoring.py:16-77,92-132", "Test cây span bằng OpenTelemetry thật, không mock"]
+    ]
+  },
+  {
+    id: "evaluation",
+    title: "Evaluation",
+    tag: "LLM-as-Judge + Trajectory",
+    desc: "Hai hệ thống eval khác nhau: <b>LLM-as-Judge</b> tổng quát (chấm điểm rubric, có bàn về 6 loại bias của giám khảo AI) và <b>đánh giá quỹ đạo agent</b> riêng cho agent_pr (chấm cả thứ tự/hiệu quả gọi tool, không chỉ kết quả cuối).",
+    locs: [
+      ["app/eval/judge.py:6-26", "Ghi chú về 6 loại bias của LLM-judge"],
+      ["app/eval/judge.py:36-49,52-56", "Schema JudgeScore + prompt chấm rubric"],
+      ["app/agent_pr/eval.py:81-94", "evaluate_task_success() — judge chỉ chấm kết quả"],
+      ["app/agent_pr/eval.py:97-146", "evaluate_trajectory() — chấm cả đường đi/thứ tự gọi tool"],
+      ["app/agent_pr/eval.py:160-230", "extract_trajectory() — dựng lại chuỗi bước từ trace"],
+      ["app/agent_pr/eval_agent/nodes.py:66-132", "Bộ phân loại sentiment (khác LLM-as-judge, là bước pipeline)"]
+    ]
+  },
+  {
+    id: "caching-rate-limit",
+    title: "Caching & Rate Limiting",
+    tag: "lru_cache / key rotation",
+    desc: "Cache singleton cho graph đã compile và client embedding để tránh khởi tạo lại mỗi request; DB SQLite đóng vai trò cache ứng dụng tránh crawl lại. Rate limit được xử lý phía client bằng xoay vòng key + cooldown, không throttling phía server.",
+    locs: [
+      ["app/agent_pr/tool_selection.py:21,56-58,69-71", "Cache embedding tool theo catalog, có reset_cache() cho test"],
+      ["app/retrieval/embeddings.py:20-22", "@lru_cache(maxsize=1) cho client embedding"],
+      ["app/agent_pr/supervisor_agent/graph.py:126", "@lru_cache(maxsize=1) cho graph đã compile"],
+      ["app/llm/resilience.py:38-52", "RotatingKeyPool.get_key()/mark_limited() — round-robin + cooldown 60s"],
+      ["app/agent_pr/supervisor_agent/graph.py:32,122-124", "Giới hạn 1 worker/vòng gather + recursion_limit=28"]
+    ]
+  }
+];
+
+const GAPS = [
+  {
+    id: "gap-model-routing",
+    title: "Model Routing (gpt-4o vs gpt-4o-mini)",
+    lesson: "Lesson 8 · Production Optimization · Phần 4",
+    current: "Toàn bộ agent_pr — coordinator lẫn 5 worker — gọi cố định <code>settings.llm_model</code> (mặc định <code>gpt-4o-mini</code>) cho MỌI lời gọi, không phân biệt việc dễ/khó. Có sẵn 3 kiểu router (rule-based, embedding similarity, classifier) ở <code>app/optimization/routing.py</code> nhưng chỉ được <code>app/api/routes_chat.py</code> (Module I) gọi tới — <b>agent_pr chưa import file này ở đâu cả</b>.",
+    suggest: "Việc dễ (đọc DB, phân loại sentiment theo từ khóa) giữ <code>gpt-4o-mini</code>; việc cần suy luận nhiều bước (lập <code>AgentPlan</code> ở <code>coordinator</code>, viết câu trả lời cuối ở <code>synth_agent</code>) route sang <code>gpt-4o</code> khi câu hỏi phức tạp (nhiều mã, so sánh, \"tại sao\"). Có thể tái dùng <code>rule_based_router()</code> có sẵn — chỉ cần gọi nó trước khi set <code>model=</code> trong <code>invoke_with_tools</code>/<code>chat_parsed</code>."
+  },
+  {
+    id: "gap-prompt-caching",
+    title: "Prompt Caching",
+    lesson: "Lesson 8 · Production Optimization · Phần 2",
+    current: "<code>app/optimization/prompt_cache.py</code> tồn tại nhưng không được <code>agent_pr</code> gọi. Mỗi lời gọi LLM trong 5 worker đều gửi lại full system prompt (dài, có ví dụ few-shot ở <code>eval_agent</code>) — không tận dụng cache prefix của OpenAI dù phần system prompt gần như không đổi giữa các request.",
+    suggest: "Tách phần system prompt tĩnh (persona, quy tắc, few-shot examples) ra đầu message, đủ dài (&gt;1024 token) để OpenAI tự động cache prefix — giảm chi phí input token cho các lời gọi lặp lại nhiều (đặc biệt <code>eval_agent</code> gọi theo batch headline, <code>coordinator</code> gọi mỗi vòng gather)."
+  },
+  {
+    id: "gap-cost-tracking",
+    title: "Cost & Token Tracking",
+    lesson: "Lesson 8 Phần 1 · Lesson 13 Phần 3",
+    current: "<code>app/monitoring/tracing.py</code> ghi span (thời gian, input/output text) nhưng KHÔNG tính hay cộng dồn token/cost — không có dashboard hay log nào trả lời được câu \"1 câu hỏi tốn bao nhiêu tiền\". <code>trace_step()</code> có bắt <code>model=</code> kwarg để đánh dấu span dạng generation nhưng không đọc <code>usage.prompt_tokens/completion_tokens</code> từ response.",
+    suggest: "Đọc <code>response.usage</code> sau mỗi lời gọi OpenAI trong <code>app/llm/completion.py</code>, cộng dồn theo <code>turn</code>, đẩy vào output của <code>trace_step</code>/<code>agent_span</code> — LangFuse tự hiển thị cost nếu có usage. Đây là câu hỏi ban giám khảo rất hay hỏi (\"1 lượt hỏi tốn bao nhiêu?\") mà hiện code chưa trả lời được."
+  },
+  {
+    id: "gap-loop-detection",
+    title: "Loop Detection thông minh",
+    lesson: "Lesson 10 · Phần 3 (Termination & Error Recovery)",
+    current: "Chỉ có <code>recursion_limit=28</code> cứng (<code>supervisor_agent/graph.py:123</code>) — một chốt chặn cuối cùng, không phải phát hiện lặp thông minh. Nếu <code>coordinator</code> kẹt (ví dụ plan cứ quay lại <code>gather</code> vì <code>_has_price</code> luôn false do lỗi crawl), graph sẽ chạy tới đúng 28 bước rồi crash bằng <code>GraphRecursionError</code>, không có cảnh báo sớm hay thông điệp rõ ràng cho user.",
+    suggest: "Đếm số lần <code>next_wave</code> lặp lại cùng giá trị trong <code>state.get('trace')</code>; nếu quá N lần liên tiếp, chủ động trả lời lỗi rõ ràng (\"không lấy được dữ liệu giá cho mã X, thử lại sau\") thay vì để graph chạy tới recursion_limit rồi throw exception khó hiểu."
+  },
+  {
+    id: "gap-semantic-cache",
+    title: "Semantic Caching cho câu hỏi lặp",
+    lesson: "Lesson 8 · Phần 3",
+    current: "<code>app/optimization/caching.py</code> có class caching nhưng chỉ dùng ở Module I (<code>routes_chat.py</code>). agent_pr có cache DB (SQLite tránh crawl lại) nhưng không có cache ở tầng câu trả lời cuối — hai user hỏi cùng \"HPG hôm nay sao\" trong cùng ngày vẫn chạy lại toàn bộ pipeline 5 worker.",
+    suggest: "Cân nhắc thấp ưu tiên cho agent_pr vì câu trả lời phụ thuộc thời điểm (giá/tin thay đổi trong ngày) — semantic cache dễ trả lời cũ/stale. Nếu làm, nên cache ngắn hạn (TTL vài phút) theo cặp (symbol, loại câu hỏi), không cache theo câu hỏi tự do."
+  },
+  {
+    id: "gap-gather-parallel",
+    title: "Gather song song price + news",
+    lesson: "README.agent_pr · Multi-agent fan-out",
+    current: "<code>route_coordinator()</code> (<code>supervisor_agent/nodes.py:468-470</code>) khi <code>next_wave=gather</code> chỉ <code>Send</code> <b>một</b> worker (<code>names[0]</code>) — comment ghi \"dễ debug\". README.agent_pr mô tả gather song song; thực tế price và news chạy tuần tự qua nhiều vòng coordinator.",
+    suggest: "Trả về <code>[_send(..., price_agent), _send(..., news_agent)]</code> khi plan bật cả hai và cả hai còn thiếu. Giữ <code>after_wave1</code> fan-in. Giảm latency đáng kể (trace ~55s: phần crawl không cần xếp hàng)."
+  },
+  {
+    id: "gap-postgres-checkpointer",
+    title: "PostgresSaver (short-term memory bền)",
+    lesson: "README.agent_pr · Docker compose",
+    current: "Docker compose đã có Postgres + <code>CHECKPOINT_POSTGRES_URI</code> trong <code>config.py</code>, nhưng <code>supervisor_agent/graph.py:71</code> vẫn dùng <code>MemorySaver()</code> — restart container mất <code>thread_id</code>, HITL đang chờ, history.",
+    suggest: "Khi <code>settings.checkpoint_postgres_uri</code> có giá trị → <code>PostgresSaver.from_conn_string(...)</code>; fallback MemorySaver cho dev không Docker. Khớp README.agent_pr và pattern production Module II."
+  },
+  {
+    id: "gap-context-compress",
+    title: "compress_tool_result + reinject_instructions",
+    lesson: "M2 Bài 3 · Context engineering",
+    current: "<code>reinject_instructions()</code> có trong <code>agent_pr/context.py</code> nhưng <b>không được gọi</b> ở hub/worker. <code>compress_tool_result()</code> có ở <code>agent_m2/context.py</code> nhưng chưa port — output tin CafeF dài làm phình context ReAct (ToolNode không có hook nén).",
+    suggest: "Gọi <code>reinject_instructions</code> trong <code>_make_plan</code> khi history &gt; ngưỡng. Port <code>compress_tool_result</code> vào worker news (hoặc wrap ToolMessage trước khi vào <code>agent_node</code>)."
+  },
+  {
+    id: "gap-ragas-eval",
+    title: "RAGAS offline + eval gate CI",
+    lesson: "M1 Bài 7 · Evaluation",
+    current: "Có LLM-as-judge on-demand (<code>/pr/ask/evaluate</code>) nhưng chưa có <code>eval/ragas_native.py</code> (faithfulness, context recall) cho synthesis groundedness, chưa có <code>data/eval_dataset.jsonl</code> domain CP, chưa có script kiểu <code>scripts/eval_demo</code> trả PASS/FAIL.",
+    suggest: "Dataset 20–30 câu HPG/FPT/VNM + expected agents; chạy batch qua hub offline (mock crawl); gate faithfulness answer vs price/news evidence trước khi merge PR."
+  },
+  {
+    id: "gap-trajectory-checkpointer",
+    title: "Trajectory từ checkpointer (chính xác hơn)",
+    lesson: "M2 Bài 5 · Trajectory eval",
+    current: "<code>extract_trajectory()</code> (<code>eval.py:160-230</code>) <b>dựng lại</b> từ <code>Agent_Output</code> + hub trace — không thấy từng tool_call ReAct bên trong worker. <code>agent_m2</code> đọc checkpointer + match <code>tool_call_id</code>.",
+    suggest: "Thêm <code>_extract_trajectory(thread_id)</code> đọc <code>messages</code> worker từ snapshot (nếu lưu) hoặc mở rộng hub trace khi pack worker. Judge trajectory chính xác hơn cho bảo vệ đồ án."
+  },
+  {
+    id: "gap-streaming",
+    title: "Streaming / SSE tiến độ hub",
+    lesson: "M1 Bài 1 · Streaming",
+    current: "<code>POST /pr/ask</code> chờ toàn bộ graph (~50s) mới trả JSON. Không có <code>/pr/ask/stream</code> hay push từng wave (DB → crawl → eval → synth). UI <code>agent_pr.html</code> không hiện progress giữa chừng.",
+    suggest: "SSE emit <code>{wave, trace_line}</code> sau mỗi node hub; cuối stream gửi <code>answer</code> đầy đủ. Tái dùng pattern <code>trace_stream</code> ở <code>monitoring/tracing.py</code> cho token stream ở synthesis nếu cần."
+  },
+  {
+    id: "gap-swarm-crawl",
+    title: "Swarm crawl đa nguồn (vision)",
+    lesson: "QUESTIONS.agent_pr · Swarm 5 loại",
+    current: "Price: vnstock KBS only (<code>craw_agent</code> ghi <em>chưa Swarm</em>). News: CafeF Ajax only. Chưa có ApiAgent (SSI/TCBS JSON), RenderAgent (Playwright), Scout routing — các case 2.6–2.8 trong bộ câu hỏi QA chưa pass.",
+    suggest: "Roadmap dài hạn: tách <code>craw_agent/tools.py</code> thành catalog đa nguồn + tool retrieval; hoặc subgraph Swarm riêng như <code>agent_m2/multi_agent/swarm.py</code>. Không chặn capstone nếu demo vnstock+CafeF đủ."
+  },
+  {
+    id: "gap-ttl-cache",
+    title: "Cache TTL giá/tin (15 phút)",
+    lesson: "QUESTIONS.agent_pr · 2.9–2.10",
+    current: "Chỉ hydrate từ SQLite (<code>_hydrate_from_db</code>) — không có TTL \"dữ liệu tươi &lt; 15 phút thì khỏi crawl\". Cùng <code>thread_id</code> hỏi lại vẫn có thể crawl nếu chưa COMMIT HITL hoặc DB thiếu %.",
+    suggest: "Lưu <code>fetched_at</code> trên price/news trong state hoặc bảng meta; coordinator skip gather nếu <code>now - fetched_at &lt; TTL</code>. Cấu hình <code>AGENT_PRICE_TTL_SEC</code> trong <code>.env</code>."
+  },
+  {
+    id: "gap-multi-symbol",
+    title: "Multi-mã / VN-Index / tin ngành",
+    lesson: "QUESTIONS.agent_pr · §1.8–1.12",
+    current: "Plan và state chỉ 1 <code>symbol</code> (<code>AgentPlan.symbol</code>). Câu \"HPG và FPT mã nào mạnh hơn\" hoặc \"VN-Index hôm nay\" — coordinator không fan-out đa mã hoặc từ chối rõ ràng theo thiết kế.",
+    suggest: "Mở rộng <code>AgentPlan</code> → <code>symbols: list[str]</code> + loop gather; hoặc trả lời từ chối có chủ đích + hướng dẫn hỏi từng mã (ít thay đổi hơn)."
+  },
+  {
+    id: "gap-tracing-polish",
+    title: "Tracing polish (tên span, parent plan LLM)",
+    lesson: "M2 Bài 5 · Observability",
+    current: "Mọi sóng hub đều span tên <code>coordinator</code> (khó đọc LangFuse). <code>_make_plan</code> gọi <code>invoke_with_tools</code> không truyền <code>parent_span</code> — generation <code>llm.bind_tools</code> có thể không lồng dưới coordinator. <code>AskResponse</code> không có <code>optimization</code> stats như <code>ChatResponse</code>.",
+    suggest: "Đặt tên <code>coordinator/{next_wave}</code> trong metadata. Truyền span coordinator vào <code>invoke_with_tools</code> trong <code>_make_plan</code>. Trả <code>latency_s</code> / token từ root span trong API."
+  },
+  {
+    id: "gap-eval-dataset",
+    title: "Bộ test tự động agent_pr",
+    lesson: "Capstone · QA",
+    current: "Có <code>tests/QUESTIONS.agent_pr.md</code> (manual) và vài pytest (<code>test_supervisor_agent.py</code> live LLM). Thiếu test offline cho <code>evaluate_ask</code>, tracing tree, gather parallel, PostgresSaver.",
+    suggest: "Thêm <code>tests/test_agent_pr_eval.py</code>, <code>tests/test_agent_pr_tracing.py</code> mock LLM; giữ <code>test_supervisor_agent.py</code> làm smoke live tùy chọn."
+  }
+];
+
+const toc = document.getElementById("toc");
+const sectionsRoot = document.getElementById("sections");
+const gapSectionsRoot = document.getElementById("gap-sections");
+const STORAGE_KEY = "capstone-study-progress-v1";
+const GAP_STORAGE_KEY = "capstone-gap-picks-v1";
+
+let done = {};
+try {
+  done = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+} catch (e) { done = {}; }
+
+let picked = {};
+try {
+  picked = JSON.parse(localStorage.getItem(GAP_STORAGE_KEY) || "{}");
+} catch (e) { picked = {}; }
+
+function renderToc() {
+  toc.innerHTML = "";
+  DATA.forEach((item, i) => {
+    const a = document.createElement("a");
+    a.href = "#" + item.id;
+    a.className = done[item.id] ? "is-done" : "";
+    a.innerHTML = '<span class="n">' + String(i + 1).padStart(2, "0") + '</span><span>' + item.title + '</span>';
+    toc.appendChild(a);
+  });
+  const div = document.createElement("p");
+  div.className = "toc-divider";
+  div.textContent = "Tối ưu tương lai";
+  toc.appendChild(div);
+  GAPS.forEach((item) => {
+    const a = document.createElement("a");
+    a.href = "#" + item.id;
+    a.className = picked[item.id] ? "is-done" : "";
+    a.innerHTML = '<span class="n">·</span><span>' + item.title + '</span>';
+    toc.appendChild(a);
+  });
+  const div2 = document.createElement("p");
+  div2.className = "toc-divider";
+  div2.textContent = "Roadmap";
+  toc.appendChild(div2);
+  ["roadmap-summary", "roadmap-priority"].forEach((id) => {
+    const a = document.createElement("a");
+    a.href = "#" + id;
+    a.innerHTML = '<span class="n">·</span><span>' + (id === "roadmap-summary" ? "Tóm tắt đã có / thiếu" : "Ưu tiên ROI") + '</span>';
+    toc.appendChild(a);
+  });
+}
+
+function renderSections() {
+  sectionsRoot.innerHTML = "";
+  DATA.forEach((item, i) => {
+    const sec = document.createElement("section");
+    sec.className = "section" + (done[item.id] ? " is-done" : "");
+    sec.id = item.id;
+
+    const locsHtml = item.locs.map(([path, what]) =>
+      '<div class="loc"><span class="loc-path">' + path + '</span><span class="loc-what">' + what + '</span></div>'
+    ).join("");
+
+    sec.innerHTML =
+      '<div class="section-head">' +
+        '<div class="section-title-row"><span class="index">' + String(i + 1).padStart(2, "0") + '</span><h2>' + item.title + '</h2></div>' +
+        '<span class="tag">' + item.tag + '</span>' +
+      '</div>' +
+      '<p class="desc">' + item.desc + '</p>' +
+      '<div class="locs">' + locsHtml + '</div>' +
+      '<div class="check-row"><label><input type="checkbox" data-id="' + item.id + '" ' + (done[item.id] ? "checked" : "") + '> Đã ôn xong, tự tin giải thích được</label></div>';
+
+    sectionsRoot.appendChild(sec);
+  });
+
+  sectionsRoot.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+    cb.addEventListener("change", (e) => {
+      const id = e.target.getAttribute("data-id");
+      done[id] = e.target.checked;
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(done)); } catch (err) {}
+      renderToc();
+      updateProgress();
+      const sec = document.getElementById(id);
+      sec.classList.toggle("is-done", e.target.checked);
+    });
+  });
+}
+
+function updateProgress() {
+  const total = DATA.length;
+  const count = DATA.filter(d => done[d.id]).length;
+  document.getElementById("progress-text").textContent = count + "/" + total;
+  document.getElementById("progress-fill").style.width = (total ? (count / total * 100) : 0) + "%";
+}
+
+function renderGapSections() {
+  gapSectionsRoot.innerHTML = "";
+  GAPS.forEach((item) => {
+    const sec = document.createElement("section");
+    sec.className = "gap-section" + (picked[item.id] ? " is-picked" : "");
+    sec.id = item.id;
+
+    sec.innerHTML =
+      '<div class="section-head">' +
+        '<h2>' + item.title + '</h2>' +
+        '<span class="gap-badge">' + item.lesson + '</span>' +
+      '</div>' +
+      '<div class="gap-current"><span class="gap-label">Hiện trạng trong code</span>' + item.current + '</div>' +
+      '<div class="gap-suggest"><span class="gap-label">Có thể bổ sung</span>' + item.suggest + '</div>' +
+      '<div class="gap-check-row"><label><input type="checkbox" data-gap-id="' + item.id + '" ' + (picked[item.id] ? "checked" : "") + '> Muốn thêm chức năng này</label></div>';
+
+    gapSectionsRoot.appendChild(sec);
+  });
+
+  gapSectionsRoot.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+    cb.addEventListener("change", (e) => {
+      const id = e.target.getAttribute("data-gap-id");
+      picked[id] = e.target.checked;
+      try { localStorage.setItem(GAP_STORAGE_KEY, JSON.stringify(picked)); } catch (err) {}
+      updateGapSummary();
+      document.getElementById(id).classList.toggle("is-picked", e.target.checked);
+    });
+  });
+}
+
+function updateGapSummary() {
+  const total = GAPS.length;
+  const count = GAPS.filter(g => picked[g.id]).length;
+  document.getElementById("gap-picked-count").textContent = count;
+  document.getElementById("gap-total-count").textContent = total;
+  const inline = document.getElementById("gap-total-inline");
+  if (inline) inline.textContent = total;
+}
+
+renderToc();
+renderSections();
+updateProgress();
+renderGapSections();
+updateGapSummary();
+</script>

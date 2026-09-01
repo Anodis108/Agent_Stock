@@ -103,6 +103,10 @@ class Settings(BaseSettings):
     guardrails_llm_injection_check: bool = Field(
         default=False, alias="GUARDRAILS_LLM_INJECTION_CHECK"
     )
+    # Topic scope: bật thêm LLM-based check khi regex/keyword không match (tốn 1 lời gọi LLM).
+    guardrails_llm_scope_check: bool = Field(
+        default=False, alias="GUARDRAILS_LLM_SCOPE_CHECK"
+    )
     guardrails_min_answer_len: int = Field(default=10, alias="GUARDRAILS_MIN_ANSWER_LEN")
     # Trần độ dài câu trả lời (Class 7: output length). 0 = không cắt.
     guardrails_max_answer_len: int = Field(default=4000, alias="GUARDRAILS_MAX_ANSWER_LEN")

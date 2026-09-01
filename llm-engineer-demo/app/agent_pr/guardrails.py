@@ -12,7 +12,9 @@ Worker không thêm node guardrail — wrap system prompt (lớp processing) + o
 from __future__ import annotations
 
 from app.agent_pr.context import set_history
-from app.guardrails.checks import OutputCheckResult, check_output, prepare_input
+from app.guardrails.checks import OutputCheckResult, check_input, check_output
+from app.guardrails.pii import redact_pii
+from app.guardrails.scope import in_topic_scope, llm_scope_check
 from app.monitoring.tracing import step_parent, trace_step
 
 STOCK_KEYWORDS = frozenset(
@@ -47,6 +49,11 @@ _STOCK_FALLBACK = (
 )
 _STOCK_DISCLAIMER = (
     " (Lưu ý: một số số liệu chưa khớp đúng nguồn giá/tin/DB trong lượt này.)"
+)
+_SCOPE_DOMAIN_DESC = "hỏi–đáp giá, tin tức, phân tích cổ phiếu niêm yết Việt Nam (HOSE/HNX/UPCOM)"
+_OUT_OF_SCOPE_REPLY = (
+    "Xin lỗi, tôi chỉ hỗ trợ hỏi–đáp về cổ phiếu niêm yết Việt Nam (giá, tin tức, phân tích) — "
+    "câu hỏi này nằm ngoài phạm vi đó. Hãy hỏi tôi về một mã cụ thể, vd. \"HPG hôm nay thế nào?\"."
 )
 
 
@@ -107,8 +114,30 @@ def sanitize_stock_answer(answer: str, state: dict) -> OutputCheckResult:
     )
 
 
+def _out_of_scope(question: str, extra: str) -> bool:
+    """Lớp 1 (keyword/ticker) luôn chạy; lớp 2 (LLM) chỉ chạy khi lớp 1 nói
+    "ngoài phạm vi" VÀ bật GUARDRAILS_LLM_SCOPE_CHECK — bắt câu hợp lệ diễn
+    đạt khéo không chứa từ khóa, tránh false positive của lớp 1."""
+    from app.config import settings
+
+    if in_topic_scope(question, STOCK_KEYWORDS, extra=extra):
+        return False
+    if not settings.guardrails_llm_scope_check:
+        return True
+    try:
+        result = llm_scope_check(question, _SCOPE_DOMAIN_DESC)
+        return not result.in_scope
+    except Exception:
+        return True  # lớp 1 đã nói ngoài phạm vi — LLM lỗi thì giữ quyết định đó
+
+
 def guardrail_input(state: dict) -> dict:
-    """Chặn injection/toxic/ngoài phạm vi; che PII trước rewrite/LLM."""
+    """Chặn injection/toxic (raise, HTTP 400 — mối nguy bảo mật/an toàn thật).
+
+    Ngoài phạm vi (out_of_scope) KHÔNG raise — trả lời lịch sự nói rõ phạm vi,
+    đánh dấu `out_of_scope=True` để route bỏ qua toàn bộ pipeline (không
+    rewrite/crawl/coordinator gì cả), đi thẳng guardrail_output → store.
+    """
     question = str(state.get("question") or "").strip()
     extra = " ".join(
         [
@@ -116,18 +145,37 @@ def guardrail_input(state: dict) -> dict:
             _history_blob(state),
         ]
     )
-    with trace_step(step_parent(state), "guardrail_input", input=question):
-        safe = prepare_input(
-            question,
-            redact=True,
-            topic_keywords=STOCK_KEYWORDS,
-            extra_scope=extra,
-        )
+    with trace_step(step_parent(state), "guardrail_input", input=question) as t:
+        check_input(question, topic_keywords=None)  # injection/toxic — vẫn raise
+        if _out_of_scope(question, extra):
+            from app.agent_pr.supervisor_agent.schemas import Agent_Output
+
+            t["output"] = "out_of_scope"
+            return {
+                "out_of_scope": True,
+                "question": question,
+                "output": Agent_Output(
+                    symbol=str(state.get("symbol") or ""),
+                    question=question,
+                    answer=_OUT_OF_SCOPE_REPLY,
+                ),
+                "trace": list(state.get("trace") or []) + ["Guardrail: câu hỏi ngoài phạm vi cổ phiếu VN"],
+            }
+        safe = redact_pii(question)
     out: dict = {}
     if safe != question:
         out["question"] = safe
         out["trace"] = list(state.get("trace") or []) + ["Guardrail: đã che PII trong câu hỏi"]
     return out
+
+
+def route_after_guardrail(state: dict) -> str:
+    """out_of_scope=True → thẳng guardrail_output (bỏ rewrite/recall/coordinator).
+
+    Không crawl/gọi LLM plan cho câu chắc chắn ngoài phạm vi — tiết kiệm
+    latency + cost, và output đã có sẵn từ guardrail_input.
+    """
+    return "guardrail_output" if state.get("out_of_scope") else "rewrite_question"
 
 
 def guardrail_output(state: dict) -> dict:

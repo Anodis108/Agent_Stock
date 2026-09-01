@@ -42,7 +42,12 @@ from pathlib import Path
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 
-from app.agent_pr.guardrails import guardrail_input, guardrail_output, sanitize_stock_answer
+from app.agent_pr.guardrails import (
+    guardrail_input,
+    guardrail_output,
+    route_after_guardrail,
+    sanitize_stock_answer,
+)
 from app.agent_pr.craw_agent.graph import price_agent
 from app.agent_pr.db_agent.graph import db_agent
 from app.agent_pr.eval_agent.graph import eval_agent
@@ -146,7 +151,13 @@ def _build_graph():
     graph.add_node("synth_agent", synth_agent)
 
     graph.add_edge(START, "guardrail_input")
-    graph.add_edge("guardrail_input", "rewrite_question")
+    # out_of_scope=True (câu ngoài phạm vi cổ phiếu VN) → thẳng guardrail_output,
+    # bỏ qua rewrite/recall/coordinator — không tốn crawl/LLM cho câu chắc chắn từ chối.
+    graph.add_conditional_edges(
+        "guardrail_input",
+        route_after_guardrail,
+        {"rewrite_question": "rewrite_question", "guardrail_output": "guardrail_output"},
+    )
     graph.add_edge("rewrite_question", "recall_memory")
     # Compact chủ động >40% window (nguyên tắc 40–60%) — dưới ngưỡng bỏ qua node.
     graph.add_conditional_edges(

@@ -57,8 +57,11 @@ class SupervisorState(TypedDict, total=False):
     memories: list[str]            # recall lượt này; plan đọc
     plan: AgentPlan                # cờ worker; LLM 1 lần/HTTP
     plan_turn: str                 # == turn → không lập plan lại
+    stuck_turn: str                # == turn → đã báo "crawl lỗi" 1 lần, khỏi lặp lại wave gather
     next_wave: str                 # db_lookup|gather|eval|synth|db_write|hitl|done
+    wave_streak: int               # Loop Detection (Bài 10 P3): số lần liên tiếp cùng next_wave
     skip_hitl: bool                # pytest: soạn pending, không interrupt
+    out_of_scope: bool             # guardrail_input: câu ngoài phạm vi — route thẳng reply, bỏ pipeline
     turn: str                      # uuid mỗi HTTP; Send db; Eval+Synth cạnh copy → *_turn
                                     # cũng là key tra span Langfuse (xem monitoring/tracing.py)
     symbol: Annotated[str, _last]  # mã CP; Send: price/news/db; `_last` vì gather 3 nhánh/step

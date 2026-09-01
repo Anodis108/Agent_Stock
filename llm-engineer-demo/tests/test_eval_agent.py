@@ -49,9 +49,10 @@ def test_eval_llm_sentiment(monkeypatch):
     monkeypatch.setattr(n, "use_offline_tools", lambda: False)
     monkeypatch.setattr(
         n,
-        "chat_parsed",
-        lambda *a, **k: HeadlineBatch(
-            items=[ScoredItem(title="HPG họp ĐHĐCĐ", sentiment="negative")]
+        "chat_parsed_with_usage",
+        lambda *a, **k: (
+            HeadlineBatch(items=[ScoredItem(title="HPG họp ĐHĐCĐ", sentiment="negative")]),
+            {"prompt_tokens": 0, "completion_tokens": 0},
         ),
     )
     out = n.score(

@@ -9,10 +9,11 @@ from __future__ import annotations
 from app.agent_pr.react import use_offline_tools
 from app.agent_pr.synthesis_agent.schemas import Agent_Output, Citation, StockAnswer
 from app.agent_pr.synthesis_agent.state import SynthState
+from app.config import settings
 from app.guardrails.injection import bound_messages
-from app.llm.completion import chat_parsed
+from app.llm.completion import chat_parsed_with_usage
 from app.llm.params import DETERMINISTIC
-from app.monitoring.tracing import step_parent, trace_step
+from app.monitoring.tracing import record_usage, step_parent, trace_step
 
 _GROUNDING = """Bạn là SynthesisAgent hỏi–đáp cổ phiếu VN.
 
@@ -113,7 +114,7 @@ def compose(state: SynthState) -> dict:
             )
             q = str(state.get("rewritten_question") or state.get("question") or "").strip()
             try:
-                parsed = chat_parsed(
+                parsed, usage = chat_parsed_with_usage(
                     bound_messages(
                         _GROUNDING,
                         f"CÂU HỎI: {q or '(không có)'}\n\nBÁO CÁO:\n{reports}\n\n"
@@ -122,6 +123,7 @@ def compose(state: SynthState) -> dict:
                     StockAnswer,
                     DETERMINISTIC,
                 )
+                record_usage(str(state.get("turn") or ""), settings.llm_model, **usage)
                 if (parsed.answer or "").strip():
                     result = Agent_Output(
                         answer=parsed.answer.strip(),

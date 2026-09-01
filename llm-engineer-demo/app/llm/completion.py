@@ -112,6 +112,43 @@ def chat_parsed(
     return parsed
 
 
+def chat_parsed_with_usage(
+    messages: Messages,
+    schema: type[TModel],
+    params: GenerationParams | None = None,
+) -> tuple[TModel, dict[str, int]]:
+    """Như chat_parsed(), kèm usage token thô — Cost & Token Tracking (Bài 8/13).
+
+    Tách riêng thay vì đổi chat_parsed() để không phá signature các call site
+    hiện có (Module I routes_chat, eval/judge...).
+    """
+    params = params or GenerationParams()
+    client = get_client()
+
+    def _call():
+        return client.chat.completions.parse(
+            model=settings.llm_model,
+            messages=messages,
+            response_format=schema,
+            **params.to_openai_kwargs(),
+        )
+
+    completion = retry_with_backoff(
+        _call,
+        max_retries=settings.llm_max_retries,
+        on_rate_limit=lambda: mark_current_key_limited(client),
+    )
+    parsed = completion.choices[0].message.parsed
+    if parsed is None:
+        raise ValueError("Model không trả về output khớp schema.")
+    usage = completion.usage
+    tokens = {
+        "prompt_tokens": usage.prompt_tokens if usage else 0,
+        "completion_tokens": usage.completion_tokens if usage else 0,
+    }
+    return parsed, tokens
+
+
 def chat_with_tools(
     messages: Messages,
     tools: list[dict],

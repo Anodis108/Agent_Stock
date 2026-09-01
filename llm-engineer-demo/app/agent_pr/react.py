@@ -102,7 +102,9 @@ def agent_node(
     history = sliding_window(list(state.get("messages") or []), settings.agent_max_messages)
     messages = [{"role": "system", "content": bound_system(system_prompt)}] + history
     try:
-        response = invoke_with_tools(messages, relevant or catalog, step_parent(state, agent_name))
+        response = invoke_with_tools(
+            messages, relevant or catalog, step_parent(state, agent_name), turn=str(state.get("turn") or "")
+        )
     except Exception as exc:
         return {
             "messages": [

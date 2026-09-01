@@ -62,11 +62,14 @@ def test_llm_grounded_answer(monkeypatch):
     monkeypatch.setattr(n, "use_offline_tools", lambda: False)
     monkeypatch.setattr(
         n,
-        "chat_parsed",
-        lambda *a, **k: StockAnswer(
-            answer="HPG giảm 4.2% (grounded).",
-            confidence=0.9,
-            citations=[Citation(source="price", quote="pct -4.2")],
+        "chat_parsed_with_usage",
+        lambda *a, **k: (
+            StockAnswer(
+                answer="HPG giảm 4.2% (grounded).",
+                confidence=0.9,
+                citations=[Citation(source="price", quote="pct -4.2")],
+            ),
+            {"prompt_tokens": 0, "completion_tokens": 0},
         ),
     )
     out = n.compose(

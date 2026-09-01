@@ -17,6 +17,7 @@ from app.agent_pr.craw_agent.schemas import Agent_Output as PriceOut
 from app.agent_pr.news_agent.schemas import Agent_Output as NewsOut
 from app.agent_pr.supervisor_agent.nodes import (
     _coordinate,
+    _gather_stuck,
     _pending_gather,
     recall_memory,
     rewrite_question,
@@ -69,7 +70,10 @@ def test_pending_gather_cung_ma_tai_dung_gia():
     assert _pending_gather(state, plan) == []
 
 
-def test_pending_gather_gia_rong_thi_fetch_lai():
+def test_pending_gather_gia_da_crawl_loi_thi_khong_fetch_lai():
+    """last=0 sau khi đã crawl (cùng symbol) = đã thử và thất bại (mã sai /
+    vnstock lỗi) — KHÔNG retry vô hạn (từng gây crash recursion_limit khi
+    hỏi mã không tồn tại). Khác _pending_gather (chưa thử): xem _gather_stuck."""
     plan = AgentPlan(
         symbol="HPG",
         use_price=True,
@@ -79,8 +83,24 @@ def test_pending_gather_gia_rong_thi_fetch_lai():
         use_synth=True,
         reasoning="giá lỗi",
     )
-    state = {"price": PriceOut(symbol="HPG", last=0)}
-    assert _pending_gather(state, plan) == ["price_agent"]
+    state = {"price": PriceOut(symbol="HPG", last=0, source="Lỗi vnstock HPG: Invalid symbol")}
+    assert _pending_gather(state, plan) == []
+    assert _gather_stuck(state, plan) == ["price_agent"]
+
+
+def test_pending_gather_chua_crawl_thi_fetch():
+    """Chưa có price nào trong state (khác symbol/None) — vẫn phải gather bình thường."""
+    plan = AgentPlan(
+        symbol="HPG",
+        use_price=True,
+        use_news=False,
+        use_db=False,
+        use_eval=False,
+        use_synth=True,
+        reasoning="chưa crawl",
+    )
+    assert _pending_gather({}, plan) == ["price_agent"]
+    assert _gather_stuck({}, plan) == []
 
 
 def test_pending_gather_db_khong_nam_trong_crawl():
@@ -253,7 +273,9 @@ def test_rewrite_llm_viet_lai(monkeypatch):
         symbol = "HPG"
 
     monkeypatch.setattr(n, "use_offline_tools", lambda: False)
-    monkeypatch.setattr(n, "chat_parsed", lambda *a, **k: _Parsed())
+    monkeypatch.setattr(
+        n, "chat_parsed_with_usage", lambda *a, **k: (_Parsed(), {"prompt_tokens": 0, "completion_tokens": 0})
+    )
     out = rewrite_question({"question": "HPG sao rồi", "trace": []})
     assert out["rewritten_question"] == "Giá và tin mới nhất của HPG?"
     assert out["symbol"] == "HPG"
@@ -301,7 +323,9 @@ def test_store_luu_fact(monkeypatch):
         fact = "User theo dõi HPG."
 
     saved: list[tuple[str, str]] = []
-    monkeypatch.setattr(n, "chat_parsed", lambda *a, **k: _Parsed())
+    monkeypatch.setattr(
+        n, "chat_parsed_with_usage", lambda *a, **k: (_Parsed(), {"prompt_tokens": 0, "completion_tokens": 0})
+    )
     monkeypatch.setattr(
         n.memory, "save_to_long_term", lambda uid, fact: saved.append((uid, fact))
     )

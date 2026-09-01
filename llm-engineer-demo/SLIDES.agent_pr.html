@@ -1,0 +1,439 @@
+<title>Hierarchical Coordinator</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg: #f6f4ef;
+    --bg-raised: #ffffff;
+    --ink: #201d18;
+    --ink-soft: #55503f;
+    --ink-faint: #8a8471;
+    --line: #ddd6c4;
+    --accent: #b5762c;
+    --accent-soft: #f0e3cb;
+    --accent-ink: #6e4315;
+    --worker: #3f6b52;
+    --worker-soft: #e2ede5;
+    --hitl: #a13f3f;
+    --hitl-soft: #f3dede;
+    --code-bg: #eee9db;
+    --shadow: rgba(40, 32, 10, 0.14);
+  }
+  :root:not([data-theme="light"]) {
+    @media (prefers-color-scheme: dark) {
+      --bg: #14120d;
+      --bg-raised: #1e1a13;
+      --ink: #ece7d9;
+      --ink-soft: #b8b09b;
+      --ink-faint: #7d765f;
+      --line: #35301f;
+      --accent: #d99a4e;
+      --accent-soft: #362811;
+      --accent-ink: #f0c98a;
+      --worker: #7fb894;
+      --worker-soft: #1c2f22;
+      --hitl: #d98a8a;
+      --hitl-soft: #362121;
+      --code-bg: #1a160f;
+      --shadow: rgba(0, 0, 0, 0.5);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14120d;
+    --bg-raised: #1e1a13;
+    --ink: #ece7d9;
+    --ink-soft: #b8b09b;
+    --ink-faint: #7d765f;
+    --line: #35301f;
+    --accent: #d99a4e;
+    --accent-soft: #362811;
+    --accent-ink: #f0c98a;
+    --worker: #7fb894;
+    --worker-soft: #1c2f22;
+    --hitl: #d98a8a;
+    --hitl-soft: #362121;
+    --code-bg: #1a160f;
+    --shadow: rgba(0, 0, 0, 0.5);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  .deck { position: relative; width: 100vw; height: 100vh; }
+
+  .slide {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 6vh 8vw;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateX(24px);
+    transition: opacity 0.35s ease, transform 0.35s ease;
+  }
+  .slide.active { opacity: 1; visibility: visible; transform: translateX(0); }
+
+  .eyebrow {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: clamp(0.68rem, 1vw, 0.8rem);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent-ink);
+    margin: 0 0 1rem;
+  }
+  h1.title {
+    font-family: 'Source Serif 4', Georgia, serif;
+    font-weight: 700;
+    font-size: clamp(2rem, 4.2vw, 3.4rem);
+    line-height: 1.12;
+    margin: 0 0 1.2rem;
+    text-wrap: balance;
+    max-width: 22ch;
+  }
+  h2.sub {
+    font-family: 'Source Serif 4', Georgia, serif;
+    font-weight: 600;
+    font-size: clamp(1.5rem, 2.6vw, 2.1rem);
+    margin: 0 0 1.5rem;
+    text-wrap: balance;
+    max-width: 30ch;
+  }
+  .lede {
+    font-size: clamp(1rem, 1.3vw, 1.25rem);
+    color: var(--ink-soft);
+    max-width: 62ch;
+    line-height: 1.6;
+  }
+  .lede b { color: var(--ink); font-weight: 600; }
+  .lede code, .card code, .row code { font-family: 'IBM Plex Mono', monospace; background: var(--code-bg); padding: 0.1em 0.4em; border-radius: 4px; font-size: 0.88em; color: var(--accent-ink); }
+
+  /* Cover slide */
+  .cover { justify-content: center; align-items: flex-start; }
+  .cover .meta { display: flex; gap: 2rem; margin-top: 2.5rem; flex-wrap: wrap; }
+  .cover .meta div { font-size: 0.85rem; color: var(--ink-faint); }
+  .cover .meta b { color: var(--ink); font-weight: 600; display: block; font-size: 1.1rem; margin-bottom: 0.15rem; }
+
+  /* Grid of cards */
+  .cards { display: grid; gap: 1.1rem; margin-top: 1rem; }
+  .cards.g2 { grid-template-columns: repeat(2, 1fr); }
+  .cards.g3 { grid-template-columns: repeat(3, 1fr); }
+  .card {
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 1.4rem 1.5rem;
+    box-shadow: 0 2px 8px var(--shadow);
+  }
+  .card .k { font-family: 'IBM Plex Mono', monospace; font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent-ink); margin-bottom: 0.5rem; display: block; }
+  .card h3 { font-family: 'Source Serif 4', Georgia, serif; font-size: 1.15rem; margin: 0 0 0.5rem; }
+  .card p { margin: 0; font-size: 0.92rem; color: var(--ink-soft); line-height: 1.5; }
+
+  .worker-card { border-color: var(--worker); }
+  .worker-card .k { color: var(--worker); }
+  .hitl-card { border-color: var(--hitl); background: var(--hitl-soft); }
+  .hitl-card .k { color: var(--hitl); }
+
+  /* Numbered list */
+  .steps { display: flex; flex-direction: column; gap: 0.9rem; margin-top: 1.5rem; }
+  .step { display: flex; gap: 1rem; align-items: flex-start; }
+  .step .n { font-family: 'IBM Plex Mono', monospace; font-size: 1.1rem; color: var(--accent); font-weight: 600; min-width: 2ch; }
+  .step .t { font-size: 1.02rem; }
+  .step .t b { display: block; margin-bottom: 0.15rem; }
+  .step .t span { color: var(--ink-soft); font-size: 0.92rem; }
+
+  /* diagram row for architecture slide */
+  .arch-row { display: flex; align-items: center; gap: 0.6rem; margin-top: 2rem; flex-wrap: nowrap; }
+  .arch-box { background: var(--bg-raised); border: 1.5px solid var(--line); border-radius: 10px; padding: 0.85rem 1.1rem; font-family: 'IBM Plex Mono', monospace; font-size: 0.85rem; white-space: nowrap; box-shadow: 0 2px 6px var(--shadow); }
+  .arch-box.hub { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: 600; }
+  .arch-arrow { color: var(--ink-faint); font-size: 1.3rem; }
+  .worker-col { display: flex; flex-direction: column; gap: 0.5rem; }
+  .worker-col .arch-box { border-color: var(--worker); color: var(--worker); }
+
+  footer.progress {
+    position: absolute;
+    bottom: 4vh;
+    left: 8vw;
+    right: 8vw;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--line); transition: background 0.25s, transform 0.25s; }
+  .dot.active { background: var(--accent); transform: scale(1.4); }
+  .slide-num { font-family: 'IBM Plex Mono', monospace; font-size: 0.75rem; color: var(--ink-faint); margin-left: auto; }
+
+  .nav-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    color: var(--ink);
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 1.1rem;
+    box-shadow: 0 2px 8px var(--shadow);
+    z-index: 10;
+    opacity: 0.55;
+    transition: opacity 0.2s;
+  }
+  .nav-btn:hover { opacity: 1; }
+  .nav-btn.prev { left: 1.5vw; }
+  .nav-btn.next { right: 1.5vw; }
+
+  .quote-mark { font-family: 'Source Serif 4', serif; font-size: 3.5rem; color: var(--accent); line-height: 1; margin-bottom: 0.5rem; }
+
+  .stat-row { display: flex; gap: 2.5rem; margin-top: 2rem; flex-wrap: wrap; }
+  .stat { }
+  .stat .num { font-family: 'Source Serif 4', serif; font-weight: 700; font-size: clamp(2rem, 3.5vw, 2.8rem); color: var(--accent-ink); line-height: 1; }
+  .stat .label { font-size: 0.85rem; color: var(--ink-soft); margin-top: 0.3rem; max-width: 16ch; }
+
+  .tag-row { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 1rem; }
+  .tag { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; border: 1px solid var(--line); border-radius: 999px; padding: 0.25rem 0.7rem; color: var(--ink-soft); }
+
+  @media (max-width: 720px) {
+    .cards.g2, .cards.g3 { grid-template-columns: 1fr; }
+    .arch-row { flex-wrap: wrap; }
+    .nav-btn { display: none; }
+  }
+</style>
+
+<div class="deck" id="deck">
+
+  <!-- 1. COVER -->
+  <section class="slide cover active">
+    <p class="eyebrow">Đồ án cuối khóa · LLM Engineer</p>
+    <h1 class="title">Hierarchical Coordinator cho phân tích cổ phiếu Việt Nam</h1>
+    <p class="lede">Một hệ thống multi-agent dùng LangGraph điều phối 5 worker chuyên biệt — giá, tin tức, dữ liệu, đánh giá, tổng hợp — để trả lời câu hỏi về cổ phiếu niêm yết bằng tiếng Việt, có kiểm soát con người trước khi ghi dữ liệu.</p>
+    <div class="meta">
+      <div><b>app/agent_pr</b>Module trình bày</div>
+      <div><b>LangGraph + OpenAI</b>Nền tảng kỹ thuật</div>
+      <div><b>5 + 1</b>Worker + Coordinator</div>
+    </div>
+  </section>
+
+  <!-- 2. BAI TOAN -->
+  <section class="slide">
+    <p class="eyebrow">Bài toán</p>
+    <h2 class="sub">Một câu hỏi cổ phiếu cần nhiều nguồn dữ liệu, không chỉ một LLM call</h2>
+    <p class="lede">Hỏi <b>"tại sao HPG giảm hôm nay"</b> đòi hỏi: giá đóng cửa mới nhất, tin tức liên quan, đối chiếu tin có khớp chiều giá không, rồi mới ghép thành câu trả lời có căn cứ — không được bịa số liệu.</p>
+    <div class="stat-row">
+      <div class="stat"><div class="num">4</div><div class="label">nguồn dữ liệu khác nhau cần phối hợp</div></div>
+      <div class="stat"><div class="num">1</div><div class="label">LLM call đơn lẻ không đủ suy luận nhiều bước</div></div>
+      <div class="stat"><div class="num">0</div><div class="label">số liệu được phép bịa ra</div></div>
+    </div>
+  </section>
+
+  <!-- 3. KIEN TRUC -->
+  <section class="slide">
+    <p class="eyebrow">Kiến trúc</p>
+    <h2 class="sub">Hierarchical Coordinator — hub điều phối, worker không nói chuyện với nhau</h2>
+    <p class="lede" style="max-width: 70ch;">Khác mô hình Swarm (agent tự chuyền việc cho nhau), ở đây <b>coordinator là hub duy nhất</b> quyết định worker nào chạy, thu báo cáo, rồi mới quyết định bước tiếp theo — dễ debug, dễ đặt điểm dừng Human-in-the-Loop.</p>
+    <div class="arch-row">
+      <div class="arch-box hub">coordinator</div>
+      <div class="arch-arrow">→</div>
+      <div class="worker-col">
+        <div class="arch-box">price_agent</div>
+        <div class="arch-box">news_agent</div>
+        <div class="arch-box">db_agent</div>
+      </div>
+      <div class="arch-arrow">→</div>
+      <div class="worker-col">
+        <div class="arch-box">eval_agent</div>
+        <div class="arch-box">synth_agent</div>
+      </div>
+      <div class="arch-arrow">→</div>
+      <div class="arch-box hub">reply</div>
+    </div>
+  </section>
+
+  <!-- 4. REACT PATTERN -->
+  <section class="slide">
+    <p class="eyebrow">Pattern dùng chung</p>
+    <h2 class="sub">Cả 5 worker chia sẻ đúng một khung ReAct</h2>
+    <p class="lede">Thay vì viết lại logic gọi tool cho từng worker, <code>build_react_subgraph()</code> tạo ra vòng lặp <code>seed → agent ⇄ tools → pack</code> dùng chung — mỗi worker chỉ khác nhau ở system prompt, catalog tool, và cách đóng gói kết quả.</p>
+    <div class="steps">
+      <div class="step"><span class="n">1</span><span class="t"><b>seed</b><span>Khởi tạo tin nhắn, xoá lịch sử lượt trước</span></span></div>
+      <div class="step"><span class="n">2</span><span class="t"><b>agent</b><span>LLM chọn tool cần dùng qua bind_tools, có retrieval để không đưa quá nhiều tool cùng lúc</span></span></div>
+      <div class="step"><span class="n">3</span><span class="t"><b>tools</b><span>Thực thi tool call thật (crawl vnstock, gọi API CafeF, đọc SQLite...)</span></span></div>
+      <div class="step"><span class="n">4</span><span class="t"><b>pack</b><span>Đóng gói kết quả thành schema Pydantic để hub đọc</span></span></div>
+    </div>
+  </section>
+
+  <!-- 5. PATTERNS OVERVIEW -->
+  <section class="slide">
+    <p class="eyebrow">Kỹ thuật áp dụng</p>
+    <h2 class="sub">4 nền tảng giữ hệ thống đáng tin cậy</h2>
+    <div class="cards g2">
+      <div class="card">
+        <span class="k">Structured Outputs</span>
+        <h3>Không parse JSON tay</h3>
+        <p>Mọi quyết định của LLM — kế hoạch điều phối, câu hỏi viết lại, trích xuất bộ nhớ, câu trả lời cuối — đều ép theo schema Pydantic qua <code>chat_parsed()</code>.</p>
+      </div>
+      <div class="card">
+        <span class="k">Guardrails 3 lớp</span>
+        <h3>Đầu vào · Xử lý · Đầu ra</h3>
+        <p>Chặn prompt injection và PII ở đầu vào, bọc system prompt chống ghi đè khi xử lý, kiểm tra số liệu vô căn cứ và ngôn ngữ ở đầu ra.</p>
+      </div>
+      <div class="card">
+        <span class="k">Memory hai tầng</span>
+        <h3>Ngắn hạn khác dài hạn</h3>
+        <p>Checkpointer (RAM/Postgres) giữ state một phiên theo <code>thread_id</code>. Qdrant giữ fact xuyên phiên về user theo <code>user_id</code> — hai kho độc lập.</p>
+      </div>
+      <div class="card">
+        <span class="k">Observability</span>
+        <h3>Cây span thật trên LangFuse</h3>
+        <p>Mỗi câu hỏi có 1 span gốc, mỗi worker mở span con riêng — tự dựng registry theo <code>turn</code> vì các nhánh song song của LangGraph không giữ context var đáng tin cậy.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6. HITL -->
+  <section class="slide">
+    <p class="eyebrow">Human-in-the-Loop</p>
+    <h2 class="sub">Chỉ một điểm dừng — đúng lúc chuẩn bị ghi dữ liệu thật</h2>
+    <p class="lede">5 worker chạy tự do, không worker nào tự hỏi ý kiến người dùng. Graph chỉ <code>interrupt_before=["hitl_commit"]</code> — dừng đúng lúc chuẩn bị COMMIT tin/giá mới vào SQLite, chờ API <code>/pr/approve</code> mới đi tiếp.</p>
+    <div class="cards g3" style="margin-top: 2.5rem;">
+      <div class="card worker-card"><span class="k">Bước 1</span><h3>Crawl xong</h3><p>Worker lấy được tin/giá mới, đóng gói thành lệnh ghi chờ duyệt (pending), chưa commit.</p></div>
+      <div class="card hitl-card"><span class="k">Bước 2</span><h3>Dừng lại</h3><p>Graph treo ở <code>hitl_commit</code>, trả về câu trả lời tạm kèm số lệnh đang chờ duyệt.</p></div>
+      <div class="card worker-card"><span class="k">Bước 3</span><h3>Resume</h3><p>Người dùng duyệt/từ chối qua API, graph tiếp tục đúng từ điểm dừng, không chạy lại từ đầu.</p></div>
+    </div>
+  </section>
+
+  <!-- 7. NANG CAP: MODEL ROUTING + COST -->
+  <section class="slide">
+    <p class="eyebrow">Nâng cấp gần nhất</p>
+    <h2 class="sub">Model Routing & Cost Tracking</h2>
+    <div class="cards g2">
+      <div class="card">
+        <span class="k">Model Routing</span>
+        <h3>Không phải mọi câu hỏi đều cần model mạnh</h3>
+        <p>Coordinator chọn <code>gpt-4o</code> khi câu hỏi chứa tín hiệu suy luận nhiều bước ("tại sao", "so sánh", "phân tích"), còn lại dùng <code>gpt-4o-mini</code> — tận dụng router có sẵn từ bài Production Optimization.</p>
+      </div>
+      <div class="card">
+        <span class="k">Cost & Token Tracking</span>
+        <h3>Trả lời được câu "1 lượt hỏi tốn bao nhiêu"</h3>
+        <p>Mọi lời gọi LLM trong một câu hỏi được cộng dồn token + chi phí USD theo bảng giá thật, trả kèm trong response — không cần đọc log LangFuse mới biết cost.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 8. NANG CAP: LOOP DETECTION -->
+  <section class="slide">
+    <p class="eyebrow">Nâng cấp gần nhất</p>
+    <h2 class="sub">Loop Detection — dừng sớm, không chờ crash</h2>
+    <p class="lede">Trước đây chỉ có <code>recursion_limit=28</code> làm chốt chặn cuối — nếu coordinator kẹt lặp, hệ thống chạy hết 28 bước rồi ném lỗi khó hiểu. Giờ mọi <code>next_wave</code> lặp lại quá 4 lần liên tiếp đều bị chặn sớm, trả về thông báo rõ ràng cho người dùng.</p>
+    <div class="steps">
+      <div class="step"><span class="n">✓</span><span class="t"><b>Đã có sẵn trước đó</b><span><code>_gather_stuck</code> phân biệt "chưa thử" và "đã thử-và-lỗi" ở bước crawl giá/tin</span></span></div>
+      <div class="step"><span class="n">＋</span><span class="t"><b>Mở rộng thêm</b><span><code>_apply_loop_guard</code> bắt lặp ở bất kỳ bước nào trong toàn bộ vòng đời coordinator</span></span></div>
+    </div>
+  </section>
+
+  <!-- 9. RESULTS / TESTING -->
+  <section class="slide">
+    <p class="eyebrow">Kiểm chứng</p>
+    <h2 class="sub">Test suite xác nhận hệ thống hoạt động đúng thiết kế</h2>
+    <div class="stat-row">
+      <div class="stat"><div class="num">230+</div><div class="label">test pass sau khi thêm 3 tính năng mới</div></div>
+      <div class="stat"><div class="num">5</div><div class="label">worker đều test được offline, không tốn API thật</div></div>
+      <div class="stat"><div class="num">0</div><div class="label">test cũ bị phá vỡ bởi thay đổi mới</div></div>
+    </div>
+    <p class="lede" style="margin-top: 2rem;">Mỗi node production tự nhận biết môi trường pytest (<code>use_offline_tools()</code>) và giả lập đúng một tool call — cho phép kiểm thử toàn bộ luồng routing, HITL, memory mà không cần gọi OpenAI/vnstock/CafeF thật.</p>
+  </section>
+
+  <!-- 10. HAN CHE -->
+  <section class="slide">
+    <p class="eyebrow">Nhìn thẳng vào hạn chế</p>
+    <h2 class="sub">Những gì chưa làm — và vì sao</h2>
+    <div class="cards g2">
+      <div class="card">
+        <h3>Checkpointer vẫn RAM mặc định</h3>
+        <p><code>MemorySaver</code> mất state khi restart. Đã chuẩn bị cấu hình Postgres nhưng code chưa chuyển sang dùng — cần một bước nữa để production-ready thật sự.</p>
+      </div>
+      <div class="card">
+        <h3>Chưa reset một thread bị kẹt</h3>
+        <p>Không có API xoá/reset checkpoint của riêng một phiên đang lỗi — chỉ có thể restart toàn bộ app.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 11. THANK YOU -->
+  <section class="slide">
+    <div class="quote-mark">"</div>
+    <h2 class="sub" style="max-width: 34ch;">Điều phối 5 chuyên gia hẹp thay vì một agent biết-tuốt.</h2>
+    <p class="lede">Cảm ơn ban giám khảo. Sẵn sàng trả lời câu hỏi.</p>
+    <div class="tag-row">
+      <span class="tag">LangGraph</span>
+      <span class="tag">Structured Outputs</span>
+      <span class="tag">Guardrails</span>
+      <span class="tag">HITL</span>
+      <span class="tag">Model Routing</span>
+      <span class="tag">Observability</span>
+    </div>
+  </section>
+
+  <button class="nav-btn prev" id="prevBtn" aria-label="Slide trước">‹</button>
+  <button class="nav-btn next" id="nextBtn" aria-label="Slide sau">›</button>
+
+  <footer class="progress" id="progress"></footer>
+</div>
+
+<script>
+  const slides = Array.from(document.querySelectorAll('.slide'));
+  const progress = document.getElementById('progress');
+  let current = 0;
+
+  slides.forEach((_, i) => {
+    const dot = document.createElement('div');
+    dot.className = 'dot' + (i === 0 ? ' active' : '');
+    dot.addEventListener('click', () => goTo(i));
+    progress.appendChild(dot);
+  });
+  const numEl = document.createElement('div');
+  numEl.className = 'slide-num';
+  progress.appendChild(numEl);
+
+  function render() {
+    slides.forEach((s, i) => s.classList.toggle('active', i === current));
+    Array.from(progress.querySelectorAll('.dot')).forEach((d, i) => d.classList.toggle('active', i === current));
+    numEl.textContent = (current + 1) + ' / ' + slides.length;
+  }
+
+  function goTo(i) {
+    current = Math.max(0, Math.min(slides.length - 1, i));
+    render();
+  }
+
+  document.getElementById('prevBtn').addEventListener('click', () => goTo(current - 1));
+  document.getElementById('nextBtn').addEventListener('click', () => goTo(current + 1));
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { e.preventDefault(); goTo(current + 1); }
+    if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); goTo(current - 1); }
+    if (e.key === 'Home') goTo(0);
+    if (e.key === 'End') goTo(slides.length - 1);
+  });
+
+  let touchStartX = null;
+  document.addEventListener('touchstart', (e) => { touchStartX = e.touches[0].clientX; });
+  document.addEventListener('touchend', (e) => {
+    if (touchStartX === null) return;
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    if (Math.abs(dx) > 50) goTo(current + (dx < 0 ? 1 : -1));
+    touchStartX = null;
+  });
+
+  render();
+</script>

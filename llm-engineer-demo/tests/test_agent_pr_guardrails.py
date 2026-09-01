@@ -40,13 +40,15 @@ def test_guardrail_input_blocks_injection(monkeypatch):
     assert exc.value.reason == "prompt_injection_detected"
 
 
-def test_guardrail_input_blocks_out_of_scope(monkeypatch):
+def test_guardrail_input_replies_politely_for_out_of_scope(monkeypatch):
+    """out_of_scope KHÔNG raise (khác injection/toxic) — trả lời lịch sự,
+    đánh dấu out_of_scope=True để route bỏ qua pipeline (guardrails.py)."""
     monkeypatch.setattr(
         "app.guardrails.checks.settings.guardrails_llm_injection_check", False
     )
-    with pytest.raises(GuardrailViolation) as exc:
-        guardrail_input({"question": "cách nấu phở bò Hà Nội"})
-    assert exc.value.reason == "out_of_scope"
+    out = guardrail_input({"question": "cách nấu phở bò Hà Nội"})
+    assert out["out_of_scope"] is True
+    assert "cổ phiếu" in out["output"].answer.lower()
 
 
 def test_guardrail_input_redacts_pii(monkeypatch):

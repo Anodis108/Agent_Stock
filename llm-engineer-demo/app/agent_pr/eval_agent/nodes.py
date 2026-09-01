@@ -10,9 +10,10 @@ from app.agent_pr.eval_agent.schemas import Agent_Output, HeadlineBatch, ScoredI
 from app.agent_pr.eval_agent.state import EvalState
 from app.agent_pr.react import use_offline_tools
 from app.guardrails.injection import bound_messages
-from app.llm.completion import chat_parsed
+from app.config import settings
+from app.llm.completion import chat_parsed_with_usage
 from app.llm.params import DETERMINISTIC
-from app.monitoring.tracing import step_parent, trace_step
+from app.monitoring.tracing import record_usage, step_parent, trace_step
 
 # Đúng list Sơ đồ 3d — không thêm "lãi"/"lỗ" (tránh lệch map).
 _NEGATIVE = ("xả hàng", "bán ròng", "giảm sàn", "cắt lỗ")
@@ -27,16 +28,17 @@ Few-shot:
 Chỉ negative | positive | neutral. Không bịa tiêu đề. Đúng số lượng / thứ tự đã gửi."""
 
 
-def _llm_items(articles: list) -> list[ScoredItem] | None:
+def _llm_items(articles: list, turn: str = "") -> list[ScoredItem] | None:
     """Một lần chat_parsed cho cả lô — type-safe, không regex."""
     if not articles:
         return []
     numbered = "\n".join(f"{i + 1}. {a.title}" for i, a in enumerate(articles))
-    batch = chat_parsed(
+    batch, usage = chat_parsed_with_usage(
         bound_messages(_SENTIMENT_SYSTEM, numbered),
         HeadlineBatch,
         DETERMINISTIC,
     )
+    record_usage(turn, settings.llm_model, **usage)
     if len(batch.items) != len(articles):
         return None
     out: list[ScoredItem] = []
@@ -94,7 +96,7 @@ def score(state: EvalState) -> dict:
         items = [ScoredItem(title=a.title, url=a.url, sentiment=_sentiment(a.title)) for a in news.articles]
         if items and not use_offline_tools():
             try:
-                llm_items = _llm_items(news.articles)
+                llm_items = _llm_items(news.articles, str(state.get("turn") or ""))
                 if llm_items:
                     items = llm_items
             except Exception:

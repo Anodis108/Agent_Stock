@@ -32,14 +32,15 @@ from app.agent_pr.news_agent.schemas import NewsItem
 from app.agent_pr.supervisor_agent.schemas import Agent_Output, AgentPlan, MemoryFact, RewrittenQuery
 from app.agent_pr.supervisor_agent.state import SupervisorState
 from app.config import settings
-from app.llm.completion import chat_parsed
+from app.llm.completion import chat_parsed_with_usage
 from app.llm.params import DETERMINISTIC
 from app.agent_pr._llm import invoke_with_tools
 from app.agent_pr.react import use_offline_tools
+from app.optimization.routing import rule_based_router
 from app.guardrails.injection import bound_messages
 from app.agent_pr.supervisor_agent.tools import TOOLS as SUPERVISOR_TOOLS
 from app.agent_pr.tool_selection import select_tools
-from app.monitoring.tracing import step_parent, trace_step
+from app.monitoring.tracing import pop_usage, record_usage, step_parent, trace_step
 
 # Giống LEGAL_SYSTEM_PROMPT (persona + quy tắc) và _SUPERVISOR_SYSTEM agent_m2
 # (worker không nói với nhau; chỉ chọn việc, không tự làm).
@@ -51,15 +52,27 @@ Worker (Price/News/DB/Eval/Synth) không nói với nhau; bạn giao việc, h�
 Quy tắc:
 - Gọi MỌI need_* mà câu hỏi thật sự cần (có thể nhiều tool cùng lúc). Bạn chỉ thấy một phần catalog.
 - need_price = giá đóng cửa / % phiên trước. need_news = tin CafeF thô.
-- need_db = nêu lịch sử đã lưu. need_eval = chấm tin vs giá — CHỈ khi cũng need_price VÀ need_news.
-- need_synth = ghép câu cho user (gần như luôn).
+- need_db = nêu lịch sử đã lưu. need_synth = ghép câu cho user (gần như luôn).
+- need_eval = chấm sentiment tin + đối chiếu khớp giá (EvalAgent BẮT BUỘC cần cả giá và tin,
+  thiếu 1 trong 2 sẽ báo lỗi) — nên khi gọi need_eval PHẢI gọi kèm CẢ need_price VÀ need_news.
+  Gọi need_eval khi câu hỏi thuộc 1 trong 3 dạng sau (không chỉ đúng chữ "tại sao"):
+    1. Hỏi NGUYÊN NHÂN biến động giá — "tại sao/vì sao/do đâu ... tăng/giảm".
+    2. Hỏi ĐỘ TIN CẬY / KHỚP của tin — "tin đó có đáng tin không", "tin có khớp giá không",
+       "tin xấu/tốt có đúng không", "có phải vì tin ... không".
+    3. Hỏi CHẤM/PHÂN LOẠI sentiment — "chấm tin tốt/xấu", "tin nào tiêu cực/tích cực",
+       "so tin xấu và tốt", "tốt/xấu/trung lập".
+  Chỉ BỎ QUA need_eval khi user rõ ràng nói không cần đánh giá ("đừng đánh giá", "chỉ liệt kê", "không cần chấm").
 - Argument symbol: mã HOSE/HNX/UPCOM (thường 3 chữ: HPG, VNM, FPT). Tách từ câu hoặc hội thoại. Không bịa mã.
 - Không bịa số liệu. Không gọi tool ngoài need_*.
 
 Ví dụ:
-- "giá HPG bao nhiêu" → need_price + need_synth
+- "giá HPG bao nhiêu" → need_price + need_synth (không cần eval — không hỏi nguyên nhân/độ tin cậy)
 - "tin FPT" → need_news + need_synth
 - "tại sao HPG giảm" → need_price + need_news + need_eval + need_synth
+- "HPG giảm, tin đó có đáng tin không" → need_price + need_news + need_eval + need_synth
+- "giá HPG giảm vậy tin có khớp không" → need_price + need_news + need_eval + need_synth
+- "chấm từng tin VNM: tốt hay xấu" → need_price + need_news + need_eval + need_synth (eval cần cả 2)
+- "chỉ liệt kê headline FPT, đừng đánh giá" → need_news + need_synth (user từ chối eval rõ ràng)
 - "lưu/ghi tin chưa có" → need_news + need_db + need_synth
 - follow-up "còn LPB thì sao?" → lấy mã LPB từ câu, cùng loại dữ liệu lượt trước nếu rõ"""
 
@@ -92,11 +105,12 @@ def rewrite_question(state: SupervisorState) -> dict:
                     f"Câu hỏi hiện tại: {original}"
                 )
             try:
-                parsed = chat_parsed(
+                parsed, usage = chat_parsed_with_usage(
                     bound_messages(_REWRITE_SYSTEM, user),
                     RewrittenQuery,
                     DETERMINISTIC,
                 )
+                record_usage(str(state.get("turn") or ""), settings.llm_model, **usage)
                 rewritten = (parsed.query or "").strip() or original
                 extra_symbol = parsed.symbol
             except Exception:
@@ -158,11 +172,24 @@ def _plan_from_tool_calls(calls: list, hint: str, question: str) -> AgentPlan:
     return _sanitize_plan(raw, hint or symbol)
 
 
+# rule_based_router gốc (Bài 8) đo theo độ dài câu — sai với domain này vì câu
+# ngắn kiểu "tại sao HPG giảm" vẫn cần price+news+eval (3 worker). Chặn thêm
+# keyword đa-nguyên-nhân trước khi rơi về rule_based_router (độ dài) làm fallback.
+_HARD_PLAN_KEYWORDS = ("tại sao", "vì sao", "so sánh", "phân tích", "dự đoán", "nên mua")
+
+
+def _plan_model(query: str) -> str:
+    if any(kw in query.lower() for kw in _HARD_PLAN_KEYWORDS):
+        return "gpt-4o"
+    return rule_based_router(query)
+
+
 def _make_plan(
     question: str,
     hint: str,
     history: list | None = None,
     memories: list | None = None,
+    turn: str = "",
 ) -> AgentPlan:
     """LLM bind top-k tool need_* (retrieval) — không chat_parsed."""
     parts = [
@@ -189,6 +216,8 @@ def _make_plan(
         response = invoke_with_tools(
             bound_messages(_PLAN_SYSTEM, user),
             relevant or SUPERVISOR_TOOLS,
+            model=_plan_model(query),
+            turn=turn,
         )
     except Exception:
         calls = [
@@ -313,15 +342,61 @@ def _needs_lookup(plan: AgentPlan) -> bool:
     return bool(plan.use_price or plan.use_news or plan.use_db)
 
 
+def _price_failed(price: object | None, symbol: str) -> bool:
+    """True nếu đã crawl giá mã này rồi nhưng thất bại (mã sai / vnstock lỗi).
+
+    Price thành công LUÔN có last > 0 (craw_agent/nodes.py:parse) — nên
+    last<=0 sau khi đã crawl (cùng symbol) nghĩa là thử rồi và không có kết
+    quả, không phải "chưa thử". Phân biệt việc này với _has_price()==False
+    (có thể chỉ đang thiếu, chưa crawl) để không retry vô hạn — Repetition
+    Detection, Lesson10 Phần 3 (Termination & Error Recovery).
+    """
+    return _same_symbol(price, symbol) and not getattr(price, "last", 0)
+
+
+def _news_failed(news: object | None, symbol: str) -> bool:
+    """True nếu đã crawl tin mã này rồi nhưng lỗi mạng/API (không phải chỉ rỗng bài).
+
+    Khác price: news rỗng bài (articles=[]) là kết quả HỢP LỆ (mã đúng,
+    không có tin) — không nên chặn retry. Chỉ coi là "thất bại" khi có lỗi
+    tường minh (source bắt đầu "Lỗi ...") — CafeF lỗi mạng/HTTP thật sự.
+    """
+    if not _same_symbol(news, symbol):
+        return False
+    return str(getattr(news, "source", "") or "").startswith("Lỗi")
+
+
 def _pending_gather(state: SupervisorState, plan: AgentPlan) -> list[str]:
-    """Crawl còn thiếu SAU khi đã đọc DB (và hydrate nếu có)."""
+    """Crawl còn thiếu SAU khi đã đọc DB (và hydrate nếu có).
+
+    Bỏ agent đã crawl-và-lỗi khỏi danh sách — retry vô hạn khi mã không hợp
+    lệ / crawl lỗi liên tục là nguyên nhân crash recursion_limit trước đây.
+    """
     symbol = plan.symbol
     pending: list[str] = []
-    if plan.use_price and not _has_price(state, symbol):
+    if plan.use_price and not _has_price(state, symbol) and not _price_failed(state.get("price"), symbol):
         pending.append("price_agent")
-    if plan.use_news and not _same_symbol(state.get("news"), symbol):
+    if (
+        plan.use_news
+        and not _same_symbol(state.get("news"), symbol)
+        and not _news_failed(state.get("news"), symbol)
+    ):
         pending.append("news_agent")
     return pending
+
+
+def _gather_stuck(state: SupervisorState, plan: AgentPlan) -> list[str]:
+    """Agent plan bật nhưng đã crawl-và-lỗi, không còn gì để thử lại.
+
+    Khác _pending_gather (chưa thử / còn đáng thử): đây là "đã thử hết,
+    vẫn thiếu" — coordinator phải dừng gather, không lặp vô hạn."""
+    symbol = plan.symbol
+    stuck: list[str] = []
+    if plan.use_price and not _has_price(state, symbol) and _price_failed(state.get("price"), symbol):
+        stuck.append("price_agent")
+    if plan.use_news and not _same_symbol(state.get("news"), symbol) and _news_failed(state.get("news"), symbol):
+        stuck.append("news_agent")
+    return stuck
 
 
 def _should_stage(state: SupervisorState, plan: AgentPlan) -> bool:
@@ -345,8 +420,42 @@ def coordinator(state: SupervisorState) -> dict:
         input=str(state.get("question") or state.get("symbol") or ""),
     ) as t:
         out = _coordinate(state)
+        out = _apply_loop_guard(state, out)
         t["output"] = out.get("next_wave")
         return out
+
+
+def _apply_loop_guard(state: SupervisorState, out: dict) -> dict:
+    """Cùng next_wave lặp quá _MAX_SAME_WAVE_STREAK lần liên tiếp → dừng, trả lỗi.
+
+    Không sửa từng nhánh của _coordinate (nhiều return rải rác) — đo streak
+    trên kết quả nó vừa trả, độc lập với _gather_stuck (chỉ bắt lặp ở gather).
+    """
+    wave = out.get("next_wave")
+    if wave in (None, "done"):
+        out["wave_streak"] = 0
+        return out
+    streak = (int(state.get("wave_streak") or 0) + 1) if state.get("next_wave") == wave else 1
+    if streak < _MAX_SAME_WAVE_STREAK:
+        out["wave_streak"] = streak
+        return out
+
+    from app.agent_pr.synthesis_agent.schemas import Agent_Output as SynthOut
+
+    msg = f"Coordinator kẹt lặp ở bước '{wave}' {streak} lần liên tiếp — dừng để tránh vòng lặp vô hạn."
+    return {
+        "next_wave": "done",
+        "wave_streak": 0,
+        "trace": list(out.get("trace") or state.get("trace") or []) + [msg],
+        "draft": SynthOut(answer=msg, confidence=0.0),
+    }
+
+
+# Loop Detection (Lesson 10 Phần 3) — _gather_stuck chỉ bắt lặp ở bước gather
+# (crawl giá/tin). Ngưỡng này bắt lặp ở BẤT KỲ next_wave nào (eval/synth/
+# db_write quay lại đúng 1 wave nhiều lần vì lỗi khác _gather_stuck chưa lường
+# trước) — chặn sớm thay vì chạy tới recursion_limit=28 rồi crash khó hiểu.
+_MAX_SAME_WAVE_STREAK = 4
 
 
 def _coordinate(state: SupervisorState) -> dict:
@@ -374,6 +483,7 @@ def _coordinate(state: SupervisorState) -> dict:
             hint,
             history=list(state.get("history") or []),
             memories=list(state.get("memories") or []),
+            turn=turn,
         )
         trace.append(f"Coordinator LLM: {plan.symbol} · {plan.reasoning}")
         extra = {
@@ -405,6 +515,31 @@ def _coordinate(state: SupervisorState) -> dict:
         if not fresh_plan:
             trace.append(f"DB chưa đủ → crawl {', '.join(pending)}")
         return {**extra, "next_wave": "gather", "trace": trace}
+
+    stuck = _gather_stuck(state, plan)
+    if stuck and state.get("stuck_turn") != turn:
+        # Đã crawl và lỗi (mã không hợp lệ / nguồn crawl lỗi) — không còn gì để
+        # thử lại. Dừng gather ngay tại đây thay vì để plan tiếp tục vòng lặp
+        # db_lookup → gather → db_lookup mãi tới recursion_limit (crash 503).
+        from app.agent_pr.synthesis_agent.schemas import Agent_Output as SynthOut
+
+        field_by_agent = {"price_agent": "price", "news_agent": "news"}
+        detail = "; ".join(
+            str(getattr(state.get(field_by_agent[s]), "source", "") or "") for s in stuck
+        )
+        msg = (
+            f"Không lấy được dữ liệu {'/'.join(s.replace('_agent', '') for s in stuck)} "
+            f"cho mã {plan.symbol} — có thể mã không hợp lệ hoặc nguồn dữ liệu đang lỗi."
+            + (f" Chi tiết: {detail}" if detail.strip() else "")
+        )
+        trace.append(msg)
+        return {
+            **extra,
+            "next_wave": "done",
+            "stuck_turn": turn,
+            "trace": trace,
+            "draft": SynthOut(answer=msg, confidence=0.0),
+        }
 
     if (
         plan.use_eval
@@ -588,6 +723,7 @@ def _reply(state: SupervisorState) -> dict:
             parts.append(db.detail)
         answer = " ".join(parts)
 
+    usage = pop_usage(str(state.get("turn") or ""))
     output = Agent_Output(
         symbol=symbol,
         question=str(state.get("question") or ""),
@@ -598,6 +734,9 @@ def _reply(state: SupervisorState) -> dict:
         db=state.get("db"),
         trace=list(state.get("trace") or []),
         plan=plan,
+        prompt_tokens=int(usage["prompt_tokens"]) if usage else None,
+        completion_tokens=int(usage["completion_tokens"]) if usage else None,
+        cost_usd=round(usage["cost_usd"], 6) if usage else None,
     )
     return {
         "output": output,
@@ -665,7 +804,7 @@ def _store_memory(state: SupervisorState) -> dict:
         return {}
     lines = context.format_messages(recent)
     try:
-        parsed = chat_parsed(
+        parsed, usage = chat_parsed_with_usage(
             bound_messages(
                 "Trích sự thật DÀI HẠN về user từ hội thoại cổ phiếu. "
                 "Chỉ mã theo dõi, khẩu vị rủi ro, quyết định đã chốt — không tóm giá/tin phiên.",
@@ -674,6 +813,7 @@ def _store_memory(state: SupervisorState) -> dict:
             MemoryFact,
             DETERMINISTIC,
         )
+        record_usage(str(state.get("turn") or ""), settings.llm_model, **usage)
     except Exception:
         return {}
     fact = (parsed.fact or "").strip()

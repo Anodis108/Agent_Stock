@@ -23,6 +23,39 @@ _roots: dict[str, Any] = {}
 _agents: dict[tuple[str, str], Any] = {}
 _client: Any = None
 
+# Cost & Token Tracking (Bài 8 Phần 1, Bài 13 Phần 3) — giá USD / 1M token,
+# giá công bố OpenAI. Model không có trong bảng thì không cộng cost (usage vẫn cộng).
+_PRICE_PER_MTOK = {
+    "gpt-4o": (2.50, 10.00),
+    "gpt-4o-mini": (0.15, 0.60),
+}
+_turn_usage: dict[str, dict[str, float]] = {}
+
+
+def record_usage(turn: str, model: str, prompt_tokens: int, completion_tokens: int) -> None:
+    """Cộng dồn token/cost của 1 lời gọi LLM vào turn hiện tại.
+
+    Gọi ở app.llm.completion sau mỗi response — không phụ thuộc LangFuse/
+    MONITORING_ENABLED vì đây là số cho _chính app_ dùng (trả trong Agent_Output),
+    không phải để gửi observability platform.
+    """
+    if not turn:
+        return
+    bucket = _turn_usage.setdefault(
+        turn, {"prompt_tokens": 0, "completion_tokens": 0, "cost_usd": 0.0}
+    )
+    bucket["prompt_tokens"] += prompt_tokens
+    bucket["completion_tokens"] += completion_tokens
+    price = _PRICE_PER_MTOK.get(model)
+    if price:
+        in_price, out_price = price
+        bucket["cost_usd"] += prompt_tokens * in_price / 1_000_000 + completion_tokens * out_price / 1_000_000
+
+
+def pop_usage(turn: str) -> dict[str, float] | None:
+    """Lấy + xoá usage cộng dồn của turn — gọi 1 lần khi trả Agent_Output."""
+    return _turn_usage.pop(turn, None)
+
 
 def _get_langfuse():
     global _client
