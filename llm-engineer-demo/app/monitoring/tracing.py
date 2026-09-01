@@ -1,15 +1,13 @@
-"""Monitoring hooks — Buổi 7, Section 4 (LangFuse).
+"""LangFuse — cây span lồng nhau: root (supervisor) → agent (price/news/db/...) → step.
 
-Tối thiểu: 1 trace cho mỗi lần gọi pipeline.answer*(), gắn question/answer/
-latency/lỗi. Lời gọi LLM dùng cùng `trace_step(..., model=, usage=)` — type
-`generation` + token usage để Langfuse tính cost. KHÔNG bọc qua LangChain.
+Không dùng ContextVar/OTEL baggage (không tin cậy qua Send/subgraph). Span cha
+được tra theo `turn` (uuid mỗi câu hỏi) trong 2 registry nhỏ:
+  _roots[turn]           — span "agent_pr_ask" (mở trong trace_answer)
+  _agents[(turn, name)]  — span "price_agent"/"db_agent"/... (mở trong agent_span)
 
-Langfuse 4: `trace_step` chỉ `parent.start_observation` (con của `trace_answer`).
-Không `start_as_current_observation` — API đó mở trace gốc khi OTEL current trống.
-
-Mặc định tắt (MONITORING_ENABLED=false) nên khi chưa điền LANGFUSE_* trong
-.env, toàn bộ hàm ở đây là no-op — không ai bắt buộc phải cài/kích hoạt
-LangFuse để chạy phần còn lại của codebase.
+Node bên trong mỗi subgraph gọi step_parent(state, agent_name) để lấy đúng
+span cha của agent mình — từ đó trace_step() tạo span lồng đúng cấp. Tắt mặc
+định (MONITORING_ENABLED=false) — mọi hàm ở đây no-op khi đó.
 """
 
 from __future__ import annotations
@@ -17,71 +15,122 @@ from __future__ import annotations
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
-from contextvars import ContextVar
 from typing import Any
 
 from app.config import settings
 
-# Không ghi span vào graph state — MemorySaver/msgpack không serialize LangfuseSpan.
-_parent_span: ContextVar[Any] = ContextVar("langfuse_parent", default=None)
+_roots: dict[str, Any] = {}
+_agents: dict[tuple[str, str], Any] = {}
 _client: Any = None
 
 
-def current_span() -> Any:
-    """Span cha của request đang mở (`trace_answer`). None nếu monitoring tắt."""
-    return _parent_span.get()
-
-
 def _get_langfuse():
-    """Lazy import + lazy client — tránh phụ thuộc cứng vào package `langfuse`
-    khi MONITORING_ENABLED=false, và tránh tạo client ở import-time."""
-    import os
+    global _client
+    if _client is None:
+        import os
 
-    from langfuse import Langfuse
+        from langfuse import Langfuse
 
-    cert = os.environ.get("SSL_CERT_FILE")
-    if cert and not os.path.isfile(cert):
-        os.environ.pop("SSL_CERT_FILE", None)
+        # Windows dev machine: SSL_CERT_FILE có thể trỏ tới file không tồn tại
+        # (leftover từ env khác) — httpx crash lúc tạo SSL context nếu vậy.
+        cert = os.environ.get("SSL_CERT_FILE")
+        if cert and not os.path.isfile(cert):
+            os.environ.pop("SSL_CERT_FILE", None)
 
-    return Langfuse(
-        public_key=settings.langfuse_public_key,
-        secret_key=settings.langfuse_secret_key,
-        host=settings.langfuse_host,
-    )
+        _client = Langfuse(
+            public_key=settings.langfuse_public_key,
+            secret_key=settings.langfuse_secret_key,
+            host=settings.langfuse_host,
+        )
+    return _client
+
+
+def step_parent(state: Any, agent_name: str | None = None) -> Any:
+    """Span cha cho trace_step() trong 1 node.
+
+    agent_name=None (node chạy trực tiếp trong supervisor, vd coordinator/reply)
+    → span root của turn. agent_name="price_agent" (node trong 1 subgraph con)
+    → span của agent đó, đã mở qua agent_span().
+    """
+    turn = str((state or {}).get("turn") or "")
+    if not turn:
+        return None
+    if agent_name:
+        return _agents.get((turn, agent_name))
+    return _roots.get(turn)
 
 
 @contextmanager
 def trace_answer(name: str, question: str, metadata: dict[str, Any] | None = None):
-    """Bọc quanh 1 lần gọi pipeline (answer/answer_stream/answer_structured).
-
-    Dùng như:
-        with trace_answer("answer", question) as t:
-            result = ...
-            t["output"] = result
-
-    `t["_span"]` là span cha đang mở — truyền xuống cho trace_step() để tạo
-    nested span (xem trace_step()). Chỉ có mặt khi monitoring bật; các call site
-    dùng t.get("_span") nên tự an toàn khi tắt.
-    """
+    """Span ROOT — 1 lần / câu hỏi (agent_pr_ask). `t["_span"]` / `t["output"]`."""
     if not settings.monitoring_enabled:
         yield {}
         return
 
     langfuse = _get_langfuse()
-    start = time.perf_counter()
-    span = langfuse.start_observation(name=name, input=question, metadata=metadata or {})
+    meta = dict(metadata or {})
+    turn = str(meta.get("turn") or "")
+    span = langfuse.start_observation(name=name, as_type="agent", input=question, metadata=meta)
+    if turn:
+        _roots[turn] = span
     box: dict[str, Any] = {"_span": span}
-    token = _parent_span.set(span)
+    start = time.perf_counter()
     try:
         yield box
     except Exception as exc:
         span.update(level="ERROR", status_message=str(exc))
         raise
     finally:
-        _parent_span.reset(token)
         span.update(output=box.get("output"), metadata={"latency_s": time.perf_counter() - start})
         span.end()
         langfuse.flush()
+        if turn:
+            _roots.pop(turn, None)
+
+
+@contextmanager
+def agent_span(turn: str, name: str, input: Any = None, metadata: dict[str, Any] | None = None):
+    """Span AGENT con của root — bọc quanh 1 subgraph (price/news/db/eval/synth).
+
+    Node bên trong subgraph tìm span này qua step_parent(state, name). No-op
+    nếu turn rỗng hoặc không tìm thấy root (monitoring tắt).
+    """
+    root = _roots.get(turn)
+    if not settings.monitoring_enabled or root is None:
+        yield {}
+        return
+
+    span = root.start_observation(name=name, as_type="agent", input=input, metadata=metadata or {})
+    key = (turn, name)
+    _agents[key] = span
+    box: dict[str, Any] = {}
+    start = time.perf_counter()
+    try:
+        yield box
+    except Exception as exc:
+        span.update(level="ERROR", status_message=str(exc))
+        raise
+    finally:
+        _agents.pop(key, None)
+        span.update(output=box.get("output"), metadata={"latency_s": time.perf_counter() - start})
+        span.end()
+
+
+def _usage_details(usage: Any) -> dict[str, int] | None:
+    if usage is None:
+        return None
+    if isinstance(usage, dict):
+        prompt = usage.get("input_tokens", usage.get("prompt_tokens"))
+        completion = usage.get("output_tokens", usage.get("completion_tokens"))
+        total = usage.get("total_tokens")
+    else:
+        prompt = getattr(usage, "prompt_tokens", None)
+        completion = getattr(usage, "completion_tokens", None)
+        total = getattr(usage, "total_tokens", None)
+    if prompt is None:
+        return None
+    inp, out = int(prompt), int(completion or 0)
+    return {"input": inp, "output": out, "total": int(total if total is not None else inp + out)}
 
 
 @contextmanager
@@ -92,91 +141,48 @@ def trace_step(
     metadata: dict[str, Any] | None = None,
     *,
     model: str | None = None,
-    usage: Any = None,
-    model_parameters: dict[str, Any] | None = None,
 ):
-    """Nested child span dưới `parent_span` (lấy từ trace_answer's t["_span"]).
-
-    Dùng trong LangGraph node để thấy từng bước (decompose/retrieve/grade/...)
-    lồng nhau trong LangFuse — thay vì 1 span phẳng cho toàn bộ graph.invoke().
-
-    Có `model` hoặc `usage` → observation type `generation` (Langfuse tính cost).
-    `parent_span is None` → span của `trace_answer` (ContextVar). Không đưa
-    span vào graph state — MemorySaver không serialize được LangfuseSpan.
-
-    Dùng như:
-        with trace_step(parent_span, "grade_documents", input=question) as t:
-            ...
-            t["output"] = graded
-        with trace_step(None, "llm.chat", input=messages, model=..., usage=resp.usage) as t:
-            t["output"] = text
-    """
-    if parent_span is None or not settings.monitoring_enabled:
+    """SPAN (bước) hoặc GENERATION (LLM, nếu `model` truyền vào) — con của
+    parent_span. No-op nếu parent_span là None (monitoring tắt hoặc agent
+    chưa mở span cha — xem step_parent())."""
+    if not settings.monitoring_enabled or parent_span is None:
         yield {}
         return
 
-    span = parent_span.start_observation(
-        name=name,
-        input=input,
-        metadata=metadata or {},
-        as_type="generation" if model else "span",
-        model=model,
-        usage_details=_usage_details(usage),
-        model_parameters=model_parameters,
-    )
-
-    start = time.perf_counter()
+    as_type = "generation" if model else "span"
+    kwargs: dict[str, Any] = {"name": name, "as_type": as_type, "input": input, "metadata": metadata or {}}
+    if model:
+        kwargs["model"] = model
+    span = parent_span.start_observation(**kwargs)
     box: dict[str, Any] = {}
+    start = time.perf_counter()
     try:
         yield box
     except Exception as exc:
         span.update(level="ERROR", status_message=str(exc))
         raise
     finally:
-        span.update(output=box.get("output"), metadata={"latency_s": time.perf_counter() - start})
+        update: dict[str, Any] = {
+            "output": box.get("output"),
+            "metadata": {"latency_s": time.perf_counter() - start},
+        }
+        usage = _usage_details(box.get("usage"))
+        if usage:
+            update["usage_details"] = usage
+        span.update(**update)
         span.end()
 
 
 def trace_stream(name: str, question: str, tokens: Iterator[str]) -> Iterator[str]:
-    """Bọc quanh answer_stream(): trace toàn bộ output ghép lại sau khi stream
-    kết thúc (không thể tạo span "giữa chừng" cho streaming)."""
+    """Bọc quanh answer_stream(): trace toàn bộ output ghép lại sau khi stream kết thúc."""
     if not settings.monitoring_enabled:
         yield from tokens
         return
-
-    langfuse = _get_langfuse()
-    start = time.perf_counter()
     chunks: list[str] = []
-    try:
-        for token in tokens:
-            chunks.append(token)
-            yield token
-    finally:
-        span = langfuse.start_observation(
-            name=name,
-            input=question,
-            output="".join(chunks),
-            metadata={"latency_s": time.perf_counter() - start, "streamed": True},
-        )
-        span.end()
-        langfuse.flush()
-
-
-def _usage_details(usage: Any) -> dict[str, int] | None:
-    """OpenAI usage → Langfuse {input, output, total}."""
-    if usage is None:
-        return None
-    if isinstance(usage, dict):
-        prompt, completion, total = (
-            usage.get("prompt_tokens"),
-            usage.get("completion_tokens"),
-            usage.get("total_tokens"),
-        )
-    else:
-        prompt = getattr(usage, "prompt_tokens", None)
-        completion = getattr(usage, "completion_tokens", None)
-        total = getattr(usage, "total_tokens", None)
-    if prompt is None:
-        return None
-    inp, out = int(prompt), int(completion or 0)
-    return {"input": inp, "output": out, "total": int(total if total is not None else inp + out)}
+    with trace_answer(name, question) as t:
+        try:
+            for token in tokens:
+                chunks.append(token)
+                yield token
+        finally:
+            t["output"] = "".join(chunks)

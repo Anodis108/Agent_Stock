@@ -22,9 +22,13 @@ Khác agent_m2 (1 ReAct + ToolNode HITL trước *mọi* tool):
 LangGraph chỉ copy field trùng tên. Pack worker ghi `price`/`news`/`eval`/
 `draft`/`db` — không node lift. `rows`/`messages` ở lại subgraph.
 
-Observability: một `trace_answer` / HTTP (`agent_pr_ask` hoặc resume).
-Span cha nằm trên `SupervisorState._trace_span`; Send/subgraph copy field
-trùng tên — worker `trace_step` lồng dưới cây đó. Evaluate on-demand.
+Observability: một `trace_answer` / HTTP (`agent_pr_ask`) — span ROOT, khoá theo
+`turn` (uuid mỗi câu hỏi). Mỗi subgraph con (price/news/db/eval/synth) tự mở
+1 span AGENT con của root qua `agent_span(turn, ...)` trong `_build_graph()`
+của chính nó — nên trên LangFuse thấy cây thật: root → price_agent →
+craw_fetch/craw_parse/llm.bind_tools, không phải cây phẳng. Registry span
+sống ở `app.monitoring.tracing` (dict theo `turn`), không ghi vào checkpoint
+MemorySaver — span object không pickle được.
 
 Vẽ: `python -m app.agent_pr.supervisor_agent.graph`
 """
@@ -39,10 +43,10 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 
 from app.agent_pr.guardrails import guardrail_input, guardrail_output, sanitize_stock_answer
-from app.agent_pr.craw_agent.graph import _build_graph as _craw_graph
-from app.agent_pr.db_agent.graph import _build_graph as _db_graph
-from app.agent_pr.eval_agent.graph import _build_graph as _eval_graph
-from app.agent_pr.news_agent.graph import _build_graph as _news_graph
+from app.agent_pr.craw_agent.graph import price_agent
+from app.agent_pr.db_agent.graph import db_agent
+from app.agent_pr.eval_agent.graph import eval_agent
+from app.agent_pr.news_agent.graph import news_agent
 from app.agent_pr.supervisor_agent.nodes import (
     after_wave1,
     compact_history,
@@ -60,7 +64,7 @@ from app.agent_pr.db_agent.nodes import approve_pending_write
 from app.agent_pr.db_agent.schemas import Agent_Output as DbOut
 from app.agent_pr.db_agent.schemas import PendingWrite
 from app.agent_pr.supervisor_agent.state import SupervisorState
-from app.agent_pr.synthesis_agent.graph import _build_graph as _synth_graph
+from app.agent_pr.synthesis_agent.graph import synth_agent
 from app.monitoring.tracing import trace_answer
 
 # MemorySaver — RAM, mất khi restart. Đủ debug; production đổi PostgresSaver.
@@ -135,11 +139,11 @@ def _build_graph():
     graph.add_node("hitl_commit", hitl_commit)
     graph.add_node("store_memory", store_memory)
 
-    graph.add_node("price_agent", _craw_graph())
-    graph.add_node("news_agent", _news_graph())
-    graph.add_node("db_agent", _db_graph())
-    graph.add_node("eval_agent", _eval_graph())
-    graph.add_node("synth_agent", _synth_graph())
+    graph.add_node("price_agent", price_agent)
+    graph.add_node("news_agent", news_agent)
+    graph.add_node("db_agent", db_agent)
+    graph.add_node("eval_agent", eval_agent)
+    graph.add_node("synth_agent", synth_agent)
 
     graph.add_edge(START, "guardrail_input")
     graph.add_edge("guardrail_input", "rewrite_question")
@@ -224,10 +228,11 @@ def run_supervisor(inp: Agent_Input) -> Agent_Output:
         raise ValueError("thread_id bắt buộc — client phải gửi id phiên (giống /assistant).")
     if not question and symbol:
         question = f"Phân tích biến động giá và tin tức liên quan đến mã {symbol.upper()} hôm nay."
+    turn = str(uuid.uuid4())
     initial = {
         "symbol": symbol,
         "question": question,
-        "turn": str(uuid.uuid4()),
+        "turn": turn,
         "user_id": user_id,
         "skip_hitl": bool(inp.skip_hitl),
         "trace": [],
@@ -236,9 +241,8 @@ def run_supervisor(inp: Agent_Input) -> Agent_Output:
     with trace_answer(
         "agent_pr_ask",
         question or symbol,
-        metadata={"thread_id": thread_id, "user_id": user_id},
+        metadata={"thread_id": thread_id, "user_id": user_id, "turn": turn},
     ) as t:
-        initial["_trace_span"] = t.get("_span")
         graph = _build_graph()
         out = _finish(graph, config, thread_id, user_id, question, _invoke(graph, initial, config))
         t["output"] = {"answer": out.answer, "trace": out.trace}
@@ -276,6 +280,7 @@ def resume_supervisor(
     values = getattr(snap, "values", None) or {}
     pending = _pending(values.get("db"))
     question = str(values.get("question") or "")
+    turn = str(values.get("turn") or "")
 
     if pending_id is not None:
         approve_pending_write(int(pending_id), approve=approve, kind=kind or "news")
@@ -291,9 +296,11 @@ def resume_supervisor(
             return paused
 
     with trace_answer(
-        "agent_pr_ask", question, metadata={"thread_id": tid, "user_id": user_id, "resume": True}
+        "agent_pr_ask",
+        question,
+        metadata={"thread_id": tid, "user_id": user_id, "resume": True, "turn": turn},
     ) as t:
-        patch: dict = {"_trace_span": t.get("_span")}
+        patch: dict = {}
         as_node = None
         if pending_id is None and not approve:
             db = values.get("db")
@@ -306,7 +313,8 @@ def resume_supervisor(
             )
             patch.update({"db": rejected, "trace": list(values.get("trace") or []) + ["HITL: từ chối toàn bộ"]})
             as_node = "hitl_commit"
-        graph.update_state(config, patch, **({"as_node": as_node} if as_node else {}))
+        if patch or as_node:
+            graph.update_state(config, patch, **({"as_node": as_node} if as_node else {}))
         out = _finish(graph, config, tid, user_id, question, _invoke(graph, None, config))
         t["output"] = {"answer": out.answer, "trace": out.trace}
         return out

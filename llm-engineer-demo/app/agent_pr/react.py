@@ -12,16 +12,34 @@ Khác agent_m2:
 from __future__ import annotations
 
 import os
+from functools import partial
+
+from langgraph.graph import END, START, StateGraph
+from langgraph.prebuilt import ToolNode
 
 from app.agent_pr._llm import invoke_with_tools
 from app.agent_pr.tool_selection import select_tools
 from app.config import settings
 from app.guardrails.injection import bound_system
+from app.monitoring.tracing import step_parent
 
 
 def use_offline_tools() -> bool:
     """Không key, hoặc đang pytest: giả 1 tool_call — không gọi OpenAI."""
     return (not settings.api_keys) or bool(os.environ.get("PYTEST_CURRENT_TEST"))
+
+
+def fresh_user(text: str) -> dict:
+    """Seed đầu subgraph: xóa messages cũ (MemorySaver giữ từ lượt HTTP trước)."""
+    from langchain_core.messages import RemoveMessage
+    from langgraph.graph.message import REMOVE_ALL_MESSAGES
+
+    return {
+        "messages": [
+            RemoveMessage(id=REMOVE_ALL_MESSAGES),
+            {"role": "user", "content": text},
+        ]
+    }
 
 
 def should_continue(state: dict) -> str:
@@ -43,8 +61,12 @@ def agent_node(
     system_prompt: str,
     query_fn,
     offline_call,
+    agent_name: str,
 ) -> dict:
     """Node LLM: retrieve trong catalog → bind → invoke.
+
+    `agent_name` ("price_agent"/"db_agent"/...) chọn đúng span cha (xem
+    tracing.step_parent) để "llm.bind_tools" lồng dưới agent, không phải root.
 
     Offline: lần đầu giả đúng 1 tool_call (`offline_call`); lần sau (đã có
     ToolMessage) trả AIMessage rỗng để `should_continue` → pack.
@@ -80,7 +102,7 @@ def agent_node(
     history = sliding_window(list(state.get("messages") or []), settings.agent_max_messages)
     messages = [{"role": "system", "content": bound_system(system_prompt)}] + history
     try:
-        response = invoke_with_tools(messages, relevant or catalog)
+        response = invoke_with_tools(messages, relevant or catalog, step_parent(state, agent_name))
     except Exception as exc:
         return {
             "messages": [
@@ -112,3 +134,40 @@ def parse_tool_output(raw: str, cls):
         return cls.model_validate_json(text)
     except Exception:
         return None
+
+
+def build_react_subgraph(
+    state_cls,
+    *,
+    tools: list,
+    system_prompt: str,
+    query_fn,
+    offline_call,
+    agent_name: str,
+    seed_fn,
+    pack_fn,
+):
+    """Khung seed → agent ⇄ tools → pack — giống hệt nhau ở cả 5 worker
+    (craw/news/db/eval/synth), chỉ khác state/tools/prompt/seed/pack. Trả về
+    graph CHƯA compile — caller tự `.compile()` (giữ @lru_cache ở call site)."""
+    graph = StateGraph(state_cls)
+    graph.add_node("seed", seed_fn)
+    graph.add_node(
+        "agent",
+        partial(
+            agent_node,
+            catalog=tools,
+            system_prompt=system_prompt,
+            query_fn=query_fn,
+            offline_call=offline_call,
+            agent_name=agent_name,
+        ),
+    )
+    graph.add_node("tools", ToolNode(tools))
+    graph.add_node("pack", pack_fn)
+    graph.add_edge(START, "seed")
+    graph.add_edge("seed", "agent")
+    graph.add_conditional_edges("agent", should_continue, {"tools": "tools", "pack": "pack"})
+    graph.add_edge("tools", "agent")
+    graph.add_edge("pack", END)
+    return graph

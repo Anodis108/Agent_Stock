@@ -12,13 +12,14 @@ from app.agent_pr.synthesis_agent.state import SynthState
 from app.guardrails.injection import bound_messages
 from app.llm.completion import chat_parsed
 from app.llm.params import DETERMINISTIC
-from app.monitoring.tracing import trace_step
+from app.monitoring.tracing import step_parent, trace_step
 
 _GROUNDING = """Bạn là SynthesisAgent hỏi–đáp cổ phiếu VN.
 
 Quy tắc (RAG generation — chỉ bám báo cáo):
+- Trả lời ĐÚNG câu hỏi user (tăng/giảm so với hôm qua → chiều + %; giá bao nhiêu → số VND).
 - CHỈ dùng số liệu, tiêu đề, đếm sentiment trong BÁO CÁO bên dưới.
-- Không bịa giá, tin, mã. Thiếu dữ liệu thì nói thiếu.
+- Không bịa giá, tin, mã. Thiếu phiên trước / pct_change thì nói chưa đủ lịch sử, đừng thay bằng đoạn tin trung lập.
 - Tiếng Việt, ngắn. Trích citations.source = price|news|eval|db."""
 
 
@@ -94,7 +95,7 @@ def _compose_template(state: SynthState) -> tuple[str, str, list[Citation]]:
 def compose(state: SynthState) -> dict:
     """Template luôn có; LLM structured khi online — lỗi thì giữ template."""
     symbol, template, cites = _compose_template(state)
-    with trace_step(state.get("_trace_span"), "synth_compose", input=symbol) as t:
+    with trace_step(step_parent(state, "synth_agent"), "synth_compose", input=symbol) as t:
         result = Agent_Output(
             answer=template,
             confidence=0.7 if cites else 0.3,
@@ -110,9 +111,14 @@ def compose(state: SynthState) -> dict:
                 f"db_detail={getattr(db, 'detail', None)}\n"
                 f"n_history={state.get('n_history') or 0}"
             )
+            q = str(state.get("rewritten_question") or state.get("question") or "").strip()
             try:
                 parsed = chat_parsed(
-                    bound_messages(_GROUNDING, f"BÁO CÁO:\n{reports}\n\nGhép câu trả lời."),
+                    bound_messages(
+                        _GROUNDING,
+                        f"CÂU HỎI: {q or '(không có)'}\n\nBÁO CÁO:\n{reports}\n\n"
+                        "Trả lời câu hỏi, chỉ dùng báo cáo.",
+                    ),
                     StockAnswer,
                     DETERMINISTIC,
                 )

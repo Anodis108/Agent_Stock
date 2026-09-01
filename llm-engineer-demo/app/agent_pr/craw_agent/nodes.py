@@ -11,12 +11,12 @@ from __future__ import annotations
 
 from app.agent_pr.craw_agent.schemas import Agent_Output
 from app.agent_pr.craw_agent.state import CrawlState
-from app.monitoring.tracing import trace_step
+from app.monitoring.tracing import step_parent, trace_step
 
 
 def normalize(state: CrawlState) -> dict:
     """Upper + strip — mã hợp lệ do agent/tool quyết, không regex."""
-    with trace_step(state.get("_trace_span"), "craw_normalize", input=state.get("symbol", "")) as t:
+    with trace_step(step_parent(state, "price_agent"), "craw_normalize", input=state.get("symbol", "")) as t:
         symbol = str(state.get("symbol") or "").strip().upper()
         t["output"] = symbol
         return {"symbol": symbol}
@@ -35,7 +35,7 @@ def fetch(state: CrawlState) -> dict:
     from vnstock import Quote
 
     symbol = state["symbol"]
-    with trace_step(state.get("_trace_span"), "craw_fetch", input=symbol) as t:
+    with trace_step(step_parent(state, "price_agent"), "craw_fetch", input=symbol) as t:
         try:
             df = Quote(symbol=symbol, source="KBS").history(length="5", interval="d")
         except Exception as exc:
@@ -62,7 +62,7 @@ def parse(state: CrawlState) -> dict:
     """rows (nghìn đồng) → Agent_Output (VND). Field `quote` là output graph."""
     rows = state["rows"]
     symbol = state["symbol"]
-    with trace_step(state.get("_trace_span"), "craw_parse", input=symbol) as t:
+    with trace_step(step_parent(state, "price_agent"), "craw_parse", input=symbol) as t:
         if not rows:
             quote = Agent_Output(
                 symbol=symbol,

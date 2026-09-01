@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from typing import Annotated
+
 from langchain_core.tools import tool
+from langgraph.prebuilt import InjectedState
 
 from app.agent_pr.news_agent.nodes import fetch, normalize, parse
 from app.agent_pr.news_agent.schemas import Agent_Output
@@ -15,10 +18,10 @@ def normalize_ticker(symbol: str) -> str:
 
 
 @tool
-def fetch_cafef_news(symbol: str) -> str:
+def fetch_cafef_news(symbol: str, turn: Annotated[str, InjectedState("turn")] = "") -> str:
     """Bắt buộc khi cần tin: bài mới trên trang mã CafeF (News.ashx). Không chấm sentiment, không bịa tiêu đề."""
     try:
-        st = normalize({"symbol": symbol})
+        st = {"symbol": str(symbol or "").strip().upper(), "turn": turn}
         st.update(fetch(st))
         st.update(parse(st))
         return st["news"].model_dump_json()

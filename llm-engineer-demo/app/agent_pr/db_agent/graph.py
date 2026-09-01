@@ -9,17 +9,15 @@ chính). Pack ghi `db` + `db_lookup_turn` / `db_write_turn` theo `mode`.
 from __future__ import annotations
 
 import json
-from functools import lru_cache, partial
+from functools import lru_cache
 
 from app.agent_pr.db_agent.nodes import approve_pending_write, parse
 from app.agent_pr.db_agent.schemas import Agent_Input, Agent_Output
 from app.agent_pr.db_agent.state import DBState
 from app.agent_pr.db_agent.tools import TOOLS
-from langgraph.graph import END, START, StateGraph
-from langgraph.prebuilt import ToolNode
 
-from app.agent_pr.react import agent_node, last_tool_json, parse_tool_output, should_continue
-from app.monitoring.tracing import current_span, trace_step
+from app.agent_pr.react import build_react_subgraph, fresh_user, last_tool_json, parse_tool_output
+from app.monitoring.tracing import agent_span, trace_step
 
 __all__ = ["approve_pending_write", "run_db"]
 
@@ -34,8 +32,6 @@ Quy tắc:
 
 
 def _seed(state: DBState) -> dict:
-    if state.get("messages"):
-        return {}
     symbol = str(state.get("symbol") or "").strip() or "?"
     news = state.get("candidate_news") or []
     prices = state.get("candidate_prices") or []
@@ -54,7 +50,7 @@ def _seed(state: DBState) -> dict:
         )
     else:
         text = f"Đọc lịch sử DB mã {symbol}. Gọi read_symbol_store."
-    return {"messages": [{"role": "user", "content": text}]}
+    return fresh_user(text)
 
 
 def _query(state: DBState) -> str:
@@ -64,7 +60,7 @@ def _query(state: DBState) -> str:
 def _pack(state: DBState) -> dict:
     raw = last_tool_json(state, {"read_symbol_store", "stage_new_rows"})
     result = parse_tool_output(raw, Agent_Output) or parse(state)["result"]
-    turn = state.get("turn") or ""
+    turn = state.get("turn") or ""  # Send từ hub; thiếu field `turn` trên DBState thì pack ghi rỗng → loop lookup
     key = "db_write_turn" if str(state.get("mode") or "read") == "write" else "db_lookup_turn"
     return {"db": result, key: turn}
 
@@ -88,26 +84,28 @@ def _offline(state: DBState) -> tuple[str, dict]:
 
 @lru_cache(maxsize=1)
 def _build_graph():
-    graph = StateGraph(DBState)
-    graph.add_node("seed", _seed)
-    graph.add_node(
-        "agent",
-        partial(
-            agent_node,
-            catalog=TOOLS,
-            system_prompt=_SYSTEM,
-            query_fn=_query,
-            offline_call=_offline,
-        ),
+    graph = build_react_subgraph(
+        DBState,
+        tools=TOOLS,
+        system_prompt=_SYSTEM,
+        query_fn=_query,
+        offline_call=_offline,
+        agent_name="db_agent",
+        seed_fn=_seed,
+        pack_fn=_pack,
     )
-    graph.add_node("tools", ToolNode(TOOLS))
-    graph.add_node("pack", _pack)
-    graph.add_edge(START, "seed")
-    graph.add_edge("seed", "agent")
-    graph.add_conditional_edges("agent", should_continue, {"tools": "tools", "pack": "pack"})
-    graph.add_edge("tools", "agent")
-    graph.add_edge("pack", END)
     return graph.compile()
+
+
+def db_agent(state: DBState) -> dict:
+    """Node hub — mở span AGENT "db_agent" rồi chạy subgraph seed→agent→tools→pack."""
+    symbol = str(state.get("symbol") or "")
+    with agent_span(str(state.get("turn") or ""), "db_agent", input=symbol) as t:
+        out = _build_graph().invoke(state)
+        result = out.get("db")
+        if result is not None:
+            t["output"] = result.detail
+        return out
 
 
 def run_db(inp: Agent_Input) -> Agent_Output:
@@ -118,7 +116,6 @@ def run_db(inp: Agent_Input) -> Agent_Output:
                 "symbol": symbol,
                 "candidate_news": inp.candidate_news,
                 "candidate_prices": inp.candidate_prices,
-                "_trace_span": current_span(),
             }
         )["db"]
         t["output"] = result.detail

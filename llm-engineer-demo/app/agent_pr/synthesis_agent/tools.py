@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from typing import Annotated
+
 from langchain_core.tools import tool
+from langgraph.prebuilt import InjectedState
 
 from app.agent_pr.craw_agent.schemas import Agent_Output as PriceOut
 from app.agent_pr.eval_agent.schemas import Agent_Output as EvalOut
@@ -16,8 +19,10 @@ def compose_user_answer(
     news_json: str = "",
     eval_json: str = "",
     n_history: int = 0,
+    question: str = "",
+    turn: Annotated[str, InjectedState("turn")] = "",
 ) -> str:
-    """Bắt buộc khi ghép câu: tiếng Việt từ JSON giá + tin + eval. Không crawl, không bịa tin/số."""
+    """Bắt buộc khi ghép câu: trả lời `question` từ JSON giá + tin + eval. Không crawl, không bịa."""
     try:
         def _load(cls, raw: str):
             text = (raw or "").strip()
@@ -30,6 +35,8 @@ def compose_user_answer(
             "news": _load(NewsOut, news_json),
             "eval": _load(EvalOut, eval_json),
             "n_history": int(n_history or 0),
+            "question": question or "",
+            "turn": turn,
         }
         return compose(st)["result"].answer
     except Exception as exc:

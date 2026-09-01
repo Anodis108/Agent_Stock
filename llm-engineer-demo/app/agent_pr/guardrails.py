@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from app.agent_pr.context import set_history
 from app.guardrails.checks import OutputCheckResult, check_output, prepare_input
-from app.monitoring.tracing import trace_step
+from app.monitoring.tracing import step_parent, trace_step
 
 STOCK_KEYWORDS = frozenset(
     {
@@ -116,7 +116,7 @@ def guardrail_input(state: dict) -> dict:
             _history_blob(state),
         ]
     )
-    with trace_step(state.get("_trace_span"), "guardrail_input", input=question):
+    with trace_step(step_parent(state), "guardrail_input", input=question):
         safe = prepare_input(
             question,
             redact=True,
@@ -134,7 +134,7 @@ def guardrail_output(state: dict) -> dict:
     """Lọc câu trả lời cuối — không raise; ghi đè answer + history assistant."""
     output = state.get("output")
     raw = getattr(output, "answer", None) or ""
-    with trace_step(state.get("_trace_span"), "guardrail_output", input=raw) as t:
+    with trace_step(step_parent(state), "guardrail_output", input=raw) as t:
         result = sanitize_stock_answer(raw, state)
         t["output"] = {"answer": result.answer, "issues": result.issues}
     updates: dict = {"output_issues": result.issues}

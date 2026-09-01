@@ -7,16 +7,13 @@ Pack ghi `news` (đã trùng tên hub). HITL không ở đây.
 
 from __future__ import annotations
 
-from functools import lru_cache, partial
-
-from langgraph.graph import END, START, StateGraph
-from langgraph.prebuilt import ToolNode
+from functools import lru_cache
 
 from app.agent_pr.news_agent.schemas import Agent_Input, Agent_Output
 from app.agent_pr.news_agent.state import NewsState
 from app.agent_pr.news_agent.tools import TOOLS
-from app.agent_pr.react import agent_node, last_tool_json, parse_tool_output, should_continue
-from app.monitoring.tracing import current_span, trace_step
+from app.agent_pr.react import build_react_subgraph, fresh_user, last_tool_json, parse_tool_output
+from app.monitoring.tracing import agent_span, trace_step
 
 _SYSTEM = """Bạn là NewsAgent — CHỈ lấy tin thô CafeF. Không chấm tốt/xấu (Eval), không lấy giá, không ghi DB.
 
@@ -28,10 +25,8 @@ Quy tắc:
 
 
 def _seed(state: NewsState) -> dict:
-    if state.get("messages"):
-        return {}
     symbol = str(state.get("symbol") or "").strip() or "?"
-    return {"messages": [{"role": "user", "content": f"Lấy tin CafeF mã {symbol}."}]}
+    return fresh_user(f"Lấy tin CafeF mã {symbol}.")
 
 
 def _query(state: NewsState) -> str:
@@ -48,38 +43,39 @@ def _pack(state: NewsState) -> dict:
     return {"news": news}
 
 
+def _offline(state: NewsState):
+    return "fetch_cafef_news", {"symbol": str(state.get("symbol") or "")}
+
+
 @lru_cache(maxsize=1)
 def _build_graph():
-    def offline(state: NewsState):
-        return "fetch_cafef_news", {"symbol": str(state.get("symbol") or "")}
-
-    graph = StateGraph(NewsState)
-    graph.add_node("seed", _seed)
-    graph.add_node(
-        "agent",
-        partial(
-            agent_node,
-            catalog=TOOLS,
-            system_prompt=_SYSTEM,
-            query_fn=_query,
-            offline_call=offline,
-        ),
+    graph = build_react_subgraph(
+        NewsState,
+        tools=TOOLS,
+        system_prompt=_SYSTEM,
+        query_fn=_query,
+        offline_call=_offline,
+        agent_name="news_agent",
+        seed_fn=_seed,
+        pack_fn=_pack,
     )
-    graph.add_node("tools", ToolNode(TOOLS))
-    graph.add_node("pack", _pack)
-    graph.add_edge(START, "seed")
-    graph.add_edge("seed", "agent")
-    graph.add_conditional_edges("agent", should_continue, {"tools": "tools", "pack": "pack"})
-    graph.add_edge("tools", "agent")
-    graph.add_edge("pack", END)
     return graph.compile()
+
+
+def news_agent(state: NewsState) -> dict:
+    """Node hub — mở span AGENT "news_agent" rồi chạy subgraph seed→agent→tools→pack."""
+    symbol = str(state.get("symbol") or "")
+    with agent_span(str(state.get("turn") or ""), "news_agent", input=symbol) as t:
+        out = _build_graph().invoke(state)
+        news = out.get("news")
+        if news is not None:
+            t["output"] = {"n_articles": len(news.articles)}
+        return out
 
 
 def run_news(inp: Agent_Input) -> Agent_Output:
     symbol = (inp.symbol or "").strip().upper()
     with trace_step(None, "agent_pr_news", input=symbol) as t:
-        news = _build_graph().invoke(
-            {"symbol": symbol, "_trace_span": current_span()}
-        )["news"]
+        news = _build_graph().invoke({"symbol": symbol})["news"]
         t["output"] = {"n_articles": len(news.articles)}
         return news

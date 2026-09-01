@@ -39,7 +39,7 @@ from app.agent_pr.react import use_offline_tools
 from app.guardrails.injection import bound_messages
 from app.agent_pr.supervisor_agent.tools import TOOLS as SUPERVISOR_TOOLS
 from app.agent_pr.tool_selection import select_tools
-from app.monitoring.tracing import trace_step
+from app.monitoring.tracing import step_parent, trace_step
 
 # Giống LEGAL_SYSTEM_PROMPT (persona + quy tắc) và _SUPERVISOR_SYSTEM agent_m2
 # (worker không nói với nhau; chỉ chọn việc, không tự làm).
@@ -78,7 +78,7 @@ def _query_for_plan(state: SupervisorState) -> str:
 def rewrite_question(state: SupervisorState) -> dict:
     """Viết lại câu hỏi — cùng kiểu retriever._rewrite_query. Giữ `question` gốc."""
     original = str(state.get("question") or "").strip()
-    with trace_step(state.get("_trace_span"), "rewrite_question", input=original) as t:
+    with trace_step(step_parent(state), "rewrite_question", input=original) as t:
         rewritten = original
         extra_symbol = ""
         if original and not use_offline_tools():
@@ -215,8 +215,13 @@ def _from_db(obj: object | None) -> bool:
 
 
 def _has_price(state: SupervisorState, symbol: str) -> bool:
+    """Đủ giá để khỏi crawl: có last VÀ % so với phiên trước (1 hàng DB thì chưa)."""
     price = state.get("price")
-    return bool(_same_symbol(price, symbol) and getattr(price, "last", 0))
+    return bool(
+        _same_symbol(price, symbol)
+        and getattr(price, "last", 0)
+        and getattr(price, "pct_change", None) is not None
+    )
 
 
 def _has_news(state: SupervisorState, symbol: str) -> bool:
@@ -331,10 +336,11 @@ def _pending_list(db: object | None) -> list[PendingWrite]:
 def coordinator(state: SupervisorState) -> dict:
     """Hub. Lần đầu: LLM lập plan. Mọi lần: DB → crawl nếu thiếu → eval → synth → HITL.
 
-    Span con dưới `_trace_span` — worker kế thừa cùng cha (Send copy field).
+    Span con trực tiếp dưới root (step_parent(state) không kèm agent_name —
+    coordinator chạy ở cấp hub, không phải bên trong 1 subgraph con).
     """
     with trace_step(
-        state.get("_trace_span"),
+        step_parent(state),
         "coordinator",
         input=str(state.get("question") or state.get("symbol") or ""),
     ) as t:
@@ -433,8 +439,10 @@ def _coordinate(state: SupervisorState) -> dict:
 
 
 def _send(state: SupervisorState, node: str, payload: dict) -> Send:
-    """Nhánh Send chỉ thấy payload — copy span cha để worker `trace_step` lồng cây."""
-    payload["_trace_span"] = state.get("_trace_span")
+    """Nhánh Send chỉ thấy payload — luôn kèm `turn` (string, pickle-safe) để
+    node đích tự tìm span cha qua step_parent/agent_span. KHÔNG kèm span object
+    thật — MemorySaver checkpoint có thể serialize payload này, span không pickle được.
+    """
     return Send(node, payload)
 
 
@@ -459,7 +467,7 @@ def route_coordinator(state: SupervisorState) -> str | list[Send]:
         ]
     if wave == "gather":
         names = _pending_gather(state, state["plan"])
-        return [_send(state, names[0], {"symbol": symbol})] if names else "reply"
+        return [_send(state, names[0], {"symbol": symbol, "turn": turn})] if names else "reply"
     if wave == "db_write":
         return [
             _send(
@@ -489,7 +497,7 @@ def hitl_commit(state: SupervisorState) -> dict:
     Duyệt lệnh status=pending. Lệnh user đã từ chối qua /pr/approve giữ rejected
     (approve_pending_write không đảo).
     """
-    with trace_step(state.get("_trace_span"), "hitl_commit", input=str(state.get("symbol") or "")) as t:
+    with trace_step(step_parent(state), "hitl_commit", input=str(state.get("symbol") or "")) as t:
         out = _hitl_commit(state)
         t["output"] = out.get("trace", [""])[-1] if out.get("trace") else ""
         return out
@@ -543,7 +551,7 @@ def after_wave1(state: SupervisorState) -> dict:
 
 def reply(state: SupervisorState) -> dict:
     """Đóng gói. Có draft thì dùng; không thì 1 câu tối thiểu từ báo cáo đã có."""
-    with trace_step(state.get("_trace_span"), "reply", input=str(state.get("question") or "")) as t:
+    with trace_step(step_parent(state), "reply", input=str(state.get("question") or "")) as t:
         out = _reply(state)
         output = out.get("output")
         t["output"] = getattr(output, "answer", None)
@@ -616,7 +624,7 @@ def should_compact_route(state: SupervisorState) -> str:
 
 def recall_memory(state: SupervisorState) -> dict:
     """Đầu lượt: đọc long-term (Qdrant user_memory) theo user_id. Không user → bỏ qua."""
-    with trace_step(state.get("_trace_span"), "recall_memory", input=str(state.get("user_id") or "")) as t:
+    with trace_step(step_parent(state), "recall_memory", input=str(state.get("user_id") or "")) as t:
         out = _recall_memory(state)
         t["output"] = {"n_memories": len(out.get("memories") or [])}
         return out
@@ -640,7 +648,7 @@ def _recall_memory(state: SupervisorState) -> dict:
 
 def store_memory(state: SupervisorState) -> dict:
     """Cuối lượt: trích 1 sự thật dài hạn về user (mã theo dõi, khẩu vị) → vector store."""
-    with trace_step(state.get("_trace_span"), "store_memory", input=str(state.get("user_id") or "")) as t:
+    with trace_step(step_parent(state), "store_memory", input=str(state.get("user_id") or "")) as t:
         out = _store_memory(state)
         t["output"] = bool(out)
         return out

@@ -12,7 +12,7 @@ from app.agent_pr.react import use_offline_tools
 from app.guardrails.injection import bound_messages
 from app.llm.completion import chat_parsed
 from app.llm.params import DETERMINISTIC
-from app.monitoring.tracing import trace_step
+from app.monitoring.tracing import step_parent, trace_step
 
 # Đúng list Sơ đồ 3d — không thêm "lãi"/"lỗ" (tránh lệch map).
 _NEGATIVE = ("xả hàng", "bán ròng", "giảm sàn", "cắt lỗ")
@@ -72,7 +72,7 @@ def score(state: EvalState) -> dict:
       None  = chưa rõ (thiếu % hoặc không có tin thiên hướng)
     """
     price, news = state.get("price"), state.get("news")
-    with trace_step(state.get("_trace_span"), "eval_score", input=getattr(price, "symbol", "")) as t:
+    with trace_step(step_parent(state, "eval_agent"), "eval_score", input=getattr(price, "symbol", "")) as t:
         if price is None or news is None:
             report = Agent_Output(
                 symbol=str(getattr(price, "symbol", None) or getattr(news, "symbol", None) or ""),

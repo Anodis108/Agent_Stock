@@ -6,7 +6,10 @@
 
 from __future__ import annotations
 
+from typing import Annotated
+
 from langchain_core.tools import tool
+from langgraph.prebuilt import InjectedState
 
 from app.agent_pr.craw_agent.nodes import fetch, normalize, parse
 from app.agent_pr.craw_agent.schemas import Agent_Output
@@ -20,10 +23,13 @@ def normalize_ticker(symbol: str) -> str:
 
 
 @tool
-def fetch_latest_close(symbol: str) -> str:
+def fetch_latest_close(symbol: str, turn: Annotated[str, InjectedState("turn")] = "") -> str:
     """Bắt buộc khi cần giá: đóng cửa 2 phiên mới nhất vnstock KBS, VND + %. Không bịa số."""
     try:
-        st = normalize({"symbol": symbol})
+        # Không gọi normalize() — đã có trace_step; LLM hay gọi normalize_ticker trước
+        # thì sẽ bị 2 hàng craw_normalize trên Langfuse. `turn` injected (không lộ ra
+        # LLM) — cho fetch/parse tìm đúng span "price_agent" làm cha (xem tracing.py).
+        st = {"symbol": str(symbol or "").strip().upper(), "turn": turn}
         st.update(fetch(st))
         st.update(parse(st))
         return st["quote"].model_dump_json()

@@ -34,7 +34,9 @@ class Citation(BaseModel):
 class StockAnswer(BaseModel):
     """Structured generation (Bài 1 parse + Bài 5 grounding)."""
 
-    answer: str = Field(description="Câu tiếng Việt; CHỈ dùng số liệu/tiêu đề trong báo cáo")
+    answer: str = Field(
+        description="Câu tiếng Việt trả lời đúng câu hỏi; CHỈ dùng số liệu/tiêu đề trong báo cáo"
+    )
     confidence: float = Field(ge=0.0, le=1.0, description="Độ tin cậy 0–1 dựa trên coverage báo cáo")
     citations: list[Citation] = Field(default_factory=list, description="Trích dẫn từ báo cáo đã có")
 

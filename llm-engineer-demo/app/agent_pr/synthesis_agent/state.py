@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any, TypedDict
+from typing import Annotated, TypedDict
 
-from langgraph.channels.untracked_value import UntrackedValue
 from langgraph.graph.message import add_messages
 
 from app.agent_pr.craw_agent.schemas import Agent_Output as PriceOut
@@ -19,10 +18,11 @@ class SynthState(TypedDict, total=False):
     news: NewsOut
     eval: EvalOut
     db: DbOut
+    question: str                      # câu user — subgraph copy từ hub
+    rewritten_question: str            # rewrite; compose ưu tiên
     n_history: int
     result: Agent_Output                  # pack từ tool compose_user_answer
     draft: Agent_Output                   # cùng result — tên field hub
     turn: str
     synth_turn: str
     messages: Annotated[list, add_messages]
-    _trace_span: Annotated[Any, UntrackedValue(object, guard=False)]  # span cha hub

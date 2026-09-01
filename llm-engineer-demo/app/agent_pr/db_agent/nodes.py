@@ -13,7 +13,7 @@ from pathlib import Path
 
 from app.agent_pr.db_agent.schemas import Agent_Output, PendingWrite, PriceRow, SavedNews
 from app.agent_pr.db_agent.state import DBState
-from app.monitoring.tracing import trace_step
+from app.monitoring.tracing import step_parent, trace_step
 
 _DB_PATH = Path(__file__).resolve().parents[3] / "data" / "agent_pr.sqlite3"
 
@@ -94,7 +94,7 @@ def _ensure_unique_keys(conn: sqlite3.Connection) -> None:
 
 
 def normalize(state: DBState) -> dict:
-    with trace_step(state.get("_trace_span"), "db_normalize", input=state.get("symbol", "")) as t:
+    with trace_step(step_parent(state, "db_agent"), "db_normalize", input=state.get("symbol", "")) as t:
         symbol = str(state.get("symbol") or "").strip().upper()
         t["output"] = symbol
         return {"symbol": symbol}
@@ -102,7 +102,7 @@ def normalize(state: DBState) -> dict:
 
 def read(state: DBState) -> dict:
     symbol = state["symbol"]
-    with trace_step(state.get("_trace_span"), "db_read", input=symbol) as t:
+    with trace_step(step_parent(state, "db_agent"), "db_read", input=symbol) as t:
         out = _read_rows(symbol)
         t["output"] = {
             "n_price": len(out["price_rows"]),
@@ -138,7 +138,7 @@ def stage_writes(state: DBState) -> dict:
     symbol = state["symbol"]
     news_cands = state.get("candidate_news") or []
     price_cands = state.get("candidate_prices") or []
-    with trace_step(state.get("_trace_span"), "db_stage_writes", input=symbol) as t:
+    with trace_step(step_parent(state, "db_agent"), "db_stage_writes", input=symbol) as t:
         pending_rows = _stage_pending(symbol, news_cands) + _stage_prices(symbol, price_cands)
         t["output"] = {"n_pending": len(pending_rows)}
         return {"pending_rows": pending_rows}
@@ -270,7 +270,7 @@ def parse(state: DBState) -> dict:
     price_rows = state.get("price_rows") or []
     news_rows = state.get("news_rows") or []
     pending_rows = state.get("pending_rows") or []
-    with trace_step(state.get("_trace_span"), "db_parse", input=symbol) as t:
+    with trace_step(step_parent(state, "db_agent"), "db_parse", input=symbol) as t:
         pending = [PendingWrite(**_pending_fields(row)) for row in pending_rows]
         result = Agent_Output(
             symbol=symbol,

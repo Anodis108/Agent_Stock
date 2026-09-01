@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+from typing import Annotated
 
 from langchain_core.tools import tool
+from langgraph.prebuilt import InjectedState
 
 from app.agent_pr.craw_agent.schemas import Agent_Output as PriceOut
 from app.agent_pr.eval_agent.nodes import _sentiment, score
@@ -19,14 +21,16 @@ def classify_headline(title: str) -> str:
 
 
 @tool
-def score_price_vs_news(price_json: str, news_json: str) -> str:
+def score_price_vs_news(
+    price_json: str, news_json: str, turn: Annotated[str, InjectedState("turn")] = ""
+) -> str:
     """Bắt buộc khi chấm: JSON giá + tin (Agent_Output craw/news) → báo cáo eval. Không sửa số, không bịa sentiment."""
     try:
         price = PriceOut.model_validate_json(price_json) if (price_json or "").strip() not in ("", "{}") else None
         news = None
         if (news_json or "").strip() not in ("", "{}"):
             news = NewsOut.model_validate(json.loads(news_json))
-        report = score({"price": price, "news": news})["report"]
+        report = score({"price": price, "news": news, "turn": turn})["report"]
         return report.model_dump_json()
     except Exception as exc:
         return Agent_Output(

@@ -16,7 +16,7 @@ from urllib.parse import urljoin
 
 from app.agent_pr.news_agent.schemas import Agent_Output, NewsItem
 from app.agent_pr.news_agent.state import NewsState
-from app.monitoring.tracing import trace_step
+from app.monitoring.tracing import step_parent, trace_step
 
 # NewsType=0 = tin bài trên trang mã (không phải CBTT type 1–4).
 _CAFEF_NEWS = "https://cafef.vn/du-lieu/Ajax/PageNew/News.ashx"
@@ -26,7 +26,7 @@ _MAX_NEWS = 10
 
 def normalize(state: NewsState) -> dict:
     """Upper + strip — mã do agent quyết."""
-    with trace_step(state.get("_trace_span"), "news_normalize", input=state.get("symbol", "")) as t:
+    with trace_step(step_parent(state, "news_agent"), "news_normalize", input=state.get("symbol", "")) as t:
         symbol = str(state.get("symbol") or "").strip().upper()
         t["output"] = symbol
         return {"symbol": symbol}
@@ -46,7 +46,7 @@ def fetch(state: NewsState) -> dict:
     import httpx
 
     symbol = state["symbol"]
-    with trace_step(state.get("_trace_span"), "news_fetch", input=symbol) as t:
+    with trace_step(step_parent(state, "news_agent"), "news_fetch", input=symbol) as t:
         try:
             resp = httpx.get(
                 _CAFEF_NEWS,
@@ -85,7 +85,7 @@ def parse(state: NewsState) -> dict:
     """rows → Agent_Output. Field `news` là output của graph."""
     rows = state["rows"]
     symbol = state["symbol"]
-    with trace_step(state.get("_trace_span"), "news_parse", input=symbol) as t:
+    with trace_step(step_parent(state, "news_agent"), "news_parse", input=symbol) as t:
         if not rows:
             news = Agent_Output(
                 symbol=symbol,

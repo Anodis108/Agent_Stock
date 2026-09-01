@@ -1,205 +1,245 @@
-"""Test Buổi 7 — Monitoring (LangFuse hooks, tối thiểu).
+"""LangFuse — 1 AGENT root ("agent_pr_ask") + AGENT con (price_agent/...) + SPAN/GENERATION cháu.
 
-Khi MONITORING_ENABLED=false (mặc định), trace_answer/trace_stream phải là
-no-op hoàn toàn — không import package `langfuse` (chưa cài trong dev env).
-Khi bật, mock `_get_langfuse` để không cần key/network thật.
+Test OTEL (InMemorySpanExporter) bắt buộc nesting thật — mock dict không đủ.
+Span cha được tra theo `turn` (xem app/monitoring/tracing.py: step_parent, agent_span).
 """
 
 from __future__ import annotations
 
-from contextlib import contextmanager
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor, SpanExporter, SpanExportResult
+from opentelemetry.trace import format_trace_id, use_span
 
 from app.monitoring import tracing
 
 
-def test_trace_answer_is_noop_when_disabled(monkeypatch):
-    monkeypatch.setattr(tracing.settings, "monitoring_enabled", False)
+class ListExporter(SpanExporter):
+    def __init__(self):
+        self.spans: list = []
 
-    with tracing.trace_answer("answer", "câu hỏi") as t:
-        t["output"] = "trả lời"
+    def export(self, spans):
+        self.spans.extend(spans)
+        return SpanExportResult.SUCCESS
+
+    def shutdown(self):
+        return None
+
+    def force_flush(self, timeout_millis: int = 0):
+        return True
 
 
-def test_trace_stream_is_noop_when_disabled(monkeypatch):
-    monkeypatch.setattr(tracing.settings, "monitoring_enabled", False)
+class OtelSpan:
+    """Span giả Langfuse nhưng `_otel_span` là OTEL thật — test parent/trace_id."""
 
-    tokens = iter(["a", "b", "c"])
-    result = list(tracing.trace_stream("answer_stream", "câu hỏi", tokens))
-    assert result == ["a", "b", "c"]
-
-
-class _FakeSpan:
-    def __init__(self, calls: dict, key: str = "update"):
-        self._calls = calls
-        self._key = key
-
-    def start_as_current_observation(self, **kwargs):
-        self._calls.setdefault("children", []).append(kwargs)
-        key = f"update_{kwargs.get('name', 'span')}"
-
-        @contextmanager
-        def _cm():
-            yield _FakeSpan(self._calls, key=key)
-
-        return _cm()
+    def __init__(self, tracer, otel_span, name: str):
+        self._tracer = tracer
+        self._otel_span = otel_span
+        self.name = name
 
     def start_observation(self, **kwargs):
-        self._calls.setdefault("orphan_children", []).append(kwargs)
-        return _FakeSpan(self._calls, key="orphan_update")
+        with use_span(self._otel_span, end_on_exit=False):
+            child = self._tracer.start_span(str(kwargs.get("name") or "child"))
+        if kwargs.get("as_type"):
+            child.set_attribute("langfuse.observation.type", kwargs["as_type"])
+        return OtelSpan(self._tracer, child, str(kwargs.get("name")))
 
     def update(self, **kwargs):
-        self._calls[self._key] = kwargs
+        if kwargs.get("output") is not None:
+            self._otel_span.set_attribute("langfuse.observation.output", str(kwargs["output"])[:200])
 
     def end(self):
-        self._calls["ended"] = True
+        if self._otel_span.is_recording():
+            self._otel_span.end()
 
 
-def _fake_client(calls: dict):
-    class FakeLangfuse:
-        def start_observation(self, **kwargs):
-            calls.setdefault("roots", []).append(kwargs)
-            calls["start_observation"] = kwargs
-            return _FakeSpan(calls, key="update")
+class OtelLangfuse:
+    def __init__(self, tracer):
+        self._tracer = tracer
 
-        def start_as_current_observation(self, **kwargs):
-            calls.setdefault("client_current", []).append(kwargs)
+    def start_observation(self, **kwargs):
+        span = self._tracer.start_span(str(kwargs.get("name") or "root"))
+        span.set_attribute("langfuse.observation.type", kwargs.get("as_type") or "span")
+        return OtelSpan(self._tracer, span, str(kwargs.get("name")))
 
-            @contextmanager
-            def _cm():
-                yield _FakeSpan(calls, key="client_current_span")
-
-            return _cm()
-
-        def flush(self):
-            calls["flushed"] = True
-
-    return FakeLangfuse()
+    def flush(self):
+        return None
 
 
-def test_trace_answer_calls_langfuse_when_enabled(monkeypatch):
+def _otel_client(monkeypatch):
+    exporter = ListExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    tracer = provider.get_tracer("langfuse-sdk")
     monkeypatch.setattr(tracing.settings, "monitoring_enabled", True)
-    calls: dict = {}
-    monkeypatch.setattr(tracing, "_get_langfuse", lambda: _fake_client(calls))
-
-    with tracing.trace_answer("answer", "câu hỏi") as t:
-        t["output"] = "trả lời"
-
-    assert calls["start_observation"]["input"] == "câu hỏi"
-    assert calls["update"]["output"] == "trả lời"
-    assert calls["ended"] is True
-    assert calls["flushed"] is True
-    assert len(calls["roots"]) == 1
+    monkeypatch.setattr(tracing, "_get_langfuse", lambda: OtelLangfuse(tracer))
+    monkeypatch.setattr(tracing, "_roots", {})
+    monkeypatch.setattr(tracing, "_agents", {})
+    return exporter
 
 
-def test_trace_stream_calls_langfuse_when_enabled(monkeypatch):
-    monkeypatch.setattr(tracing.settings, "monitoring_enabled", True)
-    calls: dict = {}
-    monkeypatch.setattr(tracing, "_get_langfuse", lambda: _fake_client(calls))
-
-    tokens = iter(["a", "b"])
-    result = list(tracing.trace_stream("answer_stream", "q", tokens))
-
-    assert result == ["a", "b"]
-    assert calls["start_observation"]["output"] == "ab"
-    assert calls["flushed"] is True
+def _finished(exporter) -> list:
+    return list(exporter.spans)
 
 
-def test_trace_step_llm_is_noop_when_disabled(monkeypatch):
+def test_disabled_is_noop(monkeypatch):
     monkeypatch.setattr(tracing.settings, "monitoring_enabled", False)
-    with tracing.trace_step(
-        None,
-        "llm.chat",
-        input=[{"role": "user", "content": "hi"}],
-        model="gpt-4o-mini",
-        usage={"prompt_tokens": 3, "completion_tokens": 1, "total_tokens": 4},
-    ) as t:
-        t["output"] = "hello"
-
-
-def test_trace_step_nests_under_parent_not_new_root(monkeypatch):
-    """Một câu hỏi: 1 root assistant_message; db_*/synth/llm là child, không phải root."""
-    monkeypatch.setattr(tracing.settings, "monitoring_enabled", True)
-    calls: dict = {}
-    monkeypatch.setattr(tracing, "_get_langfuse", lambda: _fake_client(calls))
-
-    step_names = ("db_normalize", "db_read", "db_parse", "synth_compose", "llm.chat")
-    with tracing.trace_answer("assistant_message", "Tại sao HPG giảm") as t:
-        t["output"] = {"answer": "HPG: …"}
-        for name in step_names:
-            with tracing.trace_step(t.get("_span"), name, input="HPG") as step:
-                step["output"] = name
-            with tracing.trace_step(None, name, input="HPG") as step:
-                step["output"] = name
-
-    assert [row["name"] for row in calls["roots"]] == ["assistant_message"]
-    assert "client_current" not in calls
-    assert "orphan_children" not in calls
-    child_names = [row["name"] for row in calls["children"]]
-    assert child_names.count("db_read") == 2
-    assert set(step_names) <= set(child_names)
-    assert calls["update_synth_compose"]["output"] == "synth_compose"
-
-
-def test_trace_step_sends_usage_as_generation(monkeypatch):
-    monkeypatch.setattr(tracing.settings, "monitoring_enabled", True)
-    calls: dict = {}
-    monkeypatch.setattr(tracing, "_get_langfuse", lambda: _fake_client(calls))
-
-    with tracing.trace_answer("answer", "câu hỏi"):
-        with tracing.trace_step(
-            None,
-            "llm.chat_parsed",
-            input=[{"role": "user", "content": "hi"}],
-            model="gpt-4o-mini",
-            usage={"prompt_tokens": 10, "completion_tokens": 4, "total_tokens": 14},
-        ) as t:
-            t["output"] = {"symbol": "HPG"}
-
-    gen = calls["children"][-1]
-    assert gen["as_type"] == "generation"
-    assert gen["model"] == "gpt-4o-mini"
-    assert gen["usage_details"] == {"input": 10, "output": 4, "total": 14}
-    assert calls["update_llm.chat_parsed"]["output"] == {"symbol": "HPG"}
-    assert len(calls["roots"]) == 1
-
-
-def test_hub_ask_one_root(monkeypatch):
-    """run_supervisor bọc 1 `trace_answer('agent_pr_ask')` / HTTP."""
-    monkeypatch.setattr(tracing.settings, "monitoring_enabled", True)
-    calls: dict = {}
-    monkeypatch.setattr(tracing, "_get_langfuse", lambda: _fake_client(calls))
-
-    with tracing.trace_answer(
-        "agent_pr_ask",
-        "Tại sao HPG giảm",
-        metadata={"thread_id": "thread-1", "user_id": "user-1"},
-    ) as t:
-        t["output"] = {"answer": "ok"}
-
-    assert [row["name"] for row in calls["roots"]] == ["agent_pr_ask"]
-
-
-def test_trace_step_without_parent_does_not_open_root_trace(monkeypatch):
-    """Không có assistant_message → không gửi bước thành trace gốc."""
-    monkeypatch.setattr(tracing.settings, "monitoring_enabled", True)
-    calls: dict = {}
-
-    class NoParent:
-        def start_as_current_observation(self, **kwargs):
-            calls["opened"] = kwargs
-
-            @contextmanager
-            def _cm():
-                yield _FakeSpan(calls)
-
-            return _cm()
-
-        def start_observation(self, **kwargs):
-            calls["opened_obs"] = kwargs
-            return _FakeSpan(calls)
-
-    monkeypatch.setattr(tracing, "_get_langfuse", lambda: NoParent())
-    with tracing.trace_step(None, "coordinator", input="hi") as t:
+    with tracing.trace_answer("agent_pr_ask", "q") as t:
+        t["output"] = "a"
+    with tracing.trace_step(None, "coordinator") as t:
         t["output"] = "x"
-    assert "opened" not in calls
-    assert "opened_obs" not in calls
-    assert "roots" not in calls
+
+
+def test_otel_exactly_one_root_and_agent_nests_steps(monkeypatch):
+    """Root → coordinator (hub) + price_agent (AGENT con) → craw_fetch/llm.bind_tools lồng dưới nó."""
+    exp = _otel_client(monkeypatch)
+    turn = "turn-1"
+    with tracing.trace_answer("agent_pr_ask", "Giá FPT?", metadata={"turn": turn}):
+        with tracing.trace_step(tracing.step_parent({"turn": turn}), "guardrail_input"):
+            pass
+        with tracing.trace_step(tracing.step_parent({"turn": turn}), "coordinator") as c:
+            c["output"] = "need_price"
+        with tracing.agent_span(turn, "price_agent", input="FPT"):
+            with tracing.trace_step(tracing.step_parent({"turn": turn}, "price_agent"), "craw_fetch"):
+                pass
+            with tracing.trace_step(
+                tracing.step_parent({"turn": turn}, "price_agent"), "llm.bind_tools", model="gpt-4o-mini"
+            ):
+                pass
+
+    spans = _finished(exp)
+    assert len(spans) >= 5
+    traces = {s.context.trace_id for s in spans}
+    assert len(traces) == 1, f"spam trace_id: {len(traces)} spans={[(s.name, format_trace_id(s.context.trace_id)) for s in spans]}"
+
+    roots = [s for s in spans if s.parent is None]
+    assert len(roots) == 1, f"nhiều root: {[s.name for s in roots]}"
+    assert roots[0].name == "agent_pr_ask"
+    assert (roots[0].attributes or {}).get("langfuse.observation.type") == "agent"
+    root_id = roots[0].context.span_id
+
+    by_name = {s.name: s for s in spans}
+    assert by_name["guardrail_input"].parent.span_id == root_id
+    assert by_name["coordinator"].parent.span_id == root_id
+    price_agent = by_name["price_agent"]
+    assert price_agent.parent.span_id == root_id
+    assert (price_agent.attributes or {}).get("langfuse.observation.type") == "agent"
+
+    # craw_fetch / llm.bind_tools lồng dưới price_agent — KHÔNG phải trực tiếp dưới root.
+    assert by_name["craw_fetch"].parent.span_id == price_agent.context.span_id
+    llm = by_name["llm.bind_tools"]
+    assert llm.parent.span_id == price_agent.context.span_id
+    assert (llm.attributes or {}).get("langfuse.observation.type") == "generation"
+
+
+def test_no_parent_exports_nothing(monkeypatch):
+    exp = _otel_client(monkeypatch)
+    with tracing.trace_step(None, "coordinator"):
+        pass
+    assert _finished(exp) == []
+
+
+def test_agent_span_noop_without_root(monkeypatch):
+    """agent_span() cho turn không có root đang mở → no-op, không crash."""
+    exp = _otel_client(monkeypatch)
+    with tracing.agent_span("no-such-turn", "price_agent") as t:
+        assert t == {}
+    assert _finished(exp) == []
+
+
+def test_step_parent_reads_turn_from_state(monkeypatch):
+    _otel_client(monkeypatch)
+    turn = "turn-2"
+    with tracing.trace_answer("agent_pr_ask", "q", metadata={"turn": turn}) as t:
+        root_span = t["_span"]
+        assert tracing.step_parent({"turn": turn}) is root_span
+        assert tracing.step_parent({"turn": turn}, "price_agent") is None  # chưa mở agent_span
+        assert tracing.step_parent({}) is None  # thiếu turn
+        with tracing.agent_span(turn, "price_agent"):
+            assert tracing.step_parent({"turn": turn}, "price_agent") is not None
+
+
+def test_supervisor_state_has_no_span_field():
+    from app.agent_pr.supervisor_agent.state import SupervisorState
+
+    assert "_trace_span" not in SupervisorState.__annotations__
+
+
+def test_live_langfuse_agent_nests_under_root(monkeypatch):
+    """Gửi thật lên Langfuse rồi đọc API — FAIL nếu price_agent hoặc craw_fetch thành root/orphan."""
+    import time
+
+    import requests
+
+    monkeypatch.setattr(tracing, "_client", None)
+    monkeypatch.setattr(tracing, "_roots", {})
+    monkeypatch.setattr(tracing, "_agents", {})
+    if not tracing.settings.monitoring_enabled:
+        monkeypatch.setattr(tracing.settings, "monitoring_enabled", True)
+    host = (tracing.settings.langfuse_host or "").rstrip("/")
+    pk = tracing.settings.langfuse_public_key
+    sk = tracing.settings.langfuse_secret_key
+    if not (host and pk and sk):
+        raise AssertionError("thiếu LANGFUSE_HOST/KEY — không test được nesting thật")
+
+    marker = f"nest-test-{int(time.time() * 1000)}"
+    trace_id = None
+
+    with tracing.trace_answer("agent_pr_ask", marker, metadata={"turn": marker}) as t:
+        span = t.get("_span")
+        trace_id = str(getattr(span, "trace_id", "") or "")
+        with tracing.trace_step(tracing.step_parent({"turn": marker}), "coordinator", input=marker) as c:
+            c["output"] = "need_price"
+        with tracing.agent_span(marker, "price_agent", input=marker):
+            with tracing.trace_step(tracing.step_parent({"turn": marker}, "price_agent"), "craw_fetch"):
+                pass
+            with tracing.trace_step(
+                tracing.step_parent({"turn": marker}, "price_agent"),
+                "llm.bind_tools",
+                model="test-model",
+            ):
+                pass
+
+    assert trace_id and trace_id != "-", f"không lấy được trace_id: {trace_id!r}"
+
+    url = f"{host}/api/public/v2/observations"
+    last = None
+    rows = []
+    for _ in range(15):
+        resp = requests.get(
+            url,
+            params={"traceId": trace_id, "limit": 50, "fields": "core,basic,trace_context"},
+            auth=(pk, sk),
+            timeout=10,
+        )
+        last = resp
+        if resp.ok:
+            rows = resp.json().get("data") or []
+            names = {r.get("name") for r in rows}
+            if {"agent_pr_ask", "coordinator", "price_agent", "craw_fetch", "llm.bind_tools"} <= names:
+                break
+        time.sleep(0.4)
+    assert last is not None and last.ok, f"Langfuse API {getattr(last, 'status_code', None)} {getattr(last, 'text', '')[:300]}"
+    assert rows, f"không thấy observation cho trace {trace_id}"
+
+    by_id = {r["id"]: r for r in rows}
+    roots = [r for r in rows if r.get("isRootObservation") is True]
+    assert len(roots) == 1, f"nhiều isRoot=True: {[(r.get('name'), r.get('type')) for r in roots]}"
+    assert roots[0].get("name") == "agent_pr_ask"
+    assert (roots[0].get("type") or "").upper() == "AGENT"
+    assert roots[0].get("parentObservationId") in (None, "")
+
+    by_name = {r["name"]: r for r in rows}
+    coordinator = by_name["coordinator"]
+    assert coordinator.get("parentObservationId") == roots[0]["id"], "coordinator phải là con trực tiếp của root"
+
+    price_agent = by_name["price_agent"]
+    assert price_agent.get("parentObservationId") == roots[0]["id"], "price_agent phải là con trực tiếp của root"
+    assert (price_agent.get("type") or "").upper() == "AGENT"
+
+    craw_fetch = by_name["craw_fetch"]
+    assert craw_fetch.get("parentObservationId") == price_agent["id"], (
+        "craw_fetch phải lồng dưới price_agent, không phải dưới root — đây là cây bị phẳng nếu fail"
+    )
+    llm = by_name["llm.bind_tools"]
+    assert llm.get("parentObservationId") == price_agent["id"]
+    assert (llm.get("type") or "").upper() == "GENERATION"

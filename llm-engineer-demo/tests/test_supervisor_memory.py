@@ -63,7 +63,7 @@ def test_pending_gather_cung_ma_tai_dung_gia():
         reasoning="cùng mã",
     )
     state = {
-        "price": PriceOut(symbol="HPG", last=22100),
+        "price": PriceOut(symbol="HPG", last=22100, pct_change=0.5),
         "news": NewsOut(symbol="HPG", articles=[]),
     }
     assert _pending_gather(state, plan) == []
@@ -130,14 +130,12 @@ def test_route_lookup_db_truoc():
         use_synth=True,
         reasoning="ghi tin",
     )
-    parent = object()
     sends = route_coordinator(
         {
             "next_wave": "db_lookup",
             "symbol": "FPT",
             "turn": "t1",
             "plan": plan,
-            "_trace_span": parent,
         }
     )
     assert isinstance(sends, list) and len(sends) == 1
@@ -145,7 +143,7 @@ def test_route_lookup_db_truoc():
     assert sends[0].node == "db_agent"
     assert sends[0].arg["mode"] == "read"
     assert sends[0].arg["candidate_news"] == []
-    assert sends[0].arg["_trace_span"] is parent
+    assert "_trace_span" not in sends[0].arg
 
 
 def test_route_db_write_kem_candidate_sau_news():
@@ -173,14 +171,12 @@ def test_route_db_write_kem_candidate_sau_news():
             articles=[NewsItem(title="Tin A", url="https://cafef.vn/a.chn")],
         ),
     }
-    parent = object()
-    state["_trace_span"] = parent
     sends = route_coordinator(state)
     assert isinstance(sends, list) and len(sends) == 1
     assert isinstance(sends[0], Send)
     assert sends[0].node == "db_agent"
     assert sends[0].arg["mode"] == "write"
-    assert sends[0].arg["_trace_span"] is parent
+    assert "_trace_span" not in sends[0].arg
     assert sends[0].arg["candidate_news"] == [
         {"title": "Tin A", "url": "https://cafef.vn/a.chn"}
     ]
@@ -215,7 +211,19 @@ def test_hydrate_gia_tu_db():
     extra = _hydrate_from_db({"db": db}, plan)
     assert extra["price"].source == "db"
     assert extra["price"].last == 22100
+    assert extra["price"].pct_change is None
     assert "news" not in extra
+
+
+def test_has_price_can_hai_phien():
+    """1 hàng DB (không %) → vẫn hydrate last, nhưng chưa đủ để bỏ crawl."""
+    from app.agent_pr.craw_agent.schemas import Agent_Output as PriceOut
+    from app.agent_pr.supervisor_agent.nodes import _has_price
+
+    one = PriceOut(symbol="HPG", last=22100, pct_change=None, source="db")
+    assert not _has_price({"price": one}, "HPG")
+    two = PriceOut(symbol="HPG", last=22100, pct_change=-1.2, source="db")
+    assert _has_price({"price": two}, "HPG")
 
 
 def test_recall_khong_user_van_ghi_history():

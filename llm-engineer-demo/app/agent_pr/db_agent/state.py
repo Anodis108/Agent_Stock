@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from typing import Annotated, Any, TypedDict
 
-from langgraph.channels.untracked_value import UntrackedValue
 from langgraph.graph.message import add_messages
 
 from app.agent_pr.db_agent.schemas import Agent_Output, CandidateNews, CandidatePrice
@@ -30,7 +29,7 @@ class DBState(TypedDict, total=False):
     pending_rows: list[dict[str, Any]]
     result: Agent_Output
     db: Agent_Output                   # cùng result — tên field hub
+    turn: str                          # uuid HTTP từ hub Send — pack ghi *_turn
     db_lookup_turn: str
     db_write_turn: str
     messages: Annotated[list, add_messages]
-    _trace_span: Annotated[Any, UntrackedValue(object, guard=False)]  # span cha hub — Send phải copy

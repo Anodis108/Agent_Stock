@@ -7,41 +7,39 @@
 
 from __future__ import annotations
 
-from functools import lru_cache, partial
+from functools import lru_cache
 
-from langgraph.graph import END, START, StateGraph
-from langgraph.prebuilt import ToolNode
-
-from app.agent_pr.react import agent_node, last_tool_json, should_continue
+from app.agent_pr.react import build_react_subgraph, fresh_user, last_tool_json
 from app.agent_pr.synthesis_agent.nodes import compose
 from app.agent_pr.synthesis_agent.schemas import Agent_Input, Agent_Output
 from app.agent_pr.synthesis_agent.state import SynthState
 from app.agent_pr.synthesis_agent.tools import TOOLS
-from app.monitoring.tracing import current_span, trace_step
+from app.monitoring.tracing import agent_span, trace_step
 
-_SYSTEM = """Bạn là SynthesisAgent — ghép câu tiếng Việt từ báo cáo ĐÃ CÓ. Không crawl, không chấm lại.
+_SYSTEM = """Bạn là SynthesisAgent — trả lời câu hỏi user bằng báo cáo ĐÃ CÓ. Không crawl, không chấm lại.
 
 Quy tắc:
-- Bắt buộc gọi compose_user_answer với JSON giá/tin/eval trong tin nhắn. Thiếu field thì để trống, không bịa.
-- Chỉ dựa trên báo cáo; không thêm tin/số không có trong input (giống trợ lý pháp lý: grounded).
+- Bắt buộc gọi compose_user_answer với JSON giá/tin/eval + đúng câu hỏi trong tin nhắn.
+- Chỉ dựa trên báo cáo; không thêm tin/số không có trong input.
+- Hỏi tăng/giảm / so với hôm qua → nêu chiều + % nếu có pct_change; thiếu phiên trước thì nói thiếu.
 - Thiếu dữ liệu thì nói thiếu, không bịa. Ngắn gọn, tiếng Việt.
 - format_pct_phrase / describe_synth_job không thay compose_user_answer.
 - Xong tool thì dừng."""
 
 
 def _seed(state: SynthState) -> dict:
-    if state.get("messages"):
-        return {}
     price, news, ev = state.get("price"), state.get("news"), state.get("eval")
     n = int(state.get("n_history") or 0)
+    q = str(state.get("rewritten_question") or state.get("question") or "").strip()
     body = (
-        "Ghép câu trả lời.\n"
+        f"Câu hỏi: {q or '(không có)'}\n"
+        "Ghép câu trả lời đúng câu hỏi, chỉ dùng báo cáo.\n"
         f"price_json={price.model_dump_json() if price else '{}'}\n"
         f"news_json={news.model_dump_json() if news else '{}'}\n"
         f"eval_json={ev.model_dump_json() if ev else '{}'}\n"
         f"n_history={n}"
     )
-    return {"messages": [{"role": "user", "content": body}]}
+    return fresh_user(body)
 
 
 def _query(state: SynthState) -> str:
@@ -55,36 +53,41 @@ def _pack(state: SynthState) -> dict:
     return {"draft": result, "synth_turn": state.get("turn") or ""}
 
 
+def _offline(state: SynthState):
+    q = str(state.get("rewritten_question") or state.get("question") or "")
+    return "compose_user_answer", {
+        "price_json": state["price"].model_dump_json() if state.get("price") else "{}",
+        "news_json": state["news"].model_dump_json() if state.get("news") else "{}",
+        "eval_json": state["eval"].model_dump_json() if state.get("eval") else "{}",
+        "n_history": int(state.get("n_history") or 0),
+        "question": q,
+    }
+
+
 @lru_cache(maxsize=1)
 def _build_graph():
-    def offline(state: SynthState):
-        return "compose_user_answer", {
-            "price_json": state["price"].model_dump_json() if state.get("price") else "{}",
-            "news_json": state["news"].model_dump_json() if state.get("news") else "{}",
-            "eval_json": state["eval"].model_dump_json() if state.get("eval") else "{}",
-            "n_history": int(state.get("n_history") or 0),
-        }
-
-    graph = StateGraph(SynthState)
-    graph.add_node("seed", _seed)
-    graph.add_node(
-        "agent",
-        partial(
-            agent_node,
-            catalog=TOOLS,
-            system_prompt=_SYSTEM,
-            query_fn=_query,
-            offline_call=offline,
-        ),
+    graph = build_react_subgraph(
+        SynthState,
+        tools=TOOLS,
+        system_prompt=_SYSTEM,
+        query_fn=_query,
+        offline_call=_offline,
+        agent_name="synth_agent",
+        seed_fn=_seed,
+        pack_fn=_pack,
     )
-    graph.add_node("tools", ToolNode(TOOLS))
-    graph.add_node("pack", _pack)
-    graph.add_edge(START, "seed")
-    graph.add_edge("seed", "agent")
-    graph.add_conditional_edges("agent", should_continue, {"tools": "tools", "pack": "pack"})
-    graph.add_edge("tools", "agent")
-    graph.add_edge("pack", END)
     return graph.compile()
+
+
+def synth_agent(state: SynthState) -> dict:
+    """Node hub — mở span AGENT "synth_agent" rồi chạy subgraph seed→agent→tools→pack."""
+    symbol = str(getattr(state.get("price"), "symbol", "") or "")
+    with agent_span(str(state.get("turn") or ""), "synth_agent", input=symbol) as t:
+        out = _build_graph().invoke(state)
+        result = out.get("draft")
+        if result is not None:
+            t["output"] = result.answer
+        return out
 
 
 def run_synthesis(inp: Agent_Input) -> Agent_Output:
@@ -95,7 +98,6 @@ def run_synthesis(inp: Agent_Input) -> Agent_Output:
                 "news": inp.news,
                 "eval": inp.eval,
                 "n_history": inp.n_history,
-                "_trace_span": current_span(),
             }
         )["draft"]
         t["output"] = result.answer

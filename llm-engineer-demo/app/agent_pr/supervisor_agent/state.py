@@ -10,9 +10,7 @@ sẽ đè nhau nếu share 1 blackboard.
 
 from __future__ import annotations
 
-from typing import Annotated, Any, TypedDict
-
-from langgraph.channels.untracked_value import UntrackedValue
+from typing import Annotated, TypedDict
 
 
 def _last(_left, right):
@@ -62,8 +60,12 @@ class SupervisorState(TypedDict, total=False):
     next_wave: str                 # db_lookup|gather|eval|synth|db_write|hitl|done
     skip_hitl: bool                # pytest: soạn pending, không interrupt
     turn: str                      # uuid mỗi HTTP; Send db; Eval+Synth cạnh copy → *_turn
+                                    # cũng là key tra span Langfuse (xem monitoring/tracing.py)
     symbol: Annotated[str, _last]  # mã CP; Send: price/news/db; `_last` vì gather 3 nhánh/step
-    _trace_span: Annotated[Any, UntrackedValue(object, guard=False)]  # span cha; mọi worker; không checkpoint
+    # Không có `_trace_span` (CRAG GraphState có). Hub có MemorySaver checkpoint
+    # (CRAG thì không) → LangfuseSpan không pickle được, không thể nhét thẳng vào
+    # state có checkpointer. Span sống trong registry ở app.monitoring.tracing,
+    # khoá theo `turn` — node tra bằng step_parent(state, agent_name).
 
     # PriceAgent
     price: PriceOut                # pack ghi; Eval+Synth đọc (cạnh); hub hydrate từ DB

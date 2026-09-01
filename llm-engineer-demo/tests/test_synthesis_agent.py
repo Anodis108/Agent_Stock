@@ -81,6 +81,13 @@ def test_llm_grounded_answer(monkeypatch):
     assert out.citations[0].source == "price"
 
 
+def test_thieu_pct_noi_chua_du_lich_su():
+    from app.agent_pr.synthesis_agent import nodes as n
+
+    out = n.compose({"price": _price(None), "news": _news(), "eval": _eval()})["result"]
+    assert "chưa đủ lịch sử" in out.answer
+
+
 def test_co_lich_su_db():
     out = run_synthesis(
         Agent_Input(price=_price(1.5), news=_news(), eval=_eval(), n_history=5)

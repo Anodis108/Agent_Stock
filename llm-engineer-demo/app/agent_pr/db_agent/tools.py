@@ -8,18 +8,20 @@ Gọi lại không nhân hàng: UNIQUE (symbol, url/date) + INSERT OR IGNORE.
 from __future__ import annotations
 
 import json
+from typing import Annotated
 
 from langchain_core.tools import tool
+from langgraph.prebuilt import InjectedState
 
-from app.agent_pr.db_agent.nodes import normalize, parse, read, stage_writes
+from app.agent_pr.db_agent.nodes import parse, read, stage_writes
 from app.agent_pr.db_agent.schemas import Agent_Output, CandidateNews, CandidatePrice
 
 
 @tool
-def read_symbol_store(symbol: str) -> str:
+def read_symbol_store(symbol: str, turn: Annotated[str, InjectedState("turn")] = "") -> str:
     """Đọc tối đa 5 phiên giá + tin đã lưu trong DB (không HITL)."""
     try:
-        st = normalize({"symbol": symbol})
+        st = {"symbol": str(symbol or "").strip().upper(), "turn": turn}
         st.update(read(st))
         st.update(parse(st))
         return st["result"].model_dump_json()
@@ -36,6 +38,7 @@ def stage_new_rows(
     news_json: str = "[]",
     prices_json: str = "[]",
     idempotency_key: str = "",
+    turn: Annotated[str, InjectedState("turn")] = "",
 ) -> str:
     """Soạn lệnh ghi tin/giá chưa có. Cùng url/date không nhân pending.
 
@@ -43,7 +46,7 @@ def stage_new_rows(
     hub HITL mới ghi bảng chính.
     """
     try:
-        st = normalize({"symbol": symbol})
+        st = {"symbol": str(symbol or "").strip().upper(), "turn": turn}
         st.update(read(st))
         news = [CandidateNews.model_validate(x) for x in json.loads(news_json or "[]")]
         prices = [CandidatePrice.model_validate(x) for x in json.loads(prices_json or "[]")]

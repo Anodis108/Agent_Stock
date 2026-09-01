@@ -12,7 +12,6 @@ from __future__ import annotations
 
 from typing import Annotated, Any, TypedDict
 
-from langgraph.channels.untracked_value import UntrackedValue
 from langgraph.graph.message import add_messages
 
 from app.agent_pr.craw_agent.schemas import Agent_Output
@@ -26,9 +25,9 @@ class CrawlState(TypedDict, total=False):
     """
 
     symbol: str                    # mã đã upper + đúng định dạng (normalize ghi)
+    turn: str                      # uuid HTTP từ hub Send — key span "price_agent" (xem tracing.agent_span)
     rows: list[dict[str, Any]]     # [{time, close}, ...] từ vnstock; close = nghìn đồng
     error: str                     # fetch ghi khi IO lỗi — parse đưa vào source, không raise
     quote: Agent_Output            # parse/tool ghi
     price: Agent_Output            # pack copy sang tên field hub
     messages: Annotated[list, add_messages]  # ReAct LLM ⇄ ToolNode
-    _trace_span: Annotated[Any, UntrackedValue(object, guard=False)]  # span cha hub — Send phải copy

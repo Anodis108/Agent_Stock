@@ -5,9 +5,8 @@ Khác craw/news: không `rows` mạng. Input đã là 2 model; node `score` ghi 
 
 from __future__ import annotations
 
-from typing import Annotated, Any, TypedDict
+from typing import Annotated, TypedDict
 
-from langgraph.channels.untracked_value import UntrackedValue
 from langgraph.graph.message import add_messages
 
 from app.agent_pr.craw_agent.schemas import Agent_Output as PriceOut
@@ -25,4 +24,3 @@ class EvalState(TypedDict, total=False):
     turn: str
     eval_turn: str
     messages: Annotated[list, add_messages]
-    _trace_span: Annotated[Any, UntrackedValue(object, guard=False)]  # span cha hub (trùng tên)

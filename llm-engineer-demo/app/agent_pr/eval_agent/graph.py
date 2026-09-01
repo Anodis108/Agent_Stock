@@ -8,16 +8,13 @@ với `turn` để không chấm lại cùng lượt HTTP).
 
 from __future__ import annotations
 
-from functools import lru_cache, partial
-
-from langgraph.graph import END, START, StateGraph
-from langgraph.prebuilt import ToolNode
+from functools import lru_cache
 
 from app.agent_pr.eval_agent.schemas import Agent_Input, Agent_Output
 from app.agent_pr.eval_agent.state import EvalState
 from app.agent_pr.eval_agent.tools import TOOLS
-from app.agent_pr.react import agent_node, last_tool_json, parse_tool_output, should_continue
-from app.monitoring.tracing import current_span, trace_step
+from app.agent_pr.react import build_react_subgraph, fresh_user, last_tool_json, parse_tool_output
+from app.monitoring.tracing import agent_span, trace_step
 
 _SYSTEM = """Bạn là EvalAgent — CHỈ chấm tin vs chiều giá bằng tool. Không crawl, không ghép câu user.
 
@@ -29,15 +26,13 @@ Quy tắc:
 
 
 def _seed(state: EvalState) -> dict:
-    if state.get("messages"):
-        return {}
     price, news = state.get("price"), state.get("news")
     body = (
         "Chấm khớp giá vs tin.\n"
         f"price_json={price.model_dump_json() if price else '{}'}\n"
         f"news_json={news.model_dump_json() if news else '{}'}"
     )
-    return {"messages": [{"role": "user", "content": body}]}
+    return fresh_user(body)
 
 
 def _query(state: EvalState) -> str:
@@ -53,34 +48,37 @@ def _pack(state: EvalState) -> dict:
     return {"eval": report, "eval_turn": state.get("turn") or ""}
 
 
+def _offline(state: EvalState):
+    return "score_price_vs_news", {
+        "price_json": state["price"].model_dump_json() if state.get("price") else "{}",
+        "news_json": state["news"].model_dump_json() if state.get("news") else "{}",
+    }
+
+
 @lru_cache(maxsize=1)
 def _build_graph():
-    def offline(state: EvalState):
-        return "score_price_vs_news", {
-            "price_json": state["price"].model_dump_json() if state.get("price") else "{}",
-            "news_json": state["news"].model_dump_json() if state.get("news") else "{}",
-        }
-
-    graph = StateGraph(EvalState)
-    graph.add_node("seed", _seed)
-    graph.add_node(
-        "agent",
-        partial(
-            agent_node,
-            catalog=TOOLS,
-            system_prompt=_SYSTEM,
-            query_fn=_query,
-            offline_call=offline,
-        ),
+    graph = build_react_subgraph(
+        EvalState,
+        tools=TOOLS,
+        system_prompt=_SYSTEM,
+        query_fn=_query,
+        offline_call=_offline,
+        agent_name="eval_agent",
+        seed_fn=_seed,
+        pack_fn=_pack,
     )
-    graph.add_node("tools", ToolNode(TOOLS))
-    graph.add_node("pack", _pack)
-    graph.add_edge(START, "seed")
-    graph.add_edge("seed", "agent")
-    graph.add_conditional_edges("agent", should_continue, {"tools": "tools", "pack": "pack"})
-    graph.add_edge("tools", "agent")
-    graph.add_edge("pack", END)
     return graph.compile()
+
+
+def eval_agent(state: EvalState) -> dict:
+    """Node hub — mở span AGENT "eval_agent" rồi chạy subgraph seed→agent→tools→pack."""
+    symbol = str(getattr(state.get("price"), "symbol", "") or "")
+    with agent_span(str(state.get("turn") or ""), "eval_agent", input=symbol) as t:
+        out = _build_graph().invoke(state)
+        report = out.get("eval")
+        if report is not None:
+            t["output"] = report.detail
+        return out
 
 
 def run_eval(inp: Agent_Input) -> Agent_Output:
@@ -89,7 +87,6 @@ def run_eval(inp: Agent_Input) -> Agent_Output:
             {
                 "price": inp.price,
                 "news": inp.news,
-                "_trace_span": current_span(),
             }
         )["eval"]
         t["output"] = report.detail
