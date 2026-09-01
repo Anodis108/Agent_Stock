@@ -3,15 +3,11 @@
 Mỗi worker tự ráp `_build_graph` (seed → agent ⇄ tools → pack) — Planning Loop.
 LLM Brain: `agent_node`. Tools: catalog. Memory: `messages` + sliding window.
 
-Khác agent_m2:
-  - HITL không ở worker. Ghi DB dừng ở hub `interrupt_before=["hitl_commit"]`.
-  - Offline (không API key / pytest): giả 1 tool_call rồi pack — test/sqlite
-    không phụ thuộc OpenAI.
+Khác agent_m2: HITL không ở worker. Ghi DB dừng ở hub `interrupt_before=["hitl_commit"]`.
 """
 
 from __future__ import annotations
 
-import os
 from functools import partial
 
 from langgraph.graph import END, START, StateGraph
@@ -22,11 +18,6 @@ from app.agent_pr.tool_selection import select_tools
 from app.config import settings
 from app.guardrails.injection import bound_system
 from app.monitoring.tracing import step_parent
-
-
-def use_offline_tools() -> bool:
-    """Không key, hoặc đang pytest: giả 1 tool_call — không gọi OpenAI."""
-    return (not settings.api_keys) or bool(os.environ.get("PYTEST_CURRENT_TEST"))
 
 
 def fresh_user(text: str) -> dict:
@@ -50,54 +41,23 @@ def should_continue(state: dict) -> str:
     return "pack"
 
 
-def _is_tool_result(msg) -> bool:
-    return bool(getattr(msg, "tool_call_id", None) or getattr(msg, "type", None) == "tool")
-
-
 def agent_node(
     state: dict,
     *,
     catalog: list,
     system_prompt: str,
     query_fn,
-    offline_call,
     agent_name: str,
 ) -> dict:
     """Node LLM: retrieve trong catalog → bind → invoke.
 
     `agent_name` ("price_agent"/"db_agent"/...) chọn đúng span cha (xem
     tracing.step_parent) để "llm.bind_tools" lồng dưới agent, không phải root.
-
-    Offline: lần đầu giả đúng 1 tool_call (`offline_call`); lần sau (đã có
-    ToolMessage) trả AIMessage rỗng để `should_continue` → pack.
     """
-    last = (state.get("messages") or [None])[-1]
-    if use_offline_tools():
-        from langchain_core.messages import AIMessage
-
-        if _is_tool_result(last):
-            return {"messages": [AIMessage(content="ok")]}
-        name, args = offline_call(state)
-        return {
-            "messages": [
-                AIMessage(
-                    content="",
-                    tool_calls=[
-                        {
-                            "name": name,
-                            "args": args,
-                            "id": "offline-1",
-                            "type": "tool_call",
-                        }
-                    ],
-                )
-            ]
-        }
     from app.agent_pr.context import sliding_window
     from langchain_core.messages import AIMessage
 
-    query = query_fn(state)
-    relevant = select_tools(query, catalog)
+    relevant = select_tools(query_fn(state), catalog)
     # Cắt short-term worker — nguyên tắc 40–60% / agent_max_messages, tránh context rot.
     history = sliding_window(list(state.get("messages") or []), settings.agent_max_messages)
     messages = [{"role": "system", "content": bound_system(system_prompt)}] + history
@@ -144,7 +104,6 @@ def build_react_subgraph(
     tools: list,
     system_prompt: str,
     query_fn,
-    offline_call,
     agent_name: str,
     seed_fn,
     pack_fn,
@@ -161,7 +120,6 @@ def build_react_subgraph(
             catalog=tools,
             system_prompt=system_prompt,
             query_fn=query_fn,
-            offline_call=offline_call,
             agent_name=agent_name,
         ),
     )

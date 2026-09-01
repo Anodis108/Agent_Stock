@@ -25,44 +25,29 @@ Quy tắc:
 - Xong tool thì dừng."""
 
 
-def _seed(state: EvalState) -> dict:
-    price, news = state.get("price"), state.get("news")
-    body = (
-        "Chấm khớp giá vs tin.\n"
-        f"price_json={price.model_dump_json() if price else '{}'}\n"
-        f"news_json={news.model_dump_json() if news else '{}'}"
-    )
-    return fresh_user(body)
-
-
-def _query(state: EvalState) -> str:
-    p = state.get("price")
-    return getattr(p, "symbol", "") or "chấm tin vs giá"
-
-
-def _pack(state: EvalState) -> dict:
-    raw = last_tool_json(state, {"score_price_vs_news"})
-    from app.agent_pr.eval_agent.nodes import score
-
-    report = parse_tool_output(raw, Agent_Output) or score(state)["report"]
-    return {"eval": report, "eval_turn": state.get("turn") or ""}
-
-
-def _offline(state: EvalState):
-    return "score_price_vs_news", {
-        "price_json": state["price"].model_dump_json() if state.get("price") else "{}",
-        "news_json": state["news"].model_dump_json() if state.get("news") else "{}",
-    }
-
-
 @lru_cache(maxsize=1)
 def _build_graph():
+    def _seed(state: EvalState) -> dict:
+        price, news = state.get("price"), state.get("news")
+        body = (
+            "Chấm khớp giá vs tin.\n"
+            f"price_json={price.model_dump_json() if price else '{}'}\n"
+            f"news_json={news.model_dump_json() if news else '{}'}"
+        )
+        return fresh_user(body)
+
+    def _pack(state: EvalState) -> dict:
+        raw = last_tool_json(state, {"score_price_vs_news"})
+        from app.agent_pr.eval_agent.nodes import score
+
+        report = parse_tool_output(raw, Agent_Output) or score(state)["report"]
+        return {"eval": report, "eval_turn": state.get("turn") or ""}
+
     graph = build_react_subgraph(
         EvalState,
         tools=TOOLS,
         system_prompt=_SYSTEM,
-        query_fn=_query,
-        offline_call=_offline,
+        query_fn=lambda state: getattr(state.get("price"), "symbol", "") or "chấm tin vs giá",
         agent_name="eval_agent",
         seed_fn=_seed,
         pack_fn=_pack,
@@ -82,6 +67,7 @@ def eval_agent(state: EvalState) -> dict:
 
 
 def run_eval(inp: Agent_Input) -> Agent_Output:
+    """Điểm vào HTTP `/pr/eval` — chạy EvalAgent độc lập (không qua hub)."""
     with trace_step(None, "agent_pr_eval", input=inp.price.symbol) as t:
         report = _build_graph().invoke(
             {

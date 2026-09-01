@@ -1,4 +1,4 @@
-"""Synthesis — offline, không mạng. Khớp Sơ đồ 3d: nêu % / cảnh báo lệch / thiếu tin.
+"""Synthesis — chạy LLM thật. Khớp Sơ đồ 3d: nêu % / cảnh báo lệch / thiếu tin.
 
     python -m pytest tests/test_synthesis_agent.py -s -q
 """
@@ -59,7 +59,6 @@ def test_llm_grounded_answer(monkeypatch):
     from app.agent_pr.synthesis_agent import nodes as n
     from app.agent_pr.synthesis_agent.schemas import Citation, StockAnswer
 
-    monkeypatch.setattr(n, "use_offline_tools", lambda: False)
     monkeypatch.setattr(
         n,
         "chat_parsed_with_usage",

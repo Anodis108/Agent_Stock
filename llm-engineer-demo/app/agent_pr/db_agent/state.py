@@ -1,6 +1,9 @@
 """DBState — bảng dữ liệu chung của graph db_agent.
 
-State chảy qua: normalize → read → (stage_writes?) → parse.
+Graph là ReAct chung (seed → agent ⇄ tools → pack, xem react.py), không phải
+graph tuyến tính — tool `read_symbol_store`/`stage_new_rows` (tools.py) tự gọi
+thẳng `read`/`stage_writes`/`parse` (nodes.py) theo đúng thứ tự, không đi qua
+`normalize` (mã đã upper/strip ngay khi tool nhận input).
 
 HITL không còn trong graph này. Hub interrupt_before=["hitl_commit"] sau synth.
 """

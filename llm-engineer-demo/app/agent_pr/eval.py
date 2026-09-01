@@ -124,22 +124,20 @@ Trừ điểm logical_order / tool_correctness nếu:
 mà plan đã tắt là ĐÚNG (efficiency), không phải thiếu sót."""
 
 
-def _format_trajectory(trajectory: list[dict]) -> str:
-    if not trajectory:
-        return "(không có bước nào)"
-    return "\n".join(
-        f"Bước {i + 1}: gọi {step['tool']}({step['args']}) → {str(step['observation'])[:200]}"
-        for i, step in enumerate(trajectory)
-    )
-
-
 def evaluate_trajectory(task: str, trajectory: list[dict]) -> TrajectoryResult:
     """Chấm toàn bộ chuỗi hub → worker. Cùng 4 tiêu chí agent_m2."""
+    if not trajectory:
+        formatted = "(không có bước nào)"
+    else:
+        formatted = "\n".join(
+            f"Bước {i + 1}: gọi {step['tool']}({step['args']}) → {str(step['observation'])[:200]}"
+            for i, step in enumerate(trajectory)
+        )
     messages = [
         {"role": "system", "content": _TRAJECTORY_SYSTEM},
         {
             "role": "user",
-            "content": f"Nhiệm vụ: {task}\n\nChuỗi hành động:\n{_format_trajectory(trajectory)}",
+            "content": f"Nhiệm vụ: {task}\n\nChuỗi hành động:\n{formatted}",
         },
     ]
     return completion.chat_parsed(messages, TrajectoryResult, GenerationParams(temperature=0.0))
@@ -230,8 +228,12 @@ def extract_trajectory(out: Agent_Output) -> list[dict]:
     return steps
 
 
-def _payload_for_judge(out: Agent_Output) -> str:
-    """Câu trả lời + sự thật từ worker — judge không bịa ticker khác, thấy tin/HITL."""
+def evaluate_ask(out: Agent_Output) -> AgentEvalResult:
+    """Chấm 1 lượt /pr/ask đã chạy xong — POST /pr/ask/evaluate."""
+    task = out.question or (
+        f"Phân tích biến động giá và tin tức liên quan đến mã {out.symbol} hôm nay."
+    )
+    # Câu trả lời + sự thật từ worker — judge không bịa ticker khác, thấy tin/HITL.
     lines = [
         f"Mã: {out.symbol}",
         f"Câu user: {out.question}",
@@ -247,12 +249,5 @@ def _payload_for_judge(out: Agent_Output) -> str:
             lines.append("Lệnh chờ HITL (chưa COMMIT):")
             for pw in out.db.pending_writes[:8]:
                 lines.append(f"- {pw.title}")
-    return "\n".join(lines)
-
-
-def evaluate_ask(out: Agent_Output) -> AgentEvalResult:
-    """Chấm 1 lượt /pr/ask đã chạy xong — POST /pr/ask/evaluate."""
-    task = out.question or (
-        f"Phân tích biến động giá và tin tức liên quan đến mã {out.symbol} hôm nay."
-    )
-    return evaluate_run(task, _payload_for_judge(out), extract_trajectory(out))
+    payload = "\n".join(lines)
+    return evaluate_run(task, payload, extract_trajectory(out))

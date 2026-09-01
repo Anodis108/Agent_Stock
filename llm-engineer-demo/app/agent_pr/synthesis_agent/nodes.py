@@ -1,12 +1,11 @@
 """Nodes synthesis — ghép câu từ báo cáo. Không crawl, không chấm lại.
 
-Offline / lỗi LLM: template join (test ổn định).
-Online: chat_parsed(StockAnswer) — Bài 1 schema + Bài 5 grounding (chỉ dùng báo cáo).
+Lỗi LLM: template join (giữ answer luôn có, không raise).
+chat_parsed(StockAnswer) — Bài 1 schema + Bài 5 grounding (chỉ dùng báo cáo).
 """
 
 from __future__ import annotations
 
-from app.agent_pr.react import use_offline_tools
 from app.agent_pr.synthesis_agent.schemas import Agent_Output, Citation, StockAnswer
 from app.agent_pr.synthesis_agent.state import SynthState
 from app.config import settings
@@ -25,7 +24,7 @@ Quy tắc (RAG generation — chỉ bám báo cáo):
 
 
 def _compose_template(state: SynthState) -> tuple[str, str, list[Citation]]:
-    """Ghép deterministic — fallback khi offline hoặc parse lỗi."""
+    """Ghép deterministic — fallback khi LLM lỗi hoặc parse lỗi."""
     price, news, ev = state.get("price"), state.get("news"), state.get("eval")
     db = state.get("db")
     symbol = (
@@ -94,7 +93,7 @@ def _compose_template(state: SynthState) -> tuple[str, str, list[Citation]]:
 
 
 def compose(state: SynthState) -> dict:
-    """Template luôn có; LLM structured khi online — lỗi thì giữ template."""
+    """Template luôn có; LLM structured ghi đè — lỗi thì giữ template."""
     symbol, template, cites = _compose_template(state)
     with trace_step(step_parent(state, "synth_agent"), "synth_compose", input=symbol) as t:
         result = Agent_Output(
@@ -102,35 +101,34 @@ def compose(state: SynthState) -> dict:
             confidence=0.7 if cites else 0.3,
             citations=cites,
         )
-        if not use_offline_tools():
-            price, news, ev = state.get("price"), state.get("news"), state.get("eval")
-            db = state.get("db")
-            reports = (
-                f"price={price.model_dump() if price else None}\n"
-                f"news={news.model_dump() if news else None}\n"
-                f"eval={ev.model_dump() if ev else None}\n"
-                f"db_detail={getattr(db, 'detail', None)}\n"
-                f"n_history={state.get('n_history') or 0}"
+        price, news, ev = state.get("price"), state.get("news"), state.get("eval")
+        db = state.get("db")
+        reports = (
+            f"price={price.model_dump() if price else None}\n"
+            f"news={news.model_dump() if news else None}\n"
+            f"eval={ev.model_dump() if ev else None}\n"
+            f"db_detail={getattr(db, 'detail', None)}\n"
+            f"n_history={state.get('n_history') or 0}"
+        )
+        q = str(state.get("rewritten_question") or state.get("question") or "").strip()
+        try:
+            parsed, usage = chat_parsed_with_usage(
+                bound_messages(
+                    _GROUNDING,
+                    f"CÂU HỎI: {q or '(không có)'}\n\nBÁO CÁO:\n{reports}\n\n"
+                    "Trả lời câu hỏi, chỉ dùng báo cáo.",
+                ),
+                StockAnswer,
+                DETERMINISTIC,
             )
-            q = str(state.get("rewritten_question") or state.get("question") or "").strip()
-            try:
-                parsed, usage = chat_parsed_with_usage(
-                    bound_messages(
-                        _GROUNDING,
-                        f"CÂU HỎI: {q or '(không có)'}\n\nBÁO CÁO:\n{reports}\n\n"
-                        "Trả lời câu hỏi, chỉ dùng báo cáo.",
-                    ),
-                    StockAnswer,
-                    DETERMINISTIC,
+            record_usage(str(state.get("turn") or ""), settings.llm_model, **usage)
+            if (parsed.answer or "").strip():
+                result = Agent_Output(
+                    answer=parsed.answer.strip(),
+                    confidence=parsed.confidence,
+                    citations=parsed.citations or cites,
                 )
-                record_usage(str(state.get("turn") or ""), settings.llm_model, **usage)
-                if (parsed.answer or "").strip():
-                    result = Agent_Output(
-                        answer=parsed.answer.strip(),
-                        confidence=parsed.confidence,
-                        citations=parsed.citations or cites,
-                    )
-            except Exception:
-                pass
+        except Exception:
+            pass
         t["output"] = result.answer
         return {"result": result}

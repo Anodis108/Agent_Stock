@@ -82,6 +82,7 @@ def _hitl_waiting(snap) -> bool:
 
 
 def _pending(db) -> list[PendingWrite]:
+    """Chuẩn hoá `db.pending_writes` (có thể là dict thô sau checkpoint deserialize) về list[PendingWrite]."""
     rows = list(getattr(db, "pending_writes", None) or []) if db else []
     out: list[PendingWrite] = []
     for r in rows:
@@ -122,10 +123,6 @@ def _hitl_output(snap, thread_id: str, user_id: str, question: str) -> Agent_Out
         thread_id=thread_id,
         user_id=user_id,
     )
-
-
-def _config(thread_id: str) -> dict:
-    return {"recursion_limit": 28, "configurable": {"thread_id": thread_id}}
 
 
 @lru_cache(maxsize=1)
@@ -196,16 +193,13 @@ def _build_graph():
     return graph.compile(checkpointer=_checkpointer, interrupt_before=["hitl_commit"])
 
 
-def _invoke(graph, payload, config) -> dict:
-    try:
-        return graph.invoke(payload, config=config)
-    except Exception as exc:
-        if "Interrupt" in type(exc).__name__:
-            return {}
-        raise
-
-
 def _finish(graph, config, thread_id: str, user_id: str, question: str, result) -> Agent_Output:
+    """Chuẩn hoá kết quả `graph.invoke(...)` thành Agent_Output — 3 trường hợp:
+
+    1. `result["output"]` đã có (reply đã chạy xong) → gắn thread_id/user_id, trả thẳng.
+    2. Graph dừng ở interrupt (HITL đang chờ) → `_hitl_output` (câu trả lời tạm).
+    3. Còn lại (không nên xảy ra) → câu lỗi generic kèm state hiện có, tránh 500.
+    """
     snap = graph.get_state(config)
     out = result.get("output") if isinstance(result, dict) else None
     if out is not None:
@@ -231,6 +225,10 @@ def _finish(graph, config, thread_id: str, user_id: str, question: str, result) 
 
 
 def run_supervisor(inp: Agent_Input) -> Agent_Output:
+    """Điểm vào HTTP `/pr/ask` — validate input, tạo `turn` mới, chạy graph tới khi
+    xong hoặc dừng ở HITL. `thread_id` bắt buộc (session giống `/assistant`);
+    thiếu `question` nhưng có `symbol` thì tự soạn câu hỏi mặc định.
+    """
     symbol = (inp.symbol or "").strip()
     question = (inp.question or "").strip()
     thread_id = (inp.thread_id or "").strip()
@@ -248,29 +246,30 @@ def run_supervisor(inp: Agent_Input) -> Agent_Output:
         "skip_hitl": bool(inp.skip_hitl),
         "trace": [],
     }
-    config = _config(thread_id)
+    config = {"recursion_limit": 28, "configurable": {"thread_id": thread_id}}
     with trace_answer(
         "agent_pr_ask",
         question or symbol,
         metadata={"thread_id": thread_id, "user_id": user_id, "turn": turn},
     ) as t:
         graph = _build_graph()
-        out = _finish(graph, config, thread_id, user_id, question, _invoke(graph, initial, config))
+        out = _finish(graph, config, thread_id, user_id, question, graph.invoke(input=initial, config=config))
         t["output"] = {"answer": out.answer, "trace": out.trace}
         return out
 
 
 def last_supervisor_output(thread_id: str) -> Agent_Output | None:
-    tid = (thread_id or "").strip()
-    if not tid:
+    """Đọc lại kết quả lượt gần nhất của `thread_id` không cần invoke graph — dùng
+    khi client refresh/poll trạng thái. None nếu thread trống hoặc chưa có output."""
+    if not thread_id:
         return None
-    snap = _build_graph().get_state({"configurable": {"thread_id": tid}})
+    snap = _build_graph().get_state({"configurable": {"thread_id": thread_id}})
     values = getattr(snap, "values", None) or {}
     out = values.get("output")
     if isinstance(out, Agent_Output):
         return out
     if _hitl_waiting(snap):
-        return _hitl_output(snap, tid, str(values.get("user_id") or ""), str(values.get("question") or ""))
+        return _hitl_output(snap, thread_id, str(values.get("user_id") or ""), str(values.get("question") or ""))
     return None
 
 
@@ -282,9 +281,19 @@ def resume_supervisor(
     kind: str = "news",
     user_id: str = "",
 ) -> Agent_Output:
-    tid = (thread_id or "").strip()
+    """Điểm vào HTTP `/pr/approve` — duyệt/từ chối lệnh ghi đang chờ HITL rồi resume graph.
+
+    `pending_id` cho: chỉ quyết định 1 lệnh trong danh sách đang chờ — nếu còn
+    lệnh khác chưa quyết, TRẢ VỀ NGAY (không resume graph), giữ nguyên trạng
+    thái tạm dừng để client tiếp tục duyệt từng lệnh một.
+
+    `pending_id=None`: quyết định cho TOÀN BỘ lô đang chờ. `approve=True` để
+    graph tự chạy `hitl_commit` (node thật, COMMIT từng lệnh). `approve=False`
+    reject thẳng tại đây rồi `graph.update_state(..., as_node="hitl_commit")`
+    để giả lập hitl_commit đã chạy (tránh phải chạy node thật chỉ để reject).
+    """
     graph = _build_graph()
-    config = _config(tid)
+    config = {"recursion_limit": 28, "configurable": {"thread_id": thread_id}}
     snap = graph.get_state(config)
     if not _hitl_waiting(snap):
         raise RuntimeError("Không có HITL đang chờ trên thread này.")
@@ -301,7 +310,7 @@ def resume_supervisor(
             if not (int(pw.id) == int(pending_id) and (pw.kind or "news") == (kind or "news"))
         ]
         if remaining:
-            paused = _hitl_output(snap, tid, user_id, question)
+            paused = _hitl_output(snap, thread_id, user_id, question)
             if paused.db:
                 paused.db = paused.db.model_copy(update={"pending_writes": remaining})
             return paused
@@ -309,7 +318,7 @@ def resume_supervisor(
     with trace_answer(
         "agent_pr_ask",
         question,
-        metadata={"thread_id": tid, "user_id": user_id, "resume": True, "turn": turn},
+        metadata={"thread_id": thread_id, "user_id": user_id, "resume": True, "turn": turn},
     ) as t:
         patch: dict = {}
         as_node = None
@@ -326,7 +335,7 @@ def resume_supervisor(
             as_node = "hitl_commit"
         if patch or as_node:
             graph.update_state(config, patch, **({"as_node": as_node} if as_node else {}))
-        out = _finish(graph, config, tid, user_id, question, _invoke(graph, None, config))
+        out = _finish(graph, config, thread_id, user_id, question, graph.invoke(input=None, config=config))
         t["output"] = {"answer": out.answer, "trace": out.trace}
         return out
 

@@ -52,6 +52,7 @@ def _text_of(m) -> str:
 
 
 def _role_of(m) -> str:
+    """Role/type dạng text — history hub là dict; giữ nhánh object cho chắc."""
     if isinstance(m, dict):
         return str(m.get("role", ""))
     return str(getattr(m, "type", "") or getattr(m, "role", ""))

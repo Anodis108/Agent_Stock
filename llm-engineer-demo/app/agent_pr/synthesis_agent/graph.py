@@ -27,51 +27,32 @@ Quy tắc:
 - Xong tool thì dừng."""
 
 
-def _seed(state: SynthState) -> dict:
-    price, news, ev = state.get("price"), state.get("news"), state.get("eval")
-    n = int(state.get("n_history") or 0)
-    q = str(state.get("rewritten_question") or state.get("question") or "").strip()
-    body = (
-        f"Câu hỏi: {q or '(không có)'}\n"
-        "Ghép câu trả lời đúng câu hỏi, chỉ dùng báo cáo.\n"
-        f"price_json={price.model_dump_json() if price else '{}'}\n"
-        f"news_json={news.model_dump_json() if news else '{}'}\n"
-        f"eval_json={ev.model_dump_json() if ev else '{}'}\n"
-        f"n_history={n}"
-    )
-    return fresh_user(body)
-
-
-def _query(state: SynthState) -> str:
-    p = state.get("price")
-    return getattr(p, "symbol", "") or "ghép câu trả lời"
-
-
-def _pack(state: SynthState) -> dict:
-    raw = last_tool_json(state, {"compose_user_answer"})
-    result = Agent_Output(answer=raw) if raw else compose(state)["result"]
-    return {"draft": result, "synth_turn": state.get("turn") or ""}
-
-
-def _offline(state: SynthState):
-    q = str(state.get("rewritten_question") or state.get("question") or "")
-    return "compose_user_answer", {
-        "price_json": state["price"].model_dump_json() if state.get("price") else "{}",
-        "news_json": state["news"].model_dump_json() if state.get("news") else "{}",
-        "eval_json": state["eval"].model_dump_json() if state.get("eval") else "{}",
-        "n_history": int(state.get("n_history") or 0),
-        "question": q,
-    }
-
-
 @lru_cache(maxsize=1)
 def _build_graph():
+    def _pack(state: SynthState) -> dict:
+        raw = last_tool_json(state, {"compose_user_answer"})
+        result = Agent_Output(answer=raw) if raw else compose(state)["result"]
+        return {"draft": result, "synth_turn": state.get("turn") or ""}
+
+    def _seed(state: SynthState) -> dict:
+        price, news, ev = state.get("price"), state.get("news"), state.get("eval")
+        n = int(state.get("n_history") or 0)
+        q = str(state.get("rewritten_question") or state.get("question") or "").strip()
+        body = (
+            f"Câu hỏi: {q or '(không có)'}\n"
+            "Ghép câu trả lời đúng câu hỏi, chỉ dùng báo cáo.\n"
+            f"price_json={price.model_dump_json() if price else '{}'}\n"
+            f"news_json={news.model_dump_json() if news else '{}'}\n"
+            f"eval_json={ev.model_dump_json() if ev else '{}'}\n"
+            f"n_history={n}"
+        )
+        return fresh_user(body)
+
     graph = build_react_subgraph(
         SynthState,
         tools=TOOLS,
         system_prompt=_SYSTEM,
-        query_fn=_query,
-        offline_call=_offline,
+        query_fn=lambda state: getattr(state.get("price"), "symbol", "") or "ghép câu trả lời",
         agent_name="synth_agent",
         seed_fn=_seed,
         pack_fn=_pack,

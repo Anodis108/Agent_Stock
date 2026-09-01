@@ -24,37 +24,26 @@ Quy tắc:
 - Xong tool thì dừng."""
 
 
-def _seed(state: NewsState) -> dict:
-    symbol = str(state.get("symbol") or "").strip() or "?"
-    return fresh_user(f"Lấy tin CafeF mã {symbol}.")
-
-
-def _query(state: NewsState) -> str:
-    return str(state.get("symbol") or "")
-
-
-def _pack(state: NewsState) -> dict:
-    raw = last_tool_json(state, {"fetch_cafef_news"})
-    news = parse_tool_output(raw, Agent_Output) or Agent_Output(
-        symbol=str(state.get("symbol") or ""),
-        articles=[],
-        source=raw or str(state.get("error") or "cafef"),
-    )
-    return {"news": news}
-
-
-def _offline(state: NewsState):
-    return "fetch_cafef_news", {"symbol": str(state.get("symbol") or "")}
-
-
 @lru_cache(maxsize=1)
 def _build_graph():
+    def _seed(state: NewsState) -> dict:
+        symbol = str(state.get("symbol") or "").strip() or "?"
+        return fresh_user(f"Lấy tin CafeF mã {symbol}.")
+
+    def _pack(state: NewsState) -> dict:
+        raw = last_tool_json(state, {"fetch_cafef_news"})
+        news = parse_tool_output(raw, Agent_Output) or Agent_Output(
+            symbol=str(state.get("symbol") or ""),
+            articles=[],
+            source=raw or str(state.get("error") or "cafef"),
+        )
+        return {"news": news}
+
     graph = build_react_subgraph(
         NewsState,
         tools=TOOLS,
         system_prompt=_SYSTEM,
-        query_fn=_query,
-        offline_call=_offline,
+        query_fn=lambda state: str(state.get("symbol") or ""),
         agent_name="news_agent",
         seed_fn=_seed,
         pack_fn=_pack,
@@ -74,6 +63,7 @@ def news_agent(state: NewsState) -> dict:
 
 
 def run_news(inp: Agent_Input) -> Agent_Output:
+    """Điểm vào HTTP `/pr/news` — chạy NewsAgent độc lập (không qua hub)."""
     symbol = (inp.symbol or "").strip().upper()
     with trace_step(None, "agent_pr_news", input=symbol) as t:
         news = _build_graph().invoke({"symbol": symbol})["news"]

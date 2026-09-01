@@ -44,8 +44,10 @@ class Settings(BaseSettings):
     embedding_dim: int = Field(default=1536, alias="EMBEDDING_DIM")
 
     # Qdrant. Mặc định ":memory:" cho demo (không cần Docker). Production: đặt
-    #   QDRANT_URL=http://localhost:6333  và chạy Qdrant qua Docker.
+    #   QDRANT_URL=http://localhost:6333  và chạy Qdrant qua Docker, hoặc trỏ
+    #   Qdrant Cloud (QDRANT_URL=https://xxx.cloud.qdrant.io kèm QDRANT_API_KEY).
     qdrant_url: str = Field(default=":memory:", alias="QDRANT_URL")
+    qdrant_api_key: str = Field(default="", alias="QDRANT_API_KEY")
     vectorstore_collection: str = Field(
         default="legal_docs", alias="VECTORSTORE_COLLECTION"
     )

@@ -29,37 +29,26 @@ Quy tắc:
 - Xong tool thì dừng, không hỏi lại user."""
 
 
-def _seed(state: CrawlState) -> dict:
-    symbol = str(state.get("symbol") or "").strip() or "?"
-    return fresh_user(f"Lấy giá đóng cửa mã {symbol}.")
-
-
-def _query(state: CrawlState) -> str:
-    return str(state.get("symbol") or "")
-
-
-def _pack(state: CrawlState) -> dict:
-    raw = last_tool_json(state, {"fetch_latest_close"})
-    quote = parse_tool_output(raw, Agent_Output) or Agent_Output(
-        symbol=str(state.get("symbol") or ""),
-        last=0,
-        source=raw or str(state.get("error") or "vnstock (không lấy được)"),
-    )
-    return {"price": quote}
-
-
-def _offline(state: CrawlState):
-    return "fetch_latest_close", {"symbol": str(state.get("symbol") or "")}
-
-
 @lru_cache(maxsize=1)
 def _build_graph():
+    def _seed(state: CrawlState) -> dict:
+        symbol = str(state.get("symbol") or "").strip() or "?"
+        return fresh_user(f"Lấy giá đóng cửa mã {symbol}.")
+
+    def _pack(state: CrawlState) -> dict:
+        raw = last_tool_json(state, {"fetch_latest_close"})
+        quote = parse_tool_output(raw, Agent_Output) or Agent_Output(
+            symbol=str(state.get("symbol") or ""),
+            last=0,
+            source=raw or str(state.get("error") or "vnstock (không lấy được)"),
+        )
+        return {"price": quote}
+
     graph = build_react_subgraph(
         CrawlState,
         tools=TOOLS,
         system_prompt=_SYSTEM,
-        query_fn=_query,
-        offline_call=_offline,
+        query_fn=lambda state: str(state.get("symbol") or ""),
         agent_name="price_agent",
         seed_fn=_seed,
         pack_fn=_pack,
@@ -83,6 +72,7 @@ def price_agent(state: CrawlState) -> dict:
 
 
 def run_crawl(inp: Agent_Input) -> Agent_Output:
+    """Điểm vào HTTP `/pr/price` — chạy PriceAgent độc lập (không qua hub)."""
     symbol = (inp.symbol or "").strip().upper()
     with trace_step(None, "agent_pr_price", input=symbol) as t:
         quote = _build_graph().invoke({"symbol": symbol})["price"]

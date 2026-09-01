@@ -24,14 +24,16 @@ def _use_qdrant() -> bool:
 
 @lru_cache(maxsize=1)
 def _client():
+    """Qdrant client singleton — `:memory:` cho test/demo, ngược lại nối `qdrant_url` thật."""
     from qdrant_client import QdrantClient
 
     if settings.qdrant_url == ":memory:":
         return QdrantClient(location=":memory:")
-    return QdrantClient(url=settings.qdrant_url)
+    return QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key or None)
 
 
 def _ensure_collection() -> None:
+    """Tạo collection `agent_memory_collection` nếu chưa có — gọi trước mỗi upsert."""
     from qdrant_client.models import Distance, VectorParams
 
     client = _client()
@@ -50,10 +52,12 @@ _FALLBACK: list[tuple[str, str]] = []
 
 
 def _fallback_save(user_id: str, fact: str) -> None:
+    """Lưu fact vào list in-memory (không key OpenAI hoặc Qdrant lỗi)."""
     _FALLBACK.append((user_id, fact))
 
 
 def _fallback_recall(user_id: str, query: str, k: int) -> list[str]:
+    """Retrieve thô: xếp theo số từ khoá trùng `query`, hoà điểm thì ưu tiên fact mới nhất."""
     mine = [fact for uid, fact in _FALLBACK if uid == user_id]
     query_words = {w.lower() for w in query.split() if len(w) > 2}
     scored = sorted(

@@ -21,24 +21,6 @@ from app.config import settings
 _index: dict[tuple[str, ...], list[tuple[str, list[float]]]] = {}
 
 
-def _desc(t) -> str:
-    # Description viết theo câu user hỏi — chất lượng retrieval phụ thuộc vào đây.
-    return f"{getattr(t, 'name', '')}: {getattr(t, 'description', '') or ''}"
-
-
-def _cosine(a: list[float], b: list[float]) -> float:
-    dot = sum(x * y for x, y in zip(a, b))
-    na = math.sqrt(sum(x * x for x in a))
-    nb = math.sqrt(sum(y * y for y in b))
-    if na == 0 or nb == 0:
-        return 0.0
-    return dot / (na * nb)
-
-
-def _key(catalog: list) -> tuple[str, ...]:
-    return tuple(getattr(t, "name", str(i)) for i, t in enumerate(catalog))
-
-
 def select_tools(query: str, catalog: list, k: int | None = None) -> list:
     """Top-k tool trong `catalog` theo embedding mô tả. Catalog rỗng → []."""
     if not catalog:
@@ -49,7 +31,21 @@ def select_tools(query: str, catalog: list, k: int | None = None) -> list:
     if not q:
         return list(catalog[:top])
 
-    names = _key(catalog)
+    def _desc(t) -> str:
+        # Description viết theo câu user hỏi — chất lượng retrieval phụ thuộc vào đây.
+        return f"{getattr(t, 'name', '')}: {getattr(t, 'description', '') or ''}"
+
+    def _cosine(a: list[float], b: list[float]) -> float:
+        """Cosine similarity giữa 2 vector embedding; 0.0 nếu vector nào rỗng/norm 0."""
+        dot = sum(x * y for x, y in zip(a, b))
+        na = math.sqrt(sum(x * x for x in a))
+        nb = math.sqrt(sum(y * y for y in b))
+        if na == 0 or nb == 0:
+            return 0.0
+        return dot / (na * nb)
+
+    # Khoá cache theo tên tool trong catalog — cùng catalog (tên) thì tái dùng embedding đã tính.
+    names = tuple(getattr(t, "name", str(i)) for i, t in enumerate(catalog))
     try:
         from app.retrieval.embeddings import embed_passages, embed_query
 

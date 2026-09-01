@@ -19,6 +19,8 @@ from app.monitoring.tracing import record_usage, trace_step
 
 
 def base_llm(client=None, model: str | None = None):
+    """Dựng 1 ChatOpenAI mới từ client/model hiện tại — `max_retries=0` vì
+    `invoke_with_tools` tự retry (tránh double-retry khi rotate key giữa chừng)."""
     from langchain_openai import ChatOpenAI
 
     client = client or get_client()

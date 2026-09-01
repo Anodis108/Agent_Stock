@@ -1,4 +1,4 @@
-"""Eval: 3 case từ khoá (offline) + 1 live HPG.
+"""Eval: 3 case từ khoá (fallback) + 1 live HPG.
 
     python -m pytest tests/test_eval_agent.py -s -q
 """
@@ -33,7 +33,7 @@ def _news(*titles: str) -> NewsOut:
 def test_gia_giam_tin_xau_khop():
     """Sơ đồ 3d: −4.2% + xả hàng / giảm sàn → khớp."""
     out = run_eval(Agent_Input(price=_price(-4.2), news=_news("Khối ngoại xả hàng HPG", "HPG giảm sàn")))
-    print("offline:", out.detail)
+    print("detail:", out.detail)
     assert out.negative_count == 2 and out.price_matches_news is True
 
 
@@ -46,7 +46,6 @@ def test_eval_llm_sentiment(monkeypatch):
     from app.agent_pr.eval_agent import nodes as n
     from app.agent_pr.eval_agent.schemas import HeadlineBatch, ScoredItem
 
-    monkeypatch.setattr(n, "use_offline_tools", lambda: False)
     monkeypatch.setattr(
         n,
         "chat_parsed_with_usage",

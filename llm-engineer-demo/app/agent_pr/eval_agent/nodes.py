@@ -1,14 +1,12 @@
-"""Nodes eval_agent — keyword offline; online chat_parsed(HeadlineBatch).
+"""Nodes eval_agent — keyword = fallback; LLM structured chat_parsed(HeadlineBatch) là chính.
 
-Một node `score`: chấm title → đếm → đối chiếu pct_change.
-Cùng ý Sơ đồ 3d. Từ khoá hẹp = fallback; LLM structured khi có key.
+Một node `score`: chấm title → đếm → đối chiếu pct_change. Cùng ý Sơ đồ 3d.
 """
 
 from __future__ import annotations
 
 from app.agent_pr.eval_agent.schemas import Agent_Output, HeadlineBatch, ScoredItem
 from app.agent_pr.eval_agent.state import EvalState
-from app.agent_pr.react import use_offline_tools
 from app.guardrails.injection import bound_messages
 from app.config import settings
 from app.llm.completion import chat_parsed_with_usage
@@ -94,7 +92,7 @@ def score(state: EvalState) -> dict:
             return {"report": report}
 
         items = [ScoredItem(title=a.title, url=a.url, sentiment=_sentiment(a.title)) for a in news.articles]
-        if items and not use_offline_tools():
+        if items:
             try:
                 llm_items = _llm_items(news.articles, str(state.get("turn") or ""))
                 if llm_items:

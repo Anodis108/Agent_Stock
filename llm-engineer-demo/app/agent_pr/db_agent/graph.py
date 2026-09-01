@@ -31,65 +31,41 @@ Quy tắc:
 - Xong tool thì dừng."""
 
 
-def _seed(state: DBState) -> dict:
-    symbol = str(state.get("symbol") or "").strip() or "?"
-    news = state.get("candidate_news") or []
-    prices = state.get("candidate_prices") or []
-    if news or prices:
-        nj = json.dumps(
-            [x.model_dump() if hasattr(x, "model_dump") else dict(x) for x in news],
-            ensure_ascii=False,
-        )
-        pj = json.dumps(
-            [x.model_dump() if hasattr(x, "model_dump") else dict(x) for x in prices],
-            ensure_ascii=False,
-        )
-        text = (
-            f"Soạn lệnh ghi mã {symbol}. news_json={nj} prices_json={pj}. "
-            "Gọi stage_new_rows."
-        )
-    else:
-        text = f"Đọc lịch sử DB mã {symbol}. Gọi read_symbol_store."
-    return fresh_user(text)
-
-
-def _query(state: DBState) -> str:
-    return str(state.get("symbol") or "")
-
-
-def _pack(state: DBState) -> dict:
-    raw = last_tool_json(state, {"read_symbol_store", "stage_new_rows"})
-    result = parse_tool_output(raw, Agent_Output) or parse(state)["result"]
-    turn = state.get("turn") or ""  # Send từ hub; thiếu field `turn` trên DBState thì pack ghi rỗng → loop lookup
-    key = "db_write_turn" if str(state.get("mode") or "read") == "write" else "db_lookup_turn"
-    return {"db": result, key: turn}
-
-
-def _offline(state: DBState) -> tuple[str, dict]:
-    symbol = str(state.get("symbol") or "")
-    news = state.get("candidate_news") or []
-    prices = state.get("candidate_prices") or []
-    if news or prices:
-        nj = json.dumps(
-            [x.model_dump() if hasattr(x, "model_dump") else dict(x) for x in news],
-            ensure_ascii=False,
-        )
-        pj = json.dumps(
-            [x.model_dump() if hasattr(x, "model_dump") else dict(x) for x in prices],
-            ensure_ascii=False,
-        )
-        return "stage_new_rows", {"symbol": symbol, "news_json": nj, "prices_json": pj}
-    return "read_symbol_store", {"symbol": symbol}
-
-
 @lru_cache(maxsize=1)
 def _build_graph():
+    def _seed(state: DBState) -> dict:
+        symbol = str(state.get("symbol") or "").strip() or "?"
+        news = state.get("candidate_news") or []
+        prices = state.get("candidate_prices") or []
+        if news or prices:
+            nj = json.dumps(
+                [x.model_dump() if hasattr(x, "model_dump") else dict(x) for x in news],
+                ensure_ascii=False,
+            )
+            pj = json.dumps(
+                [x.model_dump() if hasattr(x, "model_dump") else dict(x) for x in prices],
+                ensure_ascii=False,
+            )
+            text = (
+                f"Soạn lệnh ghi mã {symbol}. news_json={nj} prices_json={pj}. "
+                "Gọi stage_new_rows."
+            )
+        else:
+            text = f"Đọc lịch sử DB mã {symbol}. Gọi read_symbol_store."
+        return fresh_user(text)
+
+    def _pack(state: DBState) -> dict:
+        raw = last_tool_json(state, {"read_symbol_store", "stage_new_rows"})
+        result = parse_tool_output(raw, Agent_Output) or parse(state)["result"]
+        turn = state.get("turn") or ""  # Send từ hub; thiếu field `turn` trên DBState thì pack ghi rỗng → loop lookup
+        key = "db_write_turn" if str(state.get("mode") or "read") == "write" else "db_lookup_turn"
+        return {"db": result, key: turn}
+
     graph = build_react_subgraph(
         DBState,
         tools=TOOLS,
         system_prompt=_SYSTEM,
-        query_fn=_query,
-        offline_call=_offline,
+        query_fn=lambda state: str(state.get("symbol") or ""),
         agent_name="db_agent",
         seed_fn=_seed,
         pack_fn=_pack,

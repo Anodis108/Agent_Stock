@@ -3,6 +3,12 @@
 ĐỌC lịch sử giá + tin (tự động). SOẠN lệnh ghi cho tin/giá ứng viên chưa có
 trong kho (soạn ≠ commit). COMMIT qua `approve_pending_write` — hub gọi sau
 `interrupt_before=["hitl_commit"]`. Không LLM.
+
+Gọi trực tiếp bởi tool (tools.py), không phải node trong 1 graph tuyến tính:
+- `read_symbol_store` → `read` rồi `parse`.
+- `stage_new_rows` → `read` → `stage_writes` → `parse`.
+`normalize` không nằm trong 2 luồng trên (tool tự upper/strip mã) nhưng vẫn
+export để test đơn lẻ (tests/test_db_agent.py::test_ma_sai).
 """
 
 from __future__ import annotations
@@ -63,6 +69,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_price_pending_symbol_date
 
 
 def _connect() -> sqlite3.Connection:
+    """Mở connection sqlite, tạo schema nếu chưa có, đảm bảo unique index rồi trả về.
+
+    Gọi lại mỗi lần cần DB (không giữ connection global) — sqlite file nhỏ,
+    connect rẻ hơn lo thread-safety của 1 connection dùng chung.
+    """
     _DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(_DB_PATH))
     conn.row_factory = sqlite3.Row
@@ -72,6 +83,13 @@ def _connect() -> sqlite3.Connection:
 
 
 def _ensure_unique_keys(conn: sqlite3.Connection) -> None:
+    """Migration một lần: thêm UNIQUE index (symbol, url/date) cho DB tạo trước khi có ràng buộc này.
+
+    Trước khi có unique index, INSERT OR IGNORE không chặn được trùng lặp nên
+    DB cũ có thể có bản ghi trùng (symbol, url)/(symbol, trading_date) — phải
+    xoá bớt (giữ id nhỏ nhất) rồi mới tạo được UNIQUE index. Idempotent: kiểm
+    tra index đã tồn tại (dòng đầu) để bỏ qua bước dọn dẹp ở các lần gọi sau.
+    """
     have = conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'idx_news_symbol_url'"
     ).fetchone()
@@ -94,6 +112,8 @@ def _ensure_unique_keys(conn: sqlite3.Connection) -> None:
 
 
 def normalize(state: DBState) -> dict:
+    """Upper + strip mã — hàm thuần, không dùng trong graph ReAct (tools.py tự normalize
+    inline) nhưng vẫn export để test đơn lẻ (xem tests/test_db_agent.py::test_ma_sai)."""
     with trace_step(step_parent(state, "db_agent"), "db_normalize", input=state.get("symbol", "")) as t:
         symbol = str(state.get("symbol") or "").strip().upper()
         t["output"] = symbol
@@ -101,6 +121,7 @@ def normalize(state: DBState) -> dict:
 
 
 def read(state: DBState) -> dict:
+    """Đọc tối đa 5 phiên giá + toàn bộ tin đã lưu cho `symbol` — gọi bởi tool `read_symbol_store`."""
     symbol = state["symbol"]
     with trace_step(step_parent(state, "db_agent"), "db_read", input=symbol) as t:
         out = _read_rows(symbol)
@@ -112,6 +133,7 @@ def read(state: DBState) -> dict:
 
 
 def _read_rows(symbol: str) -> dict:
+    """Query thuần sqlite, không trace_step riêng — `read` đã bọc span cho cả 2 câu SELECT."""
     with _connect() as conn:
         price_cur = conn.execute(
             "SELECT trading_date, close FROM prices WHERE symbol = ? "
@@ -127,14 +149,12 @@ def _read_rows(symbol: str) -> dict:
     return {"price_rows": price_rows, "news_rows": news_rows}
 
 
-def route_after_read(state: DBState) -> str:
-    """Có ứng viên tin/giá → soạn lệnh; không thì parse (chỉ đọc)."""
-    if (state.get("candidate_news") or []) or (state.get("candidate_prices") or []):
-        return "stage_writes"
-    return "parse"
-
-
 def stage_writes(state: DBState) -> dict:
+    """Soạn (không commit) lệnh ghi cho tin/giá ứng viên chưa có trong bảng chính.
+
+    Gọi bởi tool `stage_new_rows` sau khi crawl xong — kết quả nằm ở bảng
+    `*_pending`, chờ `approve_pending_write` (hub HITL) COMMIT vào `news`/`prices`.
+    """
     symbol = state["symbol"]
     news_cands = state.get("candidate_news") or []
     price_cands = state.get("candidate_prices") or []
@@ -145,14 +165,19 @@ def stage_writes(state: DBState) -> dict:
 
 
 def _item_url(item) -> str:
+    """Đọc `.url` dù `item` là Pydantic model (CandidateNews) hay dict thô."""
     return item.url if hasattr(item, "url") else item.get("url", "")
 
 
 def _item_title(item) -> str:
+    """Đọc `.title` dù `item` là Pydantic model hay dict thô."""
     return item.title if hasattr(item, "title") else item.get("title", "")
 
 
 def _stage_pending(symbol: str, candidates) -> list[dict]:
+    """Soạn pending cho tin ứng viên — bỏ qua tin đã có trong `news` (chính thức)
+    hoặc trùng URL trong cùng batch. Tin từng bị `rejected` mà bị crawl lại thì
+    được đưa về `pending` (cho phép duyệt lại) thay vì bỏ qua vĩnh viễn."""
     with _connect() as conn:
         official = {
             row["url"]
@@ -209,14 +234,18 @@ def _stage_pending(symbol: str, candidates) -> list[dict]:
 
 
 def _price_date(item) -> str:
+    """Đọc `.trading_date` dù `item` là Pydantic model (CandidatePrice) hay dict thô."""
     return item.trading_date if hasattr(item, "trading_date") else item.get("trading_date", "")
 
 
 def _price_close(item) -> float:
+    """Đọc `.close` dù `item` là Pydantic model hay dict thô; thiếu/0 → 0.0 (loại bỏ ở caller)."""
     return float(item.close if hasattr(item, "close") else item.get("close") or 0)
 
 
 def _stage_prices(symbol: str, candidates) -> list[dict]:
+    """Soạn pending cho giá ứng viên — bỏ qua ngày đã có trong `prices` (chính
+    thức), ngày trùng trong cùng batch, hoặc `close <= 0` (dữ liệu hỏng)."""
     with _connect() as conn:
         official = {
             row["trading_date"]
@@ -259,13 +288,14 @@ def _stage_prices(symbol: str, candidates) -> list[dict]:
                     "url": "",
                     "kind": "price",
                     "trading_date": date,
-                    "close": close if row["status"] != "rejected" else close,
+                    "close": close,
                 }
             )
     return pending_rows
 
 
 def parse(state: DBState) -> dict:
+    """rows đã đọc + pending vừa soạn → Agent_Output. Field `result` là output graph."""
     symbol = state["symbol"]
     price_rows = state.get("price_rows") or []
     news_rows = state.get("news_rows") or []
@@ -296,6 +326,7 @@ def parse(state: DBState) -> dict:
 
 
 def _pending_fields(row: dict) -> dict:
+    """Chuẩn hoá 1 dict pending (từ `_stage_pending`/`_stage_prices`) thành kwargs cho `PendingWrite`."""
     return {
         "id": int(row["id"]),
         "symbol": str(row.get("symbol") or ""),
@@ -315,6 +346,8 @@ def approve_pending_write(pending_id: int, *, approve: bool, kind: str = "news")
 
 
 def _approve_news(pending_id: int, approve: bool) -> bool:
+    """COMMIT/reject 1 tin pending. Idempotent: nếu đã quyết định trước đó (khác
+    `pending`), trả lại đúng kết quả tương ứng thay vì ghi đè lần quyết định cũ."""
     with _connect() as conn:
         row = conn.execute(
             "SELECT symbol, title, url, status FROM news_pending WHERE id = ?",
@@ -342,6 +375,7 @@ def _approve_news(pending_id: int, approve: bool) -> bool:
 
 
 def _approve_price(pending_id: int, approve: bool) -> bool:
+    """COMMIT/reject 1 giá pending — cùng logic idempotent với `_approve_news`."""
     with _connect() as conn:
         row = conn.execute(
             "SELECT symbol, trading_date, close, status FROM price_pending WHERE id = ?",

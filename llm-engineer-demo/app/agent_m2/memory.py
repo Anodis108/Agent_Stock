@@ -44,7 +44,7 @@ def _client():
 
     if settings.qdrant_url == ":memory:":
         return QdrantClient(location=":memory:")
-    return QdrantClient(url=settings.qdrant_url)
+    return QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key or None)
 
 
 def _ensure_collection() -> None:

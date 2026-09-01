@@ -1,6 +1,6 @@
 """Tools PriceAgent — LLM chọn, ToolNode chạy. IO thật: nodes.normalize/fetch/parse.
 
-`fetch_latest_close` là tool bắt buộc (offline_call cũng giả đúng tool này).
+`fetch_latest_close` là tool bắt buộc.
 `normalize_ticker` / `describe_price_source` để model hỏi thêm, không thay fetch.
 """
 

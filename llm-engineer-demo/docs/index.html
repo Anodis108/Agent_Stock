@@ -385,10 +385,11 @@
 </div>
 
 <script>
-// Backend URL. "" = cùng domain (mặc định khi FastAPI tự serve file này qua /static
-// hoặc GET /). Khi trang này được host RIÊNG (vd. GitHub Pages), điền URL backend
-// thật vào đây, vd. "https://ten-app.onrender.com" (KHÔNG có dấu / cuối).
-const API_BASE = "";
+// Bản GitHub Pages — trang này host TÁCH khỏi backend, nên BẮT BUỘC phải điền
+// URL backend Render thật vào đây (KHÔNG có dấu / cuối), vd:
+//   const API_BASE = "https://ten-app.onrender.com";
+// Bản gốc dùng chung domain với backend ở app/static/agent_pr.html (API_BASE="").
+const API_BASE = "https://TODO-DIEN-URL-RENDER-VAO-DAY.onrender.com";
 const SESSIONS_KEY = "pr_sessions_v1";
 const THREAD_KEY = "pr_thread_id";
 const USER_KEY = "pr_user_id";

@@ -72,7 +72,7 @@ class Agent_Output(BaseModel):
     thread_id: str = ""
     user_id: str = ""
     # Cost & Token Tracking (Bài 8 Phần 1, Bài 13 Phần 3) — cộng dồn mọi lời gọi
-    # LLM trong turn này. None nếu turn rỗng hoặc chưa gọi LLM nào (offline/cache hit).
+    # LLM trong turn này. None nếu turn rỗng hoặc chưa gọi LLM nào (cache hit).
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
     cost_usd: float | None = None

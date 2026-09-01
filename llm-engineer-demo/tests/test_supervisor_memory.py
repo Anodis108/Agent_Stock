@@ -252,13 +252,6 @@ def test_recall_khong_user_van_ghi_history():
     assert out["history"] == [{"role": "user", "content": "giá HPG"}]
 
 
-def test_rewrite_offline_giu_nguyen():
-    """Pytest / không key: không gọi LLM, rewritten = câu gốc."""
-    out = rewrite_question({"question": "HPG sao rồi", "turn": "t1"})
-    assert out["rewritten_question"] == "HPG sao rồi"
-    assert "trace" not in out
-
-
 def test_coordinator_thieu_cau_khong_raise():
     out = _coordinate({"question": "", "symbol": "", "trace": []})
     assert out["next_wave"] == "done"
@@ -272,7 +265,6 @@ def test_rewrite_llm_viet_lai(monkeypatch):
         query = "Giá và tin mới nhất của HPG?"
         symbol = "HPG"
 
-    monkeypatch.setattr(n, "use_offline_tools", lambda: False)
     monkeypatch.setattr(
         n, "chat_parsed_with_usage", lambda *a, **k: (_Parsed(), {"prompt_tokens": 0, "completion_tokens": 0})
     )
