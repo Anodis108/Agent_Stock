@@ -1,11 +1,12 @@
-"""Tools Coordinator — chỉ *đánh dấu* worker nào cần (intent).
+"""Tools Coordinator (không còn dùng trong routing) — chỉ *đánh dấu* worker nào cần (intent).
 
-Không gọi vnstock/CafeF/sqlite. ToolNode trên hub *không* gắn các tool này
-để thực thi IO: `_make_plan` đọc `tool_calls` rồi `_sanitize_plan`. Việc thật
-là subgraph ReAct sau `Send`.
+Supervisor hiện tại (`supervisor_agent/nodes.py::supervisor_node`) dùng
+`with_structured_output(RoutingDecision)` để chọn worker mỗi vòng — không
+còn bind các tool `need_*` này. Giữ file để `test_agent_pr_tools.py` vẫn
+test được hành vi tool đơn lẻ; không import từ `nodes.py` nữa.
 
-Năm tool nhỏ (cùng shape `symbol`) để retrieval/bind_tools chọn được nhiều
-cờ cùng lúc — khác 1 tool "plan_all" sẽ khoá cứng 1 domain.
+Không gọi vnstock/CafeF/sqlite — mọi tool ở đây chỉ trả lại `symbol` đã
+chuẩn hoá, không thực thi IO thật (việc thật là subgraph ReAct của worker).
 """
 
 from __future__ import annotations

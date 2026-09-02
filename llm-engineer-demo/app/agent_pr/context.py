@@ -10,11 +10,12 @@ Cùng chiến lược `app.agent_m2.context` (Bài 3, Section 2-4), khác chỗ
             chỉ cặp user/assistant. Vẫn compact vì nhiều lượt hỏi +
             checkpointer giữ xuyên session.
 
-Không copy BaseMessage: history hub luôn là dict. Coordinator plan dùng
-LangChain bind_tools (need_*). Compact/store dùng native `completion.chat_parsed`.
+Không copy BaseMessage: history hub luôn là dict. Supervisor routing dùng
+`with_structured_output` (RoutingDecision) mỗi vòng. Compact/store dùng
+native `completion.chat_parsed_with_usage`.
 
 Trên graph: `recall_memory` → `should_compact_route` (>40% → compact) →
-`coordinator`. `_make_plan` chỉ shape TẠM (sliding) — giống
+`supervisor`. Supervisor prompt chỉ shape TẠM (sliding) — giống
 tách compact_node / agent_node ở agent_m2.
 """
 

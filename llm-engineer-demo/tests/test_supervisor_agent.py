@@ -1,4 +1,4 @@
-"""Live supervisor: LLM chọn worker.
+"""Live supervisor: LLM chọn worker mỗi vòng (routing động, không lập plan 1 lần).
 
     python -m pytest tests/test_supervisor_agent.py -s -q
 """
@@ -7,57 +7,26 @@ from __future__ import annotations
 
 import sys
 
-import pytest
-
-from app.agent_pr.supervisor_agent import Agent_Input, AgentPlan, run_supervisor
-from app.agent_pr.supervisor_agent.nodes import _sanitize_plan
+from app.agent_pr.supervisor_agent import Agent_Input, run_supervisor
+from app.agent_pr.supervisor_agent.nodes import route_supervisor
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 
-def test_sanitize_eval_can_gia_va_tin():
-    raw = AgentPlan(
-        symbol="hpg",
-        use_price=False,
-        use_news=True,
-        use_db=False,
-        use_eval=True,
-        use_synth=True,
-        reasoning="muốn eval nhưng quên giá",
-    )
-    plan = _sanitize_plan(raw, "HPG")
-    assert plan.symbol == "HPG"
-    assert plan.use_eval is False
-    assert plan.use_news is True
-    assert plan.use_synth is True
+def test_route_supervisor_worker_domain():
+    assert route_supervisor({"next_agent": "price_agent"}) == "price_agent"
+    assert route_supervisor({"next_agent": "db_write"}) == "db_write"
 
 
-def test_sanitize_luon_bat_synth():
-    raw = AgentPlan(
-        symbol="FPT",
-        use_price=False,
-        use_news=True,
-        use_db=True,
-        use_eval=False,
-        use_synth=False,
-        reasoning="chỉ crawl ghi",
-    )
-    assert _sanitize_plan(raw, "").use_synth is True
+def test_route_supervisor_done_di_final_answer():
+    assert route_supervisor({"next_agent": "done"}) == "final_answer"
+    assert route_supervisor({}) == "final_answer"
 
 
-def test_sanitize_giu_ma_user_gui():
-    raw = AgentPlan(
-        symbol="FPT",
-        use_price=True,
-        use_news=False,
-        use_db=False,
-        use_eval=False,
-        use_synth=True,
-        reasoning="nhầm ticker",
-    )
-    plan = _sanitize_plan(raw, "HPG")
-    assert plan.symbol == "HPG"
+def test_route_supervisor_gia_tri_la_di_final_answer():
+    """next_agent LLM trả không nằm trong danh sách worker → coi như done, không crash."""
+    assert route_supervisor({"next_agent": "khong_ton_tai"}) == "final_answer"
 
 
 def test_hpg_online():
@@ -66,14 +35,12 @@ def test_hpg_online():
     )
     print()
     print("answer:", out.answer)
-    print("plan  :", out.plan.model_dump() if out.plan else None)
     for step in out.trace:
         print("trace :", step)
     if out.price:
         print("pct   :", out.price.pct_change, "| tin:", len(out.news.articles) if out.news else 0)
 
     assert out.symbol == "HPG"
-    assert out.plan is not None
     assert "HPG" in out.answer
     assert out.price is not None and out.price.last > 0
     assert out.news is not None and out.news.articles
@@ -84,30 +51,33 @@ def test_hpg_online():
 
 
 def test_chi_gia_khong_goi_news(monkeypatch):
-    """Plan tắt news/eval/db → graph không chạy các worker đó."""
+    """Routing chỉ chọn price_agent rồi done → graph không chạy news/eval."""
 
-    def fake_plan(question: str, hint: str, **_kwargs) -> AgentPlan:
-        return AgentPlan(
-            symbol="HPG",
-            use_price=True,
-            use_news=False,
-            use_db=False,
-            use_eval=False,
-            use_synth=True,
-            reasoning="chỉ hỏi giá",
-        )
+    calls = {"n": 0}
+
+    def fake_supervisor_node(state):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return {"next_agent": "price_agent", "trace": list(state.get("trace") or []) + ["chỉ hỏi giá"]}
+        return {"next_agent": "done", "trace": list(state.get("trace") or []) + ["đã có giá"]}
 
     monkeypatch.setattr(
-        "app.agent_pr.supervisor_agent.nodes._make_plan", fake_plan
+        "app.agent_pr.supervisor_agent.graph.supervisor_node", fake_supervisor_node
     )
-    out = run_supervisor(
-        Agent_Input(
-            symbol="HPG",
-            question="giá HPG hôm nay bao nhiêu",
-            thread_id="test-chi-gia",
-            skip_hitl=True,
+    from app.agent_pr.supervisor_agent.graph import _build_graph
+
+    _build_graph.cache_clear()
+    try:
+        out = run_supervisor(
+            Agent_Input(
+                symbol="HPG",
+                question="giá HPG hôm nay bao nhiêu",
+                thread_id="test-chi-gia",
+                skip_hitl=True,
+            )
         )
-    )
+    finally:
+        _build_graph.cache_clear()
     print()
     print("answer:", out.answer)
     for step in out.trace:
@@ -116,22 +86,4 @@ def test_chi_gia_khong_goi_news(monkeypatch):
     assert out.price is not None and out.price.last > 0
     assert out.news is None
     assert out.eval is None
-    assert out.db is not None
     assert "HPG" in out.answer
-
-
-def test_ma_sai():
-    """Không regex-chặn mã — coordinator nhận HP, agent/tool tự xử lý."""
-    plan = _sanitize_plan(
-        AgentPlan(
-            symbol="HP",
-            use_price=True,
-            use_news=False,
-            use_db=False,
-            use_eval=False,
-            use_synth=True,
-            reasoning="user gửi HP",
-        ),
-        "",
-    )
-    assert plan.symbol == "HP"

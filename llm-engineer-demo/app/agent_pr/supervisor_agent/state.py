@@ -1,8 +1,10 @@
-"""SupervisorState — blackboard của Hierarchical Coordinator (Sơ đồ 3).
+"""SupervisorState — blackboard của Hierarchical Coordinator (bản supervisor/notes).
 
-Khác bản pipeline cũ (mọi worker ghi thẳng lên cùng 1 state): mỗi worker là
-SUBGRAPH riêng. LangGraph chỉ copy field TRÙNG TÊN — `rows`/`quote`/`report`
-nội bộ không lộ lên hub. Pack worker ghi `price`/`eval`/`draft`/`db`.
+Cùng mô hình agent_m2 hierarchical.py: `supervisor_node` hỏi LLM sau MỖI worker
+để chọn worker tiếp theo, mỗi worker chạy xong gộp kết quả vào `notes[domain]`.
+
+Mỗi worker là SUBGRAPH riêng. LangGraph chỉ copy field TRÙNG TÊN — `rows`/
+`quote`/`report` nội bộ không lộ lên hub. Pack worker ghi `price`/`eval`/`db`.
 
 Không nhét `rows` / `quote` / `report` vào đây — craw và news cùng tên `rows`
 sẽ đè nhau nếu share 1 blackboard.
@@ -11,15 +13,6 @@ sẽ đè nhau nếu share 1 blackboard.
 from __future__ import annotations
 
 from typing import Annotated, TypedDict
-
-
-def _last(_left, right):
-    """3 worker đợt 1 cùng ghi `symbol` (đã upper, cùng giá trị) trong 1 step.
-
-    LastValue mặc định chỉ nhận 1 write/step — không reducer thì
-    InvalidUpdateError. Lấy bản sau; mọi nhánh ghi cùng mã.
-    """
-    return right
 
 
 def _append_trim(left, right):
@@ -42,8 +35,7 @@ from app.agent_pr.craw_agent.schemas import Agent_Output as PriceOut
 from app.agent_pr.db_agent.schemas import Agent_Output as DbOut
 from app.agent_pr.eval_agent.schemas import Agent_Output as EvalOut
 from app.agent_pr.news_agent.schemas import Agent_Output as NewsOut
-from app.agent_pr.supervisor_agent.schemas import Agent_Output, AgentPlan
-from app.agent_pr.synthesis_agent.schemas import Agent_Output as SynthOut
+from app.agent_pr.supervisor_agent.schemas import Agent_Output
 
 
 class SupervisorState(TypedDict, total=False):
@@ -51,46 +43,34 @@ class SupervisorState(TypedDict, total=False):
 
     # hub — session / context (không worker nào khai)
     question: str                  # câu user gốc (rewrite/history/output)
-    rewritten_question: str        # rewrite; recall+plan đọc
+    rewritten_question: str        # rewrite; recall+supervisor đọc
+    symbol: str                    # mã CP; rewrite trích được thì set, worker Send đọc
     user_id: str                   # Qdrant long-term; rỗng = skip
     history: Annotated[list, _append_trim]  # short-term; compact ghi đè
-    memories: list[str]            # recall lượt này; plan đọc
-    plan: AgentPlan                # cờ worker; LLM 1 lần/HTTP
-    plan_turn: str                 # == turn → không lập plan lại
-    stuck_turn: str                # == turn → đã báo "crawl lỗi" 1 lần, khỏi lặp lại wave gather
-    next_wave: str                 # db_lookup|gather|eval|synth|db_write|hitl|done
-    wave_streak: int               # Loop Detection (Bài 10 P3): số lần liên tiếp cùng next_wave
+    memories: list[str]            # recall lượt này; supervisor đọc
     skip_hitl: bool                # pytest: soạn pending, không interrupt
     out_of_scope: bool             # guardrail_input: câu ngoài phạm vi — route thẳng reply, bỏ pipeline
-    turn: str                      # uuid mỗi HTTP; Send db; Eval+Synth cạnh copy → *_turn
+    turn: str                      # uuid mỗi HTTP; Send worker đọc để mở đúng span
                                     # cũng là key tra span Langfuse (xem monitoring/tracing.py)
-    symbol: Annotated[str, _last]  # mã CP; Send: price/news/db; `_last` vì gather 3 nhánh/step
-    # Không có `_trace_span` (CRAG GraphState có). Hub có MemorySaver checkpoint
-    # (CRAG thì không) → LangfuseSpan không pickle được, không thể nhét thẳng vào
-    # state có checkpointer. Span sống trong registry ở app.monitoring.tracing,
-    # khoá theo `turn` — node tra bằng step_parent(state, agent_name).
+
+    # Supervisor — routing (giống HierarchicalState của agent_m2)
+    notes: dict[str, str]           # domain -> tóm tắt kết quả worker (supervisor đọc để quyết định)
+    next_agent: str                 # "price_agent"|"news_agent"|"db_agent"|"db_write"|"eval_agent"|"done"
+    final_answer: str               # final_answer_node ghi; reply đọc
 
     # PriceAgent
-    price: PriceOut                # pack ghi; Eval+Synth đọc (cạnh); hub hydrate từ DB
+    price: PriceOut                # pack ghi; Eval đọc (cạnh)
 
     # NewsAgent
-    news: NewsOut                  # pack ghi; Eval+Synth đọc; db_write → candidate_*
+    news: NewsOut                  # pack ghi; Eval đọc; db_write → candidate_*
 
-    # DBAgent
+    # DBAgent (mode=read: lịch sử; mode=write: soạn pending)
     db: DbOut                      # pack (lookup/write); hitl/reply đọc pending
-    db_lookup_turn: str            # pack khi mode=read; == turn → khỏi đọc lại
-    db_write_turn: str             # pack khi mode=write
 
     # EvalAgent
-    eval: EvalOut                  # pack ghi; Synth đọc
-    eval_turn: str                 # pack; == turn → khỏi chấm lại
-
-    # SynthesisAgent
-    draft: SynthOut                # pack ghi; chỉ reply đọc
-    n_history: int                 # số phiên DB; Synth nhận (cạnh, trùng tên)
-    synth_turn: str                # pack; == turn → khỏi ghép lại
+    eval: EvalOut                  # pack ghi
 
     # hub — ra HTTP
-    output: Agent_Output           # reply ghi; không đặt `result` (trùng db/synth)
+    output: Agent_Output           # reply ghi
     output_issues: list[str]       # guardrail_output: quá ngắn / số lạ / PII / toxic
-    trace: list[str]               # log coordinator/after_wave1/reply
+    trace: list[str]               # log supervisor/collect/reply

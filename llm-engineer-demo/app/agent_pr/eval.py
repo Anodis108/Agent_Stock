@@ -1,8 +1,8 @@
-"""Agent Evaluation cho Hierarchical Coordinator — cùng 2 chiều với agent_m2/eval.py.
+"""Agent Evaluation cho Hierarchical Supervisor — cùng 2 chiều với agent_m2/eval.py.
 
 RAGAS/judge.py (Module I) chỉ chấm OUTPUT CUỐI. Agent Hierarchical có thể trả
-câu đúng nhưng đi sai Sơ đồ 3d: Eval chạy trước khi có giá+tin, Synthesis tự
-crawl, worker nói ngang nhau. File này chấm thêm CON ĐƯỜNG, giống Bài 5:
+câu đúng nhưng đi sai đường: Eval chạy trước khi có giá+tin, gọi lại worker đã
+có notes, worker nói ngang nhau. File này chấm thêm CON ĐƯỜNG, giống Bài 5:
 
   - evaluate_task_success : đạt mục tiêu hỏi–đáp mã CP không (không xét quá trình).
   - evaluate_trajectory   : efficiency / logical_order / tool_correctness / recovery
@@ -10,7 +10,7 @@ crawl, worker nói ngang nhau. File này chấm thêm CON ĐƯỜNG, giống Bà
     (verbosity bias — xem agent_m2/eval.py).
 
 Khác agent_m2: không có checkpointer/tool_call_id. Trajectory dựng từ
-Agent_Output + hub.trace (chỉ worker plan đã bật).
+Agent_Output + hub.trace (chỉ worker LLM routing thật sự chọn).
 Khác app/agent_pr/eval_agent/: đó là domain sentiment, không phải LLM-as-judge.
 
 Cost/latency lấy từ LangFuse span `agent_pr_ask` — không nhờ judge.
@@ -96,32 +96,24 @@ def evaluate_task_success(
 
 # ── Trajectory ────────────────────────────────────────────────────────────────
 
-_TRAJECTORY_SYSTEM = """Bạn chấm CHUỖI HÀNH ĐỘNG của Hierarchical Coordinator (Sơ đồ 3d),
-không chỉ câu trả lời cuối.
+_TRAJECTORY_SYSTEM = """Bạn chấm CHUỖI HÀNH ĐỘNG của Hierarchical Supervisor, không chỉ câu trả lời cuối.
 
-Luồng đúng (không phải Swarm): hub gọi LLM một lần lập plan (loại dữ liệu cần),
-rồi: đọc DB trước → thiếu mới crawl Price/News → Eval (nếu có giá+tin)
-→ Synthesis → soạn lệnh ghi (nếu vừa crawl) → HITL interrupt_before COMMIT
-→ hub trả user. Worker không nói với nhau.
-
-  đợt 1: DBAgent đọc kho
-  → (nếu thiếu) gather song song: Price / News
-  → EvalAgent CHỈ nếu plan bật eval VÀ đã có giá+tin
-  → SynthesisAgent
-  → DBAgent soạn lệnh ghi dữ liệu mới
-  → hitl_commit (interrupt_before) nếu còn pending
-  → hub trả user
+Luồng đúng: supervisor gọi LLM MỖI vòng để chọn worker tiếp theo dựa trên
+notes đã có (đọc DB trước khi crawl khi có thể), gộp kết quả vào notes rồi
+hỏi lại — tới khi supervisor chọn "done" → final_answer (LLM tổng hợp notes)
+→ soạn lệnh ghi nếu vừa crawl (db_write) → HITL interrupt_before COMMIT
+→ hub trả user. Worker không nói với nhau, chỉ báo cáo qua notes.
 
 Trừ điểm logical_order / tool_correctness nếu:
-- Crawl khi DB đã có đúng loại dữ liệu
-- Eval chạy khi chưa có giá+tin, hoặc khi plan không bật eval
-- Ghi DB trước HITL / trước Synthesis
-- Giao worker plan đã tắt
+- Crawl lại khi notes đã có đúng loại dữ liệu (DB hoặc worker trước đó)
+- Eval chạy khi chưa có cả giá lẫn tin trong notes
+- Ghi DB (db_write) trước HITL
 - worker tự gọi nhau (cạnh ngang) thay vì báo cáo hub
-- worker sai việc (Eval crawl, Synthesis chấm lại sentiment)
+- worker sai việc (Eval crawl, final_answer tự bịa số liệu ngoài notes)
 
-4 tiêu chí ĐỘC LẬP, thang 1-5. KHÔNG thưởng trajectory dài — thiếu worker
-mà plan đã tắt là ĐÚNG (efficiency), không phải thiếu sót."""
+4 tiêu chí ĐỘC LẬP, thang 1-5. KHÔNG thưởng trajectory dài — ít bước hơn vì
+câu hỏi đơn giản (chỉ cần giá, không cần tin/eval) là ĐÚNG (efficiency),
+không phải thiếu sót."""
 
 
 def evaluate_trajectory(task: str, trajectory: list[dict]) -> TrajectoryResult:
@@ -156,22 +148,17 @@ def evaluate_run(task: str, final_output: str, trajectory: list[dict]) -> AgentE
 
 
 def extract_trajectory(out: Agent_Output) -> list[dict]:
-    """Chỉ bước worker thật sự chạy — plan tắt agent nào thì không bịa bước đó.
+    """Chỉ bước worker thật sự chạy — field nào rỗng trên output thì không bịa bước đó.
 
     Mỗi bước `{tool, args, observation}` — cùng shape agent_m2._extract_trajectory.
-    Hub.trace gắn vào observation của coordinator.
+    Hub.trace (routing supervisor mỗi vòng) gắn vào observation của bước đầu.
     """
     hub = " | ".join(out.trace) if out.trace else ""
-    plan = out.plan
     steps: list[dict] = [
         {
-            "tool": "coordinator",
-            "args": {
-                "symbol": out.symbol,
-                "question": out.question,
-                "plan": plan.model_dump() if plan else {},
-            },
-            "observation": hub or "LLM lập plan rồi giao worker",
+            "tool": "supervisor",
+            "args": {"symbol": out.symbol, "question": out.question},
+            "observation": hub or "LLM routing mỗi vòng rồi giao worker",
         },
     ]
     if out.db:
@@ -210,14 +197,13 @@ def extract_trajectory(out: Agent_Output) -> list[dict]:
                 "observation": out.eval.detail,
             }
         )
-    if plan is None or plan.use_synth:
-        steps.append(
-            {
-                "tool": "synthesis_agent",
-                "args": {"symbol": out.symbol},
-                "observation": out.answer,
-            }
-        )
+    steps.append(
+        {
+            "tool": "final_answer",
+            "args": {"symbol": out.symbol},
+            "observation": out.answer,
+        }
+    )
     steps.append(
         {
             "tool": "reply",

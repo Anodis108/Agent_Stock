@@ -1,9 +1,10 @@
-"""Hợp đồng vào/ra Hierarchical Coordinator (Sơ đồ 3 / 3d).
+"""Hợp đồng vào/ra Hierarchical Coordinator (bản supervisor/notes, cùng mẫu agent_m2 hierarchical.py).
 
-Hub không crawl / không chấm / không ghi DB: parse câu (LLM), chọn worker,
-thu báo cáo, trả user. Worker không nói với nhau.
+Hub không crawl / không chấm / không ghi DB: parse câu (LLM rewrite), routing
+(LLM chọn worker sau mỗi vòng), thu notes, gọi LLM tổng hợp câu trả lời cuối.
+Worker không nói với nhau.
 
-`question` là câu user; `symbol` gợi ý mã (có thể trống — LLM tách từ câu).
+`question` là câu user; `symbol` gợi ý mã (có thể trống — rewrite tách từ câu).
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ from app.agent_pr.news_agent.schemas import Agent_Output as NewsOut
 
 
 class Agent_Input(BaseModel):
-    """Ít nhất một trong symbol / question. Coordinator LLM chốt mã + plan."""
+    """Ít nhất một trong symbol / question. Supervisor LLM định tuyến từng vòng."""
 
     symbol: str = ""
     question: str = ""
@@ -45,30 +46,23 @@ class MemoryFact(BaseModel):
     fact: str = Field(default="", description="Một câu; rỗng nếu không đáng nhớ")
 
 
-class AgentPlan(BaseModel):
-    """Quyết định hub — LLM chọn worker nào chạy. Eval cần giá+tin.
+class RoutingDecision(BaseModel):
+    """Quyết định supervisor mỗi vòng — cùng mẫu agent_m2 `_RoutingDecision`."""
 
-    `missing_symbol=True`: câu hỏi cần dữ liệu 1 mã cụ thể nhưng không trích
-    được mã nào (không ticker trong câu/hint/tool args) — KHÔNG bịa mã mặc
-    định. `_coordinate` phải từ chối sớm thay vì Send worker với mã đoán bừa
-    (xem `_plan_from_tool_calls`/`_make_plan`).
-    """
-
-    symbol: str = Field(description="Mã CP niêm yết VN, vd. HPG, VNM, MWG — rỗng nếu missing_symbol")
-    use_price: bool = Field(description="Cần giá / % biến động")
-    use_news: bool = Field(description="Cần tin tức")
-    use_db: bool = Field(description="Cần lịch sử trong DB")
-    use_eval: bool = Field(description="Cần chấm tin vs giá — chỉ true nếu có giá VÀ tin")
-    use_synth: bool = Field(description="Cần ghép câu trả lời có cấu trúc")
-    reasoning: str = Field(description="Lý do ngắn các cờ true/false")
-    missing_symbol: bool = Field(
-        default=False,
-        description="True nếu câu hỏi cần mã cụ thể nhưng không xác định được mã nào",
+    next_agent: str = Field(
+        description="Một trong: price_agent, news_agent, db_agent, db_write, eval_agent, done"
     )
+    reasoning: str = Field(description="Lý do ngắn gọn cho quyết định")
+
+
+class FinalAnswer(BaseModel):
+    """Structured output cho final_answer_node — kèm usage qua chat_parsed_with_usage."""
+
+    answer: str = Field(description="Câu trả lời cuối cho user, tiếng Việt, ngắn gọn")
 
 
 class Agent_Output(BaseModel):
-    """Trả user + báo cáo worker đã chạy (None = hub không giao agent đó)."""
+    """Trả user + báo cáo worker đã chạy (None = hub chưa giao agent đó)."""
 
     symbol: str
     question: str = ""
@@ -78,11 +72,10 @@ class Agent_Output(BaseModel):
     eval: EvalOut | None = None
     db: DbOut | None = None
     trace: list[str] = []
-    plan: AgentPlan | None = None
     thread_id: str = ""
     user_id: str = ""
     # Cost & Token Tracking (Bài 8 Phần 1, Bài 13 Phần 3) — cộng dồn mọi lời gọi
-    # LLM trong turn này. None nếu turn rỗng hoặc chưa gọi LLM nào (cache hit).
+    # LLM trong turn này. None nếu turn rỗng hoặc chưa gọi LLM nào.
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
     cost_usd: float | None = None

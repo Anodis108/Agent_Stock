@@ -93,7 +93,7 @@ def test_append_trim_van_noi_list_thuong():
 
 
 def test_compact_history_skip_khi_ngan():
-    assert nodes.should_compact_route({"history": [{"role": "user", "content": "giá HPG"}]}) == "coordinator"
+    assert nodes.should_compact_route({"history": [{"role": "user", "content": "giá HPG"}]}) == "supervisor"
 
 
 def test_should_compact_route_khi_dai(monkeypatch):

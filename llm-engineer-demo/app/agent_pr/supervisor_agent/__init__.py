@@ -1,16 +1,15 @@
-"""supervisor_agent — Hierarchical Coordinator: giao việc 5 worker, thu báo cáo."""
+"""supervisor_agent — Hierarchical Supervisor: giao việc 4 worker, thu notes, tổng hợp."""
 
 from app.agent_pr.supervisor_agent.graph import (
     last_supervisor_output,
     resume_supervisor,
     run_supervisor,
 )
-from app.agent_pr.supervisor_agent.schemas import Agent_Input, Agent_Output, AgentPlan
+from app.agent_pr.supervisor_agent.schemas import Agent_Input, Agent_Output
 
 __all__ = [
     "Agent_Input",
     "Agent_Output",
-    "AgentPlan",
     "last_supervisor_output",
     "resume_supervisor",
     "run_supervisor",

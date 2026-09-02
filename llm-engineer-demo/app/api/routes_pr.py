@@ -54,20 +54,16 @@ def _ask_input(req: AskRequest) -> SuperIn:
 
 
 def _used_agents(out: SuperOut) -> list[str]:
-    plan = out.plan
-    if not plan:
-        return []
+    """Worker thật sự chạy — suy từ field nào có mặt trên output (không còn `plan`)."""
     names = []
-    if plan.use_price:
+    if out.price:
         names.append("price")
-    if plan.use_news:
+    if out.news:
         names.append("news")
-    if plan.use_db:
+    if out.db:
         names.append("db")
-    if plan.use_eval:
+    if out.eval:
         names.append("eval")
-    if plan.use_synth:
-        names.append("synth")
     return names
 
 
@@ -75,6 +71,7 @@ def _ask_response(out: SuperOut, *, status: str = "done") -> AskResponse:
     pending = list(out.db.pending_writes) if out.db else []
     if status == "done" and pending and "chờ duyệt HITL" in (out.answer or ""):
         status = "pending_approval"
+    reasoning = out.trace[-1] if out.trace else ""
     return AskResponse(
         symbol=out.symbol,
         answer=out.answer,
@@ -84,7 +81,7 @@ def _ask_response(out: SuperOut, *, status: str = "done") -> AskResponse:
         n_news=len(out.news.articles) if out.news else 0,
         eval_detail=out.eval.detail if out.eval else "",
         used_agents=_used_agents(out),
-        plan_reasoning=out.plan.reasoning if out.plan else "",
+        plan_reasoning=reasoning,
         thread_id=out.thread_id,
         user_id=out.user_id,
         pending_writes=pending,

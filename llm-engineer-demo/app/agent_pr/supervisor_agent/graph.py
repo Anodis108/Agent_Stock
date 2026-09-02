@@ -1,34 +1,23 @@
-"""Graph Hierarchical Coordinator — Sơ đồ 3: hub giao việc, 5 worker cùng cấp.
+"""Graph Hierarchical Supervisor — cùng mẫu agent_m2 hierarchical.py.
 
-    START → guardrail_input → rewrite → recall → compact → coordinator ─┬─ db_lookup (đọc sqlite)
-                                            ├─ gather: price / news (DB thiếu)
-                                            ├─ eval_agent
-                                            ├─ synth_agent
-                                            ├─ db_write (soạn pending, chưa COMMIT)
-                                            ├─ hitl_commit  ← interrupt_before
-                                            └─ reply → guardrail_output → store → END
+    START → guardrail_input → rewrite → recall → compact → supervisor ─┬─(price_agent)→ [PriceAgent]   ─┐
+                                            ├─(news_agent) → [NewsAgent]    ─┤
+                                            ├─(db_agent)   → [DBAgent read] ─┼→ collect → supervisor → ...
+                                            ├─(eval_agent) → [EvalAgent]    ─┤
+                                            ├─(db_write)   → db_write       ─┘
+                                            └─(done) → final_answer → (hitl_commit?) → reply
+                                                       → guardrail_output → store → END
 
-Khác agent_m2 (1 ReAct + ToolNode HITL trước *mọi* tool):
-  - Worker là subgraph ReAct riêng (`_build_graph` từng agent). Hub không crawl.
-  - Coordinator chọn worker bằng tool `need_*` (bind_tools + retrieval) rồi
-    `Send` subgraph — tool chỉ đánh dấu intent, không lấy giá/tin.
-  - HITL chỉ trước `hitl_commit` (ghi DB). Resume: `invoke(None)` giống
-    `resume_conversation` agent_m2.
-  - Short-term: `thread_id` + MemorySaver (RAM, giống agent_m2 — debug).
-    Long-term: `user_id` + Qdrant `user_memory` (recall/store).
-  - `turn` uuid mỗi HTTP — plan/eval/synth/db_*_turn không lấy nhầm checkpoint
-    lượt trước.
+Khác agent_m2: HITL chỉ trước `hitl_commit` (ghi DB thật) — `interrupt_before`.
+Short-term: `thread_id` + MemorySaver. Long-term: `user_id` + Qdrant.
+`turn` uuid mỗi HTTP — notes/eval/db_write không lấy nhầm checkpoint lượt trước.
 
-LangGraph chỉ copy field trùng tên. Pack worker ghi `price`/`news`/`eval`/
-`draft`/`db` — không node lift. `rows`/`messages` ở lại subgraph.
+Supervisor gọi LLM MỖI vòng (khác coordinator cũ chỉ lập plan 1 lần/turn) —
+đơn giản hơn nhưng tốn thêm 1 lời gọi LLM mỗi worker. Đổi lấy: không còn máy
+trạng thái `_coordinate` nhiều nhánh, đúng tinh thần agent_m2 Bài 6.
 
-Observability: một `trace_answer` / HTTP (`agent_pr_ask`) — span ROOT, khoá theo
-`turn` (uuid mỗi câu hỏi). Mỗi subgraph con (price/news/db/eval/synth) tự mở
-1 span AGENT con của root qua `agent_span(turn, ...)` trong `_build_graph()`
-của chính nó — nên trên LangFuse thấy cây thật: root → price_agent →
-craw_fetch/craw_parse/llm.bind_tools, không phải cây phẳng. Registry span
-sống ở `app.monitoring.tracing` (dict theo `turn`), không ghi vào checkpoint
-MemorySaver — span object không pickle được.
+LangGraph chỉ copy field trùng tên. Pack worker ghi `price`/`news`/`eval`/`db`
+— không node lift. `rows`/`messages` ở lại subgraph.
 
 Vẽ: `python -m app.agent_pr.supervisor_agent.graph`
 """
@@ -53,27 +42,32 @@ from app.agent_pr.db_agent.graph import db_agent
 from app.agent_pr.eval_agent.graph import eval_agent
 from app.agent_pr.news_agent.graph import news_agent
 from app.agent_pr.supervisor_agent.nodes import (
-    after_wave1,
+    _WORKER_DOMAINS,
+    _make_collect_node,
     compact_history,
-    coordinator,
+    db_write,
+    final_answer_node,
     hitl_commit,
     recall_memory,
     reply,
     rewrite_question,
-    route_coordinator,
+    route_after_final_answer,
+    route_supervisor,
     should_compact_route,
     store_memory,
+    supervisor_node,
 )
 from app.agent_pr.supervisor_agent.schemas import Agent_Input, Agent_Output
 from app.agent_pr.db_agent.nodes import approve_pending_write
 from app.agent_pr.db_agent.schemas import Agent_Output as DbOut
 from app.agent_pr.db_agent.schemas import PendingWrite
 from app.agent_pr.supervisor_agent.state import SupervisorState
-from app.agent_pr.synthesis_agent.graph import synth_agent
 from app.monitoring.tracing import trace_answer
 
 # MemorySaver — RAM, mất khi restart. Đủ debug; production đổi PostgresSaver.
 _checkpointer = MemorySaver()
+
+_COLLECT_DOMAINS = ["price_agent", "news_agent", "db_agent", "eval_agent"]
 
 
 def _hitl_waiting(snap) -> bool:
@@ -94,13 +88,12 @@ def _pending(db) -> list[PendingWrite]:
 
 
 def _hitl_output(snap, thread_id: str, user_id: str, question: str) -> Agent_Output:
-    """Output tạm khi interrupt: synth đã xong, chưa COMMIT."""
+    """Output tạm khi interrupt: final_answer đã xong, chưa COMMIT."""
     v = getattr(snap, "values", None) or {}
     pending = _pending(v.get("db"))
     symbol = str(v.get("symbol") or "")
     n = len(pending)
-    draft = v.get("draft")
-    answer = (getattr(draft, "answer", None) or f"{symbol}: đã soạn {n} lệnh ghi bài chưa có.").rstrip()
+    answer = (str(v.get("final_answer") or "") or f"{symbol}: đã soạn {n} lệnh ghi bài chưa có.").rstrip()
     answer += f" Chờ duyệt HITL — {n} lệnh chưa COMMIT vào DB."
     db = v.get("db")
     detail = f"chờ HITL — {n} lệnh"
@@ -119,7 +112,6 @@ def _hitl_output(snap, thread_id: str, user_id: str, question: str) -> Agent_Out
         eval=v.get("eval"),
         db=db,
         trace=list(v.get("trace") or []),
-        plan=v.get("plan"),
         thread_id=thread_id,
         user_id=user_id,
     )
@@ -127,7 +119,7 @@ def _hitl_output(snap, thread_id: str, user_id: str, question: str) -> Agent_Out
 
 @lru_cache(maxsize=1)
 def _build_graph():
-    """Hub + 5 subgraph. HITL chỉ trước hitl_commit — worker không interrupt."""
+    """Hub + 4 worker + db_write. HITL chỉ trước hitl_commit — worker không interrupt."""
     graph = StateGraph(SupervisorState)
 
     graph.add_node("guardrail_input", guardrail_input)
@@ -135,21 +127,21 @@ def _build_graph():
     graph.add_node("guardrail_output", guardrail_output)
     graph.add_node("recall_memory", recall_memory)
     graph.add_node("compact_history", compact_history)
-    graph.add_node("coordinator", coordinator)
-    graph.add_node("after_wave1", after_wave1)
-    graph.add_node("reply", reply)
+    graph.add_node("supervisor", supervisor_node)
+    graph.add_node("final_answer", final_answer_node)
+    graph.add_node("db_write", db_write)
     graph.add_node("hitl_commit", hitl_commit)
+    graph.add_node("reply", reply)
     graph.add_node("store_memory", store_memory)
 
     graph.add_node("price_agent", price_agent)
     graph.add_node("news_agent", news_agent)
     graph.add_node("db_agent", db_agent)
     graph.add_node("eval_agent", eval_agent)
-    graph.add_node("synth_agent", synth_agent)
 
     graph.add_edge(START, "guardrail_input")
     # out_of_scope=True (câu ngoài phạm vi cổ phiếu VN) → thẳng guardrail_output,
-    # bỏ qua rewrite/recall/coordinator — không tốn crawl/LLM cho câu chắc chắn từ chối.
+    # bỏ qua rewrite/recall/supervisor — không tốn crawl/LLM cho câu chắc chắn từ chối.
     graph.add_conditional_edges(
         "guardrail_input",
         route_after_guardrail,
@@ -160,32 +152,29 @@ def _build_graph():
     graph.add_conditional_edges(
         "recall_memory",
         should_compact_route,
-        {"compact_history": "compact_history", "coordinator": "coordinator"},
+        {"compact_history": "compact_history", "supervisor": "supervisor"},
     )
-    graph.add_edge("compact_history", "coordinator")
+    graph.add_edge("compact_history", "supervisor")
+
+    routing_map = {"final_answer": "final_answer"}
+    for domain in _COLLECT_DOMAINS:
+        collect_name = f"{domain}_collect"
+        graph.add_node(collect_name, _make_collect_node(domain))
+        graph.add_edge(domain, collect_name)
+        graph.add_edge(collect_name, "supervisor")  # quay lại supervisor sau khi worker xong
+        routing_map[domain] = domain
+    routing_map["db_write"] = "db_write"
+    graph.add_edge("db_write", "supervisor")
+
+    graph.add_conditional_edges("supervisor", route_supervisor, routing_map)
+
+    # done → tổng hợp câu trả lời → còn pending ghi DB thì HITL trước, không thì trả thẳng.
     graph.add_conditional_edges(
-        "coordinator",
-        route_coordinator,
-        [
-            "price_agent",
-            "news_agent",
-            "db_agent",
-            "eval_agent",
-            "synth_agent",
-            "hitl_commit",
-            "reply",
-        ],
+        "final_answer",
+        route_after_final_answer,
+        {"hitl_commit": "hitl_commit", "reply": "reply"},
     )
-
-    # Đợt 1 hội tụ 1 node rồi mới về hub — xem after_wave1.
-    graph.add_edge("price_agent", "after_wave1")
-    graph.add_edge("news_agent", "after_wave1")
-    graph.add_edge("db_agent", "after_wave1")
-    graph.add_edge("after_wave1", "coordinator")
-
-    graph.add_edge("eval_agent", "coordinator")
-    graph.add_edge("synth_agent", "coordinator")
-    graph.add_edge("hitl_commit", "coordinator")
+    graph.add_edge("hitl_commit", "reply")
     graph.add_edge("reply", "guardrail_output")
     graph.add_edge("guardrail_output", "store_memory")
     graph.add_edge("store_memory", END)
@@ -218,7 +207,6 @@ def _finish(graph, config, thread_id: str, user_id: str, question: str, result) 
         eval=v.get("eval"),
         db=v.get("db"),
         trace=list(v.get("trace") or []),
-        plan=v.get("plan"),
         thread_id=thread_id,
         user_id=user_id,
     )
@@ -244,6 +232,7 @@ def run_supervisor(inp: Agent_Input) -> Agent_Output:
         "turn": turn,
         "user_id": user_id,
         "skip_hitl": bool(inp.skip_hitl),
+        "notes": {},
         "trace": [],
     }
     config = {"recursion_limit": 28, "configurable": {"thread_id": thread_id}}
