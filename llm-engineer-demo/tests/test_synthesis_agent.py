@@ -87,7 +87,7 @@ def test_thieu_pct_noi_chua_du_lich_su():
     from app.agent_pr.synthesis_agent import nodes as n
 
     out = n.compose({"price": _price(None), "news": _news(), "eval": _eval()})["result"]
-    assert "chưa đủ lịch sử" in out.answer
+    assert "chưa đủ lịch sử" in out.answer.lower()
 
 
 def test_co_lich_su_db():

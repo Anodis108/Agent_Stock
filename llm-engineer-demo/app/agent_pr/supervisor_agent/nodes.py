@@ -22,6 +22,8 @@ theo thứ tự ưu tiên cố định (kiểm tra theo đúng thứ tự này, 
     coordinator (mỗi lần ghé)
       ├─ thiếu câu hỏi/mã            → done (lỗi)
       ├─ (fresh_plan) chưa lập plan  → gọi LLM plan (need_* tools) 1 lần/turn
+      │  └─ plan.missing_symbol      → done (từ chối — không bịa mã mặc định,
+      │                                 xem _sanitize_plan/AgentPlan.missing_symbol)
       ├─ plan cần price/news/db
       │  và chưa đọc DB turn này     → db_lookup   (Send db_agent mode=read)
       ├─ còn agent CHƯA THỬ crawl    → gather      (Send 1 worker/vòng)
@@ -148,8 +150,24 @@ def rewrite_question(state: SupervisorState) -> dict:
 
 
 def _sanitize_plan(raw: AgentPlan, hint: str) -> AgentPlan:
-    """Hint user thắng LLM; eval cần giá+tin; luôn bật synth."""
+    """Hint user thắng LLM; eval cần giá+tin; luôn bật synth.
+
+    Không mã (hint rỗng VÀ LLM không trích được symbol) → `missing_symbol=True`,
+    tắt hết use_price/news/db/eval (không Send worker nào với mã bịa) —
+    `_coordinate` đọc cờ này để từ chối sớm.
+    """
     symbol = (hint or raw.symbol or "").strip().upper()
+    if not symbol:
+        return AgentPlan(
+            symbol="",
+            use_price=False,
+            use_news=False,
+            use_db=False,
+            use_eval=False,
+            use_synth=False,
+            reasoning=raw.reasoning,
+            missing_symbol=True,
+        )
     use_price, use_news, use_db = raw.use_price, raw.use_news, raw.use_db
     use_eval = bool(raw.use_eval and use_price and use_news)
     use_synth = True
@@ -166,17 +184,18 @@ def _sanitize_plan(raw: AgentPlan, hint: str) -> AgentPlan:
     )
 
 
-def _call_name_args(call) -> tuple[str, dict]:
-    """Đọc (name, args) dù `call` là dict thô (offline) hay tool_call object của LangChain."""
-    if isinstance(call, dict):
-        return str(call.get("name") or ""), dict(call.get("args") or {})
-    name = str(getattr(call, "name", None) or "")
-    args = getattr(call, "args", None) or {}
-    return name, dict(args)
-
 
 def _plan_from_tool_calls(calls: list, hint: str, question: str) -> AgentPlan:
     """tool_calls (need_price/need_news/...) → AgentPlan thô, rồi `_sanitize_plan` chuẩn hoá."""
+    
+    def _call_name_args(call) -> tuple[str, dict]:
+        """Đọc (name, args) dù `call` là dict thô (offline) hay tool_call object của LangChain."""
+        if isinstance(call, dict):
+            return str(call.get("name") or ""), dict(call.get("args") or {})
+        name = str(getattr(call, "name", None) or "")
+        args = getattr(call, "args", None) or {}
+        return name, dict(args)
+    
     parsed = [_call_name_args(c) for c in calls]
     names = {name for name, _ in parsed if name}
     symbol = hint
@@ -185,7 +204,7 @@ def _plan_from_tool_calls(calls: list, hint: str, question: str) -> AgentPlan:
             symbol = str(args["symbol"])
             break
     raw = AgentPlan(
-        symbol=symbol or "HPG",
+        symbol=symbol,
         use_price="need_price" in names,
         use_news="need_news" in names,
         use_db="need_db" in names,
@@ -201,14 +220,6 @@ def _plan_from_tool_calls(calls: list, hint: str, question: str) -> AgentPlan:
 # keyword đa-nguyên-nhân trước khi rơi về rule_based_router (độ dài) làm fallback.
 _HARD_PLAN_KEYWORDS = ("tại sao", "vì sao", "so sánh", "phân tích", "dự đoán", "nên mua")
 
-
-def _plan_model(query: str) -> str:
-    """Câu chứa keyword đa-nguyên-nhân → ép gpt-4o; còn lại theo rule_based_router (độ dài)."""
-    if any(kw in query.lower() for kw in _HARD_PLAN_KEYWORDS):
-        return "gpt-4o"
-    return rule_based_router(query)
-
-
 def _make_plan(
     question: str,
     hint: str,
@@ -217,6 +228,14 @@ def _make_plan(
     turn: str = "",
 ) -> AgentPlan:
     """LLM bind top-k tool need_* (retrieval) — không chat_parsed."""
+    
+    def _plan_model(query: str) -> str:
+        """Câu chứa keyword đa-nguyên-nhân → ép gpt-4o; còn lại theo rule_based_router (độ dài)."""
+        if any(kw in query.lower() for kw in _HARD_PLAN_KEYWORDS):
+            return "gpt-4o"
+        return rule_based_router(query)
+    
+    
     parts = [
         f"Hôm nay: {date.today().isoformat()}",
         f"Câu hỏi: {question}\nMã gợi ý (có thể trống): {hint or '(không có)'}",
@@ -237,16 +256,42 @@ def _make_plan(
             turn=turn,
         )
     except Exception:
+        # LLM lỗi hạ tầng (rate limit/timeout) — có hint thì vẫn tra đúng mã user
+        # muốn; không hint thì từ chối rõ, KHÔNG bịa mã mặc định.
+        if not hint:
+            return AgentPlan(
+                symbol="",
+                use_price=False,
+                use_news=False,
+                use_db=False,
+                use_eval=False,
+                use_synth=False,
+                reasoning="Lỗi gọi LLM lập plan và không có mã gợi ý",
+                missing_symbol=True,
+            )
         calls = [
-            {"name": "need_price", "args": {"symbol": hint or "HPG"}},
-            {"name": "need_synth", "args": {"symbol": hint or "HPG"}},
+            {"name": "need_price", "args": {"symbol": hint}},
+            {"name": "need_synth", "args": {"symbol": hint}},
         ]
         return _plan_from_tool_calls(calls, hint, question)
     calls = getattr(response, "tool_calls", None) or []
     if not calls:
+        # LLM chạy được nhưng không chọn tool need_* nào — có hint thì vẫn tra
+        # đúng mã user muốn; không hint thì từ chối rõ thay vì đoán "HPG".
+        if not hint:
+            return AgentPlan(
+                symbol="",
+                use_price=False,
+                use_news=False,
+                use_db=False,
+                use_eval=False,
+                use_synth=False,
+                reasoning="LLM không chọn tool need_* nào và không có mã gợi ý",
+                missing_symbol=True,
+            )
         calls = [
-            {"name": "need_price", "args": {"symbol": hint or "HPG"}},
-            {"name": "need_synth", "args": {"symbol": hint or "HPG"}},
+            {"name": "need_price", "args": {"symbol": hint}},
+            {"name": "need_synth", "args": {"symbol": hint}},
         ]
     return _plan_from_tool_calls(calls, hint, question)
 
@@ -303,38 +348,37 @@ def _price_candidates(price: object | None) -> list[dict]:
     return [{"trading_date": date, "close": last}]
 
 
-def _price_from_db(db: object | None) -> PriceOut | None:
-    """DbOut.price_history (mới nhất trước) → PriceOut giả lập, source="db". None nếu rỗng."""
-    rows = getattr(db, "price_history", None) or []
-    if not rows:
-        return None
-    last = float(rows[0].close)
-    prev = float(rows[1].close) if len(rows) >= 2 else None
-    pct = round((last - prev) / prev * 100, 2) if prev else None
-    return PriceOut(
-        symbol=str(getattr(db, "symbol", "")),
-        last=last,
-        prev_close=prev,
-        pct_change=pct,
-        trading_date=str(rows[0].trading_date),
-        source="db",
-    )
-
-
-def _news_from_db(db: object | None) -> NewsOut | None:
-    """DbOut.saved_news → NewsOut giả lập, source="db". None nếu rỗng."""
-    saved = getattr(db, "saved_news", None) or []
-    if not saved:
-        return None
-    return NewsOut(
-        symbol=str(getattr(db, "symbol", "")),
-        articles=[NewsItem(title=n.title, url=n.url) for n in saved],
-        source="db",
-    )
-
-
 def _hydrate_from_db(state: SupervisorState, plan: AgentPlan) -> dict:
     """Cache hit: biến hàng DB thành price/news để khỏi crawl."""
+
+    def _price_from_db(db: object | None) -> PriceOut | None:
+        """DbOut.price_history (mới nhất trước) → PriceOut giả lập, source="db". None nếu rỗng."""
+        rows = getattr(db, "price_history", None) or []
+        if not rows:
+            return None
+        last = float(rows[0].close)
+        prev = float(rows[1].close) if len(rows) >= 2 else None
+        pct = round((last - prev) / prev * 100, 2) if prev else None
+        return PriceOut(
+            symbol=str(getattr(db, "symbol", "")),
+            last=last,
+            prev_close=prev,
+            pct_change=pct,
+            trading_date=str(rows[0].trading_date),
+            source="db",
+        )
+
+    def _news_from_db(db: object | None) -> NewsOut | None:
+        """DbOut.saved_news → NewsOut giả lập, source="db". None nếu rỗng."""
+        saved = getattr(db, "saved_news", None) or []
+        if not saved:
+            return None
+        return NewsOut(
+            symbol=str(getattr(db, "symbol", "")),
+            articles=[NewsItem(title=n.title, url=n.url) for n in saved],
+            source="db",
+        )
+
     db = state.get("db")
     if db is None or getattr(db, "symbol", None) != plan.symbol:
         return {}
@@ -348,23 +392,6 @@ def _hydrate_from_db(state: SupervisorState, plan: AgentPlan) -> dict:
         if news:
             extra["news"] = news
     return extra
-
-
-def _lookup_done(state: SupervisorState, turn: str, symbol: str) -> bool:
-    """Đã đọc DB trong turn hiện tại chưa — fallback so mã nếu thiếu `turn` (test offline)."""
-    if turn:
-        return state.get("db_lookup_turn") == turn
-    return _same_symbol(state.get("db"), symbol)
-
-
-def _write_done(state: SupervisorState, turn: str) -> bool:
-    """Đã COMMIT/soạn ghi DB trong turn hiện tại chưa (db_agent mode=write đã chạy)."""
-    return bool(turn) and state.get("db_write_turn") == turn
-
-
-def _needs_lookup(plan: AgentPlan) -> bool:
-    """Plan có cần bất kỳ dữ liệu nào từ DB không (giá, tin, hoặc lịch sử)."""
-    return bool(plan.use_price or plan.use_news or plan.use_db)
 
 
 def _price_failed(price: object | None, symbol: str) -> bool:
@@ -424,11 +451,6 @@ def _gather_stuck(state: SupervisorState, plan: AgentPlan) -> list[str]:
     return stuck
 
 
-def _should_stage(state: SupervisorState, plan: AgentPlan) -> bool:
-    """Còn dữ liệu vừa crawl (không lấy từ DB) thì soạn lệnh ghi."""
-    return bool(_news_candidates(state.get("news")) or _price_candidates(state.get("price")))
-
-
 def _pending_list(db: object | None) -> list[PendingWrite]:
     """Danh sách lệnh ghi đang treo (chưa COMMIT) trên DbOut, rỗng nếu chưa có `db`."""
     return list(getattr(db, "pending_writes", None) or [])
@@ -440,6 +462,32 @@ def coordinator(state: SupervisorState) -> dict:
     Span con trực tiếp dưới root (step_parent(state) không kèm agent_name —
     coordinator chạy ở cấp hub, không phải bên trong 1 subgraph con).
     """
+
+    def _apply_loop_guard(state: SupervisorState, out: dict) -> dict:
+        """Cùng next_wave lặp quá _MAX_SAME_WAVE_STREAK lần liên tiếp → dừng, trả lỗi.
+
+        Không sửa từng nhánh của _coordinate (nhiều return rải rác) — đo streak
+        trên kết quả nó vừa trả, độc lập với _gather_stuck (chỉ bắt lặp ở gather).
+        """
+        wave = out.get("next_wave")
+        if wave in (None, "done"):
+            out["wave_streak"] = 0
+            return out
+        streak = (int(state.get("wave_streak") or 0) + 1) if state.get("next_wave") == wave else 1
+        if streak < _MAX_SAME_WAVE_STREAK:
+            out["wave_streak"] = streak
+            return out
+
+        from app.agent_pr.synthesis_agent.schemas import Agent_Output as SynthOut
+
+        msg = f"Coordinator kẹt lặp ở bước '{wave}' {streak} lần liên tiếp — dừng để tránh vòng lặp vô hạn."
+        return {
+            "next_wave": "done",
+            "wave_streak": 0,
+            "trace": list(out.get("trace") or state.get("trace") or []) + [msg],
+            "draft": SynthOut(answer=msg, confidence=0.0),
+        }
+
     with trace_step(
         step_parent(state),
         "coordinator",
@@ -451,32 +499,6 @@ def coordinator(state: SupervisorState) -> dict:
         return out
 
 
-def _apply_loop_guard(state: SupervisorState, out: dict) -> dict:
-    """Cùng next_wave lặp quá _MAX_SAME_WAVE_STREAK lần liên tiếp → dừng, trả lỗi.
-
-    Không sửa từng nhánh của _coordinate (nhiều return rải rác) — đo streak
-    trên kết quả nó vừa trả, độc lập với _gather_stuck (chỉ bắt lặp ở gather).
-    """
-    wave = out.get("next_wave")
-    if wave in (None, "done"):
-        out["wave_streak"] = 0
-        return out
-    streak = (int(state.get("wave_streak") or 0) + 1) if state.get("next_wave") == wave else 1
-    if streak < _MAX_SAME_WAVE_STREAK:
-        out["wave_streak"] = streak
-        return out
-
-    from app.agent_pr.synthesis_agent.schemas import Agent_Output as SynthOut
-
-    msg = f"Coordinator kẹt lặp ở bước '{wave}' {streak} lần liên tiếp — dừng để tránh vòng lặp vô hạn."
-    return {
-        "next_wave": "done",
-        "wave_streak": 0,
-        "trace": list(out.get("trace") or state.get("trace") or []) + [msg],
-        "draft": SynthOut(answer=msg, confidence=0.0),
-    }
-
-
 # Loop Detection (Lesson 10 Phần 3) — _gather_stuck chỉ bắt lặp ở bước gather
 # (crawl giá/tin). Ngưỡng này bắt lặp ở BẤT KỲ next_wave nào (eval/synth/
 # db_write quay lại đúng 1 wave nhiều lần vì lỗi khác _gather_stuck chưa lường
@@ -485,8 +507,46 @@ _MAX_SAME_WAVE_STREAK = 4
 
 
 def _coordinate(state: SupervisorState) -> dict:
+    """Máy trạng thái của hub — mỗi lần gọi trả đúng MỘT `next_wave`, dừng ở
+    điều kiện đầu tiên khớp (xem thứ tự ưu tiên trong module docstring).
+
+    Được gọi lại NHIỀU LẦN trong cùng 1 turn (mỗi khi graph quay lại
+    `coordinator` sau 1 worker) — không phải chạy 1 lần. Vì vậy hàm phải tự
+    đọc lại `state` mới nhất mỗi lần để biết đã làm gì, còn thiếu gì.
+
+    `extra`: dict các field sẽ merge vào state trả về (symbol/question/plan/
+    plan_turn/hydrated price+news) — cộng dồn qua các bước đầu hàm rồi luôn
+    được `**extra` vào MỌI return phía dưới, để field đã tính (vd. plan mới
+    lập) không bị mất dù nhánh return nào được chọn.
+
+    `fresh_plan`: True chỉ ở lần ĐẦU TIÊN coordinator được ghé trong turn này
+    (`plan_turn != turn`). Dùng để: (1) quyết định có gọi lại LLM lập plan hay
+    không — tránh gọi LLM lại mỗi vòng lặp; (2) chỉ ghi `trace` mô tả bước kế
+    tiếp ở các lần ghé SAU (not fresh_plan) vì lần đầu đã có dòng trace riêng
+    "Coordinator LLM: ...".
+    """
+
+    def _lookup_done(state: SupervisorState, turn: str, symbol: str) -> bool:
+        """Đã đọc DB trong turn hiện tại chưa — fallback so mã nếu thiếu `turn` (test offline)."""
+        if turn:
+            return state.get("db_lookup_turn") == turn
+        return _same_symbol(state.get("db"), symbol)
+
+    def _write_done(state: SupervisorState, turn: str) -> bool:
+        """Đã COMMIT/soạn ghi DB trong turn hiện tại chưa (db_agent mode=write đã chạy)."""
+        return bool(turn) and state.get("db_write_turn") == turn
+
+    def _needs_lookup(plan: AgentPlan) -> bool:
+        """Plan có cần bất kỳ dữ liệu nào từ DB không (giá, tin, hoặc lịch sử)."""
+        return bool(plan.use_price or plan.use_news or plan.use_db)
+
+    def _should_stage(state: SupervisorState, plan: AgentPlan) -> bool:
+        """Còn dữ liệu vừa crawl (không lấy từ DB) thì soạn lệnh ghi."""
+        return bool(_news_candidates(state.get("news")) or _price_candidates(state.get("price")))
+
     hint = str(state.get("symbol") or "").strip().upper()
     question = str(state.get("question") or hint or "").strip()
+    # Không có cả câu hỏi lẫn mã gợi ý — không đủ để làm gì.
     if not question:
         from app.agent_pr.synthesis_agent.schemas import Agent_Output as SynthOut
 
@@ -503,6 +563,8 @@ def _coordinate(state: SupervisorState) -> dict:
     trace = list(state.get("trace") or [])
     extra: dict = {}
 
+    # Lần đầu turn: gọi LLM lập plan (need_* tools). Các lần ghé sau dùng lại
+    # `plan` đã lưu trong state, không gọi LLM nữa.
     if fresh_plan:
         plan = _make_plan(
             plan_query,
@@ -511,6 +573,25 @@ def _coordinate(state: SupervisorState) -> dict:
             memories=list(state.get("memories") or []),
             turn=turn,
         )
+        # Không trích được mã cụ thể (vd. "mã nào lãi nhiều nhất" — câu hỏi
+        # xếp hạng toàn thị trường) → từ chối ngay, không bịa mã mặc định.
+        if plan.missing_symbol:
+            from app.agent_pr.synthesis_agent.schemas import Agent_Output as SynthOut
+
+            msg = (
+                "Xin lỗi, tôi cần bạn nêu rõ MỘT mã cổ phiếu cụ thể (vd. HPG, VNM, FPT) "
+                "để tra cứu — tôi chưa hỗ trợ xếp hạng/so sánh toàn thị trường."
+            )
+            trace.append(f"Coordinator: thiếu mã cụ thể — {plan.reasoning}")
+            return {
+                "symbol": "",
+                "question": question,
+                "plan": plan,
+                "plan_turn": turn,
+                "next_wave": "done",
+                "trace": trace + [msg],
+                "draft": SynthOut(answer=msg, confidence=0.0),
+            }
         trace.append(f"Coordinator LLM: {plan.symbol} · {plan.reasoning}")
         extra = {
             "symbol": plan.symbol,
@@ -522,6 +603,8 @@ def _coordinate(state: SupervisorState) -> dict:
     else:
         plan = state["plan"]
 
+    # Cache hit: DB đã có đúng mã → biến hàng sqlite thành price/news giả lập,
+    # khỏi phải crawl vnstock/CafeF.
     hydrated = _hydrate_from_db(state, plan)
     if hydrated:
         extra = {**extra, **hydrated}
@@ -531,11 +614,15 @@ def _coordinate(state: SupervisorState) -> dict:
             if used:
                 trace.append("DB đã có " + " + ".join(used) + " — dùng luôn")
 
+    # Luôn ưu tiên đọc DB trước khi crawl.
     if _needs_lookup(plan) and not _lookup_done(state, turn, plan.symbol):
         if not fresh_plan:
             trace.append("Đọc DB trước")
         return {**extra, "next_wave": "db_lookup", "trace": trace}
 
+    # Còn worker (price/news) plan cần mà chưa có dữ liệu và chưa thử-và-lỗi
+    # → gather tiếp; route_coordinator chỉ Send 1 worker/vòng nên có thể lặp
+    # lại nhiều lần liên tiếp cho tới khi danh sách này rỗng.
     pending = _pending_gather(state, plan)
     if pending:
         if not fresh_plan:
@@ -567,6 +654,7 @@ def _coordinate(state: SupervisorState) -> dict:
             "draft": SynthOut(answer=msg, confidence=0.0),
         }
 
+    # Đã có đủ giá + tin cùng mã và plan cần chấm điểm → giao EvalAgent.
     if (
         plan.use_eval
         and state.get("eval_turn") != turn
@@ -577,38 +665,44 @@ def _coordinate(state: SupervisorState) -> dict:
             trace.append("Giao EvalAgent")
         return {**extra, "next_wave": "eval", "trace": trace}
 
+    # Giao SynthesisAgent ghép câu trả lời cuối; kèm số phiên lịch sử DB (n)
+    # để nó biết có bao nhiêu context khi ghép câu.
     if plan.use_synth and state.get("synth_turn") != turn:
         n = len(state["db"].price_history) if state.get("db") else 0
         if not fresh_plan:
             trace.append("Giao SynthesisAgent")
         return {**extra, "next_wave": "synth", "n_history": n, "trace": trace}
 
+    # Có dữ liệu vừa crawl (không phải từ DB) cần ghi → soạn lệnh (chưa
+    # COMMIT — COMMIT thật nằm ở hitl_commit sau khi user duyệt).
     skip_hitl = bool(state.get("skip_hitl"))
     if _should_stage(state, plan) and not _write_done(state, turn):
         if not fresh_plan:
             trace.append("Soạn lệnh ghi dữ liệu vừa crawl")
         return {**extra, "next_wave": "db_write", "trace": trace}
 
+    # Còn lệnh ghi đang chờ duyệt (và không bypass qua skip_hitl) → dừng chờ HITL.
     if _pending_list(state.get("db")) and not skip_hitl:
         if not fresh_plan:
             trace.append("HITL — chờ duyệt trước khi ghi DB")
         return {**extra, "next_wave": "hitl", "trace": trace}
 
+    # Hết việc theo plan → trả lời user.
     if not fresh_plan:
         trace.append("Đủ theo plan → trả user")
     return {**extra, "next_wave": "done", "trace": trace}
 
 
-def _send(state: SupervisorState, node: str, payload: dict) -> Send:
-    """Nhánh Send chỉ thấy payload — luôn kèm `turn` (string, pickle-safe) để
-    node đích tự tìm span cha qua step_parent/agent_span. KHÔNG kèm span object
-    thật — MemorySaver checkpoint có thể serialize payload này, span không pickle được.
-    """
-    return Send(node, payload)
-
-
 def route_coordinator(state: SupervisorState) -> str | list[Send]:
     """Map `next_wave` → node hoặc Send. Gather: một worker / vòng (dễ debug)."""
+
+    def _send(state: SupervisorState, node: str, payload: dict) -> Send:
+        """Nhánh Send chỉ thấy payload — luôn kèm `turn` (string, pickle-safe) để
+        node đích tự tìm span cha qua step_parent/agent_span. KHÔNG kèm span object
+        thật — MemorySaver checkpoint có thể serialize payload này, span không pickle được.
+        """
+        return Send(node, payload)
+
     wave = state["next_wave"]
     symbol = str(state.get("symbol") or "")
     turn = str(state.get("turn") or "")
@@ -658,40 +752,40 @@ def hitl_commit(state: SupervisorState) -> dict:
     Duyệt lệnh status=pending. Lệnh user đã từ chối qua /pr/approve giữ rejected
     (approve_pending_write không đảo).
     """
+
+    def _hitl_commit(state: SupervisorState) -> dict:
+        """Duyệt toàn bộ pending còn `status=pending`, đọc lại DB để `db` phản ánh dữ liệu vừa COMMIT."""
+        db = state.get("db")
+        pending = _pending_list(db)
+        symbol = str(state.get("symbol") or (getattr(db, "symbol", "") if db else ""))
+        n_ok = 0
+        for pw in pending:
+            try:
+                if approve_pending_write(pw.id, approve=True, kind=pw.kind or "news"):
+                    n_ok += 1
+            except Exception:
+                continue
+        from app.agent_pr.db_agent.nodes import _read_rows
+        from app.agent_pr.db_agent.schemas import PriceRow, SavedNews
+
+        rows = _read_rows(symbol) if symbol else {"price_rows": [], "news_rows": []}
+        refreshed = DbOut(
+            symbol=symbol,
+            price_history=[PriceRow(**row) for row in rows["price_rows"]],
+            saved_news=[SavedNews(**row) for row in rows["news_rows"]],
+            pending_writes=[],
+            detail=f"HITL: đã COMMIT {n_ok} lệnh vào DB",
+        )
+        line = refreshed.detail
+        return {
+            "db": refreshed,
+            "trace": list(state.get("trace") or []) + [line],
+        }
+
     with trace_step(step_parent(state), "hitl_commit", input=str(state.get("symbol") or "")) as t:
         out = _hitl_commit(state)
         t["output"] = out.get("trace", [""])[-1] if out.get("trace") else ""
         return out
-
-
-def _hitl_commit(state: SupervisorState) -> dict:
-    """Duyệt toàn bộ pending còn `status=pending`, đọc lại DB để `db` phản ánh dữ liệu vừa COMMIT."""
-    db = state.get("db")
-    pending = _pending_list(db)
-    symbol = str(state.get("symbol") or (getattr(db, "symbol", "") if db else ""))
-    n_ok = 0
-    for pw in pending:
-        try:
-            if approve_pending_write(pw.id, approve=True, kind=pw.kind or "news"):
-                n_ok += 1
-        except Exception:
-            continue
-    from app.agent_pr.db_agent.nodes import _read_rows
-    from app.agent_pr.db_agent.schemas import PriceRow, SavedNews
-
-    rows = _read_rows(symbol) if symbol else {"price_rows": [], "news_rows": []}
-    refreshed = DbOut(
-        symbol=symbol,
-        price_history=[PriceRow(**row) for row in rows["price_rows"]],
-        saved_news=[SavedNews(**row) for row in rows["news_rows"]],
-        pending_writes=[],
-        detail=f"HITL: đã COMMIT {n_ok} lệnh vào DB",
-    )
-    line = refreshed.detail
-    return {
-        "db": refreshed,
-        "trace": list(state.get("trace") or []) + [line],
-    }
 
 
 def after_wave1(state: SupervisorState) -> dict:
@@ -713,63 +807,63 @@ def after_wave1(state: SupervisorState) -> dict:
 
 def reply(state: SupervisorState) -> dict:
     """Đóng gói. Có draft thì dùng; không thì 1 câu tối thiểu từ báo cáo đã có."""
+
+    def _reply(state: SupervisorState) -> dict:
+        """Ưu tiên `draft` (SynthesisAgent); không có thì ghép câu tối thiểu từ price/news/db đã có."""
+        plan = state.get("plan")
+        symbol = str(state.get("symbol") or (plan.symbol if plan else ""))
+        draft = state.get("draft")
+        if draft:
+            answer = draft.answer
+            db = state.get("db")
+            if db and str(db.detail or "").startswith("HITL:"):
+                answer = answer.rstrip() + " " + db.detail
+        else:
+            parts = [f"{symbol}:"]
+            if state.get("price") and state["price"].pct_change is not None:
+                p = state["price"]
+                chieu = "giảm" if p.pct_change < 0 else "tăng"
+                parts.append(f"giá {chieu} {abs(p.pct_change):.1f}%.")
+            elif state.get("news"):
+                parts.append(f"{len(state['news'].articles)} tin CafeF.")
+            else:
+                parts.append("đã thu thập xong theo plan.")
+            db = state.get("db")
+            n_pending = len(db.pending_writes) if db else 0
+            if n_pending:
+                parts.append(
+                    f"Đã soạn {n_pending} lệnh ghi bài chưa có trong kho "
+                    "(chờ duyệt HITL — chưa COMMIT vào bảng news)."
+                )
+            elif db and db.detail:
+                parts.append(db.detail)
+            answer = " ".join(parts)
+
+        usage = pop_usage(str(state.get("turn") or ""))
+        output = Agent_Output(
+            symbol=symbol,
+            question=str(state.get("question") or ""),
+            answer=answer,
+            price=state.get("price"),
+            news=state.get("news"),
+            eval=state.get("eval"),
+            db=state.get("db"),
+            trace=list(state.get("trace") or []),
+            plan=plan,
+            prompt_tokens=int(usage["prompt_tokens"]) if usage else None,
+            completion_tokens=int(usage["completion_tokens"]) if usage else None,
+            cost_usd=round(usage["cost_usd"], 6) if usage else None,
+        )
+        return {
+            "output": output,
+            "history": [{"role": "assistant", "content": output.answer}],
+        }
+
     with trace_step(step_parent(state), "reply", input=str(state.get("question") or "")) as t:
         out = _reply(state)
         output = out.get("output")
         t["output"] = getattr(output, "answer", None)
         return out
-
-
-def _reply(state: SupervisorState) -> dict:
-    """Ưu tiên `draft` (SynthesisAgent); không có thì ghép câu tối thiểu từ price/news/db đã có."""
-    plan = state.get("plan")
-    symbol = str(state.get("symbol") or (plan.symbol if plan else ""))
-    draft = state.get("draft")
-    if draft:
-        answer = draft.answer
-        db = state.get("db")
-        if db and str(db.detail or "").startswith("HITL:"):
-            answer = answer.rstrip() + " " + db.detail
-    else:
-        parts = [f"{symbol}:"]
-        if state.get("price") and state["price"].pct_change is not None:
-            p = state["price"]
-            chieu = "giảm" if p.pct_change < 0 else "tăng"
-            parts.append(f"giá {chieu} {abs(p.pct_change):.1f}%.")
-        elif state.get("news"):
-            parts.append(f"{len(state['news'].articles)} tin CafeF.")
-        else:
-            parts.append("đã thu thập xong theo plan.")
-        db = state.get("db")
-        n_pending = len(db.pending_writes) if db else 0
-        if n_pending:
-            parts.append(
-                f"Đã soạn {n_pending} lệnh ghi bài chưa có trong kho "
-                "(chờ duyệt HITL — chưa COMMIT vào bảng news)."
-            )
-        elif db and db.detail:
-            parts.append(db.detail)
-        answer = " ".join(parts)
-
-    usage = pop_usage(str(state.get("turn") or ""))
-    output = Agent_Output(
-        symbol=symbol,
-        question=str(state.get("question") or ""),
-        answer=answer,
-        price=state.get("price"),
-        news=state.get("news"),
-        eval=state.get("eval"),
-        db=state.get("db"),
-        trace=list(state.get("trace") or []),
-        plan=plan,
-        prompt_tokens=int(usage["prompt_tokens"]) if usage else None,
-        completion_tokens=int(usage["completion_tokens"]) if usage else None,
-        cost_usd=round(usage["cost_usd"], 6) if usage else None,
-    )
-    return {
-        "output": output,
-        "history": [{"role": "assistant", "content": output.answer}],
-    }
 
 
 def compact_history(state: SupervisorState) -> dict:
@@ -791,62 +885,62 @@ def should_compact_route(state: SupervisorState) -> str:
 
 def recall_memory(state: SupervisorState) -> dict:
     """Đầu lượt: đọc long-term (Qdrant user_memory) theo user_id. Không user → bỏ qua."""
+
+    def _recall_memory(state: SupervisorState) -> dict:
+        """Đọc long-term memory nếu có user_id; luôn ghi câu hỏi gốc vào `history` (kể cả không user_id)."""
+        user_id = str(state.get("user_id") or "").strip()
+        original = str(state.get("question") or "")
+        query = _query_for_plan(state) or original
+        memories: list[str] = []
+        if user_id:
+            try:
+                memories = memory.recall_long_term(user_id, query)
+            except Exception:
+                memories = []
+        updates: dict = {"memories": memories}
+        if original:
+            updates["history"] = [{"role": "user", "content": original}]
+        return updates
+
     with trace_step(step_parent(state), "recall_memory", input=str(state.get("user_id") or "")) as t:
         out = _recall_memory(state)
         t["output"] = {"n_memories": len(out.get("memories") or [])}
         return out
 
 
-def _recall_memory(state: SupervisorState) -> dict:
-    """Đọc long-term memory nếu có user_id; luôn ghi câu hỏi gốc vào `history` (kể cả không user_id)."""
-    user_id = str(state.get("user_id") or "").strip()
-    original = str(state.get("question") or "")
-    query = _query_for_plan(state) or original
-    memories: list[str] = []
-    if user_id:
-        try:
-            memories = memory.recall_long_term(user_id, query)
-        except Exception:
-            memories = []
-    updates: dict = {"memories": memories}
-    if original:
-        updates["history"] = [{"role": "user", "content": original}]
-    return updates
-
-
 def store_memory(state: SupervisorState) -> dict:
     """Cuối lượt: trích 1 sự thật dài hạn về user (mã theo dõi, khẩu vị) → vector store."""
+
+    def _store_memory(state: SupervisorState) -> dict:
+        """LLM trích 1 sự thật dài hạn từ history gần đây; bỏ qua nếu không đáng lưu (worth_saving=False/"NONE")."""
+        user_id = str(state.get("user_id") or "").strip()
+        if not user_id:
+            return {}
+        recent = context.sliding_window(
+            list(state.get("history") or []), settings.agent_keep_recent_messages
+        )
+        if not recent:
+            return {}
+        lines = context.format_messages(recent)
+        try:
+            parsed, usage = chat_parsed_with_usage(
+                bound_messages(
+                    "Trích sự thật DÀI HẠN về user từ hội thoại cổ phiếu. "
+                    "Chỉ mã theo dõi, khẩu vị rủi ro, quyết định đã chốt — không tóm giá/tin phiên.",
+                    lines,
+                ),
+                MemoryFact,
+                DETERMINISTIC,
+            )
+            record_usage(str(state.get("turn") or ""), settings.llm_model, **usage)
+        except Exception:
+            return {}
+        fact = (parsed.fact or "").strip()
+        if parsed.worth_saving and fact and fact.upper() != "NONE":
+            memory.save_to_long_term(user_id, fact)
+        return {}
+
     with trace_step(step_parent(state), "store_memory", input=str(state.get("user_id") or "")) as t:
         out = _store_memory(state)
         t["output"] = bool(out)
         return out
-
-
-def _store_memory(state: SupervisorState) -> dict:
-    """LLM trích 1 sự thật dài hạn từ history gần đây; bỏ qua nếu không đáng lưu (worth_saving=False/"NONE")."""
-    user_id = str(state.get("user_id") or "").strip()
-    if not user_id:
-        return {}
-    recent = context.sliding_window(
-        list(state.get("history") or []), settings.agent_keep_recent_messages
-    )
-    if not recent:
-        return {}
-    lines = context.format_messages(recent)
-    try:
-        parsed, usage = chat_parsed_with_usage(
-            bound_messages(
-                "Trích sự thật DÀI HẠN về user từ hội thoại cổ phiếu. "
-                "Chỉ mã theo dõi, khẩu vị rủi ro, quyết định đã chốt — không tóm giá/tin phiên.",
-                lines,
-            ),
-            MemoryFact,
-            DETERMINISTIC,
-        )
-        record_usage(str(state.get("turn") or ""), settings.llm_model, **usage)
-    except Exception:
-        return {}
-    fact = (parsed.fact or "").strip()
-    if parsed.worth_saving and fact and fact.upper() != "NONE":
-        memory.save_to_long_term(user_id, fact)
-    return {}

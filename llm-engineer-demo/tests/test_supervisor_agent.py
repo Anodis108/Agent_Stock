@@ -78,7 +78,9 @@ def test_hpg_online():
     assert out.price is not None and out.price.last > 0
     assert out.news is not None and out.news.articles
     assert out.eval is not None
-    assert "giảm" in out.answer or "tăng" in out.answer
+    # Dữ liệu vnstock thật — pct_change có thể = 0 (giá đi ngang), không phải
+    # lúc nào cũng tăng/giảm. Chấp nhận cả 3 khả năng, chỉ chặn im lặng bỏ qua.
+    assert any(kw in out.answer for kw in ("giảm", "tăng", "không thay đổi", "0.0%", "0%"))
 
 
 def test_chi_gia_khong_goi_news(monkeypatch):

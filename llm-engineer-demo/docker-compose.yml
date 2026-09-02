@@ -41,6 +41,8 @@ services:
       # .env LANGFUSE_HOST=localhost:3000 chỉ đúng khi uvicorn chạy trên máy host.
       # Trong container localhost = chính app; Langfuse web nằm trên host :3000.
       LANGFUSE_HOST: http://host.docker.internal:3000
+      # .env QDRANT_URL=localhost:6333 chỉ đúng ngoài Docker. Trong mạng compose hostname là `qdrant`.
+      QDRANT_URL: http://qdrant:6333
     depends_on:
       postgres:
         condition: service_healthy

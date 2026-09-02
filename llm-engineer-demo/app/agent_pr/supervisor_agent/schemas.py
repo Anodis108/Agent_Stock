@@ -46,15 +46,25 @@ class MemoryFact(BaseModel):
 
 
 class AgentPlan(BaseModel):
-    """Quyết định hub — LLM chọn worker nào chạy. Eval cần giá+tin."""
+    """Quyết định hub — LLM chọn worker nào chạy. Eval cần giá+tin.
 
-    symbol: str = Field(description="Mã CP niêm yết VN, vd. HPG, VNM, MWG")
+    `missing_symbol=True`: câu hỏi cần dữ liệu 1 mã cụ thể nhưng không trích
+    được mã nào (không ticker trong câu/hint/tool args) — KHÔNG bịa mã mặc
+    định. `_coordinate` phải từ chối sớm thay vì Send worker với mã đoán bừa
+    (xem `_plan_from_tool_calls`/`_make_plan`).
+    """
+
+    symbol: str = Field(description="Mã CP niêm yết VN, vd. HPG, VNM, MWG — rỗng nếu missing_symbol")
     use_price: bool = Field(description="Cần giá / % biến động")
     use_news: bool = Field(description="Cần tin tức")
     use_db: bool = Field(description="Cần lịch sử trong DB")
     use_eval: bool = Field(description="Cần chấm tin vs giá — chỉ true nếu có giá VÀ tin")
     use_synth: bool = Field(description="Cần ghép câu trả lời có cấu trúc")
     reasoning: str = Field(description="Lý do ngắn các cờ true/false")
+    missing_symbol: bool = Field(
+        default=False,
+        description="True nếu câu hỏi cần mã cụ thể nhưng không xác định được mã nào",
+    )
 
 
 class Agent_Output(BaseModel):

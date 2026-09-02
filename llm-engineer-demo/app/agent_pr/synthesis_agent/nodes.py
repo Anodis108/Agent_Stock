@@ -19,8 +19,16 @@ _GROUNDING = """Bạn là SynthesisAgent hỏi–đáp cổ phiếu VN.
 Quy tắc (RAG generation — chỉ bám báo cáo):
 - Trả lời ĐÚNG câu hỏi user (tăng/giảm so với hôm qua → chiều + %; giá bao nhiêu → số VND).
 - CHỈ dùng số liệu, tiêu đề, đếm sentiment trong BÁO CÁO bên dưới.
-- Không bịa giá, tin, mã. Thiếu phiên trước / pct_change thì nói chưa đủ lịch sử, đừng thay bằng đoạn tin trung lập.
-- Tiếng Việt, ngắn. Trích citations.source = price|news|eval|db."""
+- Không bịa giá, tin, mã.
+
+BẮT BUỘC nêu rõ (đây là cảnh báo an toàn, không được bỏ qua dù câu hỏi không hỏi trực tiếp):
+- Báo cáo đã nói rõ "đủ dữ liệu" hay "CHƯA đủ lịch sử" cho phần giá — PHẢI theo
+  đúng kết luận đó, không tự suy diễn thêm.
+- eval.price_matches_news=False → PHẢI nêu rõ CẢNH BÁO chiều giá KHÔNG khớp với thiên hướng tin tức (dùng đúng cụm "KHÔNG khớp" hoặc "lệch").
+- news báo "chưa tìm thấy tin" → PHẢI nói rõ điều đó, không được im lặng bỏ qua phần tin.
+- n_history >= 2 (đã có lịch sử DB) → PHẢI nêu số phiên lịch sử đã có (vd. "5 phiên gần nhất đã có trong DB").
+
+Tiếng Việt, ngắn gọn nhưng không được lược bỏ các cảnh báo bắt buộc trên. Trích citations.source = price|news|eval|db."""
 
 
 def _compose_template(state: SynthState) -> tuple[str, str, list[Citation]]:
@@ -103,13 +111,43 @@ def compose(state: SynthState) -> dict:
         )
         price, news, ev = state.get("price"), state.get("news"), state.get("eval")
         db = state.get("db")
-        reports = (
-            f"price={price.model_dump() if price else None}\n"
-            f"news={news.model_dump() if news else None}\n"
-            f"eval={ev.model_dump() if ev else None}\n"
-            f"db_detail={getattr(db, 'detail', None)}\n"
-            f"n_history={state.get('n_history') or 0}"
+        n_history = int(state.get("n_history") or 0)
+        # Diễn giải rõ từng field quan trọng thay vì model_dump() thô — dump thô
+        # kèm prev_close=None (dù pct_change đã có giá trị) khiến model hiểu
+        # nhầm "thiếu phiên trước" = "thiếu lịch sử", bỏ qua pct_change đã tính sẵn.
+        if price is None:
+            price_line = "price: không có dữ liệu giá."
+        elif price.pct_change is None:
+            price_line = f"price: giá hiện tại {price.last} VND. CHƯA đủ lịch sử để tính % biến động."
+        else:
+            price_line = (
+                f"price: giá hiện tại {price.last} VND, đã tính được pct_change={price.pct_change}% "
+                "(đủ dữ liệu, không phải thiếu lịch sử)."
+            )
+        news_line = (
+            "news: chưa tìm thấy tin liên quan."
+            if not news or not news.articles
+            else f"news: {len(news.articles)} tin — {news.model_dump()}"
         )
+        # price_matches_news diễn giải rõ True/False/None — dump thô dễ khiến
+        # model tự suy diễn "None" thành "không khớp" (hallucination).
+        if ev is None:
+            eval_line = "eval: không có báo cáo chấm điểm."
+        elif ev.price_matches_news is True:
+            eval_line = f"eval: chiều giá KHỚP với thiên hướng tin tức. Chi tiết: {ev.detail or ev.model_dump()}"
+        elif ev.price_matches_news is False:
+            eval_line = f"eval: chiều giá KHÔNG khớp với thiên hướng tin tức. Chi tiết: {ev.detail or ev.model_dump()}"
+        else:
+            eval_line = (
+                f"eval: CHƯA đủ bằng chứng để kết luận khớp hay không khớp giữa giá và tin "
+                f"(không được tự suy diễn khớp/không khớp). Chi tiết: {ev.detail or ev.model_dump()}"
+            )
+        db_line = (
+            f"n_history: {n_history} — đã có {n_history} phiên lịch sử trong DB, PHẢI nêu con số này."
+            if n_history >= 2
+            else f"n_history: {n_history} (chưa đủ lịch sử DB để nêu số phiên)"
+        ) + f"\ndb_detail: {getattr(db, 'detail', None)}"
+        reports = f"{price_line}\n{news_line}\n{eval_line}\n{db_line}"
         q = str(state.get("rewritten_question") or state.get("question") or "").strip()
         try:
             parsed, usage = chat_parsed_with_usage(
