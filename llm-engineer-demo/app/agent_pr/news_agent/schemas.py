@@ -22,7 +22,7 @@ class Agent_Input(BaseModel):
 class NewsItem(BaseModel):
     """Một tin bài CafeF — Title / LinkDetail / DeployDate sau khi chuẩn hoá."""
 
-    title: str
+    title: str                            # tiêu đề bài, từ field Title CafeF Ajax
     url: str = ""                         # https://cafef.vn/...chn
     publish_time: str = ""                # ISO UTC từ /Date(ms)/
 
@@ -33,3 +33,4 @@ class Agent_Output(BaseModel):
     symbol: str                           # mã đã chuẩn hoá, vd. HPG
     articles: list[NewsItem]              # parse ghi từ rows
     source: str = "cafef"                 # Ajax News.ashx, chưa Swarm Scout
+    tool_trace: list[dict] = []           # chuỗi tool-call thật (Bài 5 trajectory eval) — xem react.extract_tool_trace

@@ -12,7 +12,7 @@ from functools import lru_cache
 from app.agent_pr.news_agent.schemas import Agent_Input, Agent_Output
 from app.agent_pr.news_agent.state import NewsState
 from app.agent_pr.news_agent.tools import TOOLS
-from app.agent_pr.react import build_react_subgraph, fresh_user, last_tool_json, parse_tool_output
+from app.agent_pr.react import build_react_subgraph, extract_tool_trace, fresh_user, last_tool_json, parse_tool_output
 from app.monitoring.tracing import agent_span, trace_step
 
 _SYSTEM = """Bạn là NewsAgent — CHỈ lấy tin thô CafeF. Không chấm tốt/xấu (Eval), không lấy giá, không ghi DB.
@@ -37,6 +37,7 @@ def _build_graph():
             articles=[],
             source=raw or str(state.get("error") or "cafef"),
         )
+        news = news.model_copy(update={"tool_trace": extract_tool_trace(state)})
         return {"news": news}
 
     graph = build_react_subgraph(

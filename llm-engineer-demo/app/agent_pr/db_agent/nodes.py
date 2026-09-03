@@ -136,17 +136,33 @@ def _read_rows(symbol: str) -> dict:
     """Query thuần sqlite, không trace_step riêng — `read` đã bọc span cho cả 2 câu SELECT."""
     with _connect() as conn:
         price_cur = conn.execute(
-            "SELECT trading_date, close FROM prices WHERE symbol = ? "
+            "SELECT trading_date, close, ts FROM prices WHERE symbol = ? "
             "ORDER BY ts DESC LIMIT 5",
             (symbol,),
         )
         news_cur = conn.execute(
-            "SELECT title, url FROM news WHERE symbol = ? ORDER BY ts DESC",
+            "SELECT title, url, ts FROM news WHERE symbol = ? ORDER BY ts DESC",
             (symbol,),
         )
         price_rows = [dict(row) for row in price_cur.fetchall()]
         news_rows = [dict(row) for row in news_cur.fetchall()]
     return {"price_rows": price_rows, "news_rows": news_rows}
+
+
+def _freshness_label(ts: float) -> str:
+    """Độ mới dữ liệu tính từ `ts` (time.time() lúc ghi) — dùng trong `detail`
+    để supervisor (qua prompt, không code-enforce) tự quyết có cần crawl lại
+    hay dữ liệu DB đã đủ mới (xem AGENT_PR_FRESHNESS_MINUTES, _SUPERVISOR_SYSTEM)."""
+    if not ts:
+        return "chưa rõ thời điểm"
+    age_min = (time.time() - ts) / 60
+    if age_min < 5:
+        return f"vừa cập nhật ({age_min:.0f} phút trước)"
+    if age_min < 60:
+        return f"{age_min:.0f} phút trước"
+    if age_min < 24 * 60:
+        return f"hơn {age_min / 60:.0f} giờ trước"
+    return f"hơn {age_min / (24 * 60):.0f} ngày trước"
 
 
 def stage_writes(state: DBState) -> dict:
@@ -313,18 +329,23 @@ def parse(state: DBState) -> dict:
     pending_rows = state.get("pending_rows") or []
     with trace_step(step_parent(state, "db_agent"), "db_parse", input=symbol) as t:
         pending = [PendingWrite(**_pending_fields(row)) for row in pending_rows]
+        most_recent_ts = max(
+            [r.get("ts", 0) or 0 for r in price_rows] + [r.get("ts", 0) or 0 for r in news_rows],
+            default=0,
+        )
+        freshness = _freshness_label(most_recent_ts) if most_recent_ts else ""
         result = Agent_Output(
             symbol=symbol,
             price_history=[PriceRow(**row) for row in price_rows],
             saved_news=[SavedNews(**row) for row in news_rows],
             pending_writes=pending,
             detail=(
-                f"đọc {len(price_rows)} phiên giá + {len(news_rows)} tin đã lưu · "
-                f"soạn {len(pending)} lệnh ghi mới (chờ HITL ở hub)"
-                if pending
-                else (
-                    f"đọc {len(price_rows)} phiên giá + {len(news_rows)} tin đã lưu"
-                    + (
+                f"đọc {len(price_rows)} phiên giá + {len(news_rows)} tin đã lưu"
+                + (f" ({freshness})" if freshness else "")
+                + (
+                    f" · soạn {len(pending)} lệnh ghi mới (chờ HITL ở hub)"
+                    if pending
+                    else (
                         " — đủ dùng, không cần crawl"
                         if price_rows or news_rows
                         else " — chưa có dữ liệu"

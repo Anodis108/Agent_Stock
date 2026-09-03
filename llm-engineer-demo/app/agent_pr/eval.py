@@ -9,8 +9,10 @@ có notes, worker nói ngang nhau. File này chấm thêm CON ĐƯỜNG, giống
     trên chuỗi hub → worker. Rubric tuyệt đối, không thưởng nhiều bước
     (verbosity bias — xem agent_m2/eval.py).
 
-Khác agent_m2: không có checkpointer/tool_call_id. Trajectory dựng từ
-Agent_Output + hub.trace (chỉ worker LLM routing thật sự chọn).
+Khác agent_m2: không có checkpointer (worker subgraph không compile với
+checkpointer/config — xem supervisor_agent/graph.py). Trajectory dựng từ
+Agent_Output.tool_trace (tool-call THẬT, trích trong _pack mỗi worker qua
+react.extract_tool_trace) + hub.trace (routing supervisor mỗi vòng).
 Khác app/agent_pr/eval_agent/: đó là domain sentiment, không phải LLM-as-judge.
 
 Cost/latency lấy từ LangFuse span `agent_pr_ask` — không nhờ judge.
@@ -98,11 +100,17 @@ def evaluate_task_success(
 
 _TRAJECTORY_SYSTEM = """Bạn chấm CHUỖI HÀNH ĐỘNG của Hierarchical Supervisor, không chỉ câu trả lời cuối.
 
-Luồng đúng: supervisor gọi LLM MỖI vòng để chọn worker tiếp theo dựa trên
-notes đã có (đọc DB trước khi crawl khi có thể), gộp kết quả vào notes rồi
-hỏi lại — tới khi supervisor chọn "done" → final_answer (LLM tổng hợp notes)
-→ soạn lệnh ghi nếu vừa crawl (db_write) → HITL interrupt_before COMMIT
-→ hub trả user. Worker không nói với nhau, chỉ báo cáo qua notes.
+Luồng đúng: supervisor gọi LLM MỖI vòng để chọn worker tiếp theo (và mã CP
+cụ thể nếu câu hỏi có nhiều mã) dựa trên notes đã có (đọc DB trước khi crawl
+khi có thể), gộp kết quả vào notes rồi hỏi lại — tới khi supervisor chọn
+"done" → final_answer (LLM tổng hợp notes) → soạn lệnh ghi nếu vừa crawl
+(db_write) → HITL interrupt_before COMMIT → hub trả user. Worker không nói
+với nhau, chỉ báo cáo qua notes.
+
+Mỗi bước worker giờ có thể là 1 tool CỤ THỂ bên trong worker đó (vd
+"price_agent.fetch_latest_close") thay vì 1 dòng tóm tắt — chấm
+tool_correctness dựa trên đúng tool + đúng tham số (đặc biệt đúng mã CP)
+từng bước, không chỉ đúng worker.
 
 Trừ điểm logical_order / tool_correctness nếu:
 - Crawl lại khi notes đã có đúng loại dữ liệu (DB hoặc worker trước đó)
@@ -110,6 +118,7 @@ Trừ điểm logical_order / tool_correctness nếu:
 - Ghi DB (db_write) trước HITL
 - worker tự gọi nhau (cạnh ngang) thay vì báo cáo hub
 - worker sai việc (Eval crawl, final_answer tự bịa số liệu ngoài notes)
+- worker gọi tool sai mã CP (vd cần giá FPT nhưng gọi fetch_latest_close với HPG)
 
 4 tiêu chí ĐỘC LẬP, thang 1-5. KHÔNG thưởng trajectory dài — ít bước hơn vì
 câu hỏi đơn giản (chỉ cần giá, không cần tin/eval) là ĐÚNG (efficiency),
@@ -152,7 +161,36 @@ def extract_trajectory(out: Agent_Output) -> list[dict]:
 
     Mỗi bước `{tool, args, observation}` — cùng shape agent_m2._extract_trajectory.
     Hub.trace (routing supervisor mỗi vòng) gắn vào observation của bước đầu.
+
+    Khác bản cũ: mở rộng mỗi worker thành các bước TOOL-CALL THẬT (từ
+    `Agent_Output.tool_trace` — xem react.extract_tool_trace) thay vì 1 dòng
+    tóm tắt giả định — worker không có tool_trace (không chạy lượt này, hoặc
+    dữ liệu cũ trước khi field này tồn tại) thì fallback về 1 dòng tóm tắt
+    như trước, không raise/crash.
     """
+
+    def _expand(domain: str, worker_out, symbol: str, steps: list[dict]) -> None:
+        if worker_out is None:
+            return
+        trace = list(getattr(worker_out, "tool_trace", None) or [])
+        if not trace:
+            steps.append(
+                {
+                    "tool": domain,
+                    "args": {"symbol": symbol},
+                    "observation": str(getattr(worker_out, "detail", None) or worker_out),
+                }
+            )
+            return
+        for t in trace:
+            steps.append(
+                {
+                    "tool": f"{domain}.{t.get('tool', '?')}",
+                    "args": {**(t.get("args") or {}), "symbol": symbol},
+                    "observation": t.get("observation", ""),
+                }
+            )
+
     hub = " | ".join(out.trace) if out.trace else ""
     steps: list[dict] = [
         {
@@ -161,42 +199,22 @@ def extract_trajectory(out: Agent_Output) -> list[dict]:
             "observation": hub or "LLM routing mỗi vòng rồi giao worker",
         },
     ]
-    if out.db:
-        steps.append(
-            {
-                "tool": "db_agent",
-                "args": {"symbol": out.symbol, "mode": "read"},
-                "observation": out.db.detail,
-            }
-        )
-    if out.price and str(getattr(out.price, "source", "") or "") != "db":
-        steps.append(
-            {
-                "tool": "price_agent",
-                "args": {"symbol": out.symbol},
-                "observation": (
-                    f"last={out.price.last} prev={out.price.prev_close} "
-                    f"pct_change={out.price.pct_change} date={out.price.trading_date} "
-                    f"source={out.price.source}"
-                ),
-            }
-        )
-    if out.news and str(getattr(out.news, "source", "") or "") != "db":
-        steps.append(
-            {
-                "tool": "news_agent",
-                "args": {"symbol": out.symbol},
-                "observation": f"{len(out.news.articles)} tin {out.news.source}",
-            }
-        )
-    if out.eval:
-        steps.append(
-            {
-                "tool": "eval_agent",
-                "args": {"symbol": out.symbol},
-                "observation": out.eval.detail,
-            }
-        )
+
+    symbols = out.symbols or ([out.symbol] if out.symbol else [])
+    for sym in symbols:
+        db = out.db_by_symbol.get(sym) or (out.db if sym == out.symbol else None)
+        if db:
+            _expand("db_agent", db, sym, steps)
+        price = out.price_by_symbol.get(sym) or (out.price if sym == out.symbol else None)
+        if price and str(getattr(price, "source", "") or "") != "db":
+            _expand("price_agent", price, sym, steps)
+        news = out.news_by_symbol.get(sym) or (out.news if sym == out.symbol else None)
+        if news and str(getattr(news, "source", "") or "") != "db":
+            _expand("news_agent", news, sym, steps)
+        ev = out.eval_by_symbol.get(sym) or (out.eval if sym == out.symbol else None)
+        if ev:
+            _expand("eval_agent", ev, sym, steps)
+
     steps.append(
         {
             "tool": "final_answer",

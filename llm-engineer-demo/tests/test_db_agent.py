@@ -101,6 +101,49 @@ def test_stage_duplicate_url_bo_qua():
     assert len(out.pending_writes) == 1
 
 
+def test_freshness_label_khong_raise():
+    """_freshness_label — regression guard cho ngưỡng phút/giờ/ngày, không raise."""
+    from app.agent_pr.db_agent.nodes import _freshness_label
+
+    assert _freshness_label(0) == "chưa rõ thời điểm"
+    assert "phút trước" in _freshness_label(time.time() - 60)
+    assert "giờ trước" in _freshness_label(time.time() - 3 * 3600)
+    assert "ngày trước" in _freshness_label(time.time() - 3 * 86400)
+
+
+def test_read_rows_includes_freshness_ts(tmp_path, monkeypatch):
+    """Sau approve, _read_rows trả kèm `ts` — nền tảng cho freshness trong detail."""
+    from app.agent_pr.db_agent import nodes as db_nodes
+
+    monkeypatch.setattr(db_nodes, "_DB_PATH", tmp_path / "freshness.sqlite3")
+    staged = run_db(
+        Agent_Input(symbol="HPG", candidate_prices=[CandidatePrice(trading_date="20260901", close=21000)])
+    )
+    price_pw = [pw for pw in staged.pending_writes if pw.kind == "price"][0]
+    assert approve_pending_write(price_pw.id, approve=True, kind="price")
+
+    rows = db_nodes._read_rows("HPG")
+    assert rows["price_rows"]
+    assert rows["price_rows"][0]["ts"] > 0
+
+
+def test_detail_mentions_freshness(tmp_path, monkeypatch):
+    """detail của lượt ĐỌC kèm nhãn độ mới (không assert nguyên văn — tránh brittle)."""
+    from app.agent_pr.db_agent import nodes as db_nodes
+
+    monkeypatch.setattr(db_nodes, "_DB_PATH", tmp_path / "freshness2.sqlite3")
+    staged = run_db(
+        Agent_Input(symbol="HPG", candidate_prices=[CandidatePrice(trading_date="20260901", close=21000)])
+    )
+    price_pw = [pw for pw in staged.pending_writes if pw.kind == "price"][0]
+    assert approve_pending_write(price_pw.id, approve=True, kind="price")
+
+    after = run_db(Agent_Input(symbol="HPG"))
+    print()
+    print("detail:", after.detail)
+    assert any(kw in after.detail for kw in ("phút trước", "giờ trước", "ngày trước", "vừa cập nhật"))
+
+
 def test_ma_sai():
     """Không chặn regex — chỉ upper/strip."""
     from app.agent_pr.db_agent.nodes import normalize

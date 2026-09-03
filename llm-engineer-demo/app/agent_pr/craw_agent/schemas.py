@@ -30,3 +30,4 @@ class Agent_Output(BaseModel):
     pct_change: float | None = None       # (last - prev) / prev * 100; None nếu thiếu prev
     trading_date: str = ""                # YYYYMMDD rút từ time của dòng cuối
     source: str = "vnstock"               # cố định slice 1; không phải URL SSI/TCBS
+    tool_trace: list[dict] = []           # chuỗi tool-call thật (Bài 5 trajectory eval) — xem react.extract_tool_trace

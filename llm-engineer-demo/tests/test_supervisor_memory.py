@@ -14,6 +14,9 @@ from langgraph.graph import END, START, StateGraph
 from pydantic import ValidationError
 
 from app.agent_pr.supervisor_agent.nodes import (
+    _looping,
+    _make_collect_node,
+    _select_final_answer_model,
     recall_memory,
     rewrite_question,
     route_supervisor,
@@ -191,6 +194,80 @@ def test_interrupt_before_hitl_commit_giong_m2():
     second = app.invoke(None, cfg)
     assert second["committed"] is True
     assert app.get_state(cfg).next == ()
+
+
+def test_looping_is_symbol_scoped():
+    """agent_history dạng '{symbol}:{next_agent}' — lặp 3 lần cùng HPG không
+    che mất tiến độ hợp lệ của FPT (chuỗi xen kẽ không bị coi là lặp)."""
+    hpg_streak = ["HPG:price_agent", "HPG:price_agent", "HPG:price_agent"]
+    assert _looping(hpg_streak) is True
+    interleaved = ["HPG:price_agent", "FPT:price_agent", "HPG:price_agent"]
+    assert _looping(interleaved) is False
+
+
+def test_collect_node_multi_symbol_khong_ghi_de_ma_khac():
+    """_make_collect_node gộp vào notes[symbol] — không đụng notes của mã khác."""
+    from app.agent_pr.craw_agent.schemas import Agent_Output as PriceOut
+
+    collect = _make_collect_node("price_agent")
+    fpt_quote = PriceOut(symbol="FPT", last=72000, prev_close=73000, pct_change=-1.4, trading_date="20260903")
+    state = {
+        "symbol": "FPT",
+        "price": {"HPG": PriceOut(symbol="HPG", last=21000), "FPT": fpt_quote},
+        "notes": {"HPG": {"price_agent": "đã có từ trước"}},
+    }
+    out = collect(state)
+    assert out["notes"]["HPG"] == {"price_agent": "đã có từ trước"}
+    assert "price_agent" in out["notes"]["FPT"]
+    assert "FPT" in out["notes"]["FPT"]["price_agent"]
+
+
+def test_select_final_answer_model_multi_symbol_la_gpt4o():
+    model = _select_final_answer_model(
+        {"symbols": ["HPG", "FPT"], "notes": {}, "question": "HPG và FPT mã nào mạnh hơn"}
+    )
+    assert model == "gpt-4o"
+
+
+def test_select_final_answer_model_don_gian_la_mini():
+    model = _select_final_answer_model(
+        {"symbols": ["HPG"], "notes": {"HPG": {"price_agent": "..."}}, "question": "giá HPG hôm nay"}
+    )
+    assert model == "gpt-4o-mini"
+
+
+def test_select_final_answer_model_nhieu_domain_la_gpt4o():
+    model = _select_final_answer_model(
+        {
+            "symbols": ["HPG"],
+            "notes": {"HPG": {"price_agent": "a", "news_agent": "b", "eval_agent": "c"}},
+            "question": "giá HPG hôm nay",
+        }
+    )
+    assert model == "gpt-4o"
+
+
+def test_final_answer_node_truyen_model_override(monkeypatch):
+    from app.agent_pr.supervisor_agent import nodes as n
+
+    captured: dict = {}
+
+    class _Parsed:
+        answer = "HPG và FPT đều giảm."
+
+    def fake_chat_parsed_with_usage(messages, schema, params, model=None):
+        captured["model"] = model
+        return _Parsed(), {"prompt_tokens": 0, "completion_tokens": 0}
+
+    monkeypatch.setattr(n, "chat_parsed_with_usage", fake_chat_parsed_with_usage)
+    n.final_answer_node(
+        {
+            "symbols": ["HPG", "FPT"],
+            "notes": {"HPG": {"price_agent": "x"}, "FPT": {"price_agent": "y"}},
+            "question": "HPG và FPT mã nào mạnh hơn",
+        }
+    )
+    assert captured["model"] == "gpt-4o"
 
 
 def test_short_term_cung_thread_id_nho_history():

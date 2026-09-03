@@ -13,7 +13,7 @@ from functools import lru_cache
 from app.agent_pr.eval_agent.schemas import Agent_Input, Agent_Output
 from app.agent_pr.eval_agent.state import EvalState
 from app.agent_pr.eval_agent.tools import TOOLS
-from app.agent_pr.react import build_react_subgraph, fresh_user, last_tool_json, parse_tool_output
+from app.agent_pr.react import build_react_subgraph, extract_tool_trace, fresh_user, last_tool_json, parse_tool_output
 from app.monitoring.tracing import agent_span, trace_step
 
 _SYSTEM = """Bạn là EvalAgent — CHỈ chấm tin vs chiều giá bằng tool. Không crawl, không ghép câu user.
@@ -41,6 +41,7 @@ def _build_graph():
         from app.agent_pr.eval_agent.nodes import score
 
         report = parse_tool_output(raw, Agent_Output) or score(state)["report"]
+        report = report.model_copy(update={"tool_trace": extract_tool_trace(state)})
         return {"eval": report, "eval_turn": state.get("turn") or ""}
 
     graph = build_react_subgraph(

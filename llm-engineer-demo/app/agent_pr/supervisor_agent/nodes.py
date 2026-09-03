@@ -70,6 +70,11 @@ Nếu nhiệm vụ có NHIỀU mã (vd so sánh HPG và FPT), mỗi lượt gọ
 gộp nhiều mã vào 1 lượt gọi. Ghi chú (notes) nhóm theo TỪNG MÃ — xem để biết mã nào còn
 thiếu worker nào. Chỉ chọn 'done' khi TẤT CẢ mã đã đủ thông tin cần thiết.
 
+Ghi chú của db_agent có kèm ĐỘ MỚI dữ liệu (vd "5 phút trước", "hơn 1 giờ trước"). Nếu dữ
+liệu trong DB mới hơn khoảng {freshness_minutes} phút, coi là ĐỦ DÙNG — KHÔNG cần gọi lại
+price_agent/news_agent để crawl lại cùng mã. Chỉ crawl lại khi DB chưa có dữ liệu, dữ liệu
+đã quá cũ (hơn vài giờ), hoặc user yêu cầu rõ "mới nhất/cập nhật lại".
+
 Câu hỏi về CHÍNH hội thoại (vd. "vừa rồi tôi hỏi gì", "mã nào tôi hỏi lúc nãy") — trả lời
 được ngay từ "Hội thoại gần đây" bên dưới, không cần gọi worker nào, chọn 'done' luôn.
 
@@ -164,9 +169,10 @@ def supervisor_node(state: SupervisorState) -> dict:
         if memories:
             parts.append("Đã biết về user:\n" + "\n".join(f"- {m}" for m in memories))
         parts.append(f"Ghi chú từ worker đã chạy lượt này:\n{notes_text}")
+        system = _SUPERVISOR_SYSTEM.format(freshness_minutes=settings.agent_pr_freshness_minutes)
         try:
             decision, usage = chat_parsed_with_usage(
-                bound_messages(_SUPERVISOR_SYSTEM, "\n\n".join(parts)),
+                bound_messages(system, "\n\n".join(parts)),
                 RoutingDecision,
                 DETERMINISTIC,
             )
@@ -308,7 +314,6 @@ def _make_collect_node(domain: str):
         symbol = str(state.get("symbol") or "")
         value = dict(state.get(field) or {}).get(symbol)
         summary = _summarize(field, value)
-        print(f"Collecting {domain}: {summary}")  # Debug print to trace collection
         notes = {sym: dict(doms) for sym, doms in (state.get("notes") or {}).items()}
         notes.setdefault(symbol, {})[domain] = summary
         trace = list(state.get("trace") or []) + [f"[{symbol}] {domain}: {summary}"]
@@ -417,6 +422,34 @@ def route_after_final_answer(state: SupervisorState) -> str:
     return "reply"
 
 
+_HARD_FINAL_ANSWER_KEYWORDS = (
+    "so sánh", "tại sao", "vì sao", "phân tích", "đánh giá", "nên mua", "nên bán",
+)
+
+
+def _select_final_answer_model(state: SupervisorState) -> str:
+    """Model Routing (Bài 8 Phần 4) riêng cho final_answer — không tái dùng thẳng
+    `rule_based_router` (heuristic word-count/code-block của nó không hợp câu
+    hỏi tiếng Việt ngắn nhưng phức tạp, vd so sánh 2 mã). gpt-4o khi: nhiều mã,
+    câu hỏi so sánh/nguyên nhân/khuyến nghị, hoặc notes có ≥3 domain (tổng hợp
+    phức tạp) — còn lại giữ gpt-4o-mini (rẻ, đủ cho câu đơn giản)."""
+    from app.optimization.routing import rule_based_router
+
+    symbols = list(state.get("symbols") or ([state["symbol"]] if state.get("symbol") else []))
+    notes = state.get("notes") or {}
+    question = str(state.get("rewritten_question") or state.get("question") or "").lower()
+    n_domains = len({d for sym_notes in notes.values() for d in sym_notes})
+    if len(symbols) >= 2:
+        return "gpt-4o"
+    if any(kw in question for kw in _HARD_FINAL_ANSWER_KEYWORDS):
+        return "gpt-4o"
+    if n_domains >= 3:
+        return "gpt-4o"
+    if question and rule_based_router(question) == "gpt-4o":
+        return "gpt-4o"
+    return "gpt-4o-mini"
+
+
 def final_answer_node(state: SupervisorState) -> dict:
     """LLM tổng hợp `notes` thành câu trả lời cuối — cùng mẫu agent_m2 `final_answer_node`."""
 
@@ -429,13 +462,15 @@ def final_answer_node(state: SupervisorState) -> dict:
             shaped = context.sliding_window(history, settings.agent_keep_recent_messages)
             parts.append("Hội thoại gần đây (các lượt trước):\n" + context.format_messages(shaped))
         parts.append(f"Ghi chú:\n{notes_text}")
+        model = _select_final_answer_model(state)
         try:
             parsed, usage = chat_parsed_with_usage(
                 bound_messages(_FINAL_ANSWER_SYSTEM, "\n\n".join(parts)),
                 FinalAnswer,
                 DETERMINISTIC,
+                model=model,
             )
-            record_usage(str(state.get("turn") or ""), settings.llm_model, **usage)
+            record_usage(str(state.get("turn") or ""), model, **usage)
             return parsed.answer.strip()
         except Exception as exc:
             return f"Lỗi tổng hợp câu trả lời: {exc}. Ghi chú đã thu thập: {notes_text}"

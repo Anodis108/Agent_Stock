@@ -18,9 +18,12 @@ Cách chạy (conda env `dong312`; server lắng nghe BASE_URL, mặc định ht
     # Chỉ dựng lại REPORT từ log đã có
     python tests/run_agent_pr_questions.py --report-only
 
-Output (thư mục scratch, không commit):
-  tests/.run/log.jsonl              — mỗi lời gọi 1 dòng JSON
-  tests/.run/REPORT.agent_pr_run.md — báo cáo đủ phụ lục như REPORT.agent_pr_questions.md
+Output:
+  tests/.run/log.jsonl              — mỗi lời gọi 1 dòng JSON (scratch, không commit)
+  tests/REPORT.agent_pr_questions.md — ghi THẲNG vào file đích, đúng khung 11 phần hiện
+                                        có (số liệu + phụ lục tự sinh; các phần phân tích
+                                        định tính — bug/khuyến nghị — để TODO, Claude điền
+                                        sau khi đọc log thật).
 """
 
 from __future__ import annotations
@@ -41,7 +44,9 @@ import httpx
 ROOT = Path(__file__).resolve().parents[1]
 OUT_DIR = ROOT / "tests" / ".run"
 LOG_PATH = OUT_DIR / "log.jsonl"
-REPORT_PATH = OUT_DIR / "REPORT.agent_pr_run.md"
+# Ghi thẳng vào file đích cùng format 11 phần đã có — không phải bản rút gọn
+# trong .run/ nữa (yêu cầu: giữ đúng cấu trúc hiện tại của REPORT.agent_pr_questions.md).
+REPORT_PATH = ROOT / "tests" / "REPORT.agent_pr_questions.md"
 DEFAULT_BASE = "http://localhost:8000"
 DEFAULT_TIMEOUT = 180.0
 
@@ -703,8 +708,20 @@ def _has_token_trace(body: dict[str, Any]) -> bool:
     return False
 
 
+_TODO = (
+    "> **TODO (Claude điền sau khi đọc `tests/.run/log.jsonl` thật):** phần này cần đọc "
+    "hiểu + diễn giải kết quả, script không tự sinh chính xác được. Chạy xong thì nhờ "
+    "Claude đọc log và viết lại phần này."
+)
+
+
 def build_report(rows: list[dict[str, Any]], *, base_url: str) -> str:
-    """Markdown đủ tóm tắt + phụ lục đầy đủ từng câu (giống REPORT.agent_pr_questions.md)."""
+    """Markdown đúng khung 11 phần của REPORT.agent_pr_questions.md.
+
+    Phần 1/4/7/8/10/11 sinh đầy đủ từ log (số liệu + phụ lục thô, khách quan).
+    Phần 2/3/5/6/9 là phân tích định tính (bug tìm thấy, bug đã fix, nhận xét
+    long-term memory, khuyến nghị) — để TODO placeholder, Claude điền sau khi
+    đọc log thật, không đoán/heuristic trong script (dễ sai/thiếu)."""
     run_date = datetime.now().strftime("%Y-%m-%d")
     n = len(rows)
     http_ok = sum(1 for r in rows if r.get("status") == 200)
@@ -715,7 +732,6 @@ def build_report(rows: list[dict[str, Any]], *, base_url: str) -> str:
     http_other = n - http_ok - http_skip - http_exc - http_422 - http_400
     total_s = sum(float(r.get("elapsed_s") or 0) for r in rows)
 
-    # Token trace coverage (mục 18.4 / STUDY_PLAN cost tracking)
     ask_with_trace = [
         r for r in rows
         if r.get("kind") == "ask" and isinstance(r.get("body"), dict) and r.get("status") == 200
@@ -727,32 +743,64 @@ def build_report(rows: list[dict[str, Any]], *, base_url: str) -> str:
 
     a("# Báo cáo kiểm thử — `tests/QUESTIONS.agent_pr.md`\n")
     a(f"**Ngày chạy:** {run_date}")
-    a(f"**Base URL:** `{base_url}`")
-    a(
-        "**Cách chạy:** `python tests/run_agent_pr_questions.py` — gọi thật "
-        "`POST /pr/ask`, `/pr/price`, `/pr/approve`, `/pr/ask/evaluate` — không mock."
-    )
-    a(f"**Số lời gọi / dòng log:** {n} (gồm SKIP mục 6–8 / LangFuse tay)")
-    a(f"**Tổng thời gian API:** {total_s:.1f}s (~{total_s / 60:.1f} phút)")
-    a(f"**Log:** `{LOG_PATH.relative_to(ROOT).as_posix()}`\n")
+    a(f"**Môi trường:** `{base_url}` — gọi thật qua `POST /pr/ask`, `/pr/price`, "
+      f"`/pr/approve`, `/pr/ask/evaluate`, không mock, script `tests/run_agent_pr_questions.py`.")
+    a(f"**Số câu chạy:** {n} lời gọi (mục 1–5, 9–18; SKIP mục 6–8 — chưa build).")
+    a(f"**Tổng thời gian API:** {total_s:.1f}s (~{total_s / 60:.1f} phút).")
+    a(f"**Log chi tiết:** `{LOG_PATH.relative_to(ROOT).as_posix()}`\n")
     a("---\n")
 
     a("## 1. Tóm tắt nhanh\n")
     a("| Chỉ số | Kết quả |")
     a("|---|---|")
-    a(f"| Tổng số lời gọi (có log) | {n} |")
+    a(f"| Tổng số lời gọi | {n} |")
     a(f"| HTTP 200 | {http_ok} |")
-    a(f"| HTTP 400 (thường = guardrail) | {http_400} |")
+    a(f"| HTTP 400 (guardrail chặn) | {http_400} |")
     a(f"| HTTP 422 (validate / thiếu thread_id / input rỗng) | {http_422} |")
     a(f"| SKIP (chưa build / quan sát tay) | {http_skip} |")
     a(f"| Exception mạng/timeout | {http_exc} |")
-    a(f"| HTTP khác | {http_other} |")
+    a(f"| HTTP khác (KHÔNG mong muốn — cần soát) | {http_other} |")
     a(f"| Ask 200 có dòng `Token:` trong trace | {token_ok}/{len(ask_with_trace)} |")
     a("")
+    a(_TODO)
+    a("> Viết 2-4 câu đánh giá tổng quan ở đây (so với lần chạy trước nếu có).\n")
 
-    # Theo mục
-    a("## 2. Kết quả theo mục\n")
-    a("| Mục | Tiêu đề | Số dòng | HTTP 200 | 400/422 | SKIP/EXC |")
+    a("## 2. Bug và vấn đề tìm thấy (xếp theo mức độ nghiêm trọng)\n")
+    a(_TODO)
+    a(
+        "> Dùng ký hiệu 🟠 Đáng kể / 🟡 Trung bình / 🟢 Nhỏ. Mỗi bug: **Câu tái hiện**, "
+        "**Hiện tượng**, **So với spec**, **Đề xuất sửa** — xem `copy_REPORT.agent_pr_questions.md` "
+        "mục 2 làm mẫu định dạng.\n"
+    )
+
+    a("## 3. Bug đã xác nhận FIX so với lần chạy trước\n")
+    a(_TODO)
+    a("> Đối chiếu với `copy_REPORT.agent_pr_questions.md` mục 3 — bug nào từng ghi nhận, giờ còn không.\n")
+
+    a("## 4. Mục không test được — tính năng chưa build\n")
+    for sec, reason in SKIP_SECTIONS.items():
+        a(f"- **Mục {sec}:** {reason}")
+    a("- **15.4 / 15.5:** LangFuse — đối chiếu UI khi `MONITORING_ENABLED=true`, không assert trong script.")
+    a("")
+
+    a("## 5. Long-term memory\n")
+    a(_TODO)
+    a(
+        "> Xác nhận Qdrant thật (không fallback in-memory) — đối chiếu câu 11.alice1–4, "
+        "11.bob, 11.nouser* trong phụ lục mục 11.\n"
+    )
+
+    a("## 6. Những gì hoạt động đúng (xác nhận bằng dữ liệu thật)\n")
+    a(_TODO)
+    a("> Bảng | Hạng mục | Bằng chứng | — liệt kê tối thiểu: cache trong phiên, HITL đúng luồng, "
+      "guardrail chặn injection đúng/không chặn nhầm, subset worker theo câu hỏi, HTTP 422 đúng spec.\n")
+
+    a("## 7. Thay đổi hạ tầng thực hiện trong lần chạy này\n")
+    a(_TODO)
+    a("> Ghi các thay đổi docker-compose/.env/config nếu có thực hiện trong lần chạy này (nếu không có thì ghi \"Không có\").\n")
+
+    a("## 8. Danh sách đầy đủ theo mục (tóm tắt kết quả)\n")
+    a("| Mục | Tiêu đề | Số câu chạy | HTTP 200 | 400/422 | SKIP/EXC |")
     a("|---|---|---|---|---|---|")
     by_sec: dict[str, list[dict[str, Any]]] = {}
     for r in rows:
@@ -766,24 +814,23 @@ def build_report(rows: list[dict[str, Any]], *, base_url: str) -> str:
         a(f"| {sec} | {title} | {len(group)} | {ok} | {bad} | {sk} |")
     a("")
 
-    a("## 3. Mục không test được (chưa build)\n")
-    for sec, reason in SKIP_SECTIONS.items():
-        a(f"- **Mục {sec}:** {reason}")
-    a("- **15.4 / 15.5:** LangFuse — đối chiếu UI khi `MONITORING_ENABLED=true`.")
-    a("")
+    a("## 9. Khuyến nghị ưu tiên sửa\n")
+    a(_TODO)
+    a("> Danh sách đánh số, [Ưu tiên cao/trung bình/thấp], bám theo bug ở mục 2.\n")
 
-    a("## 4. Ghi chú phương pháp\n")
-    a("- Dữ liệu test dùng LLM/API thật — chi phí token phát sinh theo số câu.")
-    a("- Cache trong phiên / DB đã có dữ liệu từ câu trước cùng lần chạy là đúng thiết kế.")
+    a("## 10. Ghi chú phương pháp\n")
+    a("- Dữ liệu test dùng key OpenAI thật, không mock — chi phí LLM thật đã phát sinh.")
+    a("- Cache trong phiên / DB đã có dữ liệu từ câu trước cùng lần chạy là hành vi cache đúng thiết kế, không phải bug.")
     a(
-        "- Script bám QUESTIONS + bộ demo §16 + probe §18 (db_write / memory / Token trace) "
-        "từ STUDY_PLAN.agent_pr.html."
+        "- Script bám `QUESTIONS.agent_pr.md` mục 1–5, 9–18 + bộ demo §16 + probe §18 "
+        "(db_write code-enforced / idempotency / memory / Token trace) từ `STUDY_PLAN.agent_pr.html`."
     )
-    a(f"- Log JSONL đầy đủ: `{LOG_PATH.relative_to(ROOT).as_posix()}`\n")
+    a(f"- Log chi tiết từng câu (request/response đầy đủ, JSONL): `{LOG_PATH.relative_to(ROOT).as_posix()}` "
+      f"(scratch, không commit — có thể chạy lại `python tests/run_agent_pr_questions.py` để tái tạo).\n")
     a("---\n")
 
-    a("## 5. Phụ lục — câu trả lời đầy đủ từng câu hỏi\n")
-    a("Toàn bộ response thật (không rút gọn answer). Trace gấp trong `<details>`.\n")
+    a("## 11. Phụ lục — câu trả lời đầy đủ từng câu hỏi\n")
+    a("Toàn bộ câu trả lời thật của agent (không rút gọn), lấy trực tiếp từ log JSONL. Trace gấp gọn trong `<details>`.\n")
 
     current_sec = None
     for r in rows:

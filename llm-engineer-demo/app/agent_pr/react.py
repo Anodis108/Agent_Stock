@@ -98,6 +98,29 @@ def parse_tool_output(raw: str, cls):
         return None
 
 
+def extract_tool_trace(state: dict) -> list[dict]:
+    """Chuỗi tool-call THẬT trong lượt worker này: [{tool, args, observation}].
+
+    Chỉ tồn tại trong bộ nhớ của lần invoke() này (subgraph worker không có
+    checkpointer — xem supervisor_agent/graph.py) nên phải trích NGAY trong
+    `_pack`, trước khi subgraph kết thúc và `messages` bị bỏ đi. Ghép AIMessage
+    (tool_calls) với ToolMessage tương ứng qua `tool_call_id`."""
+    messages = list(state.get("messages") or [])
+    by_id: dict[str, str] = {}
+    for m in messages:
+        tool_call_id = getattr(m, "tool_call_id", None)
+        if tool_call_id:
+            by_id[tool_call_id] = str(getattr(m, "content", "") or "")
+    steps: list[dict] = []
+    for m in messages:
+        for call in (getattr(m, "tool_calls", None) or []):
+            call_id = call.get("id") if isinstance(call, dict) else getattr(call, "id", None)
+            name = call.get("name") if isinstance(call, dict) else getattr(call, "name", "")
+            args = call.get("args") if isinstance(call, dict) else getattr(call, "args", {})
+            steps.append({"tool": name, "args": args, "observation": by_id.get(call_id, "")})
+    return steps
+
+
 def build_react_subgraph(
     state_cls,
     *,

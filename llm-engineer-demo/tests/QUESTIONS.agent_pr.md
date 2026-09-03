@@ -420,6 +420,50 @@ retry đúng key, (c) bug "quên hội thoại ngay lượt kế tiếp" đã fi
 
 ---
 
+## 19. Bổ sung 2026-09-03 — Multi-symbol thật, TTL freshness qua prompt, Model routing, Trajectory thật
+
+Bốn tính năng vừa triển khai đầy đủ (không còn là "kỳ vọng" ở mục 1.10/17.16 — giờ đã chạy
+thật, có test tích hợp `test_multi_symbol_hpg_fpt_online`). Kiến trúc: `SupervisorState.symbol`
+đổi ý nghĩa thành "mã worker VÒNG NÀY xử lý" (supervisor set lại mỗi vòng qua
+`RoutingDecision.symbol`); `symbols: list[str]` giữ toàn bộ mã cần xử lý trong turn;
+`notes`/`price`/`news`/`db`/`eval` trên state đều là `dict[symbol, ...]`.
+
+### 19a. Multi-symbol thật — routing từng mã một, không gộp
+
+| # | Câu hỏi | Cần thấy |
+|---|---------|----------|
+| 19.1 | HPG và FPT mã nào mạnh hơn hôm nay? | `RewrittenQuery.symbols=["HPG","FPT"]`; `trace` cho thấy `price_agent`/`news_agent`/`eval_agent` chạy **2 lần mỗi domain** (1 lần/mã, xen kẽ `[HPG] ...` rồi `[FPT] ...`), không gộp 1 lượt gọi cho cả 2 mã. `Agent_Output.symbols == ["HPG","FPT"]`, `price_by_symbol`/`news_by_symbol` có đủ cả 2 key. Câu trả lời cuối phải nhắc cả 2 mã và có kết luận so sánh. |
+| 19.2 | So sánh HPG, VNM, FPT — mã nào có PE tốt nhất? | 3 mã — kiểm tra routing không dừng giữa chừng, không chỉ xử lý mã đầu rồi bỏ qua (đối chiếu bug cũ ở 17.16). |
+| 19.3 | (2 mã, 1 mã sẵn có tin/giá mới crawl) HPG và FPT — sau khi hỏi xong, kiểm tra `pending_writes`. | `db_write` phải lặp qua **cả 2 mã** có candidate trong 1 lần chạy node (`trace` có `db_write[HPG]: ...` và `db_write[FPT]: ...` liên tiếp), không cần 2 vòng supervisor riêng cho ghi DB. |
+| 19.4 | (multi-symbol + có pending) Duyệt HITL qua `/pr/approve` với `pending_id` của lệnh thuộc mã FPT. | Chỉ approve đúng lệnh của FPT; lệnh HPG còn `pending` vẫn giữ nguyên trạng thái tạm dừng — response phải liệt kê đúng số lệnh còn lại của FPT, không lẫn sang HPG. |
+| 19.5 | Lặp lại routing cùng 1 mã 3 lần liên tiếp (giả lập bằng cách hỏi câu mơ hồ khiến LLM phân vân) trong khi câu hỏi có 2 mã. | Loop-guard chỉ chặn đúng mã bị lặp (`"HPG:price_agent"` x3) — mã còn lại (FPT) vẫn được xử lý bình thường ở vòng kế tiếp, không bị "lây" chặn oan (đối chiếu `agent_history` dạng `"{symbol}:{next_agent}"`). |
+
+### 19b. TTL freshness — dạy qua prompt, không code-enforce
+
+| # | Câu hỏi | Cần thấy |
+|---|---------|----------|
+| 19.6 | Hỏi giá HPG lần 1 (crawl mới) → duyệt HITL → hỏi lại giá HPG trong vòng vài phút (cùng thread hoặc thread mới). | `notes["HPG"]["db_agent"]` (nếu supervisor chọn đọc DB trước) phải có cụm "vừa cập nhật"/"phút trước" trong summary; supervisor **không tự động** gọi lại `price_agent` nếu đã thấy DB đủ mới — quan sát `trace` không có dòng `price_agent` thứ 2 cho cùng mã trong cùng turn. |
+| 19.7 | Hỏi giá 1 mã đã có dữ liệu DB rất cũ (giả lập bằng cách sửa thẳng `ts` trong sqlite lùi vài giờ, hoặc đợi thật). | Supervisor phải chọn crawl lại (`price_agent`/`news_agent`), không dừng ở "đủ dùng" chỉ vì có dữ liệu DB — vì dữ liệu đã quá ngưỡng `AGENT_PR_FRESHNESS_MINUTES` (mặc định 20 phút). |
+| 19.8 | Giá HPG mới nhất, chắc chắn phải là số mới nhất nhé, đừng dùng số cũ. | User yêu cầu rõ "mới nhất" — supervisor phải crawl lại dù DB có dữ liệu mới, theo đúng rule 3 trong `_SUPERVISOR_SYSTEM` (mục "user yêu cầu rõ mới nhất/cập nhật lại"). |
+
+### 19c. Model routing — chỉ áp dụng cho final_answer
+
+| # | Câu hỏi | Cần thấy |
+|---|---------|----------|
+| 19.9 | Giá HPG hôm nay bao nhiêu? (câu đơn giản, 1 mã, 1 domain) | `final_answer_node` dùng `gpt-4o-mini` — kiểm tra qua log/trace token usage (model rẻ hơn nếu so cost 2 câu). |
+| 19.10 | So sánh HPG và FPT, phân tích kỹ nguyên nhân tăng giảm. | Có ≥2 mã + từ khoá "so sánh"/"phân tích" — `final_answer_node` phải dùng `gpt-4o` (model mạnh hơn). Routing/rewrite/sentiment vẫn giữ `gpt-4o-mini` — chỉ bước tổng hợp cuối đổi model. |
+| 19.11 | Tại sao HPG giảm hôm nay? (1 mã nhưng đủ 3 domain: price+news+eval trong notes) | ≥3 domain trong notes → `final_answer_node` cũng nâng lên `gpt-4o` dù chỉ 1 mã (rule "n_domains >= 3"). |
+
+### 19d. Trajectory thật — tool-call cụ thể, không còn tóm tắt chung chung
+
+| # | Việc làm | Cần thấy |
+|---|----------|----------|
+| 19.12 | `POST /pr/ask/evaluate` sau câu "Giá HPG hôm nay?" | `trajectory_steps` phải có bước `tool: "price_agent.fetch_latest_close"` (không còn chỉ `"price_agent"` chung chung) — args kèm đúng `symbol`, observation là JSON thật từ tool. |
+| 19.13 | `POST /pr/ask/evaluate` sau câu "Tại sao HPG giảm hôm nay?" (đủ price+news+eval) | `trajectory_steps` liệt kê đủ tool con của từng domain: `price_agent.fetch_latest_close`, `news_agent.normalize_ticker` (nếu LLM gọi), `news_agent.fetch_cafef_news`, `eval_agent.score_price_vs_news` — nhiều bước hơn bản cũ (mỗi domain giờ ≥1 bước thay vì đúng 1 dòng tóm tắt). |
+| 19.14 | `POST /pr/ask/evaluate` sau câu multi-symbol "HPG và FPT mã nào mạnh hơn". | Bước của từng tool phải kèm đúng `args.symbol` tương ứng — judge (`evaluate_trajectory`) phải chấm được tool_correctness theo đúng mã, không lẫn HPG/FPT. |
+
+---
+
 ## Checklist đối chiếu sau mỗi câu
 
 - Worker **không nói với nhau**; mọi việc đi qua Supervisor.
@@ -431,5 +475,9 @@ retry đúng key, (c) bug "quên hội thoại ngay lượt kế tiếp" đã fi
 - Tin không match mã → Tin chung, không drop.
 - Tin nhiều mã → nhiều ticker, không lỗi.
 - Trace đủ để lần về từng agent đợt 1.
+- Multi-symbol: routing gọi TỪNG mã một cho mỗi domain, không gộp — `symbols`/`price_by_symbol`/`news_by_symbol`/`eval_by_symbol`/`db_by_symbol` đủ key cho mọi mã đã hỏi.
+- TTL: DB mới hơn ~20 phút (`AGENT_PR_FRESHNESS_MINUTES`) thì không crawl lại cùng mã, trừ khi user yêu cầu rõ "mới nhất".
+- Model routing: `final_answer_node` lên `gpt-4o` khi ≥2 mã, có từ khoá so sánh/phân tích, hoặc ≥3 domain trong notes — các bước khác (routing/rewrite/sentiment) vẫn `gpt-4o-mini`.
+- Trajectory (`/pr/ask/evaluate`) trả tool-call CỤ THỂ (`price_agent.fetch_latest_close`,...) không còn 1 dòng tóm tắt/domain.
 
 Đó là đủ bề mặt chức năng mà hai tài liệu mô tả: Hierarchical 5 worker, Swarm 5 loại crawl, 2 tầng Router, HITL, memory ngắn/dài, và 3 endpoint `/pr/ask`, `/pr/price`, `/pr/ask/evaluate`.

@@ -50,6 +50,27 @@ def test_hpg_online():
     assert any(kw in out.answer for kw in ("giảm", "tăng", "không thay đổi", "0.0%", "0%"))
 
 
+def test_multi_symbol_hpg_fpt_online():
+    """2 mã cùng lúc — routing gọi từng worker theo từng mã, câu trả lời so sánh cả hai."""
+    out = run_supervisor(
+        Agent_Input(
+            symbols=["HPG", "FPT"],
+            question="HPG và FPT mã nào mạnh hơn hôm nay",
+            thread_id="test-multi-hpg-fpt",
+            skip_hitl=True,
+        )
+    )
+    print()
+    print("answer:", out.answer)
+    for step in out.trace:
+        print("trace :", step)
+
+    assert out.symbols == ["HPG", "FPT"]
+    assert "HPG" in out.answer and "FPT" in out.answer
+    assert "HPG" in out.price_by_symbol and "FPT" in out.price_by_symbol
+    assert "HPG" in out.news_by_symbol and "FPT" in out.news_by_symbol
+
+
 def test_chi_gia_khong_goi_news(monkeypatch):
     """Routing chỉ chọn price_agent rồi done → graph không chạy news/eval."""
 

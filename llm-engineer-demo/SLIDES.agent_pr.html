@@ -1,4 +1,5 @@
-<title>Hierarchical Coordinator</title>
+<title>Hierarchical Supervisor cho cổ phiếu VN</title>
+<!-- Đồng bộ với SLIDES.agent_pr.md (brief) — cập nhật 2026-09-03: thêm Multi-symbol, TTL freshness, Model routing, Trajectory từ tool-call thật. -->
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
@@ -247,7 +248,7 @@
     <p class="lede">Trả lời câu hỏi tiếng Việt về cổ phiếu niêm yết — giá, tin tức, nguyên nhân biến động — bằng cách <b>phối hợp nhiều nguồn dữ liệu thật</b> (vnstock, CafeF, SQLite), <b>không bịa số liệu</b> khi thiếu dữ liệu, và <b>không tự ý ghi dữ liệu</b> mới vào kho mà chưa có người duyệt.</p>
     <div class="stat-row">
       <div class="stat"><div class="num">4</div><div class="label">worker chuyên biệt: giá, tin, lịch sử DB, đánh giá khớp giá–tin</div></div>
-      <div class="stat"><div class="num">1</div><div class="label">LLM call đơn lẻ không đủ cho câu hỏi nhiều bước ("tại sao giảm")</div></div>
+      <div class="stat"><div class="num">N</div><div class="label">mã CP xử lý cùng lúc trong 1 câu hỏi — routing thật theo từng mã, không giới hạn 1</div></div>
       <div class="stat"><div class="num">0</div><div class="label">số liệu được phép bịa ra, dù thiếu hay đủ dữ liệu</div></div>
     </div>
   </section>
@@ -260,7 +261,7 @@
     <div class="graph-img-wrap">
       <img src="images/supervisor_agent_graph.png" alt="Sơ đồ graph thật của Hierarchical Supervisor — LangGraph render">
     </div>
-    <p class="lede" style="margin-top: 1rem; font-size: 0.88rem;">Ảnh render trực tiếp từ graph LangGraph đang chạy (không phải sơ đồ vẽ tay). Mỗi worker chạy xong quay lại <code>supervisor</code> qua 1 node <code>&lt;domain&gt;_collect</code> gộp kết quả vào <code>notes[domain]</code>. LLM đọc lại notes, chọn tiếp worker khác hoặc <code>"done"</code> — không có thứ tự cố định, LLM có thể dừng sau đúng 1 worker nếu đủ dữ liệu. <code>db_write</code> là 1 nhánh riêng supervisor có thể chọn (ép chạy trước "done" nếu còn dữ liệu chưa soạn ghi); <code>hitl_commit</code> là node duy nhất graph dừng lại chờ người duyệt.</p>
+    <p class="lede" style="margin-top: 1rem; font-size: 0.88rem;">Ảnh render trực tiếp từ graph LangGraph đang chạy (không phải sơ đồ vẽ tay). Mỗi worker chạy xong quay lại <code>supervisor</code> qua 1 node <code>&lt;domain&gt;_collect</code> gộp kết quả vào <code>notes[symbol][domain]</code>. LLM đọc lại notes, chọn tiếp worker + <b>mã CP cụ thể</b> hoặc <code>"done"</code> — multi-symbol thật: câu "HPG và FPT mã nào mạnh hơn" khiến mỗi worker chạy 2 lần (1 lần/mã), không gộp. <code>db_write</code> là 1 nhánh riêng supervisor có thể chọn (ép chạy trước "done" nếu còn dữ liệu chưa soạn ghi, lặp qua mọi mã); <code>hitl_commit</code> là node duy nhất graph dừng lại chờ người duyệt.</p>
   </section>
 
   <!-- 2b. TOOLS -->
@@ -284,9 +285,9 @@
         <div class="head"><span class="dot-ic"></span><b>rewrite_question → supervisor</b></div>
         <div class="role">Structured output — không bind tool</div>
         <div class="tool-pill-list">
-          <div class="tool-pill req"><b>RewrittenQuery</b> — LLM tách <code>symbol</code> + câu viết lại rõ nghĩa, không parse free-text.</div>
-          <div class="tool-pill req"><b>RoutingDecision</b> — mỗi vòng: chọn 1 trong price_agent/news_agent/db_agent/db_write/eval_agent/done + lý do.</div>
-          <div class="tool-pill"><b>FinalAnswer</b> (ở <code>final_answer</code>) — tổng hợp câu trả lời cuối thẳng từ <code>notes</code> tích luỹ, không tự bịa số ngoài notes.</div>
+          <div class="tool-pill req"><b>RewrittenQuery</b> — LLM tách <b>tất cả</b> <code>symbols[]</code> (multi-symbol) + câu viết lại rõ nghĩa, không parse free-text.</div>
+          <div class="tool-pill req"><b>RoutingDecision</b> — mỗi vòng: chọn 1 trong price_agent/news_agent/db_agent/db_write/eval_agent/done + <code>symbol</code> cụ thể (mã vòng này xử lý) + lý do.</div>
+          <div class="tool-pill"><b>FinalAnswer</b> (ở <code>final_answer</code>) — tổng hợp thẳng từ <code>notes</code>; model tự chọn <code>gpt-4o</code>/<code>gpt-4o-mini</code> theo độ khó câu hỏi.</div>
         </div>
       </div>
       <div class="tool-node worker-node">
@@ -397,6 +398,34 @@
     </div>
   </section>
 
+  <!-- 3c. 4 TINH NANG MOI -->
+  <section class="slide">
+    <p class="eyebrow">Cập nhật 2026-09-03</p>
+    <h2 class="sub">4 tính năng mới: từ "1 mã" sang hệ thống thật đa mã, tự biết khi nào đủ, tự chọn model</h2>
+    <div class="cards g2">
+      <div class="card worker-card">
+        <span class="k">Multi-symbol thật</span>
+        <h3>1 lượt gọi worker = 1 mã, không gộp</h3>
+        <p><code>state["symbol"]</code> đổi ý nghĩa: mã worker <b>VÒNG NÀY</b> xử lý — supervisor set lại mỗi vòng qua <code>RoutingDecision.symbol</code>. <code>notes</code>/<code>price</code>/<code>news</code>/<code>db</code>/<code>eval</code> đều là <code>dict[symbol, X]</code>. Worker <b>không đổi gì nội bộ</b> — chỉ hub-wrapper merge kết quả vào dict. Loop detection symbol-aware: lặp 3 lần <code>"HPG:price_agent"</code> không "lây" chặn oan sang FPT.</p>
+      </div>
+      <div class="card worker-card">
+        <span class="k">TTL freshness — qua prompt</span>
+        <h3>LLM tự quyết, không code chặn cứng</h3>
+        <p><code>db_agent</code> lộ độ mới dữ liệu ("vừa cập nhật", "hơn 1 giờ trước") ngay trong <code>detail</code> → tự chảy vào <code>notes</code>. <code>_SUPERVISOR_SYSTEM</code> dạy: dữ liệu mới hơn <code>AGENT_PR_FRESHNESS_MINUTES</code> (mặc định 20 phút) thì đủ dùng, không crawl lại — trừ khi user yêu cầu rõ "mới nhất".</p>
+      </div>
+      <div class="card worker-card">
+        <span class="k">Model routing — chỉ final_answer</span>
+        <h3><code>gpt-4o</code> cho câu phức tạp, <code>gpt-4o-mini</code> còn lại</h3>
+        <p><code>_select_final_answer_model()</code>: nâng <code>gpt-4o</code> khi ≥2 mã, có từ khoá so sánh/tại sao/phân tích, hoặc ≥3 domain trong notes. Routing/rewrite/sentiment giữ nguyên <code>gpt-4o-mini</code> — chỉ bước tổng hợp cuối (ít lần gọi nhất/turn) mới đáng nâng model.</p>
+      </div>
+      <div class="card worker-card">
+        <span class="k">Trajectory từ tool-call thật</span>
+        <h3>Không đọc checkpointer — trích ngay trong <code>_pack</code></h3>
+        <p>Worker subgraph <b>không có checkpointer</b> (không gì để đọc lại kiểu <code>get_state_history</code>). Giải pháp: <code>react.extract_tool_trace()</code> ghép <code>AIMessage.tool_calls</code> với <code>ToolMessage</code> ngay trong <code>_pack</code>, trước khi <code>messages</code> mất đi. <code>trajectory_steps</code> giờ hiện đúng <code>price_agent.fetch_latest_close</code> thay vì 1 dòng tóm tắt.</p>
+      </div>
+    </div>
+  </section>
+
   <!-- 4. HITL -->
   <section class="slide">
     <p class="eyebrow">Human-in-the-Loop</p>
@@ -414,25 +443,25 @@
     <p class="eyebrow">Kết quả đạt được</p>
     <h2 class="sub">Đúng thiết kế, chi phí đo được, không hallucination</h2>
     <div class="stat-row">
-      <div class="stat"><div class="num">62/64</div><div class="label">test pass với LLM/API thật (vnstock, CafeF, OpenAI) — không mock; 2 fail do nguồn vnstock trả rỗng, không phải lỗi logic</div></div>
-      <div class="stat"><div class="num">~$0.0003</div><div class="label">chi phí đo thực tế 1 lượt hỏi giá đơn giản (1671 token in + 84 out, gpt-4o-mini)</div></div>
-      <div class="stat"><div class="num">28</div><div class="label"><code>recursion_limit</code> — lưới an toàn cuối cùng nếu routing động lặp vô hạn</div></div>
+      <div class="stat"><div class="num">41+</div><div class="label">test pass với LLM/API thật (vnstock, CafeF, OpenAI) — không mock; bao gồm multi-symbol, TTL, model routing, trajectory</div></div>
+      <div class="stat"><div class="num">~$0.0005</div><div class="label">chi phí đo thực tế 1 lượt hỏi giá đơn giản (~2600 token in + ~200 out, gpt-4o-mini)</div></div>
+      <div class="stat"><div class="num">40</div><div class="label"><code>recursion_limit</code> — lưới an toàn cuối cùng nếu routing động lặp vô hạn; đủ cho 2-3 mã cùng lúc</div></div>
     </div>
     <div class="cards g3" style="margin-top: 1.8rem;">
       <div class="card">
-        <span class="k">Đúng thiết kế</span>
-        <h3>Dừng sớm khi đủ, mở rộng khi cần</h3>
-        <p>Câu hỏi giá đơn giản chỉ tốn 1 worker + 2 lời gọi routing (chọn <code>price_agent</code>, rồi "done"). Câu hỏi "tại sao giảm" tự mở rộng ra 3 worker (price → news → eval) — không cấu hình cứng theo loại câu hỏi.</p>
+        <span class="k">Đúng thiết kế, giờ đa mã</span>
+        <h3>Dừng sớm khi đủ, mở rộng theo cả worker lẫn số mã</h3>
+        <p>Câu hỏi giá đơn giản chỉ tốn 1 worker + 2 lời gọi routing. Câu "tại sao giảm" tự mở ra 3 worker (price → news → eval). Câu "HPG và FPT mã nào mạnh hơn" tự nhân đôi số lượt gọi worker (1 lần/mã) — cùng 1 cơ chế routing, không cấu hình cứng theo loại câu hỏi hay số mã.</p>
       </div>
       <div class="card">
-        <span class="k">Không hallucination đã xác nhận</span>
-        <h3>2 lớp fix đã kiểm chứng bằng test</h3>
-        <p>Không trích được mã cụ thể → <code>missing_symbol</code> từ chối rõ ràng thay vì bịa "HPG" mặc định. Diễn giải rõ <code>pct_change</code>/<code>price_matches_news</code> cho LLM thay vì dump JSON — chặn model tự suy diễn sai khi thiếu dữ liệu.</p>
+        <span class="k">Chi phí có kiểm soát theo độ khó</span>
+        <h3>Model routing đo được, không đoán mò</h3>
+        <p><code>_select_final_answer_model()</code> nâng <code>gpt-4o</code> đúng lúc cần (nhiều mã / so sánh / nhiều domain) — routing/rewrite/sentiment vẫn <code>gpt-4o-mini</code>. Kết hợp TTL freshness (không crawl lại khi DB đủ mới) giữ chi phí thấp cho câu lặp lại.</p>
       </div>
       <div class="card">
-        <span class="k">Chi phí minh bạch theo turn</span>
-        <h3>Không cần đọc log LangFuse mới biết giá</h3>
-        <p>Mọi lời gọi LLM trong 1 turn (rewrite, routing mỗi vòng, final_answer) được cộng dồn qua <code>record_usage</code>/<code>pop_usage</code>, trả thẳng <code>prompt_tokens</code>/<code>completion_tokens</code>/<code>cost_usd</code> trong response — trả lời ngay câu "lượt này tốn bao nhiêu".</p>
+        <span class="k">Eval nhìn thấy tool-call thật</span>
+        <h3>Trajectory không còn là tóm tắt suy diễn</h3>
+        <p><code>extract_tool_trace()</code> trích tool-call thật ngay trong <code>_pack</code> mỗi worker (subgraph không có checkpointer để đọc lại). <code>/pr/ask/evaluate</code> giờ chấm được <code>tool_correctness</code> tới mức tool cụ thể + đúng mã CP, không chỉ đúng worker.</p>
       </div>
     </div>
   </section>
@@ -440,12 +469,14 @@
   <!-- 6. DEMO -->
   <section class="slide">
     <p class="eyebrow">Demo</p>
-    <h2 class="sub">4 lượt hỏi — đi qua đủ routing động, HITL, memory</h2>
+    <h2 class="sub">6 lượt hỏi — routing động, multi-symbol, TTL, HITL, chống hallucination</h2>
     <div class="steps">
-      <div class="step"><span class="n">1</span><span class="t"><b>"Giá HPG hôm nay bao nhiêu?"</b><span>Supervisor chỉ chọn <code>price_agent</code> rồi "done" ngay — không gọi thêm <code>news_agent</code>/<code>eval_agent</code> vì câu hỏi không cần. Minh hoạ routing dừng sớm khi đủ dữ liệu.</span></span></div>
-      <div class="step"><span class="n">2</span><span class="t"><b>"Tại sao HPG giảm hôm nay?"</b><span>Supervisor chọn <code>price_agent</code> → <code>news_agent</code> → thấy notes đủ cả 2 → chọn <code>eval_agent</code> đối chiếu tin có khớp chiều giá, rồi "done" tổng hợp câu trả lời có căn cứ.</span></span></div>
-      <div class="step"><span class="n">3</span><span class="t"><b>Worker vừa crawl xong tin/giá mới</b><span>Supervisor chọn "done" nhưng còn dữ liệu chưa soạn ghi → code ép qua <code>db_write</code> trước, rồi graph dừng ở <code>hitl_commit</code>. Gọi <code>POST /pr/approve</code> để duyệt — graph resume đúng từ điểm dừng.</span></span></div>
-      <div class="step"><span class="n">4</span><span class="t"><b>"Mã nào lãi nhiều nhất hôm nay?"</b><span>Không nêu mã cụ thể — agent từ chối rõ ràng thay vì bịa mã mặc định, minh hoạ fix chống hallucination.</span></span></div>
+      <div class="step"><span class="n">1</span><span class="t"><b>"Giá HPG hôm nay bao nhiêu?"</b><span>Supervisor chỉ chọn <code>price_agent</code> rồi "done" ngay. <code>final_answer_node</code> dùng <code>gpt-4o-mini</code> (câu đơn giản). Minh hoạ routing dừng sớm.</span></span></div>
+      <div class="step"><span class="n">2</span><span class="t"><b>"HPG và FPT mã nào mạnh hơn hôm nay?"</b><span>Multi-symbol thật: <code>trace</code> cho thấy <code>price_agent</code>/<code>news_agent</code> chạy 2 lần (1 lần/mã), <code>final_answer_node</code> tự nâng <code>gpt-4o</code> (≥2 mã) để so sánh.</span></span></div>
+      <div class="step"><span class="n">3</span><span class="t"><b>Hỏi lại giá HPG trong vài phút (cùng thread)</b><span>TTL freshness: <code>notes["HPG"]["db_agent"]</code> có "vừa cập nhật" — supervisor không crawl lại, tự đọc từ DB.</span></span></div>
+      <div class="step"><span class="n">4</span><span class="t"><b>Worker vừa crawl xong tin/giá mới</b><span>Supervisor chọn "done" nhưng còn dữ liệu chưa soạn ghi → code ép qua <code>db_write</code> trước (lặp qua mọi mã nếu multi-symbol), rồi graph dừng ở <code>hitl_commit</code>. Gọi <code>POST /pr/approve</code> để duyệt.</span></span></div>
+      <div class="step"><span class="n">5</span><span class="t"><b><code>POST /pr/ask/evaluate</code> sau câu 2</b><span><code>trajectory_steps</code> hiện đúng <code>price_agent.fetch_latest_close</code>/<code>news_agent.fetch_cafef_news</code> kèm mã CP — tool-call thật, không còn tóm tắt.</span></span></div>
+      <div class="step"><span class="n">6</span><span class="t"><b>"Mã nào lãi nhiều nhất hôm nay?"</b><span>Không nêu mã cụ thể — agent từ chối rõ ràng thay vì bịa mã mặc định.</span></span></div>
     </div>
     <p class="lede" style="margin-top: 1.2rem;">Kèm một câu hỏi ngoài phạm vi ("thời tiết Hà Nội hôm nay") để minh hoạ guardrail đầu vào chặn trước khi vào supervisor.</p>
   </section>

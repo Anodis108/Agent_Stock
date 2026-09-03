@@ -434,15 +434,15 @@
       <p class="hero-desc">
         Đây là bản kiểm kê toàn bộ pattern kỹ thuật đã dùng trong module <b style="font-weight:600">app/agent_pr</b> —
         hệ thống multi-agent phân tích chứng khoán VN, kiến trúc <b style="font-weight:600">Hierarchical Supervisor</b>:
-        1 hub gọi LLM MỖI vòng để chọn 1 trong 4 worker (giá, tin, DB, đánh giá) hoặc nhánh <code>db_write</code>,
-        không phải máy trạng thái lập kế hoạch 1 lần như bản trước.
+        1 hub gọi LLM MỖI vòng để chọn 1 trong 4 worker (giá, tin, DB, đánh giá) VÀ chọn mã CP cụ thể
+        cho vòng đó (routing multi-symbol thật, không chỉ máy trạng thái lập kế hoạch 1 lần như bản trước).
         Mỗi mục dưới đây nêu tên kỹ thuật, cách nó được cài đặt <i>cụ thể trong code này</i>, và vị trí file:dòng để bạn tra cứu lại.
         Tick vào ô "Đã ôn xong" khi bạn tự tin giải thích được — trạng thái được lưu ngay trên trình duyệt này.
       </p>
       <div class="hero-meta">
         <div><b>12</b> nhóm kỹ thuật</div>
-        <div><b>4</b> worker ReAct + <code>db_write</code> + 1 supervisor</div>
-        <div>Khảo sát code: <b>2026-09-03</b></div>
+        <div><b>4</b> worker ReAct + <code>db_write</code> + 1 supervisor, multi-symbol</div>
+        <div>Cập nhật code: <b>2026-09-03</b></div>
       </div>
     </header>
 
@@ -453,11 +453,10 @@
       <h1 style="max-width: 40ch;">Những tối ưu chưa áp dụng trong agent_pr</h1>
       <p class="hero-desc">
         So với giáo trình Module I/II (<code>README.module1.md</code>, <code>README.module2.md</code>) và vision
-        (<code>README.agent_pr.md</code> — lưu ý file này còn mô tả kiến trúc cũ, cần viết lại), module <code>app/optimization/*</code> (Lesson 8) đã có sẵn code
-        nhưng <b style="font-weight:600">vẫn không được <code>agent_pr</code> gọi tới</b> (đã grep xác nhận lại) — mọi lời gọi LLM trong supervisor + 4 worker
-        đều đi thẳng qua <code>chat_parsed_with_usage</code>/<code>invoke_with_tools</code> ở
-        <code>app/llm/completion.py</code> và <code>app/agent_pr/_llm.py</code>.
-        Một số gap trong bản khảo sát trước (cost tracking, loop detection, PostgresSaver-vs-MemorySaver) <b style="font-weight:600">đã được code fix</b> nên đã bỏ khỏi danh sách dưới — còn lại <span id="gap-total-inline">10</span> khoảng trống thật sự. Tick "Muốn thêm" cho phần bạn quyết định làm.
+        (<code>README.agent_pr.md</code> — lưu ý file này còn mô tả kiến trúc cũ, cần viết lại), module <code>app/optimization/*</code> (Lesson 8) phần lớn vẫn chưa dùng —
+        <b style="font-weight:600">ngoại lệ duy nhất</b>: <code>rule_based_router()</code> giờ được <code>_select_final_answer_model()</code> (supervisor_agent/nodes.py) gọi làm tín hiệu phụ khi chọn model cho <code>final_answer_node</code>.
+        4 gap lớn nhất của bản khảo sát trước — <b style="font-weight:600">Multi-symbol, TTL freshness, Model routing, Trajectory từ tool-call thật</b> — đã triển khai xong (2026-09-03), cùng cost tracking/loop detection/SqliteSaver từ trước đó.
+        Còn lại <span id="gap-total-inline">7</span> khoảng trống thật sự. Tick "Muốn thêm" cho phần bạn quyết định làm.
         Cuối trang có bảng tóm tắt ưu tiên ROI.
       </p>
       <div class="hero-meta" id="gap-summary-meta">
@@ -474,7 +473,7 @@
         Bản đồ dưới đây tổng hợp kết quả đối chiếu <code>agent_pr</code> với
         <code>README.module1.md</code>, <code>README.module2.md</code> và tài liệu vision
         (<code>README.agent_pr.md</code>, <code>tests/QUESTIONS.agent_pr.md</code>).
-        <b style="font-weight:600">Xương sống agent đã đủ</b> (supervisor routing động + 4 worker, HITL, memory bền SqliteSaver, guardrails 2 lớp, tracing + cost tracking, eval trajectory).
+        <b style="font-weight:600">Xương sống agent đã đủ</b> (supervisor routing động multi-symbol + 4 worker, HITL, memory bền SqliteSaver, guardrails 2 lớp, tracing + cost tracking, model routing, TTL freshness, eval trajectory từ tool-call thật).
         Các mục còn lại là tối ưu production, vision vn-stock-swarm, hoặc polish — tick ở các card phía trên khi quyết định làm.
       </p>
     </header>
@@ -512,12 +511,27 @@
           <tr>
             <td><b>Lesson 10 Phần 3</b> — Loop detection</td>
             <td>✓ Đã có</td>
-            <td><code>_looping()</code> ép "done" khi routing lặp ≥3 lần, cộng <code>recursion_limit=40</code> làm lưới cuối</td>
+            <td><code>_looping()</code> ép "done" khi routing lặp ≥3 lần (symbol-scoped), cộng <code>recursion_limit=40</code> làm lưới cuối</td>
           </tr>
           <tr>
-            <td><b>M1 Bài 8</b> — Optimization (model routing, prompt cache)</td>
+            <td><b>Lesson 8 Phần 4</b> — Model routing</td>
+            <td>✓ Đã có (2026-09-03)</td>
+            <td><code>_select_final_answer_model()</code> — chỉ <code>final_answer_node</code>, còn lại giữ <code>gpt-4o-mini</code></td>
+          </tr>
+          <tr>
+            <td><b>Vision/QUESTIONS §1.10, 2.9–2.10</b> — Multi-symbol + TTL freshness</td>
+            <td>✓ Đã có (2026-09-03)</td>
+            <td>Routing symbol-aware thật (không chỉ từ chối lịch sự); TTL dạy qua prompt, không code-enforce</td>
+          </tr>
+          <tr>
+            <td><b>M2 Bài 5</b> — Trajectory từ tool-call thật</td>
+            <td>✓ Đã có (2026-09-03)</td>
+            <td><code>tool_trace</code> trích trong <code>_pack</code> mỗi worker (không cần checkpointer mới — worker subgraph vẫn không có checkpointer)</td>
+          </tr>
+          <tr>
+            <td><b>M1 Bài 8</b> — Optimization còn lại (prompt cache)</td>
             <td>✗ Chưa gọi</td>
-            <td><code>app/optimization/*</code> vẫn chỉ Module I <code>/chat</code>, agent_pr không import</td>
+            <td><code>app/optimization/prompt_cache.py</code>/<code>caching.py</code> vẫn chỉ Module I <code>/chat</code></td>
           </tr>
           <tr>
             <td><b>M1 Bài 6–7</b> — RAGAS batch + eval gate CI</td>
@@ -525,9 +539,9 @@
             <td>Judge on-demand (<code>evaluate_ask</code>) có; chưa RAGAS offline + gate CI</td>
           </tr>
           <tr>
-            <td><b>Vision vn-stock</b> — Swarm crawl, TTL cache, multi-mã</td>
+            <td><b>Vision vn-stock</b> — Swarm crawl đa nguồn</td>
             <td>✗ Chưa có</td>
-            <td>Hiện chỉ vnstock (VCI) + CafeF Ajax, 1 symbol/turn</td>
+            <td>Hiện chỉ vnstock (VCI) + CafeF Ajax</td>
           </tr>
         </tbody>
       </table>
@@ -545,11 +559,6 @@
         <tbody>
           <tr>
             <td><span class="prio prio-p1">P1</span></td>
-            <td>Model routing (gpt-4o-mini vs gpt-4o)</td>
-            <td>Routing + sentiment đơn giản không cần model mạnh; final_answer câu phức tạp có thể lợi từ model tốt hơn — cost đã đo được nên dễ so sánh trước/sau</td>
-          </tr>
-          <tr>
-            <td><span class="prio prio-p1">P1</span></td>
             <td>Prompt caching cho system prompt tĩnh</td>
             <td>Routing gọi LLM mỗi vòng với cùng <code>_SUPERVISOR_SYSTEM</code> — chưa tận dụng cache prefix OpenAI</td>
           </tr>
@@ -560,8 +569,8 @@
           </tr>
           <tr>
             <td><span class="prio prio-p2">P2</span></td>
-            <td>Trajectory từ checkpointer thật (SqliteSaver)</td>
-            <td><code>extract_trajectory()</code> hiện dựng lại từ output, không thấy tool_call bên trong worker — giờ checkpointer đã bền, có thể đọc thật</td>
+            <td>Marker <code>@pytest.mark.live</code> tách CI nhanh</td>
+            <td>Phần lớn bộ test vẫn live-LLM (phút, không giây) — một số test mock đã thêm (model routing, loop symbol-scoped) nhưng chưa tách marker rõ ràng cho CI</td>
           </tr>
           <tr>
             <td><span class="prio prio-p3">P3</span></td>
@@ -575,16 +584,16 @@
           </tr>
           <tr>
             <td><span class="prio prio-p4">P4</span></td>
-            <td>Swarm crawl đa nguồn, TTL cache, multi-mã</td>
-            <td>Vision <code>QUESTIONS.agent_pr.md</code> — roadmap dài hạn, không chặn capstone hiện tại</td>
+            <td>Swarm crawl đa nguồn</td>
+            <td>Vision <code>QUESTIONS.agent_pr.md</code> §6-7 — roadmap dài hạn, không chặn capstone hiện tại</td>
           </tr>
         </tbody>
       </table>
       <ul class="roadmap-list">
-        <li><b>Cost:</b> model routing + prompt cache prefix tĩnh cho supervisor routing / eval few-shot.</li>
+        <li><b>Cost:</b> model routing (xong) + prompt cache prefix tĩnh cho supervisor routing / eval few-shot (còn lại).</li>
         <li><b>Latency:</b> streaming/SSE progress (UX, không giảm cost — routing vẫn tuần tự theo thiết kế).</li>
-        <li><b>Eval:</b> trajectory đọc thật từ SqliteSaver checkpointer thay vì dựng lại từ <code>Agent_Output</code>.</li>
-        <li><b>Docs:</b> <code>README.agent_pr.md</code> và phần lớn <code>tests/QUESTIONS.agent_pr.md</code> (trừ §17–18) vẫn mô tả kiến trúc coordinator cũ — cần viết lại để khớp routing động hiện tại.</li>
+        <li><b>Eval:</b> trajectory từ tool-call thật (xong) — còn thiếu RAGAS offline + gate CI.</li>
+        <li><b>Docs:</b> <code>README.agent_pr.md</code> và phần lớn <code>tests/QUESTIONS.agent_pr.md</code> (trừ §17–19) vẫn mô tả kiến trúc coordinator cũ — cần viết lại để khớp routing động hiện tại.</li>
       </ul>
     </section>
 
@@ -700,16 +709,16 @@ const DATA = [
   {
     id: "multi-agent",
     title: "Multi-Agent Orchestration",
-    tag: "LangGraph — routing động",
-    desc: "Kiến trúc <b>Hierarchical Supervisor</b> (khác hẳn máy trạng thái coordinator cũ): LLM gọi <code>RoutingDecision</code> MỖI VÒNG để chọn 1 trong 4 worker hoặc <code>db_write</code>, đọc lại <code>notes</code> tích luỹ, tự quyết định dừng. <code>route_supervisor</code> là ngoại lệ code-cứng duy nhất — ép <code>db_write</code> chạy trước khi cho &quot;done&quot; nếu còn dữ liệu vừa crawl chưa soạn ghi.",
+    tag: "LangGraph — routing động, multi-symbol",
+    desc: "Kiến trúc <b>Hierarchical Supervisor</b>: LLM gọi <code>RoutingDecision</code> MỖI VÒNG để chọn 1 trong 4 worker hoặc <code>db_write</code>, VÀ (2026-09-03) chọn luôn <code>symbol</code> cụ thể cho vòng đó khi câu hỏi có nhiều mã — <code>state[\"symbol\"]</code> đổi ý nghĩa thành \"mã worker vòng này xử lý\", supervisor ghi đè mỗi vòng; <code>state[\"symbols\"]</code> giữ toàn bộ mã cần xử lý trong turn. Worker KHÔNG đổi gì nội bộ — chỉ hub-wrapper merge kết quả vào <code>dict[symbol, X]</code>. <code>route_supervisor</code> là ngoại lệ code-cứng duy nhất — ép <code>db_write</code> (lặp qua MỌI mã có candidate trong 1 lần chạy node) trước khi cho &quot;done&quot;.",
     locs: [
       ["app/agent_pr/supervisor_agent/graph.py:124-186", "_build_graph() — toàn bộ node/edge: hub + 4 worker + db_write + collect"],
-      ["app/agent_pr/supervisor_agent/graph.py:74,164-171", "_COLLECT_DOMAINS (4 worker) + db_write add_node riêng, không phải mode ẩn"],
-      ["app/agent_pr/supervisor_agent/nodes.py:129-191", "supervisor_node() — hub gọi LLM chọn next_agent mỗi vòng"],
-      ["app/agent_pr/supervisor_agent/nodes.py:219-230", "route_supervisor() — ép db_write trước final_answer nếu còn dữ liệu chưa lưu"],
-      ["app/agent_pr/supervisor_agent/nodes.py:233-273", "_make_collect_node(domain) — factory gộp field worker vào notes[domain]"],
-      ["app/agent_pr/supervisor_agent/nodes.py:276-301", "db_write() — gọi thẳng db_agent subgraph mode='write', không phải ReAct"],
-      ["app/agent_pr/craw_agent/graph.py:59-71", "price_agent() hub wrapper — mở agent_span trước khi invoke subgraph (mẫu lặp lại ở 3 worker còn lại)"],
+      ["app/agent_pr/supervisor_agent/state.py", "SupervisorState — notes/price/news/db/eval đều dict[symbol, X]; agent_history dạng '{symbol}:{next_agent}'"],
+      ["app/agent_pr/supervisor_agent/nodes.py — supervisor_node/_supervisor", "chọn (next_agent, symbol) mỗi vòng; fallback deterministic nếu LLM quên trả symbol khi có nhiều mã"],
+      ["app/agent_pr/supervisor_agent/nodes.py — route_supervisor", "ép db_write nếu BẤT KỲ mã nào còn candidate chưa ghi"],
+      ["app/agent_pr/supervisor_agent/nodes.py — db_write()", "lặp qua tất cả symbols có candidate trong 1 lần chạy node, không cần 1 vòng supervisor/mã"],
+      ["app/agent_pr/eval_agent/graph.py — eval_agent()", "worker duy nhất cần sửa nội bộ — tách đúng PriceOut/NewsOut theo symbol trước khi gọi subgraph con (vốn vẫn nhận object đơn)"],
+      ["app/agent_pr/eval_agent/state.py", "bài học: LangGraph lọc input theo field khai báo trong TypedDict node's type hint — thiếu khai `symbol` khiến node luôn nhận rỗng dù hub đã set đúng"],
       ["app/agent_pr/supervisor_agent/graph.py:124", "@lru_cache(maxsize=1) — cache singleton graph đã compile"]
     ]
   },
@@ -757,43 +766,38 @@ const DATA = [
   {
     id: "evaluation",
     title: "Evaluation",
-    tag: "LLM-as-Judge + Trajectory",
-    desc: "<code>app/eval/judge.py</code> là judge tổng quát (Module I). <code>app/agent_pr/eval.py</code> là judge RIÊNG cho agent_pr, 2 chiều: task success (kết quả cuối) + trajectory (thứ tự/hiệu quả supervisor→worker→notes→final_answer→db_write→HITL). Khác hẳn <code>eval_agent/</code> — đó là 1 worker chấm sentiment trong pipeline, không phải judge.",
+    tag: "LLM-as-Judge + Trajectory thật",
+    desc: "<code>app/eval/judge.py</code> là judge tổng quát (Module I). <code>app/agent_pr/eval.py</code> là judge RIÊNG cho agent_pr, 2 chiều: task success (kết quả cuối) + trajectory (thứ tự/hiệu quả supervisor→worker→notes→final_answer→db_write→HITL). (2026-09-03) <code>extract_trajectory()</code> giờ đọc TOOL-CALL THẬT (<code>Agent_Output.tool_trace</code>, trích trong <code>_pack</code> mỗi worker qua <code>react.extract_tool_trace</code>) thay vì 1 dòng tóm tắt/domain — mỗi bước worker giờ có thể là <code>price_agent.fetch_latest_close</code> cụ thể, kèm đúng mã CP theo từng symbol. Khác hẳn <code>eval_agent/</code> — đó là 1 worker chấm sentiment trong pipeline, không phải judge.",
     locs: [
       ["app/eval/judge.py:36-49,59-83", "JudgeScore (rubric chung) + judge_answer() — generic, không riêng agent_pr"],
-      ["app/agent_pr/eval.py:31-36,39-50", "TaskSuccessResult + TrajectoryResult (4 tiêu chí độc lập: efficiency/logical_order/tool_correctness/recovery)"],
-      ["app/agent_pr/eval.py:81-94", "evaluate_task_success() — chấm kết quả cuối, không xét đường đi"],
-      ["app/agent_pr/eval.py:99-135", "_TRAJECTORY_SYSTEM (mô tả đúng luồng supervisor hiện tại) + evaluate_trajectory()"],
-      ["app/agent_pr/eval.py:150-214", "extract_trajectory() — dựng bước từ Agent_Output, không đọc checkpointer (khác agent_m2)"],
-      ["app/agent_pr/eval.py:217-239", "evaluate_ask() — entrypoint POST /pr/ask/evaluate"],
-      ["app/agent_pr/eval_agent/nodes.py:41-133", "score() — worker sentiment/matching, KHÔNG phải judge"]
+      ["app/agent_pr/eval.py — TaskSuccessResult/TrajectoryResult", "4 tiêu chí độc lập: efficiency/logical_order/tool_correctness/recovery"],
+      ["app/agent_pr/react.py — extract_tool_trace()", "ghép AIMessage(tool_calls) với ToolMessage qua tool_call_id — trích NGAY trong _pack (subgraph worker không có checkpointer, messages mất sau khi invoke() xong)"],
+      ["app/agent_pr/craw_agent/schemas.py + 3 worker khác", "Agent_Output.tool_trace: list[dict] = [] — field mới, gắn trong mỗi _pack qua model_copy"],
+      ["app/agent_pr/eval.py — extract_trajectory()", "duyệt symbols × domain, expand mỗi tool_trace thành bước riêng; fallback 1 dòng tóm tắt nếu worker không có tool_trace"],
+      ["app/agent_pr/eval.py — evaluate_ask()", "entrypoint POST /pr/ask/evaluate"],
+      ["app/agent_pr/eval_agent/nodes.py — score()", "worker sentiment/matching, KHÔNG phải judge"]
     ]
   },
   {
     id: "caching-rate-limit",
     title: "Caching & Rate Limiting",
-    tag: "lru_cache / loop guard",
-    desc: "Cache singleton cho mọi graph đã compile (hub + 4 worker) và client embedding/Qdrant. Rate limit xử lý phía client bằng xoay vòng key + cooldown 60s. An toàn vòng lặp có 2 lớp: <code>_looping()</code> phát hiện routing lặp ≥3 lần liên tiếp ép dừng sớm, và <code>recursion_limit=40</code> là lưới chặn cuối cùng.",
+    tag: "lru_cache / loop guard / model routing",
+    desc: "Cache singleton cho mọi graph đã compile (hub + 4 worker) và client embedding/Qdrant. Rate limit xử lý phía client bằng xoay vòng key + cooldown 60s. An toàn vòng lặp có 2 lớp: <code>_looping()</code> phát hiện routing lặp ≥3 lần liên tiếp (giờ symbol-scoped — chuỗi <code>&quot;{symbol}:{next_agent}&quot;</code>, mã khác xen kẽ không bị coi là lặp) ép dừng sớm, và <code>recursion_limit=40</code> là lưới chặn cuối cùng. (2026-09-03) Thêm <b>Model Routing</b> (Lesson 8 Phần 4): <code>final_answer_node</code> tự chọn <code>gpt-4o</code> khi câu phức tạp (≥2 mã / từ khoá so sánh-phân tích / ≥3 domain trong notes), còn lại giữ <code>gpt-4o-mini</code> — routing/rewrite/sentiment không đổi.",
     locs: [
       ["app/agent_pr/supervisor_agent/graph.py:124", "@lru_cache(maxsize=1) graph hub — cùng pattern ở 4 worker graph.py"],
       ["app/agent_pr/memory.py:25", "@lru_cache(maxsize=1) Qdrant client singleton"],
       ["app/retrieval/embeddings.py:20", "@lru_cache(maxsize=1) OpenAI embedding client"],
-      ["app/agent_pr/tool_selection.py:21,52,65-67", "Cache dict thủ công theo catalog (không lru_cache, cần reset_cache() cho test)"],
       ["app/llm/resilience.py:50-52", "RotatingKeyPool.mark_limited() — cooldown 60s/key"],
-      ["app/agent_pr/supervisor_agent/nodes.py:117-126", "_LOOP_WINDOW=3 + _looping() — ép 'done' nếu routing lặp"],
-      ["app/agent_pr/supervisor_agent/graph.py:242,289", "recursion_limit: 40 — lưới an toàn cuối (chú ý: comment cũ trong nodes.py ghi nhầm 28)"]
+      ["app/agent_pr/supervisor_agent/nodes.py — _looping()", "3 lần lặp liên tiếp CÙNG '{symbol}:{next_agent}' → ép 'done'"],
+      ["app/agent_pr/supervisor_agent/nodes.py — _select_final_answer_model()", "heuristic riêng domain CP (không tái dùng thẳng rule_based_router — word-count/code-block không hợp câu hỏi tiếng Việt ngắn nhưng phức tạp); OR thêm rule_based_router() làm tín hiệu phụ"],
+      ["app/llm/completion.py — chat_parsed_with_usage()", "thêm tham số model: str | None = None — override settings.llm_model cho 1 lời gọi, mặc định None giữ hành vi cũ"],
+      ["app/monitoring/tracing.py — _PRICE_PER_MTOK", "đã có sẵn giá cho cả gpt-4o và gpt-4o-mini — record_usage() nhận đúng model thật đã dùng, không luôn settings.llm_model"],
+      ["app/agent_pr/supervisor_agent/graph.py:242,289", "recursion_limit: 40 — lưới an toàn cuối"]
     ]
   }
 ];
 
 const GAPS = [
-  {
-    id: "gap-model-routing",
-    title: "Model Routing (gpt-4o vs gpt-4o-mini)",
-    lesson: "Lesson 8 · Production Optimization · Phần 4",
-    current: "Supervisor lẫn 4 worker gọi cố định <code>settings.llm_model</code> (mặc định <code>gpt-4o-mini</code>) cho MỌI lời gọi — routing mỗi vòng, final answer, sentiment — không phân biệt việc dễ/khó. <code>app/optimization/routing.py</code> có 3 kiểu router sẵn nhưng chỉ <code>app/api/routes_chat.py</code> (Module I) gọi tới; <b>không file nào trong <code>app/agent_pr/</code> import <code>app.optimization</code></b> (đã grep xác nhận toàn repo).",
-    suggest: "Việc dễ (đọc DB, routing, phân loại sentiment) giữ <code>gpt-4o-mini</code>; việc suy luận nhiều bước (final_answer khi notes có ≥3 domain, câu hỏi so sánh/\"tại sao\") route sang <code>gpt-4o</code>. Tái dùng <code>rule_based_router()</code> có sẵn — gọi trước khi set <code>model=</code> trong <code>chat_parsed_with_usage</code>."
-  },
   {
     id: "gap-prompt-caching",
     title: "Prompt Caching",
@@ -816,13 +820,6 @@ const GAPS = [
     suggest: "Dataset 20–30 câu HPG/FPT/VNM + expected routing path; chạy batch qua <code>run_supervisor</code> (mock crawl để không tốn vnstock/CafeF thật); gate faithfulness answer vs notes trước khi merge PR."
   },
   {
-    id: "gap-trajectory-checkpointer",
-    title: "Trajectory từ checkpointer (chính xác hơn)",
-    lesson: "M2 Bài 5 · Trajectory eval",
-    current: "<code>extract_trajectory()</code> (<code>app/agent_pr/eval.py:150-214</code>) <b>dựng lại</b> từ <code>Agent_Output</code> + hub trace — không thấy từng tool_call ReAct bên trong 1 worker (vd. worker gọi <code>normalize_ticker</code> trước <code>fetch_latest_close</code>). Checkpointer giờ là SqliteSaver bền, có thể đọc lại thật.",
-    suggest: "Thêm hàm đọc <code>messages</code> của từng worker subgraph từ snapshot SqliteSaver, match theo <code>tool_call_id</code> giống <code>agent_m2</code> — chấm <code>tool_correctness</code> chính xác hơn cho bảo vệ đồ án."
-  },
-  {
     id: "gap-streaming",
     title: "Streaming / SSE tiến độ hub",
     lesson: "M1 Bài 1 · Streaming",
@@ -837,20 +834,6 @@ const GAPS = [
     suggest: "Roadmap dài hạn: tách <code>craw_agent/tools.py</code> thành catalog đa nguồn + tool retrieval chọn nguồn theo % lỗi gần nhất; hoặc subgraph Swarm riêng như <code>agent_m2/multi_agent/swarm.py</code>. Không chặn capstone nếu demo vnstock+CafeF đủ ổn định."
   },
   {
-    id: "gap-ttl-cache",
-    title: "Cache TTL giá/tin (dữ liệu tươi)",
-    lesson: "QUESTIONS.agent_pr · 2.9–2.10",
-    current: "<code>db_agent</code> chỉ đọc lịch sử đã lưu (<code>read_symbol_store</code>), không có khái niệm TTL \"dữ liệu tươi &lt; N phút thì khỏi crawl lại\". Cùng <code>thread_id</code> hỏi lại trong vài phút vẫn có thể khiến supervisor chọn crawl lại nếu LLM không tự nhận ra DB đã đủ mới.",
-    suggest: "Lưu <code>fetched_at</code> trên row price/news; <code>_SUPERVISOR_SYSTEM</code> thêm rule rõ ràng: DB có dữ liệu &lt;15 phút thì coi như đủ, không chọn price_agent/news_agent nữa. Cấu hình ngưỡng qua <code>.env</code>."
-  },
-  {
-    id: "gap-multi-symbol",
-    title: "Multi-mã / VN-Index / tin ngành",
-    lesson: "QUESTIONS.agent_pr · §1.8–1.12",
-    current: "State chỉ có 1 <code>symbol</code> (<code>SupervisorState</code>/<code>RewrittenQuery.symbol</code>). Câu \"HPG và FPT mã nào mạnh hơn\" hoặc \"VN-Index hôm nay\" — supervisor không fan-out đa mã, và guardrail scope hiện cho qua vì vẫn đúng domain chứng khoán (rơi vào cùng vấn đề \"đúng scope nhưng vượt khả năng\" đã fix cho case 1 mã).",
-    suggest: "Mở rộng <code>RewrittenQuery</code>/state → <code>symbols: list[str]</code> + vòng lặp routing theo từng mã; hoặc (ít thay đổi hơn) dạy <code>_SUPERVISOR_SYSTEM</code> nhận diện câu đa mã và trả lời từ chối có hướng dẫn rõ ràng, nhất quán với cách đã chặn \"mã nào lãi nhiều nhất\"."
-  },
-  {
     id: "gap-tracing-polish",
     title: "Tracing polish (tên span theo routing)",
     lesson: "M2 Bài 5 · Observability",
@@ -859,10 +842,10 @@ const GAPS = [
   },
   {
     id: "gap-eval-dataset",
-    title: "Bộ test tự động agent_pr (mock LLM)",
+    title: "Bộ test offline mock LLM đầy đủ hơn",
     lesson: "Capstone · QA",
-    current: "Có <code>tests/QUESTIONS.agent_pr.md</code> (manual) và bộ pytest live-LLM (<code>test_supervisor_agent.py</code>, <code>test_supervisor_memory.py</code>, <code>test_craw_agent.py</code>, <code>test_news_agent.py</code>, <code>test_db_agent.py</code>, <code>test_eval_agent.py</code>, <code>test_agent_pr_context.py</code>, <code>test_agent_pr_guardrails.py</code>, <code>test_agent_pr_tools.py</code>) — đều gọi API thật (OpenAI/vnstock/CafeF), không có bộ test offline mock LLM chạy nhanh trong CI.",
-    suggest: "Thêm test mock <code>chat_parsed_with_usage</code> để verify riêng <code>route_supervisor()</code>/<code>_looping()</code> logic mà không tốn token thật; giữ bộ live hiện tại làm smoke test tùy chọn (`-m live` marker)."
+    current: "Đã có một số test mock nhanh (<code>_select_final_answer_model</code>, <code>_looping</code> symbol-scoped, <code>_make_collect_node</code> multi-symbol trong <code>test_supervisor_memory.py</code>) nhưng phần lớn bộ test vẫn live-LLM (<code>test_supervisor_agent.py</code>, <code>test_craw_agent.py</code>, <code>test_news_agent.py</code>, <code>test_db_agent.py</code>, <code>test_eval_agent.py</code>) — gọi API thật (OpenAI/vnstock/CafeF), chưa tách marker riêng cho CI nhanh.",
+    suggest: "Thêm marker <code>@pytest.mark.live</code> cho nhóm gọi API thật, mock <code>chat_parsed_with_usage</code>/HTTP client rộng hơn để CI mặc định chạy nhanh (giây, không phút) — giữ bộ live làm smoke test tùy chọn (<code>-m live</code>)."
   }
 ];
 

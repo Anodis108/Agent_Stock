@@ -116,18 +116,21 @@ def chat_parsed_with_usage(
     messages: Messages,
     schema: type[TModel],
     params: GenerationParams | None = None,
+    model: str | None = None,
 ) -> tuple[TModel, dict[str, int]]:
     """Như chat_parsed(), kèm usage token thô — Cost & Token Tracking (Bài 8/13).
 
     Tách riêng thay vì đổi chat_parsed() để không phá signature các call site
     hiện có (Module I routes_chat, eval/judge...).
-    """
+
+    `model`: override `settings.llm_model` cho lời gọi này (Model Routing —
+    Bài 8 Phần 4). Mặc định None giữ nguyên hành vi cũ."""
     params = params or GenerationParams()
     client = get_client()
 
     def _call():
         return client.chat.completions.parse(
-            model=settings.llm_model,
+            model=model or settings.llm_model,
             messages=messages,
             response_format=schema,
             **params.to_openai_kwargs(),

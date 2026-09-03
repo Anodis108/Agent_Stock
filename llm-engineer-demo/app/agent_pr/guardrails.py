@@ -113,6 +113,15 @@ def guardrail_input(state: dict) -> dict:
     """
 
     def _history_blob(state: dict) -> str:
+        """Gộp content của 8 tin nhắn short-term gần nhất (`state["history"]`,
+        xem `SupervisorState.history`) thành 1 chuỗi — làm `extra` cho
+        `in_topic_scope()` bên dưới, để câu hỏi cộc lốc kiểu "còn hôm qua thì
+        sao?" vẫn được nhận đúng phạm vi nhờ ngữ cảnh hội thoại trước đó, thay
+        vì bị chặn oan chỉ vì tự nó không chứa từ khóa/ticker nào.
+
+        `history` mỗi phần tử có thể là dict thô (`{"role": ..., "content": ...}`)
+        hoặc LangChain message object (`HumanMessage`/`AIMessage`, có `.content`)
+        — 2 nhánh if/else đọc đúng cả hai dạng."""
         bits: list[str] = []
         for msg in list(state.get("history") or [])[-8:]:
             if isinstance(msg, dict):

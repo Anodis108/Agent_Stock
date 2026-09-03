@@ -16,7 +16,7 @@ from app.agent_pr.db_agent.schemas import Agent_Input, Agent_Output
 from app.agent_pr.db_agent.state import DBState
 from app.agent_pr.db_agent.tools import TOOLS
 
-from app.agent_pr.react import build_react_subgraph, fresh_user, last_tool_json, parse_tool_output
+from app.agent_pr.react import build_react_subgraph, extract_tool_trace, fresh_user, last_tool_json, parse_tool_output
 from app.monitoring.tracing import agent_span, trace_step
 
 __all__ = ["approve_pending_write", "run_db"]
@@ -57,6 +57,7 @@ def _build_graph():
     def _pack(state: DBState) -> dict:
         raw = last_tool_json(state, {"read_symbol_store", "stage_new_rows"})
         result = parse_tool_output(raw, Agent_Output) or parse(state)["result"]
+        result = result.model_copy(update={"tool_trace": extract_tool_trace(state)})
         turn = state.get("turn") or ""  # Send từ hub; thiếu field `turn` trên DBState thì pack ghi rỗng → loop lookup
         key = "db_write_turn" if str(state.get("mode") or "read") == "write" else "db_lookup_turn"
         return {"db": result, key: turn}

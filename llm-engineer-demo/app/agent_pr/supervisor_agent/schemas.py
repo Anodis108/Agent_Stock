@@ -24,9 +24,9 @@ class Agent_Input(BaseModel):
     thích HTTP cũ — nếu chỉ gửi `symbol`, tự nâng thành `symbols=[symbol]`.
     """
 
-    symbol: str = ""
-    symbols: list[str] = Field(default_factory=list)
-    question: str = ""
+    symbol: str = ""                  # mã đơn (tương thích HTTP cũ) — nâng thành symbols nếu symbols rỗng
+    symbols: list[str] = Field(default_factory=list, description="Nhiều mã (vd so sánh); ưu tiên hơn symbol")
+    question: str = ""                # câu hỏi user; rỗng + có symbol thì run_supervisor tự soạn câu mặc định
     thread_id: str = Field(min_length=1, description="Short-term: id phiên. Client bắt buộc gửi.")
     user_id: str = ""                 # long-term: trống → không recall/store
     skip_hitl: bool = False           # True: pytest — không interrupt_before hitl_commit
@@ -90,21 +90,21 @@ class Agent_Output(BaseModel):
     (mã đầu tiên), giữ tương thích client/test cũ. Multi-symbol thật đọc
     `*_by_symbol` (key = mã CP)."""
 
-    symbol: str
-    symbols: list[str] = []
-    question: str = ""
-    answer: str
-    price: PriceOut | None = None
-    news: NewsOut | None = None
-    eval: EvalOut | None = None
-    db: DbOut | None = None
-    price_by_symbol: dict[str, PriceOut] = {}
-    news_by_symbol: dict[str, NewsOut] = {}
-    eval_by_symbol: dict[str, EvalOut] = {}
-    db_by_symbol: dict[str, DbOut] = {}
-    trace: list[str] = []
-    thread_id: str = ""
-    user_id: str = ""
+    symbol: str                           # symbols[0] — mã đại diện cho field legacy price/news/eval/db
+    symbols: list[str] = []               # TẤT CẢ mã đã xử lý trong turn
+    question: str = ""                    # câu user gốc (chưa rewrite) — reply/final_answer đọc
+    answer: str                           # câu trả lời cuối, final_answer_node tổng hợp từ notes
+    price: PriceOut | None = None         # legacy — luôn = price_by_symbol[symbols[0]]
+    news: NewsOut | None = None           # legacy — luôn = news_by_symbol[symbols[0]]
+    eval: EvalOut | None = None           # legacy — luôn = eval_by_symbol[symbols[0]]
+    db: DbOut | None = None               # legacy — luôn = db_by_symbol[symbols[0]]
+    price_by_symbol: dict[str, PriceOut] = {}  # reply ghi từ SupervisorState["price"]
+    news_by_symbol: dict[str, NewsOut] = {}    # reply ghi từ SupervisorState["news"]
+    eval_by_symbol: dict[str, EvalOut] = {}    # reply ghi từ SupervisorState["eval"]
+    db_by_symbol: dict[str, DbOut] = {}        # reply ghi từ SupervisorState["db"]; HITL cũng cập nhật ở đây
+    trace: list[str] = []                 # log các bước supervisor/collect/reply đã chạy trong turn
+    thread_id: str = ""                   # gắn lại sau khi graph chạy xong — client dùng để resume/poll
+    user_id: str = ""                     # gắn lại sau khi graph chạy xong — rỗng nếu turn không có long-term
     # Cost & Token Tracking (Bài 8 Phần 1, Bài 13 Phần 3) — cộng dồn mọi lời gọi
     # LLM trong turn này. None nếu turn rỗng hoặc chưa gọi LLM nào.
     prompt_tokens: int | None = None

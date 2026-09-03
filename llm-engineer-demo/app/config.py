@@ -94,6 +94,9 @@ class Settings(BaseSettings):
     agent_context_window_tokens: int = Field(
         default=2000, alias="AGENT_CONTEXT_WINDOW_TOKENS"
     )
+    # agent_pr TTL freshness (Bài mở rộng): DB mới hơn ngưỡng này thì supervisor
+    # coi là đủ dùng, không tự crawl lại — dạy qua prompt, không code-enforce.
+    agent_pr_freshness_minutes: int = Field(default=20, alias="AGENT_PR_FRESHNESS_MINUTES")
 
     # ── Module II, Bài 4: Agentic Tool Design & Integration ──────────────────
     # Số tool tối đa model được THẤY mỗi lượt (Section 2: Tool Retrieval).

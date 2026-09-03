@@ -23,16 +23,16 @@ class DBState(TypedDict, total=False):
     total=False: node chỉ trả field nó cập nhật.
     """
 
-    symbol: str
+    symbol: str                        # mã đã upper/strip — tool tự normalize khi nhận input
     mode: str                          # read | write — hub ghi, lift phân turn
-    candidate_news: list[CandidateNews]
-    candidate_prices: list[CandidatePrice]
-    price_rows: list[dict[str, Any]]
-    news_rows: list[dict[str, Any]]
-    pending_rows: list[dict[str, Any]]
-    result: Agent_Output
+    candidate_news: list[CandidateNews]    # tin PriceAgent/NewsAgent vừa crawl, đưa `stage_writes` xét soạn ghi
+    candidate_prices: list[CandidatePrice]  # phiên giá vừa crawl, đưa `stage_writes` xét soạn ghi
+    price_rows: list[dict[str, Any]]   # `read` đọc từ bảng `prices` — parse dựng PriceRow
+    news_rows: list[dict[str, Any]]    # `read` đọc từ bảng `news` — parse dựng SavedNews
+    pending_rows: list[dict[str, Any]] # `stage_writes` ghi — lệnh vừa soạn vào *_pending, parse dựng PendingWrite
+    result: Agent_Output               # `parse` ghi — output graph
     db: Agent_Output                   # cùng result — tên field hub
     turn: str                          # uuid HTTP từ hub Send — pack ghi *_turn
-    db_lookup_turn: str
-    db_write_turn: str
-    messages: Annotated[list, add_messages]
+    db_lookup_turn: str                # pack ghi khi mode=read — đánh dấu đã lookup đúng turn này
+    db_write_turn: str                 # pack ghi khi mode=write — đánh dấu đã soạn ghi đúng turn này
+    messages: Annotated[list, add_messages]  # ReAct LLM ⇄ ToolNode

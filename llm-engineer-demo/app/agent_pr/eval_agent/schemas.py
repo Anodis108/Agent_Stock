@@ -30,9 +30,9 @@ class Agent_Input(BaseModel):
 class ScoredItem(BaseModel):
     """Một tin đã chấm — cùng thứ tự articles của NewsOut."""
 
-    title: str
-    url: str = ""
-    sentiment: Literal["negative", "positive", "neutral"] = "neutral"
+    title: str                            # chép nguyên từ NewsItem.title, không sửa
+    url: str = ""                         # chép nguyên từ NewsItem.url
+    sentiment: Literal["negative", "positive", "neutral"] = "neutral"  # _sentiment (fallback) hoặc LLM (HeadlineBatch) gán
 
 
 class HeadlineBatch(BaseModel):
@@ -44,11 +44,12 @@ class HeadlineBatch(BaseModel):
 class Agent_Output(BaseModel):
     """Đầu ra graph — báo cáo eval, chưa phải câu trả lời user."""
 
-    symbol: str
+    symbol: str                           # mã đã chuẩn hoá, lấy từ PriceOut.symbol
     items: list[ScoredItem] = []          # score ghi; assemble đưa vào đây
-    negative_count: int = 0
-    positive_count: int = 0
-    neutral_count: int = 0
+    negative_count: int = 0               # đếm items có sentiment=negative
+    positive_count: int = 0               # đếm items có sentiment=positive
+    neutral_count: int = 0                # đếm items có sentiment=neutral
     has_enough_evidence: bool = False     # True nếu có ≥ 1 tin
     price_matches_news: bool | None = None  # None = chưa rõ (thiếu % hoặc tin trung lập hết)
     detail: str = ""                      # 1 dòng: đếm + đủ chứng + khớp giá
+    tool_trace: list[dict] = []           # chuỗi tool-call thật (Bài 5 trajectory eval) — xem react.extract_tool_trace
