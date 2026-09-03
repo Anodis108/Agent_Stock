@@ -44,7 +44,9 @@ _WORKER_DOMAINS = ["price_agent", "news_agent", "db_agent", "db_write", "eval_ag
 _REWRITE_SYSTEM = """Bạn là chuyên gia tìm kiếm thông tin cổ phiếu niêm yết Việt Nam.
 
 Viết lại câu hỏi thành MỘT query rõ ràng để điều phối agent (giá vnstock, tin CafeF, lịch sử DB).
-Giữ / tách mã CP nếu nhận ra (HPG, FPT, …). Làm rõ đại từ ("nó", "mã đó") từ hội thoại gần đây.
+Giữ / tách mã CP nếu nhận ra (HPG, FPT, …). Nếu câu hỏi nhắc đến NHIỀU mã (so sánh, liệt kê),
+liệt kê TẤT CẢ vào symbols — đừng chỉ lấy 1 mã. Giữ nguyên là MỘT câu hỏi, không tách thành
+nhiều câu. Làm rõ đại từ ("nó", "mã đó") từ hội thoại gần đây.
 Không trả lời câu hỏi. Không bịa mã. Chỉ trả về câu đã viết lại, không giải thích."""
 
 # Cùng ý _SUPERVISOR_SYSTEM agent_m2: worker không nói với nhau, supervisor chỉ chọn việc.
@@ -62,6 +64,11 @@ _SUPERVISOR_SYSTEM = """Bạn điều phối 4 worker chuyên biệt cho hỏi�
 Worker KHÔNG tự giao tiếp với nhau — bạn quyết định worker nào chạy tiếp theo dựa trên
 nhiệm vụ, hội thoại gần đây và ghi chú (notes) đã có. Không gọi lại worker đã có trong
 notes trừ khi cần làm mới.
+
+Nếu nhiệm vụ có NHIỀU mã (vd so sánh HPG và FPT), mỗi lượt gọi worker BẮT BUỘC trả về
+`symbol` cụ thể (đúng 1 mã trong danh sách "Các mã cần xử lý") — gọi TỪNG MÃ MỘT, không
+gộp nhiều mã vào 1 lượt gọi. Ghi chú (notes) nhóm theo TỪNG MÃ — xem để biết mã nào còn
+thiếu worker nào. Chỉ chọn 'done' khi TẤT CẢ mã đã đủ thông tin cần thiết.
 
 Câu hỏi về CHÍNH hội thoại (vd. "vừa rồi tôi hỏi gì", "mã nào tôi hỏi lúc nãy") — trả lời
 được ngay từ "Hội thoại gần đây" bên dưới, không cần gọi worker nào, chọn 'done' luôn.
@@ -82,7 +89,7 @@ def rewrite_question(state: SupervisorState) -> dict:
     original = str(state.get("question") or "").strip()
     with trace_step(step_parent(state), "rewrite_question", input=original) as t:
         rewritten = original
-        extra_symbol = ""
+        extra_symbols: list[str] = []
         if original:
             history = list(state.get("history") or [])
             user = f"Hôm nay: {date.today().isoformat()}\nCâu hỏi: {original}"
@@ -101,14 +108,16 @@ def rewrite_question(state: SupervisorState) -> dict:
                 )
                 record_usage(str(state.get("turn") or ""), settings.llm_model, **usage)
                 rewritten = (parsed.query or "").strip() or original
-                extra_symbol = parsed.symbol
+                extra_symbols = parsed.symbols
             except Exception:
                 rewritten = original
-                extra_symbol = ""
+                extra_symbols = []
         t["output"] = rewritten or "skip"
         out: dict = {"rewritten_question": rewritten}
-        if extra_symbol and not str(state.get("symbol") or "").strip():
-            out["symbol"] = extra_symbol
+        existing_symbols = list(state.get("symbols") or ([state["symbol"]] if state.get("symbol") else []))
+        if extra_symbols and not existing_symbols:
+            out["symbols"] = extra_symbols
+            out["symbol"] = extra_symbols[0]
         if rewritten and rewritten != original:
             out["trace"] = list(state.get("trace") or []) + [f"Rewrite: {rewritten}"]
         return out
@@ -137,13 +146,18 @@ def supervisor_node(state: SupervisorState) -> dict:
     Đơn giản & rẻ hơn: chặn cứng ngay tại điểm phát hiện.
     """
 
-    def _supervisor(state: SupervisorState, question: str) -> tuple[str, str]:
-        """Ghép prompt từ history + notes + memories rồi hỏi LLM routing. Trả (next_agent, reasoning)."""
-        notes = dict(state.get("notes") or {})
-        notes_text = "\n".join(f"[{d}] {n}" for d, n in notes.items()) or "(chưa có)"
+    def _supervisor(state: SupervisorState, question: str, symbols: list[str]) -> tuple[str, str, str]:
+        """Ghép prompt từ history + notes + memories rồi hỏi LLM routing.
+
+        Trả (next_agent, reasoning, chosen_symbol) — `chosen_symbol` là mã worker
+        vòng này sẽ xử lý (rỗng khi next_agent="done" hoặc câu hỏi chỉ 1 mã)."""
+        notes = {sym: dict(doms) for sym, doms in (state.get("notes") or {}).items()}
+        notes_text = "\n".join(
+            f"[{sym}][{d}] {n}" for sym, doms in notes.items() for d, n in doms.items()
+        ) or "(chưa có)"
         memories = list(state.get("memories") or [])
         history = list(state.get("history") or [])
-        parts = [f"Nhiệm vụ: {question}"]
+        parts = [f"Nhiệm vụ: {question}", f"Các mã cần xử lý: {', '.join(symbols) or '(chưa rõ)'}"]
         if history:
             shaped = context.sliding_window(history, settings.agent_keep_recent_messages)
             parts.append("Hội thoại gần đây (các lượt trước):\n" + context.format_messages(shaped))
@@ -158,10 +172,23 @@ def supervisor_node(state: SupervisorState) -> dict:
             )
             record_usage(str(state.get("turn") or ""), settings.llm_model, **usage)
             next_agent = decision.next_agent if decision.next_agent in [*_WORKER_DOMAINS, "done"] else "done"
-            return next_agent, decision.reasoning
+            chosen_symbol = (decision.symbol or "").strip().upper()
+            if next_agent in _WORKER_DOMAINS and not chosen_symbol:
+                if len(symbols) == 1:
+                    chosen_symbol = symbols[0]
+                else:
+                    # LLM quên trả symbol khi có nhiều mã — fallback quyết định: mã
+                    # đầu tiên còn thiếu domain đó trong notes, tránh crash/kẹt vòng lặp.
+                    domain = next_agent
+                    chosen_symbol = next(
+                        (sym for sym in symbols if domain not in notes.get(sym, {})),
+                        symbols[0] if symbols else "",
+                    )
+            return next_agent, decision.reasoning, chosen_symbol
         except Exception as exc:
-            return "done", f"Lỗi LLM routing: {exc}"
+            return "done", f"Lỗi LLM routing: {exc}", ""
 
+    symbols = list(state.get("symbols") or ([state["symbol"]] if state.get("symbol") else []))
     question = str(state.get("rewritten_question") or state.get("question") or state.get("symbol") or "").strip()
     if not question:
         return {"next_agent": "done"}
@@ -176,19 +203,25 @@ def supervisor_node(state: SupervisorState) -> dict:
             # domain đã lặp, phải tích đủ window lần nữa mới chặn tiếp.
             next_agent = "done"
             reasoning = f"Dừng ép buộc — lặp lại '{agent_history[-1]}' {_LOOP_WINDOW} lần liên tiếp."
+            chosen_symbol = ""
             next_history = agent_history
         else:
-            next_agent, reasoning = _supervisor(state, question)
-            next_history = (agent_history + [next_agent])[-_LOOP_WINDOW:] if next_agent != "done" else agent_history
+            next_agent, reasoning, chosen_symbol = _supervisor(state, question, symbols)
+            entry = f"{chosen_symbol}:{next_agent}" if chosen_symbol else next_agent
+            next_history = (agent_history + [entry])[-_LOOP_WINDOW:] if next_agent != "done" else agent_history
 
         t["output"] = {
             "next_agent": next_agent,
+            "symbol": chosen_symbol,
             "reasoning": reasoning,
             "agent_history": agent_history,  # window trước khi route vòng này — để soi Langfuse thấy đúng chuỗi dẫn tới lặp
             "loop_forced": _looping(agent_history),
         }
         trace = list(state.get("trace") or []) + [f"Supervisor: {next_agent} · {reasoning}"]
-        return {"next_agent": next_agent, "agent_history": next_history, "trace": trace}
+        out: dict = {"next_agent": next_agent, "agent_history": next_history, "trace": trace}
+        if chosen_symbol:
+            out["symbol"] = chosen_symbol
+        return out
 
 
 def _news_candidates(news: object | None) -> list[dict]:
@@ -218,14 +251,22 @@ def _price_candidates(price: object | None) -> list[dict]:
 
 def route_supervisor(state: SupervisorState) -> str:
     """Map `next_agent` → node. Code-enforced: LLM chọn "done" nhưng còn dữ
-    liệu vừa crawl (chưa soạn ghi) → ép qua `db_write` trước, không phụ thuộc
-    LLM có nhớ tự chọn hay không — side-effect ghi DB không được phó mặc cho
-    routing tự do (khác chọn worker đọc, vốn không side-effect)."""
+    liệu vừa crawl (chưa soạn ghi) — ở BẤT KỲ mã nào — ép qua `db_write` trước,
+    không phụ thuộc LLM có nhớ tự chọn hay không — side-effect ghi DB không
+    được phó mặc cho routing tự do (khác chọn worker đọc, vốn không side-effect)."""
     next_agent = state.get("next_agent") or "done"
     if next_agent in _WORKER_DOMAINS:
         return next_agent
     notes = state.get("notes") or {}
-    if "db_write" not in notes and (_news_candidates(state.get("news")) or _price_candidates(state.get("price"))):
+    symbols = list(state.get("symbols") or ([state["symbol"]] if state.get("symbol") else []))
+    news_map = state.get("news") or {}
+    price_map = state.get("price") or {}
+    needs_write = any(
+        "db_write" not in notes.get(sym, {})
+        and (_news_candidates(news_map.get(sym)) or _price_candidates(price_map.get(sym)))
+        for sym in symbols
+    )
+    if needs_write:
         return "db_write"
     return "final_answer"
 
@@ -264,10 +305,13 @@ def _make_collect_node(domain: str):
 
     def collect(state: SupervisorState) -> dict:
         field = field_by_domain[domain]
-        summary = _summarize(field, state.get(field))
+        symbol = str(state.get("symbol") or "")
+        value = dict(state.get(field) or {}).get(symbol)
+        summary = _summarize(field, value)
         print(f"Collecting {domain}: {summary}")  # Debug print to trace collection
-        notes = {**(state.get("notes") or {}), domain: summary}
-        trace = list(state.get("trace") or []) + [f"{domain}: {summary}"]
+        notes = {sym: dict(doms) for sym, doms in (state.get("notes") or {}).items()}
+        notes.setdefault(symbol, {})[domain] = summary
+        trace = list(state.get("trace") or []) + [f"[{symbol}] {domain}: {summary}"]
         return {"notes": notes, "trace": trace}
 
     return collect
@@ -277,27 +321,45 @@ def db_write(state: SupervisorState) -> dict:
     """Soạn lệnh ghi (pending, chưa COMMIT) từ dữ liệu price/news vừa crawl.
 
     Không phải worker ReAct riêng — gọi thẳng `db_agent` subgraph với
-    mode="write" (cùng logic cũ), rồi gộp vào notes như collect node."""
+    mode="write" (cùng logic cũ), rồi gộp vào notes như collect node. Lặp qua
+    TẤT CẢ mã có candidate chưa ghi trong 1 lần chạy node — route_supervisor
+    không tự chọn được symbol cho nhánh này (hàm string thuần), và loop nội bộ
+    ở đây rẻ hơn tốn thêm 1 vòng supervisor riêng cho mỗi mã."""
 
     def _db_write(state: SupervisorState) -> dict:
-        from app.agent_pr.db_agent.graph import db_agent as run_db_agent
+        # Gọi THẲNG subgraph con của db_agent (không phải wrapper hub db_agent()
+        # ở graph.py) — wrapper hub giờ trả `db` đã merge thành dict[symbol,DbOut],
+        # còn ở đây cần đúng 1 DbOut cho từng symbol trong vòng lặp.
+        from app.agent_pr.db_agent.graph import _build_graph as _build_db_graph
 
-        payload = {
-            "symbol": str(state.get("symbol") or ""),
-            "turn": str(state.get("turn") or ""),
-            "mode": "write",
-            "candidate_news": _news_candidates(state.get("news")),
-            "candidate_prices": _price_candidates(state.get("price")),
-        }
-        db = run_db_agent(payload).get("db")
-        summary = str(getattr(db, "detail", None) or "(không có kết quả)")
-        notes = {**(state.get("notes") or {}), "db_write": summary}
-        trace = list(state.get("trace") or []) + [f"db_write: {summary}"]
-        return {"db": db, "notes": notes, "trace": trace}
+        symbols = list(state.get("symbols") or ([state["symbol"]] if state.get("symbol") else []))
+        news_map = dict(state.get("news") or {})
+        price_map = dict(state.get("price") or {})
+        db_map = dict(state.get("db") or {})
+        notes = {sym: dict(doms) for sym, doms in (state.get("notes") or {}).items()}
+        trace = list(state.get("trace") or [])
+        for sym in symbols:
+            news_cands = _news_candidates(news_map.get(sym))
+            price_cands = _price_candidates(price_map.get(sym))
+            if not news_cands and not price_cands:
+                continue
+            payload = {
+                "symbol": sym,
+                "turn": str(state.get("turn") or ""),
+                "mode": "write",
+                "candidate_news": news_cands,
+                "candidate_prices": price_cands,
+            }
+            db = _build_db_graph().invoke(payload).get("db")
+            db_map[sym] = db
+            summary = str(getattr(db, "detail", None) or "(không có kết quả)")
+            notes.setdefault(sym, {})["db_write"] = summary
+            trace.append(f"db_write[{sym}]: {summary}")
+        return {"db": db_map, "notes": notes, "trace": trace}
 
     with trace_step(step_parent(state), "db_write", input=str(state.get("symbol") or "")) as t:
         out = _db_write(state)
-        t["output"] = out["notes"]["db_write"]
+        t["output"] = out["trace"][-1] if out["trace"] else ""
         return out
 
 
@@ -309,32 +371,31 @@ def hitl_commit(state: SupervisorState) -> dict:
     """
 
     def _hitl_commit(state: SupervisorState) -> dict:
-        db = state.get("db")
-        pending = list(getattr(db, "pending_writes", None) or [])
-        symbol = str(state.get("symbol") or (getattr(db, "symbol", "") if db else ""))
-        n_ok = 0
-        for pw in pending:
-            try:
-                if approve_pending_write(pw.id, approve=True, kind=pw.kind or "news"):
-                    n_ok += 1
-            except Exception:
-                continue
         from app.agent_pr.db_agent.nodes import _read_rows
         from app.agent_pr.db_agent.schemas import PriceRow, SavedNews
 
-        rows = _read_rows(symbol) if symbol else {"price_rows": [], "news_rows": []}
-        refreshed = DbOut(
-            symbol=symbol,
-            price_history=[PriceRow(**row) for row in rows["price_rows"]],
-            saved_news=[SavedNews(**row) for row in rows["news_rows"]],
-            pending_writes=[],
-            detail=f"HITL: đã COMMIT {n_ok} lệnh vào DB",
-        )
-        line = refreshed.detail
-        return {
-            "db": refreshed,
-            "trace": list(state.get("trace") or []) + [line],
-        }
+        db_map = dict(state.get("db") or {})
+        trace = list(state.get("trace") or [])
+        for sym, db in db_map.items():
+            pending = list(getattr(db, "pending_writes", None) or [])
+            n_ok = 0
+            for pw in pending:
+                try:
+                    if approve_pending_write(pw.id, approve=True, kind=pw.kind or "news"):
+                        n_ok += 1
+                except Exception:
+                    continue
+            rows = _read_rows(sym) if sym else {"price_rows": [], "news_rows": []}
+            refreshed = DbOut(
+                symbol=sym,
+                price_history=[PriceRow(**row) for row in rows["price_rows"]],
+                saved_news=[SavedNews(**row) for row in rows["news_rows"]],
+                pending_writes=[],
+                detail=f"HITL: đã COMMIT {n_ok} lệnh vào DB",
+            )
+            db_map[sym] = refreshed
+            trace.append(f"[{sym}] {refreshed.detail}")
+        return {"db": db_map, "trace": trace}
 
     with trace_step(step_parent(state), "hitl_commit", input=str(state.get("symbol") or "")) as t:
         out = _hitl_commit(state)
@@ -343,13 +404,15 @@ def hitl_commit(state: SupervisorState) -> dict:
 
 
 def route_after_final_answer(state: SupervisorState) -> str:
-    """Còn lệnh ghi đang chờ duyệt (và không bypass qua skip_hitl) → HITL trước reply."""
+    """Còn lệnh ghi đang chờ duyệt (ở BẤT KỲ mã nào) và không bypass qua skip_hitl → HITL trước reply."""
 
     def _pending_list(db: object | None) -> list[PendingWrite]:
         return list(getattr(db, "pending_writes", None) or [])
 
     skip_hitl = bool(state.get("skip_hitl"))
-    if _pending_list(state.get("db")) and not skip_hitl:
+    db_map = state.get("db") or {}
+    has_pending = any(_pending_list(db) for db in db_map.values())
+    if has_pending and not skip_hitl:
         return "hitl_commit"
     return "reply"
 
@@ -358,10 +421,10 @@ def final_answer_node(state: SupervisorState) -> dict:
     """LLM tổng hợp `notes` thành câu trả lời cuối — cùng mẫu agent_m2 `final_answer_node`."""
 
     def _final_answer(state: SupervisorState, notes_text: str) -> str:
-        symbol = str(state.get("symbol") or "")
+        symbols = list(state.get("symbols") or ([state["symbol"]] if state.get("symbol") else []))
         question = str(state.get("question") or "")
         history = list(state.get("history") or [])
-        parts = [f"Mã: {symbol or '(không rõ)'}", f"Nhiệm vụ: {question}"]
+        parts = [f"Mã: {', '.join(symbols) or '(không rõ)'}", f"Nhiệm vụ: {question}"]
         if history:
             shaped = context.sliding_window(history, settings.agent_keep_recent_messages)
             parts.append("Hội thoại gần đây (các lượt trước):\n" + context.format_messages(shaped))
@@ -377,7 +440,10 @@ def final_answer_node(state: SupervisorState) -> dict:
         except Exception as exc:
             return f"Lỗi tổng hợp câu trả lời: {exc}. Ghi chú đã thu thập: {notes_text}"
 
-    notes_text = "\n".join(f"[{d}] {n}" for d, n in (state.get("notes") or {}).items()) or "(chưa có ghi chú)"
+    notes = {sym: dict(doms) for sym, doms in (state.get("notes") or {}).items()}
+    notes_text = "\n".join(
+        f"[{sym}][{d}] {n}" for sym, doms in notes.items() for d, n in doms.items()
+    ) or "(chưa có ghi chú)"
     with trace_step(step_parent(state), "final_answer", input=str(state.get("question") or "")) as t:
         answer = _final_answer(state, notes_text)
         t["output"] = answer
@@ -388,11 +454,14 @@ def reply(state: SupervisorState) -> dict:
     """Đóng gói `final_answer` (đã tổng hợp) thành Agent_Output trả user."""
 
     def _reply(state: SupervisorState) -> dict:
-        symbol = str(state.get("symbol") or "")
+        symbols = list(state.get("symbols") or ([state["symbol"]] if state.get("symbol") else []))
+        symbol0 = symbols[0] if symbols else str(state.get("symbol") or "")
         answer = str(state.get("final_answer") or "").strip() or "Không có đủ dữ liệu để trả lời."
-        db = state.get("db")
-        if db and str(db.detail or "").startswith("HITL:"):
-            answer = answer.rstrip() + " " + db.detail
+        db_map = dict(state.get("db") or {})
+        db0 = db_map.get(symbol0)
+        if any(str(getattr(db, "detail", "") or "").startswith("HITL:") for db in db_map.values()):
+            hitl_lines = [db.detail for db in db_map.values() if str(db.detail or "").startswith("HITL:")]
+            answer = answer.rstrip() + " " + " ".join(hitl_lines)
 
         usage = pop_usage(str(state.get("turn") or ""))
         trace = list(state.get("trace") or [])
@@ -401,14 +470,22 @@ def reply(state: SupervisorState) -> dict:
                 f"Token: {int(usage['prompt_tokens'])} in + {int(usage['completion_tokens'])} out"
                 f" (~${usage['cost_usd']:.6f})"
             )
+        price_map = dict(state.get("price") or {})
+        news_map = dict(state.get("news") or {})
+        eval_map = dict(state.get("eval") or {})
         output = Agent_Output(
-            symbol=symbol,
+            symbol=symbol0,
+            symbols=symbols,
             question=str(state.get("question") or ""),
             answer=answer,
-            price=state.get("price"),
-            news=state.get("news"),
-            eval=state.get("eval"),
-            db=state.get("db"),
+            price=price_map.get(symbol0),
+            news=news_map.get(symbol0),
+            eval=eval_map.get(symbol0),
+            db=db0,
+            price_by_symbol=price_map,
+            news_by_symbol=news_map,
+            eval_by_symbol=eval_map,
+            db_by_symbol=db_map,
             trace=trace,
             prompt_tokens=int(usage["prompt_tokens"]) if usage else None,
             completion_tokens=int(usage["completion_tokens"]) if usage else None,

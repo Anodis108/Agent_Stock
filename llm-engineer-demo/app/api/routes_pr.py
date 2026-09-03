@@ -47,6 +47,7 @@ async def fetch_price(req: PriceRequest) -> PriceResponse:
 def _ask_input(req: AskRequest) -> SuperIn:
     return SuperIn(
         symbol=req.symbol,
+        symbols=req.symbols,
         question=req.question,
         thread_id=req.thread_id,
         user_id=req.user_id,

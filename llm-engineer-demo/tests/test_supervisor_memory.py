@@ -52,15 +52,32 @@ def test_rewrite_llm_viet_lai(monkeypatch):
 
     class _Parsed:
         query = "Giá và tin mới nhất của HPG?"
-        symbol = "HPG"
+        symbols = ["HPG"]
 
     monkeypatch.setattr(
         n, "chat_parsed_with_usage", lambda *a, **k: (_Parsed(), {"prompt_tokens": 0, "completion_tokens": 0})
     )
     out = rewrite_question({"question": "HPG sao rồi", "trace": []})
     assert out["rewritten_question"] == "Giá và tin mới nhất của HPG?"
+    assert out["symbols"] == ["HPG"]
     assert out["symbol"] == "HPG"
     assert out["trace"][-1].startswith("Rewrite:")
+
+
+def test_rewrite_multi_symbol(monkeypatch):
+    """Câu so sánh nhiều mã — rewrite trả đủ symbols, không chỉ lấy 1."""
+    from app.agent_pr.supervisor_agent import nodes as n
+
+    class _Parsed:
+        query = "HPG và FPT mã nào mạnh hơn?"
+        symbols = ["HPG", "FPT"]
+
+    monkeypatch.setattr(
+        n, "chat_parsed_with_usage", lambda *a, **k: (_Parsed(), {"prompt_tokens": 0, "completion_tokens": 0})
+    )
+    out = rewrite_question({"question": "HPG và FPT mã nào mạnh hơn", "trace": []})
+    assert out["symbols"] == ["HPG", "FPT"]
+    assert out["symbol"] == "HPG"
 
 
 def test_recall_dung_cau_rewrite(monkeypatch):

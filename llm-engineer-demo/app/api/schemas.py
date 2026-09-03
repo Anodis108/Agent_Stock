@@ -176,9 +176,12 @@ class PriceResponse(BaseModel):
 
 
 class AskRequest(BaseModel):
-    """Cần ít nhất symbol hoặc question. Hub LLM tách mã + chọn worker."""
+    """Cần ít nhất symbol/symbols hoặc question. Hub LLM tách mã + chọn worker."""
 
     symbol: str = Field("", description="Mã CP niêm yết VN — có thể trống nếu có question")
+    symbols: list[str] = Field(
+        default_factory=list, description="Nhiều mã CP (vd so sánh) — ưu tiên hơn symbol nếu cả hai đều có"
+    )
     question: str = Field("", description="Câu tiếng Việt; trống thì phân tích mã symbol")
     thread_id: str = Field(
         min_length=1,
@@ -191,7 +194,8 @@ class AskRequest(BaseModel):
 
     @model_validator(mode="after")
     def need_symbol_or_question(self) -> AskRequest:
-        if not (self.symbol or "").strip() and not (self.question or "").strip():
+        has_symbols = any(s.strip() for s in self.symbols)
+        if not (self.symbol or "").strip() and not has_symbols and not (self.question or "").strip():
             raise ValueError("Cần symbol hoặc question")
         return self
 

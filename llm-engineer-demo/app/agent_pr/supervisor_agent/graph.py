@@ -92,29 +92,46 @@ def _pending(db) -> list[PendingWrite]:
 
 
 def _hitl_output(snap, thread_id: str, user_id: str, question: str) -> Agent_Output:
-    """Output tạm khi interrupt: final_answer đã xong, chưa COMMIT."""
+    """Output tạm khi interrupt: final_answer đã xong, chưa COMMIT.
+
+    `db`/`price`/`news`/`eval` trong state giờ là dict theo symbol — cộng dồn
+    pending qua TẤT CẢ symbol để câu trả lời tạm phản ánh đúng số lệnh đang chờ."""
     v = getattr(snap, "values", None) or {}
-    pending = _pending(v.get("db"))
-    symbol = str(v.get("symbol") or "")
-    n = len(pending)
-    answer = (str(v.get("final_answer") or "") or f"{symbol}: đã soạn {n} lệnh ghi bài chưa có.").rstrip()
+    symbols = list(v.get("symbols") or ([v["symbol"]] if v.get("symbol") else []))
+    symbol0 = symbols[0] if symbols else str(v.get("symbol") or "")
+    db_map = dict(v.get("db") or {})
+    price_map = dict(v.get("price") or {})
+    news_map = dict(v.get("news") or {})
+    eval_map = dict(v.get("eval") or {})
+
+    n = 0
+    for sym in symbols or [symbol0]:
+        db = db_map.get(sym)
+        pending = _pending(db)
+        n += len(pending)
+        detail = f"chờ HITL — {len(pending)} lệnh"
+        db_map[sym] = (
+            db.model_copy(update={"pending_writes": pending, "detail": detail})
+            if isinstance(db, DbOut)
+            else DbOut(symbol=sym, pending_writes=pending, detail=detail)
+        )
+
+    answer = (str(v.get("final_answer") or "") or f"{symbol0}: đã soạn {n} lệnh ghi bài chưa có.").rstrip()
     answer += f" Chờ duyệt HITL — {n} lệnh chưa COMMIT vào DB."
-    db = v.get("db")
-    detail = f"chờ HITL — {n} lệnh"
-    db = (
-        db.model_copy(update={"pending_writes": pending, "detail": detail})
-        if isinstance(db, DbOut)
-        else DbOut(symbol=symbol, pending_writes=pending, detail=detail)
-    )
     answer = sanitize_stock_answer(answer, v).answer
     return Agent_Output(
-        symbol=symbol,
+        symbol=symbol0,
+        symbols=symbols,
         question=question or str(v.get("question") or ""),
         answer=answer,
-        price=v.get("price"),
-        news=v.get("news"),
-        eval=v.get("eval"),
-        db=db,
+        price=price_map.get(symbol0),
+        news=news_map.get(symbol0),
+        eval=eval_map.get(symbol0),
+        db=db_map.get(symbol0),
+        price_by_symbol=price_map,
+        news_by_symbol=news_map,
+        eval_by_symbol=eval_map,
+        db_by_symbol=db_map,
         trace=list(v.get("trace") or []),
         thread_id=thread_id,
         user_id=user_id,
@@ -221,17 +238,27 @@ def run_supervisor(inp: Agent_Input) -> Agent_Output:
     xong hoặc dừng ở HITL. `thread_id` bắt buộc (session giống `/assistant`);
     thiếu `question` nhưng có `symbol` thì tự soạn câu hỏi mặc định.
     """
-    symbol = (inp.symbol or "").strip()
+    symbols = [s.strip().upper() for s in (inp.symbols or []) if s.strip()]
+    seen: dict[str, None] = {}
+    for s in symbols:
+        seen.setdefault(s, None)
+    symbols = list(seen)
+    symbol = symbols[0] if symbols else (inp.symbol or "").strip()
     question = (inp.question or "").strip()
     thread_id = (inp.thread_id or "").strip()
     user_id = (inp.user_id or "").strip()
     if not thread_id:
         raise ValueError("thread_id bắt buộc — client phải gửi id phiên (giống /assistant).")
-    if not question and symbol:
-        question = f"Phân tích biến động giá và tin tức liên quan đến mã {symbol.upper()} hôm nay."
+    if not question and symbols:
+        question = (
+            f"Phân tích biến động giá và tin tức liên quan đến mã {symbol.upper()} hôm nay."
+            if len(symbols) <= 1
+            else f"Phân tích và so sánh các mã {', '.join(symbols)} hôm nay."
+        )
     turn = str(uuid.uuid4())
     initial = {
         "symbol": symbol,
+        "symbols": symbols,
         "question": question,
         "turn": turn,
         "user_id": user_id,
@@ -291,21 +318,34 @@ def resume_supervisor(
     if not _hitl_waiting(snap):
         raise RuntimeError("Không có HITL đang chờ trên thread này.")
     values = getattr(snap, "values", None) or {}
-    pending = _pending(values.get("db"))
+    db_map = dict(values.get("db") or {})
     question = str(values.get("question") or "")
     turn = str(values.get("turn") or "")
 
     if pending_id is not None:
         approve_pending_write(int(pending_id), approve=approve, kind=kind or "news")
-        remaining = [
-            pw
-            for pw in pending
-            if not (int(pw.id) == int(pending_id) and (pw.kind or "news") == (kind or "news"))
-        ]
-        if remaining:
+        # pending_id không kèm symbol — tìm đúng symbol chứa lệnh này để biết
+        # còn lệnh nào khác (của mã đó) chưa quyết hay không.
+        owner_sym = next(
+            (sym for sym, db in db_map.items() if any(int(pw.id) == int(pending_id) for pw in _pending(db))),
+            None,
+        )
+        remaining_total = sum(len(_pending(db)) for db in db_map.values())
+        if owner_sym is not None:
+            owner_pending = [
+                pw
+                for pw in _pending(db_map[owner_sym])
+                if not (int(pw.id) == int(pending_id) and (pw.kind or "news") == (kind or "news"))
+            ]
+            remaining_total -= len(_pending(db_map[owner_sym])) - len(owner_pending)
+        if remaining_total > 0:
             paused = _hitl_output(snap, thread_id, user_id, question)
-            if paused.db:
-                paused.db = paused.db.model_copy(update={"pending_writes": remaining})
+            if owner_sym is not None:
+                paused.db_by_symbol[owner_sym] = paused.db_by_symbol[owner_sym].model_copy(
+                    update={"pending_writes": owner_pending}
+                )
+                if paused.symbol == owner_sym:
+                    paused.db = paused.db_by_symbol[owner_sym]
             return paused
 
     with trace_answer(
@@ -316,15 +356,18 @@ def resume_supervisor(
         patch: dict = {}
         as_node = None
         if pending_id is None and not approve:
-            db = values.get("db")
-            for pw in pending:
-                approve_pending_write(pw.id, approve=False, kind=pw.kind or "news")
-            rejected = (
-                db.model_copy(update={"pending_writes": [], "detail": "HITL: từ chối toàn bộ"})
-                if isinstance(db, DbOut)
-                else DbOut(symbol=str(values.get("symbol") or ""), detail="HITL: từ chối toàn bộ")
+            rejected_map: dict[str, DbOut] = {}
+            for sym, db in db_map.items():
+                for pw in _pending(db):
+                    approve_pending_write(pw.id, approve=False, kind=pw.kind or "news")
+                rejected_map[sym] = (
+                    db.model_copy(update={"pending_writes": [], "detail": "HITL: từ chối toàn bộ"})
+                    if isinstance(db, DbOut)
+                    else DbOut(symbol=sym, detail="HITL: từ chối toàn bộ")
+                )
+            patch.update(
+                {"db": rejected_map, "trace": list(values.get("trace") or []) + ["HITL: từ chối toàn bộ"]}
             )
-            patch.update({"db": rejected, "trace": list(values.get("trace") or []) + ["HITL: từ chối toàn bộ"]})
             as_node = "hitl_commit"
         if patch or as_node:
             graph.update_state(config, patch, **({"as_node": as_node} if as_node else {}))

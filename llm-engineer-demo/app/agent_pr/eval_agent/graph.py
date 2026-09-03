@@ -56,14 +56,31 @@ def _build_graph():
 
 
 def eval_agent(state: EvalState) -> dict:
-    """Node hub — mở span AGENT "eval_agent" rồi chạy subgraph seed→agent→tools→pack."""
-    symbol = str(getattr(state.get("price"), "symbol", "") or "")
+    """Node hub — mở span AGENT "eval_agent" rồi chạy subgraph seed→agent→tools→pack.
+
+    `price`/`news`/`eval` ở hub là dict theo symbol — đọc `symbol` (hub set
+    sẵn vòng này) để tách đúng 1 cặp PriceOut/NewsOut cho subgraph con (vốn
+    vẫn thao tác object đơn, không đổi nội bộ), rồi merge `eval` trả về theo
+    symbol và khôi phục price/news về đúng shape dict cho hub."""
+    symbol = str(state.get("symbol") or "")
+    price_val = state.get("price")
+    news_val = state.get("news")
+    price_obj = price_val.get(symbol) if isinstance(price_val, dict) else price_val
+    news_obj = news_val.get(symbol) if isinstance(news_val, dict) else news_val
+    inner_state = {**state, "price": price_obj, "news": news_obj}
     with agent_span(str(state.get("turn") or ""), "eval_agent", input=symbol) as t:
-        out = _build_graph().invoke(state)
+        out = _build_graph().invoke(inner_state)
         report = out.get("eval")
         if report is not None:
             t["output"] = report.detail
-        return out
+        existing = dict(state.get("eval") or {}) if isinstance(state.get("eval"), dict) else {}
+        if report is not None:
+            existing[symbol] = report
+        merged = dict(out)
+        merged["eval"] = existing
+        merged["price"] = price_val
+        merged["news"] = news_val
+        return merged
 
 
 def run_eval(inp: Agent_Input) -> Agent_Output:

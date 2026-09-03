@@ -58,30 +58,30 @@ _OUT_OF_SCOPE_REPLY = (
 
 
 def evidence_snippets(state: dict) -> list[str]:
-    """Nguồn groundedness — giá/tin/eval/DB, không gồm draft (tránh tự xác nhận)."""
+    """Nguồn groundedness — giá/tin/eval/DB, không gồm draft (tránh tự xác nhận).
+
+    `price`/`news`/`eval`/`db` trên state là dict theo symbol (multi-symbol) —
+    duyệt qua TẤT CẢ mã, không chỉ mã hiện tại."""
     bits = [
         str(state.get("question") or ""),
         str(state.get("rewritten_question") or ""),
         str(state.get("symbol") or ""),
+        ", ".join(state.get("symbols") or []),
     ]
-    price = state.get("price")
-    if price:
+    for price in (state.get("price") or {}).values():
         bits.append(
             f"{price.symbol} {price.last} {price.prev_close} {price.pct_change} {price.trading_date}"
         )
-    news = state.get("news")
-    if news:
+    for news in (state.get("news") or {}).values():
         for item in news.articles or []:
             bits.append(f"{item.title} {item.url} {item.publish_time}")
-    ev = state.get("eval")
-    if ev:
+    for ev in (state.get("eval") or {}).values():
         bits.append(
             f"{ev.detail} {ev.negative_count} {ev.positive_count} {ev.neutral_count}"
         )
         for item in ev.items or []:
             bits.append(f"{item.title} {item.sentiment}")
-    db = state.get("db")
-    if db:
+    for db in (state.get("db") or {}).values():
         bits.append(str(db.detail or ""))
         for row in (db.price_history or [])[:30]:
             bits.append(f"{row.trading_date} {row.close}")

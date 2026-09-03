@@ -74,14 +74,23 @@ def _build_graph():
 
 
 def db_agent(state: DBState) -> dict:
-    """Node hub — mở span AGENT "db_agent" rồi chạy subgraph seed→agent→tools→pack."""
+    """Node hub — mở span AGENT "db_agent" rồi chạy subgraph seed→agent→tools→pack.
+
+    Hub lưu `db` theo symbol (`dict[str, Agent_Output]`) — merge vào dict hiện có.
+    `db_write()` (supervisor_agent/nodes.py) gọi thẳng subgraph, KHÔNG qua wrapper
+    này, và tự merge riêng — không double-handling."""
     symbol = str(state.get("symbol") or "")
     with agent_span(str(state.get("turn") or ""), "db_agent", input=symbol) as t:
         out = _build_graph().invoke(state)
         result = out.get("db")
         if result is not None:
             t["output"] = result.detail
-        return out
+        existing = dict(state.get("db") or {})
+        if result is not None:
+            existing[symbol] = result
+        merged = dict(out)
+        merged["db"] = existing
+        return merged
 
 
 def run_db(inp: Agent_Input) -> Agent_Output:

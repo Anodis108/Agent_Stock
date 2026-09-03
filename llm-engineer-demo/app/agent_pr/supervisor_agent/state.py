@@ -44,7 +44,8 @@ class SupervisorState(TypedDict, total=False):
     # hub — session / context (không worker nào khai)
     question: str                  # câu user gốc (rewrite/history/output)
     rewritten_question: str        # rewrite; recall+supervisor đọc
-    symbol: str                    # mã CP; rewrite trích được thì set, worker Send đọc
+    symbol: str                    # mã worker VÒNG NÀY xử lý — supervisor set lại mỗi vòng
+    symbols: list[str]              # TẤT CẢ mã cần xử lý trong turn (multi-symbol)
     user_id: str                   # Qdrant long-term; rỗng = skip
     history: Annotated[list, _append_trim]  # short-term; compact ghi đè
     memories: list[str]            # recall lượt này; supervisor đọc
@@ -54,22 +55,22 @@ class SupervisorState(TypedDict, total=False):
                                     # cũng là key tra span Langfuse (xem monitoring/tracing.py)
 
     # Supervisor — routing (giống HierarchicalState của agent_m2)
-    notes: dict[str, str]           # domain -> tóm tắt kết quả worker (supervisor đọc để quyết định)
+    notes: dict[str, dict[str, str]]  # {symbol: {domain: tóm tắt}} — supervisor đọc để quyết định
     next_agent: str                 # "price_agent"|"news_agent"|"db_agent"|"db_write"|"eval_agent"|"done"
-    agent_history: list[str]        # Loop Detection (Bài 10 P3): next_agent các vòng gần nhất, window=4
+    agent_history: list[str]        # Loop Detection (Bài 10 P3): "{symbol}:{next_agent}" các vòng gần nhất
     final_answer: str               # final_answer_node ghi; reply đọc
 
-    # PriceAgent
-    price: PriceOut                # pack ghi; Eval đọc (cạnh)
+    # PriceAgent — {symbol: PriceOut}, worker wrapper merge vào dict theo symbol
+    price: dict[str, PriceOut]
 
-    # NewsAgent
-    news: NewsOut                  # pack ghi; Eval đọc; db_write → candidate_*
+    # NewsAgent — {symbol: NewsOut}
+    news: dict[str, NewsOut]
 
-    # DBAgent (mode=read: lịch sử; mode=write: soạn pending)
-    db: DbOut                      # pack (lookup/write); hitl/reply đọc pending
+    # DBAgent (mode=read: lịch sử; mode=write: soạn pending) — {symbol: DbOut}
+    db: dict[str, DbOut]
 
-    # EvalAgent
-    eval: EvalOut                  # pack ghi
+    # EvalAgent — {symbol: EvalOut}
+    eval: dict[str, EvalOut]
 
     # hub — ra HTTP
     output: Agent_Output           # reply ghi

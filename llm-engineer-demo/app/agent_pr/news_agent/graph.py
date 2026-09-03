@@ -52,14 +52,21 @@ def _build_graph():
 
 
 def news_agent(state: NewsState) -> dict:
-    """Node hub — mở span AGENT "news_agent" rồi chạy subgraph seed→agent→tools→pack."""
+    """Node hub — mở span AGENT "news_agent" rồi chạy subgraph seed→agent→tools→pack.
+
+    Hub lưu `news` theo symbol (`dict[str, Agent_Output]`) — merge vào dict hiện có."""
     symbol = str(state.get("symbol") or "")
     with agent_span(str(state.get("turn") or ""), "news_agent", input=symbol) as t:
         out = _build_graph().invoke(state)
         news = out.get("news")
         if news is not None:
             t["output"] = {"n_articles": len(news.articles)}
-        return out
+        existing = dict(state.get("news") or {})
+        if news is not None:
+            existing[symbol] = news
+        merged = dict(out)
+        merged["news"] = existing
+        return merged
 
 
 def run_news(inp: Agent_Input) -> Agent_Output:

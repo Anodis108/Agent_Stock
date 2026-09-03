@@ -61,6 +61,9 @@ def price_agent(state: CrawlState) -> dict:
 
     Node con (normalize/fetch/parse, xem nodes.py) tự tìm span này qua
     step_parent(state, "price_agent") — không cần truyền tay.
+
+    Hub lưu `price` theo symbol (`dict[str, Agent_Output]`) — subgraph con vẫn
+    thao tác 1 quote đơn, wrapper này merge kết quả vào dict hiện có.
     """
     symbol = str(state.get("symbol") or "")
     with agent_span(str(state.get("turn") or ""), "price_agent", input=symbol) as t:
@@ -68,7 +71,12 @@ def price_agent(state: CrawlState) -> dict:
         quote = out.get("price")
         if quote is not None:
             t["output"] = {"last": quote.last, "pct_change": quote.pct_change}
-        return out
+        existing = dict(state.get("price") or {})
+        if quote is not None:
+            existing[symbol] = quote
+        merged = dict(out)
+        merged["price"] = existing
+        return merged
 
 
 def run_crawl(inp: Agent_Input) -> Agent_Output:

@@ -9,7 +9,7 @@ Worker không nói với nhau.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.agent_pr.craw_agent.schemas import Agent_Output as PriceOut
 from app.agent_pr.db_agent.schemas import Agent_Output as DbOut
@@ -18,25 +18,44 @@ from app.agent_pr.news_agent.schemas import Agent_Output as NewsOut
 
 
 class Agent_Input(BaseModel):
-    """Ít nhất một trong symbol / question. Supervisor LLM định tuyến từng vòng."""
+    """Ít nhất một trong symbol / question. Supervisor LLM định tuyến từng vòng.
+
+    `symbols`: nhiều mã (vd so sánh HPG vs FPT). `symbol` giữ lại cho tương
+    thích HTTP cũ — nếu chỉ gửi `symbol`, tự nâng thành `symbols=[symbol]`.
+    """
 
     symbol: str = ""
+    symbols: list[str] = Field(default_factory=list)
     question: str = ""
     thread_id: str = Field(min_length=1, description="Short-term: id phiên. Client bắt buộc gửi.")
     user_id: str = ""                 # long-term: trống → không recall/store
     skip_hitl: bool = False           # True: pytest — không interrupt_before hitl_commit
 
+    @model_validator(mode="after")
+    def _fill_symbols(self) -> "Agent_Input":
+        if not self.symbols and self.symbol.strip():
+            self.symbols = [self.symbol.strip().upper()]
+        return self
+
 
 class RewrittenQuery(BaseModel):
-    """Bài 1 structured output — rewrite không parse free-text."""
+    """Bài 1 structured output — rewrite không parse free-text.
+
+    `symbols`: TẤT CẢ mã nhận ra trong câu hỏi (so sánh/liệt kê nhiều mã thì
+    liệt kê đủ, không chỉ lấy 1)."""
 
     query: str = Field(description="Một câu đã viết lại, tiếng Việt, giữ mã CP nếu có")
-    symbol: str = Field(default="", description="Mã CP nếu nhận ra (HPG); để trống nếu không chắc")
+    symbols: list[str] = Field(default_factory=list, description="Tất cả mã CP nhận ra, vd [HPG, FPT]; rỗng nếu không chắc")
 
-    @field_validator("symbol")
+    @field_validator("symbols")
     @classmethod
-    def _upper_symbol(cls, v: str) -> str:
-        return (v or "").strip().upper()
+    def _clean_symbols(cls, v: list[str]) -> list[str]:
+        seen: dict[str, None] = {}
+        for s in v:
+            s = (s or "").strip().upper()
+            if s and s not in seen:
+                seen[s] = None
+        return list(seen)
 
 
 class MemoryFact(BaseModel):
@@ -52,6 +71,9 @@ class RoutingDecision(BaseModel):
     next_agent: str = Field(
         description="Một trong: price_agent, news_agent, db_agent, db_write, eval_agent, done"
     )
+    symbol: str = Field(
+        default="", description="Mã CP bước này áp dụng — bắt buộc nếu next_agent là 1 trong 4 worker"
+    )
     reasoning: str = Field(description="Lý do ngắn gọn cho quyết định")
 
 
@@ -62,15 +84,24 @@ class FinalAnswer(BaseModel):
 
 
 class Agent_Output(BaseModel):
-    """Trả user + báo cáo worker đã chạy (None = hub chưa giao agent đó)."""
+    """Trả user + báo cáo worker đã chạy (None = hub chưa giao agent đó).
+
+    `price`/`news`/`eval`/`db` là field LEGACY — luôn phản ánh `symbols[0]`
+    (mã đầu tiên), giữ tương thích client/test cũ. Multi-symbol thật đọc
+    `*_by_symbol` (key = mã CP)."""
 
     symbol: str
+    symbols: list[str] = []
     question: str = ""
     answer: str
     price: PriceOut | None = None
     news: NewsOut | None = None
     eval: EvalOut | None = None
     db: DbOut | None = None
+    price_by_symbol: dict[str, PriceOut] = {}
+    news_by_symbol: dict[str, NewsOut] = {}
+    eval_by_symbol: dict[str, EvalOut] = {}
+    db_by_symbol: dict[str, DbOut] = {}
     trace: list[str] = []
     thread_id: str = ""
     user_id: str = ""
