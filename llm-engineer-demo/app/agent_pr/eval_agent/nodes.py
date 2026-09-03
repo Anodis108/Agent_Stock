@@ -26,31 +26,6 @@ Few-shot:
 Chỉ negative | positive | neutral. Không bịa tiêu đề. Đúng số lượng / thứ tự đã gửi."""
 
 
-def _llm_items(articles: list, turn: str = "") -> list[ScoredItem] | None:
-    """Một lần chat_parsed cho cả lô — type-safe, không regex."""
-    if not articles:
-        return []
-    numbered = "\n".join(f"{i + 1}. {a.title}" for i, a in enumerate(articles))
-    batch, usage = chat_parsed_with_usage(
-        bound_messages(_SENTIMENT_SYSTEM, numbered),
-        HeadlineBatch,
-        DETERMINISTIC,
-    )
-    record_usage(turn, settings.llm_model, **usage)
-    if len(batch.items) != len(articles):
-        return None
-    out: list[ScoredItem] = []
-    for art, item in zip(articles, batch.items):
-        out.append(
-            ScoredItem(
-                title=art.title,
-                url=getattr(art, "url", "") or "",
-                sentiment=item.sentiment,
-            )
-        )
-    return out
-
-
 def _sentiment(title: str) -> str:
     """Khớp cả 2 nhóm hoặc không khớp gì → neutral (không đoán liều)."""
     t = title.lower()
@@ -71,6 +46,31 @@ def score(state: EvalState) -> dict:
       False = lệch
       None  = chưa rõ (thiếu % hoặc không có tin thiên hướng)
     """
+
+    def _llm_items(articles: list, turn: str = "") -> list[ScoredItem] | None:
+        """Một lần chat_parsed cho cả lô — type-safe, không regex."""
+        if not articles:
+            return []
+        numbered = "\n".join(f"{i + 1}. {a.title}" for i, a in enumerate(articles))
+        batch, usage = chat_parsed_with_usage(
+            bound_messages(_SENTIMENT_SYSTEM, numbered),
+            HeadlineBatch,
+            DETERMINISTIC,
+        )
+        record_usage(turn, settings.llm_model, **usage)
+        if len(batch.items) != len(articles):
+            return None
+        out: list[ScoredItem] = []
+        for art, item in zip(articles, batch.items):
+            out.append(
+                ScoredItem(
+                    title=art.title,
+                    url=getattr(art, "url", "") or "",
+                    sentiment=item.sentiment,
+                )
+            )
+        return out
+
     price, news = state.get("price"), state.get("news")
     with trace_step(step_parent(state, "eval_agent"), "eval_score", input=getattr(price, "symbol", "")) as t:
         if price is None or news is None:

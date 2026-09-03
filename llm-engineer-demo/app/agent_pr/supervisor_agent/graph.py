@@ -9,7 +9,7 @@
                                                        → guardrail_output → store → END
 
 Khác agent_m2: HITL chỉ trước `hitl_commit` (ghi DB thật) — `interrupt_before`.
-Short-term: `thread_id` + MemorySaver. Long-term: `user_id` + Qdrant.
+Short-term: `thread_id` + SqliteSaver (data/agent_pr.sqlite3). Long-term: `user_id` + Qdrant.
 `turn` uuid mỗi HTTP — notes/eval/db_write không lấy nhầm checkpoint lượt trước.
 
 Supervisor gọi LLM MỖI vòng (khác coordinator cũ chỉ lập plan 1 lần/turn) —
@@ -24,11 +24,12 @@ Vẽ: `python -m app.agent_pr.supervisor_agent.graph`
 
 from __future__ import annotations
 
+import sqlite3
 import uuid
 from functools import lru_cache
 from pathlib import Path
 
-from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, StateGraph
 
 from app.agent_pr.guardrails import (
@@ -64,8 +65,11 @@ from app.agent_pr.db_agent.schemas import PendingWrite
 from app.agent_pr.supervisor_agent.state import SupervisorState
 from app.monitoring.tracing import trace_answer
 
-# MemorySaver — RAM, mất khi restart. Đủ debug; production đổi PostgresSaver.
-_checkpointer = MemorySaver()
+# SqliteSaver — cùng file data/agent_pr.sqlite3 với db_agent, bền qua restart/
+# reload (khác MemorySaver RAM trước đây). check_same_thread=False vì FastAPI
+# gọi từ threadpool (uvicorn chạy sync endpoint trong thread khác request).
+_DB_PATH = Path(__file__).resolve().parents[3] / "data" / "agent_pr.sqlite3"
+_checkpointer = SqliteSaver(sqlite3.connect(str(_DB_PATH), check_same_thread=False))
 
 _COLLECT_DOMAINS = ["price_agent", "news_agent", "db_agent", "eval_agent"]
 
@@ -235,7 +239,7 @@ def run_supervisor(inp: Agent_Input) -> Agent_Output:
         "notes": {},
         "trace": [],
     }
-    config = {"recursion_limit": 28, "configurable": {"thread_id": thread_id}}
+    config = {"recursion_limit": 40, "configurable": {"thread_id": thread_id}}
     with trace_answer(
         "agent_pr_ask",
         question or symbol,
@@ -282,7 +286,7 @@ def resume_supervisor(
     để giả lập hitl_commit đã chạy (tránh phải chạy node thật chỉ để reject).
     """
     graph = _build_graph()
-    config = {"recursion_limit": 28, "configurable": {"thread_id": thread_id}}
+    config = {"recursion_limit": 40, "configurable": {"thread_id": thread_id}}
     snap = graph.get_state(config)
     if not _hitl_waiting(snap):
         raise RuntimeError("Không có HITL đang chờ trên thread này.")

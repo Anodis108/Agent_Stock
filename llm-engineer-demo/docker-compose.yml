@@ -1,6 +1,6 @@
 # FastAPI VN-stock — service `app` :8000 (API + UI tĩnh)
 #
-#   docker compose up --build -d          # app + Postgres (checkpointer)
+#   docker compose up --build -d          # app (SQLite: dữ liệu + checkpointer)
 #   docker compose --profile rag up -d    # + Qdrant (RAG Module I)
 #   docker compose down
 #
@@ -10,42 +10,17 @@
 # .env (OPENAI_API_KEYS) không copy vào image — compose đọc env_file.
 
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: vn-stock-postgres
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: checkpoints
-    ports:
-      # Host 5433: 5432 đã bị langfuse-postgres. Trong mạng compose app vẫn dùng :5432.
-      - "5433:5432"
-    volumes:
-      - ./data/postgres:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d checkpoints"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-      start_period: 10s
-    restart: unless-stopped
-
   app:
     build: .
     container_name: vn-stock-api
     env_file:
       - .env
     environment:
-      # Trong mạng compose hostname là `postgres`, không phải localhost.
-      CHECKPOINT_POSTGRES_URI: postgresql://postgres:postgres@postgres:5432/checkpoints?sslmode=disable
       # .env LANGFUSE_HOST=localhost:3000 chỉ đúng khi uvicorn chạy trên máy host.
       # Trong container localhost = chính app; Langfuse web nằm trên host :3000.
       LANGFUSE_HOST: http://host.docker.internal:3000
       # .env QDRANT_URL=localhost:6333 chỉ đúng ngoài Docker. Trong mạng compose hostname là `qdrant`.
       QDRANT_URL: http://qdrant:6333
-    depends_on:
-      postgres:
-        condition: service_healthy
     command:
       [
         "uvicorn",

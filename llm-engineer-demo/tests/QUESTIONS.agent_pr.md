@@ -15,11 +15,21 @@ Không dùng pytest để “chạy app”. File này là kịch bản hỏi tay
 3. Sau mỗi câu, đối chiếu `used_agents`, `plan_reasoning`, `trace` — worker nào được bật, worker nào **không** được bật.
 4. Câu đánh dấu **API** không phải chat thuần: gọi đúng endpoint.
 
-Thứ tự worker đúng thiết kế: **Price / News / DB song song → Eval (khi đã có tin + giá) → Synthesis (khi đã có Eval) → chỉ Coordinator nói với user.**
+**Kiến trúc hiện tại (đã đổi so với bản Coordinator/plan-1-lần cũ):** `supervisor_node` hỏi LLM
+**mỗi vòng** (không lập plan 1 lần rồi chạy state machine) — chọn 1 trong
+`{price_agent, news_agent, db_agent, db_write, eval_agent, done}` dựa trên `notes` (kết quả worker
+đã chạy) + `history` (hội thoại short-term). Khi chọn `done`, **`final_answer_node`** (không còn
+`SynthesisAgent` riêng) tự gọi LLM tổng hợp `notes` thành câu trả lời. `db_write` (soạn lệnh chờ
+HITL) giờ **code-enforced**: nếu còn dữ liệu vừa crawl chưa soạn ghi, hệ thống tự động chạy
+`db_write` trước khi tới `final_answer`, không phụ thuộc LLM có tự chọn hay không.
+
+Thứ tự worker đúng thiết kế: **Price / News / DB (đọc trước) → Eval (khi đã có tin + giá) →
+db_write (nếu có dữ liệu mới, tự động) → final_answer (LLM tổng hợp) → chỉ Supervisor nói với
+user.** Không còn fan-out song song thật (`Send` 1 worker/vòng, không phải 3 worker cùng lúc).
 
 ---
 
-## 1. Coordinator — parse ticker, intent, lập plan
+## 1. Supervisor — parse ticker, intent, routing mỗi vòng
 
 Hub phải tách mã, đoán intent, chọn đúng worker; không tự crawl / không tự chấm tin.
 
@@ -194,16 +204,17 @@ Hai tầng sau crawl: loại nội dung rồi mới đích DB.
 
 ---
 
-## 9. SynthesisAgent — câu có cấu trúc + trace
+## 9. final_answer_node — câu có cấu trúc + trace
 
-Chỉ chạy khi hub đã có Eval. Không crawl, không ghi DB, không gửi thẳng user.
+LLM tổng hợp `notes` (không phải SynthesisAgent riêng — đã gộp vào node cuối của hub). Không
+crawl, không ghi DB, không có tool riêng — chỉ đọc `notes` + `history` rồi trả lời thẳng.
 
 | # | Câu hỏi | Câu trả lời cần có |
 |---|---------|-------------------|
 | 9.1 | Tại sao giá HPG giảm hôm nay? | (1) Số liệu giá từ Price (2) Nguyên nhân đã được Eval chốt (3) Bối cảnh 5 phiên DB. Tiếng Việt, nêu nguồn từng ý. |
-| 9.2 | Giải thích biến động VNM hôm nay, kèm nhật ký các bước. | `trace`: parse → đợt 1 → Swarm/Router/HITL → Eval → Synthesis → Coordinator. |
-| 9.3 | FPT hôm nay — tóm tắt ngắn cho người không chuyên. | Cấu trúc vẫn 3 khối, không bịa ngoài 4 báo cáo. |
-| 9.4 | Nếu thiếu tin hoặc thiếu giá, hãy giải thích VCB hôm nay. | Synthesis không chạy / hub báo thiếu; không bịa. |
+| 9.2 | Giải thích biến động VNM hôm nay, kèm nhật ký các bước. | `trace`: Rewrite → Supervisor (nhiều dòng, mỗi vòng 1 quyết định) → final_answer → Token. |
+| 9.3 | FPT hôm nay — tóm tắt ngắn cho người không chuyên. | Cấu trúc vẫn rõ ràng, không bịa ngoài dữ liệu đã có trong `notes`. |
+| 9.4 | Nếu thiếu tin hoặc thiếu giá, hãy giải thích VCB hôm nay. | final_answer nêu rõ thiếu gì; không bịa. |
 
 `trace` là nhật ký hub, không phải chat ẩn giữa worker.
 
@@ -367,7 +378,7 @@ Bổ sung 2026-09-02: câu hỏi thật của người dùng không sạch như 
 
 | # | Câu hỏi | Cần thấy |
 |---|---------|----------|
-| 17.7 | (lượt 1) Cho tôi giá HPG. → (lượt 2, cùng thread) Thôi quên đi, hỏi VNM thay vào đó. | Coordinator phải chuyển sang `VNM`, không kẹt lại `HPG` cũ trong state. |
+| 17.7 | (lượt 1) Cho tôi giá HPG. → (lượt 2, cùng thread) Thôi quên đi, hỏi VNM thay vào đó. | Supervisor phải chuyển sang `VNM`, không kẹt lại `HPG` cũ trong state. |
 | 17.8 | (lượt 1) Giá FPT hôm nay? → (lượt 2) Còn tin tức của nó thì sao? | "nó" phải resolve về `FPT` (tham chiếu đại từ mơ hồ), không hỏi lại user mã nào. |
 | 17.9 | (lượt 1) So sánh HPG và VNM. → (lượt 2) Mã đầu tiên đó tăng hay giảm? | "Mã đầu tiên đó" đòi hỏi nhớ thứ tự đã liệt kê ở lượt trước — có thể hệ thống không làm được, cần ghi nhận rõ pass/fail, không bịa mã khác. |
 | 17.10 | (lượt 1) Tôi không hỏi gì về HPG cả, đừng nhắc tới nó. → (lượt 2) Vậy trước đó tôi hỏi gì? | Câu phủ định lồng ghép — kiểm tra coordinator không tự ý crawl `HPG` chỉ vì từ khoá xuất hiện trong câu phủ định. |
@@ -394,12 +405,27 @@ Bổ sung 2026-09-02: câu hỏi thật của người dùng không sạch như 
 
 ---
 
+## 18. Bổ sung 2026-09-02 — db_write code-enforced, idempotency, memory follow-up (kiến trúc mới)
+
+Bốn câu kiểm tra trực tiếp các thay đổi vừa sửa trong `supervisor_agent`: (a) `db_write` không
+còn phụ thuộc LLM có nhớ chọn hay không, (b) `stage_new_rows` không tạo pending trùng khi model
+retry đúng key, (c) bug "quên hội thoại ngay lượt kế tiếp" đã fix.
+
+| # | Câu hỏi | Cần thấy |
+|---|---------|----------|
+| 18.1 | (mã CHƯA có trong DB, ví dụ mã ít dùng trong bộ test — vd MSN) Tin tức MSN hôm nay. | Có tin mới crawl (không phải từ DB) → `db_write` PHẢI tự chạy dù supervisor không nhắc gì tới lưu trữ trong câu hỏi — kiểm tra `pending_writes` khác rỗng ngay cả khi LLM routing log không có dòng "cần lưu". |
+| 18.2 | (lượt 1, cùng thread) Giá HPG hôm nay? → (lượt 2) Vừa rồi tôi hỏi mã nào? | Lượt 2 PHẢI trả lời đúng "HPG" dựa vào `history`, không được nói "chưa có dữ liệu" hay đi crawl mã mới — test lại bug memory đã fix (`supervisor_node`/`final_answer_node` giờ đọc `history`). |
+| 18.3 | (lượt 1) Tin VNM hôm nay, rồi duyệt HITL toàn bộ qua `/pr/approve`. → (lượt 2, cùng thread, hỏi lại) Tin VNM hôm nay. | Lượt 2 đọc DB thấy đã có tin (từ DB, không phải crawl mới) → không phát sinh `pending_writes` mới, không gọi lại `db_write`. |
+| 18.4 | Kiểm tra `trace` của bất kỳ câu nào có `cost_usd` khác `null`. | `trace` PHẢI có dòng `"Token: X in + Y out (~$Z)"` — xác nhận tính năng trace token vừa thêm vào `reply()` hoạt động, hiển thị cùng các dòng log khác. |
+
+---
+
 ## Checklist đối chiếu sau mỗi câu
 
-- Worker **không nói với nhau**; mọi việc đi qua Coordinator.
+- Worker **không nói với nhau**; mọi việc đi qua Supervisor.
 - News không chấm sentiment; Eval không crawl.
-- Synthesis không trả thẳng UI.
-- Ghi DB không COMMIT trước HITL.
+- final_answer_node không tự crawl/ghi DB, chỉ tổng hợp `notes`.
+- Ghi DB không COMMIT trước HITL — `db_write` tự chạy khi có dữ liệu mới (không phụ thuộc LLM nhớ chọn).
 - Cùng phiên + cùng mã: không crawl lại giá/tin.
 - Không `user_id`: không store/recall.
 - Tin không match mã → Tin chung, không drop.

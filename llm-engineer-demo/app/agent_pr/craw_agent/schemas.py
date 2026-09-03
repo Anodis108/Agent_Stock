@@ -4,7 +4,7 @@ Agent_Input: caller đưa vào graph (hiện chỉ mã CP). Thêm field ở đâ
 PriceAgent/Coordinator cần (câu hỏi, khoảng ngày) — đừng nhét vào CrawlState
 trước.
 
-Agent_Output: snapshot 2 phiên sau parse. `last` là VND. vnstock KBS trả
+Agent_Output: snapshot 2 phiên sau parse. `last` là VND. vnstock VCI trả
 `close` nghìn đồng (22.1 = 22.100 VND) — node `parse` nhân 1000.
 
 Không nhét DataFrame vnstock vào schema: graph chỉ đi dict/model.

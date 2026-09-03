@@ -123,13 +123,6 @@ class Settings(BaseSettings):
     langfuse_secret_key: str = Field(default="", alias="LANGFUSE_SECRET_KEY")
     langfuse_host: str = Field(default="https://cloud.langfuse.com", alias="LANGFUSE_HOST")
 
-    # ── agent_pr short-term (PostgresSaver, theo thread_id) ─────────────────
-    # Docker Compose: hostname `postgres`. Local uvicorn: localhost + cổng map.
-    checkpoint_postgres_uri: str = Field(
-        default="postgresql://postgres:postgres@localhost:5433/checkpoints?sslmode=disable",
-        alias="CHECKPOINT_POSTGRES_URI",
-    )
-
     # ── App ─────────────────────────────────────────────────────────────────
     app_name: str = Field(default="Vietnamese Legal Assistant", alias="APP_NAME")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")

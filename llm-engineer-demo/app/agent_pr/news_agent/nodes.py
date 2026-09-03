@@ -32,18 +32,17 @@ def normalize(state: NewsState) -> dict:
         return {"symbol": symbol}
 
 
-def _deploy_date(raw: str) -> str:
-    """CafeF `/Date(1787820660000)/` → ISO UTC. Không khớp thì giữ nguyên."""
-    m = re.search(r"\d+", raw or "")
-    if not m:
-        return raw or ""
-    ts = int(m.group()) / 1000
-    return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
-
-
 def fetch(state: NewsState) -> dict:
     """Gọi CafeF News.ashx; ghi `rows`. httpx import trong hàm."""
     import httpx
+
+    def _deploy_date(raw: str) -> str:
+        """CafeF `/Date(1787820660000)/` → ISO UTC. Không khớp thì giữ nguyên."""
+        m = re.search(r"\d+", raw or "")
+        if not m:
+            return raw or ""
+        ts = int(m.group()) / 1000
+        return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
 
     symbol = state["symbol"]
     with trace_step(step_parent(state, "news_agent"), "news_fetch", input=symbol) as t:

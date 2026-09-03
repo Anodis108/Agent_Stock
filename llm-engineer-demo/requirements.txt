@@ -29,8 +29,7 @@ langfuse>=2.0.0
 # "native SDK" (xem docstring app/agent_m2/nodes.py). langgraph đã có ở trên.
 langchain-openai>=0.2.0
 langgraph-checkpoint>=2.0.0      # MemorySaver (Section 5, agent_m2)
-langgraph-checkpoint-postgres>=2.0.0  # PostgresSaver (agent_pr short-term)
-psycopg[binary,pool]>=3.2.0      # pool cho PostgresSaver
+langgraph-checkpoint-sqlite>=2.0.0    # SqliteSaver (agent_pr short-term, data/agent_pr.sqlite3)
 
 # ─── Module II, Bài 4: Agentic Tool Design & Integration (MCP) ───────────────
 mcp>=1.0.0                       # MCP server (wellness_server.py, FastMCP)

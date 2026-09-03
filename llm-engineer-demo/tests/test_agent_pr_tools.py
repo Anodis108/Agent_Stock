@@ -7,7 +7,6 @@ from app.agent_pr.db_agent.tools import TOOLS as DB
 from app.agent_pr.eval_agent.tools import TOOLS as EVAL
 from app.agent_pr.news_agent.tools import TOOLS as NEWS
 from app.agent_pr.supervisor_agent.tools import TOOLS as HUB
-from app.agent_pr.synthesis_agent.tools import TOOLS as SYNTH
 from app.agent_pr.tool_selection import reset_cache, select_tools
 
 
@@ -16,14 +15,12 @@ def test_moi_agent_co_catalog_rieng():
         "craw": {t.name for t in CRAW},
         "news": {t.name for t in NEWS},
         "eval": {t.name for t in EVAL},
-        "synth": {t.name for t in SYNTH},
         "db": {t.name for t in DB},
         "hub": {t.name for t in HUB},
     }
     assert names["craw"] == {"normalize_ticker", "fetch_latest_close", "describe_price_source"}
     assert names["news"] == {"normalize_ticker", "fetch_cafef_news", "describe_news_source"}
     assert names["eval"] == {"classify_headline", "score_price_vs_news", "list_eval_keywords"}
-    assert names["synth"] == {"compose_user_answer", "format_pct_phrase", "describe_synth_job"}
     assert names["db"] == {"read_symbol_store", "stage_new_rows", "describe_db_hitl"}
     assert names["hub"] == {"need_price", "need_news", "need_db", "need_eval", "need_synth"}
 

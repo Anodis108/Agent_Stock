@@ -56,6 +56,7 @@ class SupervisorState(TypedDict, total=False):
     # Supervisor — routing (giống HierarchicalState của agent_m2)
     notes: dict[str, str]           # domain -> tóm tắt kết quả worker (supervisor đọc để quyết định)
     next_agent: str                 # "price_agent"|"news_agent"|"db_agent"|"db_write"|"eval_agent"|"done"
+    agent_history: list[str]        # Loop Detection (Bài 10 P3): next_agent các vòng gần nhất, window=4
     final_answer: str               # final_answer_node ghi; reply đọc
 
     # PriceAgent

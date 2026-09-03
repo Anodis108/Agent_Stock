@@ -20,7 +20,7 @@ from app.agent_pr.craw_agent.tools import TOOLS
 from app.agent_pr.react import build_react_subgraph, fresh_user, last_tool_json, parse_tool_output
 from app.monitoring.tracing import agent_span, trace_step
 
-_SYSTEM = """Bạn là PriceAgent — CHỈ lấy giá mã niêm yết VN (vnstock KBS). Không lấy tin, không chấm, không ghi DB.
+_SYSTEM = """Bạn là PriceAgent — CHỈ lấy giá mã niêm yết VN (vnstock VCI). Không lấy tin, không chấm, không ghi DB.
 
 Quy tắc:
 - Bắt buộc gọi fetch_latest_close đúng một lần với mã đã chuẩn hoá (HPG, không hpg).

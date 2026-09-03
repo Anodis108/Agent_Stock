@@ -60,20 +60,21 @@ _SUPERVISOR_SYSTEM = """Bạn điều phối 4 worker chuyên biệt cho hỏi�
   notes đã có price_agent hoặc news_agent với dữ liệu MỚI (chưa lưu).
 
 Worker KHÔNG tự giao tiếp với nhau — bạn quyết định worker nào chạy tiếp theo dựa trên
-nhiệm vụ và ghi chú (notes) đã có. Không gọi lại worker đã có trong notes trừ khi cần làm mới.
+nhiệm vụ, hội thoại gần đây và ghi chú (notes) đã có. Không gọi lại worker đã có trong
+notes trừ khi cần làm mới.
 
-Chọn 'done' khi đã đủ thông tin để trả lời user."""
+Câu hỏi về CHÍNH hội thoại (vd. "vừa rồi tôi hỏi gì", "mã nào tôi hỏi lúc nãy") — trả lời
+được ngay từ "Hội thoại gần đây" bên dưới, không cần gọi worker nào, chọn 'done' luôn.
+
+Chọn 'done' khi đã đủ thông tin (từ notes hoặc hội thoại gần đây) để trả lời user."""
 
 _FINAL_ANSWER_SYSTEM = """Bạn tổng hợp ghi chú (notes) từ các worker cổ phiếu VN thành câu
 trả lời cuối cho user — tiếng Việt, ngắn gọn, đầy đủ thông tin đã thu thập được.
 
-Chỉ dùng dữ liệu có trong notes; không bịa số liệu/tin không có. Thiếu dữ liệu thì nói thiếu.
-Hỏi tăng/giảm thì nêu chiều + % nếu notes có. Có kết quả db_write thì nhắc đã soạn lệnh chờ duyệt."""
-
-
-def _query_for_routing(state: SupervisorState) -> str:
-    """Câu dùng để routing/recall — ưu tiên bản đã rewrite, fallback câu gốc."""
-    return str(state.get("rewritten_question") or state.get("question") or "").strip()
+Chỉ dùng dữ liệu có trong notes hoặc hội thoại gần đây; không bịa số liệu/tin không có.
+Thiếu dữ liệu thì nói thiếu. Hỏi tăng/giảm thì nêu chiều + % nếu notes có. Có kết quả
+db_write thì nhắc đã soạn lệnh chờ duyệt. Câu hỏi về CHÍNH hội thoại (vd. "vừa hỏi mã
+nào") thì trả lời thẳng từ "Hội thoại gần đây", không nói "chưa có dữ liệu"."""
 
 
 def rewrite_question(state: SupervisorState) -> dict:
@@ -113,18 +114,42 @@ def rewrite_question(state: SupervisorState) -> dict:
         return out
 
 
+_LOOP_WINDOW = 3  # PDF gợi ý 4 (tool_calls); ở đây giảm còn 3 — mỗi vòng routing
+                  # tốn ~2-3 bước graph (agent+collect / supervisor+db_write) nên
+                  # cần bắt lặp SỚM hơn để còn đủ ngân sách recursion_limit=28
+
+
+def _looping(history: list[str], window: int = _LOOP_WINDOW) -> bool:
+    """detect_repetition (Bài 10 P3) áp cho routing thay vì tool_calls: N lựa
+    chọn next_agent gần nhất giống hệt nhau → agent bị kẹt, chưa hẳn tiến bộ."""
+    recent = history[-window:]
+    return len(recent) >= window and len(set(recent)) == 1
+
+
 def supervisor_node(state: SupervisorState) -> dict:
-    """Hub. Hỏi LLM mỗi vòng: đã đủ thông tin theo `notes` chưa, worker nào tiếp theo."""
+    """Hub. Hỏi LLM mỗi vòng: đã đủ thông tin theo `notes` chưa, worker nào tiếp theo.
+
+    Loop Detection (Bài 10 P3, detect_repetition) chạy TRƯỚC khi gọi LLM: đã
+    lặp đủ window (4 lần liên tiếp giống hệt) → ép "done" ngay, không gọi LLM
+    thêm — mỗi vòng supervisor→worker→collect tốn ~2-3 bước graph, "cảnh báo
+    rồi thử lại" (chèn system message, đợi vòng sau) vẫn tốn đủ bước để chạm
+    recursion_limit=28 trước khi guard kịp chặn lần 2 (bug đã tái hiện thật).
+    Đơn giản & rẻ hơn: chặn cứng ngay tại điểm phát hiện.
+    """
 
     def _supervisor(state: SupervisorState, question: str) -> tuple[str, str]:
-        """Ghép prompt từ notes + memories rồi hỏi LLM routing. Trả (next_agent, reasoning)."""
+        """Ghép prompt từ history + notes + memories rồi hỏi LLM routing. Trả (next_agent, reasoning)."""
         notes = dict(state.get("notes") or {})
         notes_text = "\n".join(f"[{d}] {n}" for d, n in notes.items()) or "(chưa có)"
         memories = list(state.get("memories") or [])
+        history = list(state.get("history") or [])
         parts = [f"Nhiệm vụ: {question}"]
+        if history:
+            shaped = context.sliding_window(history, settings.agent_keep_recent_messages)
+            parts.append("Hội thoại gần đây (các lượt trước):\n" + context.format_messages(shaped))
         if memories:
             parts.append("Đã biết về user:\n" + "\n".join(f"- {m}" for m in memories))
-        parts.append(f"Ghi chú từ worker đã chạy:\n{notes_text}")
+        parts.append(f"Ghi chú từ worker đã chạy lượt này:\n{notes_text}")
         try:
             decision, usage = chat_parsed_with_usage(
                 bound_messages(_SUPERVISOR_SYSTEM, "\n\n".join(parts)),
@@ -141,16 +166,29 @@ def supervisor_node(state: SupervisorState) -> dict:
     if not question:
         return {"next_agent": "done"}
 
+    agent_history = list(state.get("agent_history") or [])
+
     with trace_step(step_parent(state), "supervisor", input=question) as t:
-        next_agent, reasoning = _supervisor(state, question)
-        t["output"] = next_agent
+        if _looping(agent_history):
+            # KHÔNG xoá agent_history: route_supervisor có thể vẫn đưa graph
+            # qua db_write (ghi dữ liệu vừa crawl) rồi quay lại đây — nếu xoá,
+            # bộ đếm "quên" ngay lần ép đầu tiên và LLM có thể chọn lại đúng
+            # domain đã lặp, phải tích đủ window lần nữa mới chặn tiếp.
+            next_agent = "done"
+            reasoning = f"Dừng ép buộc — lặp lại '{agent_history[-1]}' {_LOOP_WINDOW} lần liên tiếp."
+            next_history = agent_history
+        else:
+            next_agent, reasoning = _supervisor(state, question)
+            next_history = (agent_history + [next_agent])[-_LOOP_WINDOW:] if next_agent != "done" else agent_history
+
+        t["output"] = {
+            "next_agent": next_agent,
+            "reasoning": reasoning,
+            "agent_history": agent_history,  # window trước khi route vòng này — để soi Langfuse thấy đúng chuỗi dẫn tới lặp
+            "loop_forced": _looping(agent_history),
+        }
         trace = list(state.get("trace") or []) + [f"Supervisor: {next_agent} · {reasoning}"]
-        return {"next_agent": next_agent, "trace": trace}
-
-
-def route_supervisor(state: SupervisorState) -> str:
-    next_agent = state.get("next_agent") or "done"
-    return next_agent if next_agent in _WORKER_DOMAINS else "final_answer"
+        return {"next_agent": next_agent, "agent_history": next_history, "trace": trace}
 
 
 def _news_candidates(news: object | None) -> list[dict]:
@@ -178,6 +216,20 @@ def _price_candidates(price: object | None) -> list[dict]:
     return [{"trading_date": trading_date, "close": last}]
 
 
+def route_supervisor(state: SupervisorState) -> str:
+    """Map `next_agent` → node. Code-enforced: LLM chọn "done" nhưng còn dữ
+    liệu vừa crawl (chưa soạn ghi) → ép qua `db_write` trước, không phụ thuộc
+    LLM có nhớ tự chọn hay không — side-effect ghi DB không được phó mặc cho
+    routing tự do (khác chọn worker đọc, vốn không side-effect)."""
+    next_agent = state.get("next_agent") or "done"
+    if next_agent in _WORKER_DOMAINS:
+        return next_agent
+    notes = state.get("notes") or {}
+    if "db_write" not in notes and (_news_candidates(state.get("news")) or _price_candidates(state.get("price"))):
+        return "db_write"
+    return "final_answer"
+
+
 def _make_collect_node(domain: str):
     """Chạy NGAY SAU subgraph của `domain` — gộp field kết quả (do subgraph
     vừa ghi) vào `notes[domain]` rồi quay lại supervisor. Cùng vai trò
@@ -191,12 +243,32 @@ def _make_collect_node(domain: str):
         "eval_agent": "eval",
     }
 
+    def _summarize(field: str, value) -> str:
+        """price/news không có field `detail` (chỉ db/eval có) — dựng câu tóm
+        tắt riêng, tránh in repr Pydantic thô vào notes/trace."""
+        if value is None:
+            return "(không có kết quả)"
+        detail = getattr(value, "detail", None)
+        if detail:
+            return str(detail)
+        if field == "price":
+            if not getattr(value, "last", 0):
+                return f"{value.symbol}: không lấy được giá ({value.source})."
+            pct = value.pct_change
+            pct_text = f", {'giảm' if pct < 0 else 'tăng'} {abs(pct):.1f}%" if pct is not None else ""
+            return f"{value.symbol}: {value.last:,.0f} VND{pct_text} ({value.source})."
+        if field == "news":
+            n = len(value.articles or [])
+            return f"{value.symbol}: {n} tin ({value.source})." if n else f"{value.symbol}: chưa tìm thấy tin ({value.source})."
+        return str(value)
+
     def collect(state: SupervisorState) -> dict:
         field = field_by_domain[domain]
-        value = state.get(field)
-        summary = str(getattr(value, "detail", None) or value or "(không có kết quả)")
+        summary = _summarize(field, state.get(field))
+        print(f"Collecting {domain}: {summary}")  # Debug print to trace collection
         notes = {**(state.get("notes") or {}), domain: summary}
-        return {"notes": notes}
+        trace = list(state.get("trace") or []) + [f"{domain}: {summary}"]
+        return {"notes": notes, "trace": trace}
 
     return collect
 
@@ -218,8 +290,10 @@ def db_write(state: SupervisorState) -> dict:
             "candidate_prices": _price_candidates(state.get("price")),
         }
         db = run_db_agent(payload).get("db")
-        notes = {**(state.get("notes") or {}), "db_write": str(getattr(db, "detail", None) or "(không có kết quả)")}
-        return {"db": db, "notes": notes}
+        summary = str(getattr(db, "detail", None) or "(không có kết quả)")
+        notes = {**(state.get("notes") or {}), "db_write": summary}
+        trace = list(state.get("trace") or []) + [f"db_write: {summary}"]
+        return {"db": db, "notes": notes, "trace": trace}
 
     with trace_step(step_parent(state), "db_write", input=str(state.get("symbol") or "")) as t:
         out = _db_write(state)
@@ -268,12 +342,12 @@ def hitl_commit(state: SupervisorState) -> dict:
         return out
 
 
-def _pending_list(db: object | None) -> list[PendingWrite]:
-    return list(getattr(db, "pending_writes", None) or [])
-
-
 def route_after_final_answer(state: SupervisorState) -> str:
     """Còn lệnh ghi đang chờ duyệt (và không bypass qua skip_hitl) → HITL trước reply."""
+
+    def _pending_list(db: object | None) -> list[PendingWrite]:
+        return list(getattr(db, "pending_writes", None) or [])
+
     skip_hitl = bool(state.get("skip_hitl"))
     if _pending_list(state.get("db")) and not skip_hitl:
         return "hitl_commit"
@@ -286,12 +360,15 @@ def final_answer_node(state: SupervisorState) -> dict:
     def _final_answer(state: SupervisorState, notes_text: str) -> str:
         symbol = str(state.get("symbol") or "")
         question = str(state.get("question") or "")
+        history = list(state.get("history") or [])
+        parts = [f"Mã: {symbol or '(không rõ)'}", f"Nhiệm vụ: {question}"]
+        if history:
+            shaped = context.sliding_window(history, settings.agent_keep_recent_messages)
+            parts.append("Hội thoại gần đây (các lượt trước):\n" + context.format_messages(shaped))
+        parts.append(f"Ghi chú:\n{notes_text}")
         try:
             parsed, usage = chat_parsed_with_usage(
-                bound_messages(
-                    _FINAL_ANSWER_SYSTEM,
-                    f"Mã: {symbol or '(không rõ)'}\nNhiệm vụ: {question}\n\nGhi chú:\n{notes_text}",
-                ),
+                bound_messages(_FINAL_ANSWER_SYSTEM, "\n\n".join(parts)),
                 FinalAnswer,
                 DETERMINISTIC,
             )
@@ -318,6 +395,12 @@ def reply(state: SupervisorState) -> dict:
             answer = answer.rstrip() + " " + db.detail
 
         usage = pop_usage(str(state.get("turn") or ""))
+        trace = list(state.get("trace") or [])
+        if usage:
+            trace.append(
+                f"Token: {int(usage['prompt_tokens'])} in + {int(usage['completion_tokens'])} out"
+                f" (~${usage['cost_usd']:.6f})"
+            )
         output = Agent_Output(
             symbol=symbol,
             question=str(state.get("question") or ""),
@@ -326,7 +409,7 @@ def reply(state: SupervisorState) -> dict:
             news=state.get("news"),
             eval=state.get("eval"),
             db=state.get("db"),
-            trace=list(state.get("trace") or []),
+            trace=trace,
             prompt_tokens=int(usage["prompt_tokens"]) if usage else None,
             completion_tokens=int(usage["completion_tokens"]) if usage else None,
             cost_usd=round(usage["cost_usd"], 6) if usage else None,
@@ -362,6 +445,10 @@ def should_compact_route(state: SupervisorState) -> str:
 
 def recall_memory(state: SupervisorState) -> dict:
     """Đầu lượt: đọc long-term (Qdrant user_memory) theo user_id. Không user → bỏ qua."""
+
+    def _query_for_routing(state: SupervisorState) -> str:
+        """Câu dùng để recall — ưu tiên bản đã rewrite, fallback câu gốc."""
+        return str(state.get("rewritten_question") or state.get("question") or "").strip()
 
     def _recall_memory(state: SupervisorState) -> dict:
         user_id = str(state.get("user_id") or "").strip()

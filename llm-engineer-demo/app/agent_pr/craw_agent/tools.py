@@ -24,7 +24,7 @@ def normalize_ticker(symbol: str) -> str:
 
 @tool
 def fetch_latest_close(symbol: str, turn: Annotated[str, InjectedState("turn")] = "") -> str:
-    """Bắt buộc khi cần giá: đóng cửa 2 phiên mới nhất vnstock KBS, VND + %. Không bịa số."""
+    """Bắt buộc khi cần giá: đóng cửa 2 phiên mới nhất vnstock VCI, VND + %. Không bịa số."""
     try:
         # Không gọi normalize() — đã có trace_step; LLM hay gọi normalize_ticker trước
         # thì sẽ bị 2 hàng craw_normalize trên Langfuse. `turn` injected (không lộ ra
@@ -44,7 +44,7 @@ def fetch_latest_close(symbol: str, turn: Annotated[str, InjectedState("turn")] 
 @tool
 def describe_price_source() -> str:
     """Nguồn giá PriceAgent dùng (không gọi mạng)."""
-    return "vnstock Quote.history nguồn KBS, close nghìn đồng ×1000 = VND."
+    return "vnstock Quote.history nguồn VCI, close nghìn đồng ×1000 = VND."
 
 
 TOOLS = [normalize_ticker, fetch_latest_close, describe_price_source]

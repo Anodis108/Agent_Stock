@@ -74,41 +74,41 @@ def _connect() -> sqlite3.Connection:
     Gọi lại mỗi lần cần DB (không giữ connection global) — sqlite file nhỏ,
     connect rẻ hơn lo thread-safety của 1 connection dùng chung.
     """
+
+    def _ensure_unique_keys(conn: sqlite3.Connection) -> None:
+        """Migration một lần: thêm UNIQUE index (symbol, url/date) cho DB tạo trước khi có ràng buộc này.
+
+        Trước khi có unique index, INSERT OR IGNORE không chặn được trùng lặp nên
+        DB cũ có thể có bản ghi trùng (symbol, url)/(symbol, trading_date) — phải
+        xoá bớt (giữ id nhỏ nhất) rồi mới tạo được UNIQUE index. Idempotent: kiểm
+        tra index đã tồn tại (dòng đầu) để bỏ qua bước dọn dẹp ở các lần gọi sau.
+        """
+        have = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'idx_news_symbol_url'"
+        ).fetchone()
+        if have:
+            conn.executescript(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_prices_symbol_date "
+                "ON prices(symbol, trading_date);"
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_price_pending_symbol_date "
+                "ON price_pending(symbol, trading_date);"
+            )
+            return
+        conn.execute(
+            "DELETE FROM news WHERE id NOT IN (SELECT MIN(id) FROM news GROUP BY symbol, url)"
+        )
+        conn.execute(
+            "DELETE FROM news_pending WHERE id NOT IN "
+            "(SELECT MIN(id) FROM news_pending GROUP BY symbol, url)"
+        )
+        conn.executescript(_UNIQUE_INDEXES)
+
     _DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(_DB_PATH))
     conn.row_factory = sqlite3.Row
     conn.executescript(_SCHEMA)
     _ensure_unique_keys(conn)
     return conn
-
-
-def _ensure_unique_keys(conn: sqlite3.Connection) -> None:
-    """Migration một lần: thêm UNIQUE index (symbol, url/date) cho DB tạo trước khi có ràng buộc này.
-
-    Trước khi có unique index, INSERT OR IGNORE không chặn được trùng lặp nên
-    DB cũ có thể có bản ghi trùng (symbol, url)/(symbol, trading_date) — phải
-    xoá bớt (giữ id nhỏ nhất) rồi mới tạo được UNIQUE index. Idempotent: kiểm
-    tra index đã tồn tại (dòng đầu) để bỏ qua bước dọn dẹp ở các lần gọi sau.
-    """
-    have = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'idx_news_symbol_url'"
-    ).fetchone()
-    if have:
-        conn.executescript(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_prices_symbol_date "
-            "ON prices(symbol, trading_date);"
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_price_pending_symbol_date "
-            "ON price_pending(symbol, trading_date);"
-        )
-        return
-    conn.execute(
-        "DELETE FROM news WHERE id NOT IN (SELECT MIN(id) FROM news GROUP BY symbol, url)"
-    )
-    conn.execute(
-        "DELETE FROM news_pending WHERE id NOT IN "
-        "(SELECT MIN(id) FROM news_pending GROUP BY symbol, url)"
-    )
-    conn.executescript(_UNIQUE_INDEXES)
 
 
 def normalize(state: DBState) -> dict:
@@ -164,20 +164,19 @@ def stage_writes(state: DBState) -> dict:
         return {"pending_rows": pending_rows}
 
 
-def _item_url(item) -> str:
-    """Đọc `.url` dù `item` là Pydantic model (CandidateNews) hay dict thô."""
-    return item.url if hasattr(item, "url") else item.get("url", "")
-
-
-def _item_title(item) -> str:
-    """Đọc `.title` dù `item` là Pydantic model hay dict thô."""
-    return item.title if hasattr(item, "title") else item.get("title", "")
-
-
 def _stage_pending(symbol: str, candidates) -> list[dict]:
     """Soạn pending cho tin ứng viên — bỏ qua tin đã có trong `news` (chính thức)
     hoặc trùng URL trong cùng batch. Tin từng bị `rejected` mà bị crawl lại thì
     được đưa về `pending` (cho phép duyệt lại) thay vì bỏ qua vĩnh viễn."""
+
+    def _item_url(item) -> str:
+        """Đọc `.url` dù `item` là Pydantic model (CandidateNews) hay dict thô."""
+        return item.url if hasattr(item, "url") else item.get("url", "")
+
+    def _item_title(item) -> str:
+        """Đọc `.title` dù `item` là Pydantic model hay dict thô."""
+        return item.title if hasattr(item, "title") else item.get("title", "")
+
     with _connect() as conn:
         official = {
             row["url"]
@@ -233,19 +232,18 @@ def _stage_pending(symbol: str, candidates) -> list[dict]:
     return pending_rows
 
 
-def _price_date(item) -> str:
-    """Đọc `.trading_date` dù `item` là Pydantic model (CandidatePrice) hay dict thô."""
-    return item.trading_date if hasattr(item, "trading_date") else item.get("trading_date", "")
-
-
-def _price_close(item) -> float:
-    """Đọc `.close` dù `item` là Pydantic model hay dict thô; thiếu/0 → 0.0 (loại bỏ ở caller)."""
-    return float(item.close if hasattr(item, "close") else item.get("close") or 0)
-
-
 def _stage_prices(symbol: str, candidates) -> list[dict]:
     """Soạn pending cho giá ứng viên — bỏ qua ngày đã có trong `prices` (chính
     thức), ngày trùng trong cùng batch, hoặc `close <= 0` (dữ liệu hỏng)."""
+
+    def _price_date(item) -> str:
+        """Đọc `.trading_date` dù `item` là Pydantic model (CandidatePrice) hay dict thô."""
+        return item.trading_date if hasattr(item, "trading_date") else item.get("trading_date", "")
+
+    def _price_close(item) -> float:
+        """Đọc `.close` dù `item` là Pydantic model hay dict thô; thiếu/0 → 0.0 (loại bỏ ở caller)."""
+        return float(item.close if hasattr(item, "close") else item.get("close") or 0)
+
     with _connect() as conn:
         official = {
             row["trading_date"]
@@ -296,6 +294,19 @@ def _stage_prices(symbol: str, candidates) -> list[dict]:
 
 def parse(state: DBState) -> dict:
     """rows đã đọc + pending vừa soạn → Agent_Output. Field `result` là output graph."""
+
+    def _pending_fields(row: dict) -> dict:
+        """Chuẩn hoá 1 dict pending (từ `_stage_pending`/`_stage_prices`) thành kwargs cho `PendingWrite`."""
+        return {
+            "id": int(row["id"]),
+            "symbol": str(row.get("symbol") or ""),
+            "title": str(row.get("title") or ""),
+            "url": str(row.get("url") or ""),
+            "kind": str(row.get("kind") or "news"),
+            "trading_date": str(row.get("trading_date") or ""),
+            "close": row.get("close"),
+        }
+
     symbol = state["symbol"]
     price_rows = state.get("price_rows") or []
     news_rows = state.get("news_rows") or []
@@ -325,79 +336,65 @@ def parse(state: DBState) -> dict:
         return {"result": result}
 
 
-def _pending_fields(row: dict) -> dict:
-    """Chuẩn hoá 1 dict pending (từ `_stage_pending`/`_stage_prices`) thành kwargs cho `PendingWrite`."""
-    return {
-        "id": int(row["id"]),
-        "symbol": str(row.get("symbol") or ""),
-        "title": str(row.get("title") or ""),
-        "url": str(row.get("url") or ""),
-        "kind": str(row.get("kind") or "news"),
-        "trading_date": str(row.get("trading_date") or ""),
-        "close": row.get("close"),
-    }
-
-
 def approve_pending_write(pending_id: int, *, approve: bool, kind: str = "news") -> bool:
     """Duyệt / từ chối 1 lệnh đang treo. Idempotent theo (kind, pending_id)."""
+
+    def _approve_news(pending_id: int, approve: bool) -> bool:
+        """COMMIT/reject 1 tin pending. Idempotent: nếu đã quyết định trước đó (khác
+        `pending`), trả lại đúng kết quả tương ứng thay vì ghi đè lần quyết định cũ."""
+        with _connect() as conn:
+            row = conn.execute(
+                "SELECT symbol, title, url, status FROM news_pending WHERE id = ?",
+                (pending_id,),
+            ).fetchone()
+            if row is None:
+                return False
+            if row["status"] != "pending":
+                return (row["status"] == "approved") is approve
+            if approve:
+                conn.execute(
+                    "INSERT OR IGNORE INTO news (symbol, title, url, ts) VALUES (?, ?, ?, ?)",
+                    (row["symbol"], row["title"], row["url"], time.time()),
+                )
+                conn.execute(
+                    "UPDATE news_pending SET status = 'approved' WHERE id = ?",
+                    (pending_id,),
+                )
+            else:
+                conn.execute(
+                    "UPDATE news_pending SET status = 'rejected' WHERE id = ?",
+                    (pending_id,),
+                )
+        return True
+
+    def _approve_price(pending_id: int, approve: bool) -> bool:
+        """COMMIT/reject 1 giá pending — cùng logic idempotent với `_approve_news`."""
+        with _connect() as conn:
+            row = conn.execute(
+                "SELECT symbol, trading_date, close, status FROM price_pending WHERE id = ?",
+                (pending_id,),
+            ).fetchone()
+            if row is None:
+                return False
+            if row["status"] != "pending":
+                return (row["status"] == "approved") is approve
+            if approve:
+                conn.execute(
+                    "INSERT OR IGNORE INTO prices (symbol, trading_date, close, ts) "
+                    "VALUES (?, ?, ?, ?)",
+                    (row["symbol"], row["trading_date"], row["close"], time.time()),
+                )
+                conn.execute(
+                    "UPDATE price_pending SET status = 'approved' WHERE id = ?",
+                    (pending_id,),
+                )
+            else:
+                conn.execute(
+                    "UPDATE price_pending SET status = 'rejected' WHERE id = ?",
+                    (pending_id,),
+                )
+        return True
+
     if kind == "price":
         return _approve_price(pending_id, approve)
     return _approve_news(pending_id, approve)
-
-
-def _approve_news(pending_id: int, approve: bool) -> bool:
-    """COMMIT/reject 1 tin pending. Idempotent: nếu đã quyết định trước đó (khác
-    `pending`), trả lại đúng kết quả tương ứng thay vì ghi đè lần quyết định cũ."""
-    with _connect() as conn:
-        row = conn.execute(
-            "SELECT symbol, title, url, status FROM news_pending WHERE id = ?",
-            (pending_id,),
-        ).fetchone()
-        if row is None:
-            return False
-        if row["status"] != "pending":
-            return (row["status"] == "approved") is approve
-        if approve:
-            conn.execute(
-                "INSERT OR IGNORE INTO news (symbol, title, url, ts) VALUES (?, ?, ?, ?)",
-                (row["symbol"], row["title"], row["url"], time.time()),
-            )
-            conn.execute(
-                "UPDATE news_pending SET status = 'approved' WHERE id = ?",
-                (pending_id,),
-            )
-        else:
-            conn.execute(
-                "UPDATE news_pending SET status = 'rejected' WHERE id = ?",
-                (pending_id,),
-            )
-    return True
-
-
-def _approve_price(pending_id: int, approve: bool) -> bool:
-    """COMMIT/reject 1 giá pending — cùng logic idempotent với `_approve_news`."""
-    with _connect() as conn:
-        row = conn.execute(
-            "SELECT symbol, trading_date, close, status FROM price_pending WHERE id = ?",
-            (pending_id,),
-        ).fetchone()
-        if row is None:
-            return False
-        if row["status"] != "pending":
-            return (row["status"] == "approved") is approve
-        if approve:
-            conn.execute(
-                "INSERT OR IGNORE INTO prices (symbol, trading_date, close, ts) "
-                "VALUES (?, ?, ?, ?)",
-                (row["symbol"], row["trading_date"], row["close"], time.time()),
-            )
-            conn.execute(
-                "UPDATE price_pending SET status = 'approved' WHERE id = ?",
-                (pending_id,),
-            )
-        else:
-            conn.execute(
-                "UPDATE price_pending SET status = 'rejected' WHERE id = ?",
-                (pending_id,),
-            )
-    return True

@@ -156,6 +156,34 @@
   .worker-col { display: flex; flex-direction: column; gap: 0.5rem; }
   .worker-col .arch-box { border-color: var(--worker); color: var(--worker); }
 
+  .graph-img-wrap { margin-top: 1.2rem; text-align: center; }
+  .graph-img-wrap img { max-height: 46vh; width: auto; max-width: 100%; border-radius: 10px; border: 1px solid var(--line); background: #fff; box-shadow: 0 2px 10px var(--shadow); }
+
+  /* Tool diagram: agent node + its tool pills */
+  .tool-map { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.9rem; margin-top: 1rem; }
+  .tool-map.g2 { grid-template-columns: repeat(2, 1fr); }
+  .tool-node { background: var(--bg-raised); border: 1.5px solid var(--line); border-radius: 12px; padding: 0.8rem 0.9rem; box-shadow: 0 2px 6px var(--shadow); }
+  .tool-node .head { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.55rem; }
+  .tool-node .head .dot-ic { width: 9px; height: 9px; border-radius: 50%; background: var(--ink-faint); flex: none; }
+  .tool-node .head b { font-family: 'IBM Plex Mono', monospace; font-size: 0.86rem; }
+  .tool-node .role { font-size: 0.68rem; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.04em; margin: -0.3rem 0 0.5rem; }
+  .tool-pill-list { display: flex; flex-direction: column; gap: 0.32rem; }
+  .tool-pill { font-size: 0.76rem; line-height: 1.35; color: var(--ink-soft); border-left: 2px solid var(--line); padding-left: 0.55rem; }
+  .tool-pill b { font-family: 'IBM Plex Mono', monospace; font-weight: 500; color: var(--ink); font-size: 0.78rem; }
+  .tool-pill.req { border-left-color: var(--accent); }
+  .tool-pill.req b { color: var(--accent-ink); }
+
+  .hub-node .head .dot-ic { background: var(--accent); }
+  .hub-node { border-color: var(--accent); }
+  .worker-node .head .dot-ic { background: var(--worker); }
+  .worker-node { border-color: var(--worker); }
+  .guard-node .head .dot-ic { background: var(--hitl); }
+  .guard-node { border-color: var(--hitl); }
+
+  .tool-legend { display: flex; gap: 1.4rem; margin-top: 1rem; flex-wrap: wrap; font-size: 0.78rem; color: var(--ink-faint); }
+  .tool-legend span { display: inline-flex; align-items: center; gap: 0.4rem; }
+  .tool-legend .sw { width: 10px; height: 10px; border-radius: 50%; }
+
   footer.progress {
     position: absolute;
     bottom: 4vh;
@@ -215,10 +243,10 @@
   <!-- 1. MUC TIEU -->
   <section class="slide cover active">
     <p class="eyebrow">Đồ án cuối khóa · LLM Engineer</p>
-    <h1 class="title">Hierarchical Coordinator cho phân tích cổ phiếu Việt Nam</h1>
+    <h1 class="title">Hierarchical Supervisor cho phân tích cổ phiếu Việt Nam</h1>
     <p class="lede">Trả lời câu hỏi tiếng Việt về cổ phiếu niêm yết — giá, tin tức, nguyên nhân biến động — bằng cách <b>phối hợp nhiều nguồn dữ liệu thật</b> (vnstock, CafeF, SQLite), <b>không bịa số liệu</b> khi thiếu dữ liệu, và <b>không tự ý ghi dữ liệu</b> mới vào kho mà chưa có người duyệt.</p>
     <div class="stat-row">
-      <div class="stat"><div class="num">4</div><div class="label">nguồn cần phối hợp: giá, tin, lịch sử DB, đánh giá khớp</div></div>
+      <div class="stat"><div class="num">4</div><div class="label">worker chuyên biệt: giá, tin, lịch sử DB, đánh giá khớp giá–tin</div></div>
       <div class="stat"><div class="num">1</div><div class="label">LLM call đơn lẻ không đủ cho câu hỏi nhiều bước ("tại sao giảm")</div></div>
       <div class="stat"><div class="num">0</div><div class="label">số liệu được phép bịa ra, dù thiếu hay đủ dữ liệu</div></div>
     </div>
@@ -227,46 +255,144 @@
   <!-- 2. KIEN TRUC -->
   <section class="slide">
     <p class="eyebrow">Kiến trúc</p>
-    <h2 class="sub">Một hub điều phối, 5 worker chuyên biệt không nói chuyện với nhau</h2>
-    <p class="lede" style="max-width: 72ch;"><b>Decision point:</b> chọn Hub-and-Spoke thay vì Swarm (agent tự chuyền việc cho nhau). Coordinator là một <b>máy trạng thái theo "sóng"</b> cố định — mỗi lần chạy chỉ trả về đúng một bước tiếp theo, không phải LLM tự quyết định thứ tự mỗi vòng.</p>
-    <div class="arch-row">
-      <div class="arch-box hub">coordinator</div>
-      <div class="arch-arrow">→</div>
-      <div class="worker-col">
-        <div class="arch-box">price_agent</div>
-        <div class="arch-box">news_agent</div>
-        <div class="arch-box">db_agent</div>
-      </div>
-      <div class="arch-arrow">→</div>
-      <div class="worker-col">
-        <div class="arch-box">eval_agent</div>
-        <div class="arch-box">synth_agent</div>
-      </div>
-      <div class="arch-arrow">→</div>
-      <div class="arch-box hub">reply</div>
+    <h2 class="sub">Một Supervisor hỏi LLM sau mỗi worker, không phải máy trạng thái cố định</h2>
+    <p class="lede" style="max-width: 72ch;"><b>Decision point:</b> chọn Hub-and-Spoke với <b>routing động</b> (LLM chọn worker kế tiếp mỗi vòng, theo mẫu <code>agent_m2/hierarchical.py</code>) — thay cho một máy trạng thái nhiều nhánh khó bảo trì. Đổi lại: tốn thêm 1 lời gọi LLM mỗi vòng, nhưng loại bỏ hẳn logic điều kiện cứng trong code.</p>
+    <div class="graph-img-wrap">
+      <img src="images/supervisor_agent_graph.png" alt="Sơ đồ graph thật của Hierarchical Supervisor — LangGraph render">
     </div>
-    <p class="lede" style="margin-top: 1.5rem; font-size: 0.88rem;">Thứ tự sóng cố định: <code>db_lookup → gather → eval → synth → db_write → hitl → done</code>. Cả 5 worker dùng chung khung ReAct (<code>seed → agent ⇄ tools → pack</code>) — chỉ khác system prompt, catalog tool và cách đóng gói kết quả.</p>
+    <p class="lede" style="margin-top: 1rem; font-size: 0.88rem;">Ảnh render trực tiếp từ graph LangGraph đang chạy (không phải sơ đồ vẽ tay). Mỗi worker chạy xong quay lại <code>supervisor</code> qua 1 node <code>&lt;domain&gt;_collect</code> gộp kết quả vào <code>notes[domain]</code>. LLM đọc lại notes, chọn tiếp worker khác hoặc <code>"done"</code> — không có thứ tự cố định, LLM có thể dừng sau đúng 1 worker nếu đủ dữ liệu. <code>db_write</code> là 1 nhánh riêng supervisor có thể chọn (ép chạy trước "done" nếu còn dữ liệu chưa soạn ghi); <code>hitl_commit</code> là node duy nhất graph dừng lại chờ người duyệt.</p>
+  </section>
+
+  <!-- 2b. TOOLS -->
+  <section class="slide">
+    <p class="eyebrow">Tools</p>
+    <h2 class="sub">Toàn bộ node của graph — không chỉ 4 worker</h2>
+    <p class="lede" style="max-width: 76ch; font-size: 0.92rem;">Hub (guardrail, supervisor, final_answer) <b>không bind tool</b> — nó dùng <code>with_structured_output</code> để ép LLM trả JSON đúng schema. Chỉ 4 worker (+ nhánh <code>db_write</code>) thật sự bind tool cho LLM tự chọn gọi, qua <code>select_tools()</code> theo catalog riêng từng domain.</p>
+
+    <div class="tool-map g2" style="margin-top: 1.1rem;">
+      <div class="tool-node guard-node">
+        <div class="head"><span class="dot-ic"></span><b>guardrail_input</b></div>
+        <div class="role">Function checks — không LLM, không tool</div>
+        <div class="tool-pill-list">
+          <div class="tool-pill req"><b>check_input()</b> — regex injection/toxic, raise HTTP 400 nếu dính.</div>
+          <div class="tool-pill"><b>in_topic_scope()</b> — lớp 1: khớp từ khoá cổ phiếu VN, rẻ, chạy mọi request.</div>
+          <div class="tool-pill"><b>llm_scope_check()</b> — lớp 2: chỉ gọi LLM khi lớp 1 nghi ngờ, bắt câu diễn đạt khéo.</div>
+          <div class="tool-pill"><b>redact_pii()</b> — che thông tin cá nhân trong câu hỏi trước khi đi tiếp.</div>
+        </div>
+      </div>
+      <div class="tool-node hub-node">
+        <div class="head"><span class="dot-ic"></span><b>rewrite_question → supervisor</b></div>
+        <div class="role">Structured output — không bind tool</div>
+        <div class="tool-pill-list">
+          <div class="tool-pill req"><b>RewrittenQuery</b> — LLM tách <code>symbol</code> + câu viết lại rõ nghĩa, không parse free-text.</div>
+          <div class="tool-pill req"><b>RoutingDecision</b> — mỗi vòng: chọn 1 trong price_agent/news_agent/db_agent/db_write/eval_agent/done + lý do.</div>
+          <div class="tool-pill"><b>FinalAnswer</b> (ở <code>final_answer</code>) — tổng hợp câu trả lời cuối thẳng từ <code>notes</code> tích luỹ, không tự bịa số ngoài notes.</div>
+        </div>
+      </div>
+      <div class="tool-node worker-node">
+        <div class="head"><span class="dot-ic"></span><b>price_agent</b></div>
+        <div class="role">ReAct — 3 tool, vnstock VCI</div>
+        <div class="tool-pill-list">
+          <div class="tool-pill req"><b>fetch_latest_close</b> — bắt buộc: giá đóng cửa 2 phiên gần nhất + %. <code>last=0</code> = không lấy được, không bịa số.</div>
+          <div class="tool-pill"><b>normalize_ticker</b> — chuẩn hoá mã (hpg → HPG) khi model cần hỏi thêm.</div>
+          <div class="tool-pill"><b>describe_price_source</b> — trả lời "giá lấy từ đâu" không tốn 1 lượt gọi vnstock thật.</div>
+        </div>
+      </div>
+      <div class="tool-node worker-node">
+        <div class="head"><span class="dot-ic"></span><b>news_agent</b></div>
+        <div class="role">ReAct — 3 tool, CafeF Ajax</div>
+        <div class="tool-pill-list">
+          <div class="tool-pill req"><b>fetch_cafef_news</b> — bắt buộc: bài mới nhất trang mã CafeF, không chấm sentiment, không bịa tiêu đề.</div>
+          <div class="tool-pill"><b>normalize_ticker</b> — chuẩn hoá mã trước khi gọi CafeF.</div>
+          <div class="tool-pill"><b>describe_news_source</b> — mô tả nguồn tin, không gọi mạng.</div>
+        </div>
+      </div>
+      <div class="tool-node worker-node">
+        <div class="head"><span class="dot-ic"></span><b>db_agent</b></div>
+        <div class="role">ReAct — 3 tool, SQLite + idempotency</div>
+        <div class="tool-pill-list">
+          <div class="tool-pill req"><b>read_symbol_store</b> — đọc tối đa 5 phiên giá + tin đã lưu, không HITL vì chỉ đọc.</div>
+          <div class="tool-pill"><b>stage_new_rows</b> — soạn lệnh ghi tin/giá mới, nhận <code>idempotency_key</code> để không soạn trùng khi LLM tự retry.</div>
+          <div class="tool-pill"><b>describe_db_hitl</b> — giải thích vì sao ghi DB cần người duyệt.</div>
+        </div>
+      </div>
+      <div class="tool-node worker-node">
+        <div class="head"><span class="dot-ic"></span><b>eval_agent</b></div>
+        <div class="role">ReAct — 3 tool, keyword rule-based</div>
+        <div class="tool-pill-list">
+          <div class="tool-pill req"><b>score_price_vs_news</b> — bắt buộc: nhận JSON giá + tin, không sửa số, không bịa sentiment.</div>
+          <div class="tool-pill"><b>classify_headline</b> — chấm 1 tiêu đề đơn lẻ (negative/positive/neutral).</div>
+          <div class="tool-pill"><b>list_eval_keywords</b> — liệt kê đúng bộ từ khoá đang dùng, tránh model tự đoán tiêu chí.</div>
+        </div>
+      </div>
+      <div class="tool-node worker-node">
+        <div class="head"><span class="dot-ic"></span><b>db_write</b></div>
+        <div class="role">Dùng lại tool db_agent — vai trò ghi, không đọc</div>
+        <div class="tool-pill-list">
+          <div class="tool-pill req"><b>stage_new_rows</b> — soạn pending từ giá/tin vừa crawl trong turn, chưa COMMIT.</div>
+          <div class="tool-pill"><b>read_symbol_store</b> — đối chiếu tránh soạn trùng dòng đã có trong DB.</div>
+        </div>
+      </div>
+      <div class="tool-node guard-node">
+        <div class="head"><span class="dot-ic"></span><b>hitl_commit → guardrail_output</b></div>
+        <div class="role">Interrupt + function checks — không LLM</div>
+        <div class="tool-pill-list">
+          <div class="tool-pill req"><b>interrupt_before</b> — graph treo lại đúng trước khi COMMIT bảng chính, chờ <code>/pr/approve</code>.</div>
+          <div class="tool-pill"><b>check_output()</b> — độ dài, tiếng Việt, khớp số liệu với evidence, PII, toxicity trước khi trả user.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tool-legend">
+      <span><span class="sw" style="background:var(--hitl)"></span> Guardrail / HITL — function check, không LLM tool</span>
+      <span><span class="sw" style="background:var(--accent)"></span> Hub — LLM structured output, không bind tool</span>
+      <span><span class="sw" style="background:var(--worker)"></span> Worker — LLM tự chọn tool qua ReAct</span>
+    </div>
+    <p class="lede" style="margin-top: 1rem; font-size: 0.85rem;">Mỗi worker ReAct luôn có 1 tool "bắt buộc" làm việc thật (IO) + tool phụ (chuẩn hoá / mô tả nguồn) — pattern lặp lại nhất quán. Hub không cần tool vì việc của nó là quyết định + tổng hợp, ép schema chặt hơn là để LLM tự chọn hàm.</p>
   </section>
 
   <!-- 3. DECISION POINTS -->
   <section class="slide">
-    <p class="eyebrow">Decision points</p>
-    <h2 class="sub">Vì sao chọn kiến trúc và cơ chế này</h2>
+    <p class="eyebrow">Decision points · 1/2</p>
+    <h2 class="sub">Vì sao routing động, và vì sao vẫn cần 1 ngoại lệ code cứng</h2>
     <div class="cards g3">
       <div class="card">
-        <span class="k">Sóng, không phải routing tự do</span>
-        <h3>State machine thay vì LLM chọn mỗi bước</h3>
-        <p>LLM chỉ gọi <b>một lần đầu turn</b> để lập <code>AgentPlan</code> (cần giá? tin? đánh giá?). Sau đó thứ tự chạy là quy tắc cứng trong code — dễ debug, dễ đặt đúng một điểm dừng HITL, tránh vòng lặp routing vô hạn của Swarm.</p>
+        <span class="k">Routing động thay vì máy trạng thái</span>
+        <h3>Đổi độ phức tạp code lấy thêm 1 LLM call/vòng</h3>
+        <p>Bản trước là 1 hàm <code>_coordinate</code> nhiều nhánh if/else theo thứ tự cố định — khó mở rộng, khó đọc khi thêm nghiệp vụ mới. Bản này: LLM tự đọc <code>notes</code> đã tích luỹ, tự quyết định worker kế tiếp hoặc dừng. Đánh đổi: mỗi vòng tốn thêm 1 lời gọi LLM (<code>RoutingDecision</code>), nhưng loại bỏ hẳn logic điều kiện lồng nhau trong code.</p>
       </div>
       <div class="card">
+        <span class="k">Routing tự do, trừ 1 ngoại lệ</span>
+        <h3><code>route_supervisor</code> ép <code>db_write</code></h3>
+        <p>LLM tự do chọn worker <b>đọc</b> dữ liệu (price/news/db/eval) — không side-effect nên an toàn để LLM quyết định. Nhưng <b>ghi dữ liệu mới vào kho</b> là side-effect thật: nếu LLM chọn "done" mà còn giá/tin vừa crawl chưa soạn lệnh ghi, code CƯỠNG BỨC đi qua <code>db_write</code> trước — không phó mặc bước có tác dụng phụ cho routing tự do.</p>
+      </div>
+      <div class="card">
+        <span class="k">Tool retrieval theo từng worker</span>
+        <h3>Không index chung 1 catalog toàn cục</h3>
+        <p>Mỗi worker chỉ nhận catalog tool của riêng nó (<code>PriceAgent</code> không thấy <code>fetch_cafef_news</code>) — <code>select_tools()</code> embed mô tả tool trong catalog đó, cache theo tên catalog. Không dùng Hierarchical Grouping vì mỗi catalog đã là 1 domain hẹp, gom nhóm thêm sẽ thừa.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3b. DECISION POINTS 2 -->
+  <section class="slide">
+    <p class="eyebrow">Decision points · 2/2</p>
+    <h2 class="sub">Guardrail đúng chỗ, và bài học từ hallucination thật</h2>
+    <div class="cards g3">
+      <div class="card">
         <span class="k">Guardrail 2 lớp, đúng chỗ</span>
-        <h3>Injection/out-of-scope khác "vượt khả năng agent"</h3>
-        <p>Lớp keyword rẻ chạy mọi request; lớp LLM chỉ chạy khi lớp 1 nghi ngờ. Câu "mã nào lãi nhiều nhất" đúng domain chứng khoán (guardrail không chặn) nhưng vượt khả năng agent (chỉ tra 1 mã) — quyết định sửa đúng ở <b>plan</b>, không nhồi vào guardrail scope.</p>
+        <h3>Ngoài domain khác "vượt khả năng agent"</h3>
+        <p>Lớp keyword rẻ (<code>in_topic_scope</code>) chạy mọi request; lớp LLM (<code>llm_scope_check</code>) chỉ chạy khi lớp 1 nghi ngờ — bắt câu diễn đạt khéo không chứa từ khoá. Câu "mã nào lãi nhiều nhất" đúng domain chứng khoán (guardrail không chặn) nhưng vượt khả năng agent (chỉ tra được 1 mã cụ thể) — quyết định sửa đúng ở prompt <b>routing</b>, không nhồi thêm điều kiện vào guardrail scope.</p>
       </div>
       <div class="card">
         <span class="k">Diễn giải dữ liệu, không dump thô</span>
-        <h3>Chặn hallucination khi ghép câu</h3>
-        <p>Model từng tự suy diễn "thiếu lịch sử" khi thấy <code>prev_close=None</code> dù <code>pct_change</code> đã có, hoặc tự bịa "KHÔNG khớp" khi <code>price_matches_news=None</code>. Sửa bằng cách diễn giải rõ từng field quan trọng trong prompt gửi LLM, thay vì để model tự đoán từ JSON thô.</p>
+        <h3>Chặn hallucination khi tổng hợp câu trả lời</h3>
+        <p>Model từng tự suy diễn "thiếu lịch sử" khi thấy <code>prev_close=None</code> dù <code>pct_change</code> đã có, hoặc tự bịa "KHÔNG khớp" khi <code>price_matches_news=None</code>. Sửa bằng cách diễn giải rõ từng field quan trọng thành câu tiếng Việt trong prompt gửi LLM, thay vì để model tự đoán từ JSON thô.</p>
+      </div>
+      <div class="card">
+        <span class="k">Gộp worker ghép câu vào hub</span>
+        <h3>Bỏ hẳn <code>synthesis_agent</code> riêng</h3>
+        <p>Worker ghép câu từng là 1 domain riêng trong routing (5 worker), nhưng đã gỡ bỏ hoàn toàn — <code>final_answer_node</code> tự tổng hợp thẳng từ <code>notes</code> tích luỹ. Ít 1 lời gọi LLM/turn, ít 1 domain routing phải dạy LLM khi nào chọn — đổi lại tổng hợp không còn là bước độc lập, tách rời để test riêng.</p>
       </div>
     </div>
   </section>
@@ -275,37 +401,53 @@
   <section class="slide">
     <p class="eyebrow">Human-in-the-Loop</p>
     <h2 class="sub">Chỉ một điểm dừng — đúng lúc chuẩn bị ghi dữ liệu thật</h2>
-    <p class="lede">5 worker chạy tự do, không worker nào tự hỏi ý kiến người dùng. Graph chỉ <code>interrupt_before=["hitl_commit"]</code> — dừng đúng lúc chuẩn bị COMMIT tin/giá mới vào SQLite, chờ API <code>/pr/approve</code> mới đi tiếp.</p>
+    <p class="lede">Không worker nào tự hỏi ý kiến người dùng — HITL chỉ nằm ở tầng hub. Graph compile với <code>interrupt_before=["hitl_commit"]</code> — dừng đúng lúc chuẩn bị COMMIT tin/giá mới vào SQLite, chờ API <code>/pr/approve</code> mới đi tiếp.</p>
     <div class="cards g3" style="margin-top: 2rem;">
-      <div class="card worker-card"><span class="k">Bước 1</span><h3>Crawl xong</h3><p>Worker lấy được tin/giá mới, đóng gói thành lệnh ghi chờ duyệt (pending), chưa commit vào bảng chính.</p></div>
-      <div class="card hitl-card"><span class="k">Bước 2</span><h3>Dừng lại</h3><p>Graph treo ở <code>hitl_commit</code>, trả về câu trả lời tạm kèm số lệnh đang chờ duyệt.</p></div>
-      <div class="card worker-card"><span class="k">Bước 3</span><h3>Resume</h3><p>Người dùng duyệt/từ chối qua API, graph tiếp tục đúng từ điểm dừng — không chạy lại từ đầu, không tốn lại LLM call.</p></div>
+      <div class="card worker-card"><span class="k">Bước 1</span><h3>db_write soạn lệnh</h3><p>Có dữ liệu mới crawl (không phải từ DB), soạn thành lệnh ghi chờ duyệt (pending) — chưa commit vào bảng chính.</p></div>
+      <div class="card hitl-card"><span class="k">Bước 2</span><h3>Dừng lại</h3><p>Graph treo ở <code>hitl_commit</code>, trả về câu trả lời tạm (đã tổng hợp) kèm số lệnh đang chờ duyệt.</p></div>
+      <div class="card worker-card"><span class="k">Bước 3</span><h3>Resume</h3><p>Người dùng duyệt/từ chối qua API — theo từng lệnh hoặc cả lô — graph tiếp tục đúng từ điểm dừng, không chạy lại từ đầu.</p></div>
     </div>
   </section>
 
   <!-- 5. KET QUA -->
   <section class="slide">
     <p class="eyebrow">Kết quả đạt được</p>
-    <h2 class="sub">Đúng thiết kế, không hallucination, có kiểm soát chi phí</h2>
+    <h2 class="sub">Đúng thiết kế, chi phí đo được, không hallucination</h2>
     <div class="stat-row">
-      <div class="stat"><div class="num">76/76</div><div class="label">test pass với LLM/API thật (vnstock, CafeF, OpenAI) — không mock</div></div>
-      <div class="stat"><div class="num">gpt-4o-mini</div><div class="label">model mặc định, rẻ — chỉ lên <code>gpt-4o</code> khi câu hỏi cần suy luận nhiều bước ("tại sao", "so sánh")</div></div>
-      <div class="stat"><div class="num">4</div><div class="label"><code>next_wave</code> lặp liên tiếp → tự dừng, không chờ crash <code>recursion_limit</code></div></div>
+      <div class="stat"><div class="num">62/64</div><div class="label">test pass với LLM/API thật (vnstock, CafeF, OpenAI) — không mock; 2 fail do nguồn vnstock trả rỗng, không phải lỗi logic</div></div>
+      <div class="stat"><div class="num">~$0.0003</div><div class="label">chi phí đo thực tế 1 lượt hỏi giá đơn giản (1671 token in + 84 out, gpt-4o-mini)</div></div>
+      <div class="stat"><div class="num">28</div><div class="label"><code>recursion_limit</code> — lưới an toàn cuối cùng nếu routing động lặp vô hạn</div></div>
     </div>
-    <p class="lede" style="margin-top: 2rem;">Mọi lời gọi LLM trong một turn được cộng dồn token + chi phí USD theo bảng giá thật, trả kèm trong response — trả lời được ngay câu "1 lượt hỏi tốn bao nhiêu" mà không cần đọc log LangFuse. Không nêu được mã cụ thể → từ chối rõ ràng thay vì bịa mã mặc định và trả lời sai.</p>
+    <div class="cards g3" style="margin-top: 1.8rem;">
+      <div class="card">
+        <span class="k">Đúng thiết kế</span>
+        <h3>Dừng sớm khi đủ, mở rộng khi cần</h3>
+        <p>Câu hỏi giá đơn giản chỉ tốn 1 worker + 2 lời gọi routing (chọn <code>price_agent</code>, rồi "done"). Câu hỏi "tại sao giảm" tự mở rộng ra 3 worker (price → news → eval) — không cấu hình cứng theo loại câu hỏi.</p>
+      </div>
+      <div class="card">
+        <span class="k">Không hallucination đã xác nhận</span>
+        <h3>2 lớp fix đã kiểm chứng bằng test</h3>
+        <p>Không trích được mã cụ thể → <code>missing_symbol</code> từ chối rõ ràng thay vì bịa "HPG" mặc định. Diễn giải rõ <code>pct_change</code>/<code>price_matches_news</code> cho LLM thay vì dump JSON — chặn model tự suy diễn sai khi thiếu dữ liệu.</p>
+      </div>
+      <div class="card">
+        <span class="k">Chi phí minh bạch theo turn</span>
+        <h3>Không cần đọc log LangFuse mới biết giá</h3>
+        <p>Mọi lời gọi LLM trong 1 turn (rewrite, routing mỗi vòng, final_answer) được cộng dồn qua <code>record_usage</code>/<code>pop_usage</code>, trả thẳng <code>prompt_tokens</code>/<code>completion_tokens</code>/<code>cost_usd</code> trong response — trả lời ngay câu "lượt này tốn bao nhiêu".</p>
+      </div>
+    </div>
   </section>
 
   <!-- 6. DEMO -->
   <section class="slide">
     <p class="eyebrow">Demo</p>
-    <h2 class="sub">4 lượt hỏi — đi qua đủ routing, HITL, memory, đánh giá</h2>
+    <h2 class="sub">4 lượt hỏi — đi qua đủ routing động, HITL, memory</h2>
     <div class="steps">
-      <div class="step"><span class="n">1</span><span class="t"><b>"Giá HPG hôm nay bao nhiêu?"</b><span>Câu hỏi đơn giản → router chọn model rẻ, chỉ <code>price_agent</code> chạy. Cho thấy coordinator không lãng phí worker.</span></span></div>
-      <div class="step"><span class="n">2</span><span class="t"><b>"Tại sao HPG giảm hôm nay?"</b><span>Router chọn model mạnh hơn, <code>price_agent</code> + <code>news_agent</code> chạy, <code>eval_agent</code> đối chiếu tin có khớp chiều giá, <code>synth_agent</code> ghép câu trả lời có căn cứ.</span></span></div>
-      <div class="step"><span class="n">3</span><span class="t"><b>Worker crawl xong tin/giá mới</b><span>Graph dừng ở <code>hitl_commit</code>. Gọi <code>POST /pr/approve</code> để duyệt — graph resume đúng từ điểm dừng, không chạy lại từ đầu.</span></span></div>
-      <div class="step"><span class="n">4</span><span class="t"><b>"Mã nào lãi nhiều nhất hôm nay?"</b><span>Không nêu mã cụ thể — coordinator từ chối rõ ràng thay vì bịa mã mặc định, minh hoạ fix chống hallucination.</span></span></div>
+      <div class="step"><span class="n">1</span><span class="t"><b>"Giá HPG hôm nay bao nhiêu?"</b><span>Supervisor chỉ chọn <code>price_agent</code> rồi "done" ngay — không gọi thêm <code>news_agent</code>/<code>eval_agent</code> vì câu hỏi không cần. Minh hoạ routing dừng sớm khi đủ dữ liệu.</span></span></div>
+      <div class="step"><span class="n">2</span><span class="t"><b>"Tại sao HPG giảm hôm nay?"</b><span>Supervisor chọn <code>price_agent</code> → <code>news_agent</code> → thấy notes đủ cả 2 → chọn <code>eval_agent</code> đối chiếu tin có khớp chiều giá, rồi "done" tổng hợp câu trả lời có căn cứ.</span></span></div>
+      <div class="step"><span class="n">3</span><span class="t"><b>Worker vừa crawl xong tin/giá mới</b><span>Supervisor chọn "done" nhưng còn dữ liệu chưa soạn ghi → code ép qua <code>db_write</code> trước, rồi graph dừng ở <code>hitl_commit</code>. Gọi <code>POST /pr/approve</code> để duyệt — graph resume đúng từ điểm dừng.</span></span></div>
+      <div class="step"><span class="n">4</span><span class="t"><b>"Mã nào lãi nhiều nhất hôm nay?"</b><span>Không nêu mã cụ thể — agent từ chối rõ ràng thay vì bịa mã mặc định, minh hoạ fix chống hallucination.</span></span></div>
     </div>
-    <p class="lede" style="margin-top: 1.2rem;">Kèm một câu hỏi ngoài phạm vi ("thời tiết Hà Nội hôm nay") để minh hoạ guardrail đầu vào chặn trước khi vào coordinator.</p>
+    <p class="lede" style="margin-top: 1.2rem;">Kèm một câu hỏi ngoài phạm vi ("thời tiết Hà Nội hôm nay") để minh hoạ guardrail đầu vào chặn trước khi vào supervisor.</p>
   </section>
 
   <button class="nav-btn prev" id="prevBtn" aria-label="Slide trước">‹</button>

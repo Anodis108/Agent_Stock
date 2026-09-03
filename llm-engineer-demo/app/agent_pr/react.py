@@ -21,7 +21,7 @@ from app.monitoring.tracing import step_parent
 
 
 def fresh_user(text: str) -> dict:
-    """Seed đầu subgraph: xóa messages cũ (MemorySaver giữ từ lượt HTTP trước)."""
+    """Seed đầu subgraph: xóa messages cũ (checkpointer giữ từ lượt HTTP trước)."""
     from langchain_core.messages import RemoveMessage
     from langgraph.graph.message import REMOVE_ALL_MESSAGES
 
@@ -125,6 +125,7 @@ def build_react_subgraph(
     )
     graph.add_node("tools", ToolNode(tools))
     graph.add_node("pack", pack_fn)
+    
     graph.add_edge(START, "seed")
     graph.add_edge("seed", "agent")
     graph.add_conditional_edges("agent", should_continue, {"tools": "tools", "pack": "pack"})

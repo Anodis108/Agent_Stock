@@ -64,7 +64,10 @@ def test_guardrail_input_passes_stock_question(monkeypatch):
     monkeypatch.setattr(
         "app.guardrails.checks.settings.guardrails_llm_injection_check", False
     )
-    assert guardrail_input({"question": "giá HPG hôm nay", "symbol": "HPG"}) == {}
+    # out_of_scope=False luôn được trả tường minh (không chỉ khi True) — nếu
+    # không, giá trị True từ 1 câu ngoài phạm vi trước đó trên cùng thread_id
+    # sẽ dính lại (state không có reducer riêng cho field này).
+    assert guardrail_input({"question": "giá HPG hôm nay", "symbol": "HPG"}) == {"out_of_scope": False}
 
 
 def test_sanitize_stock_answer_disclaimer_for_unverified_number():

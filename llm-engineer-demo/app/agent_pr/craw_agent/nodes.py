@@ -24,8 +24,10 @@ def normalize(state: CrawlState) -> dict:
 
 # ── Lấy rows ──────────────────────────────────────────────────────────────────
 #
-# Quote.history(KBS): 5 phiên ngày, lấy tail(2) vì parse cần last + prev.
+# Quote.history(VCI): 5 phiên ngày, lấy tail(2) vì parse cần last + prev.
 # `close` vẫn nghìn đồng (22.1) — nhân 1000 ở parse, giữ đúng raw API.
+# Từng dùng source="KBS" nhưng KBS hay trả "Dữ liệu trống" (ValueError phía
+# provider) — VCI cùng schema cột (time/close), ổn định hơn.
 #
 # Hết data → rows rỗng (parse vẫn trả quote). Lỗi mạng Docker/DNS không crash graph.
 
@@ -37,7 +39,7 @@ def fetch(state: CrawlState) -> dict:
     symbol = state["symbol"]
     with trace_step(step_parent(state, "price_agent"), "craw_fetch", input=symbol) as t:
         try:
-            df = Quote(symbol=symbol, source="KBS").history(length="5", interval="d")
+            df = Quote(symbol=symbol, source="VCI").history(length="5", interval="d")
         except Exception as exc:
             t["output"] = {"error": str(exc)}
             return {"rows": [], "error": f"Lỗi vnstock {symbol}: {exc}. Thử lại hoặc dùng DB."}

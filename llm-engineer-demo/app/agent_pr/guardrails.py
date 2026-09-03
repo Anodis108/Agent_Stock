@@ -57,16 +57,6 @@ _OUT_OF_SCOPE_REPLY = (
 )
 
 
-def _history_blob(state: dict) -> str:
-    bits: list[str] = []
-    for msg in list(state.get("history") or [])[-8:]:
-        if isinstance(msg, dict):
-            bits.append(str(msg.get("content") or ""))
-        else:
-            bits.append(str(getattr(msg, "content", "") or ""))
-    return " ".join(bits)
-
-
 def evidence_snippets(state: dict) -> list[str]:
     """Nguồn groundedness — giá/tin/eval/DB, không gồm draft (tránh tự xác nhận)."""
     bits = [
@@ -114,23 +104,6 @@ def sanitize_stock_answer(answer: str, state: dict) -> OutputCheckResult:
     )
 
 
-def _out_of_scope(question: str, extra: str) -> bool:
-    """Lớp 1 (keyword/ticker) luôn chạy; lớp 2 (LLM) chỉ chạy khi lớp 1 nói
-    "ngoài phạm vi" VÀ bật GUARDRAILS_LLM_SCOPE_CHECK — bắt câu hợp lệ diễn
-    đạt khéo không chứa từ khóa, tránh false positive của lớp 1."""
-    from app.config import settings
-
-    if in_topic_scope(question, STOCK_KEYWORDS, extra=extra):
-        return False
-    if not settings.guardrails_llm_scope_check:
-        return True
-    try:
-        result = llm_scope_check(question, _SCOPE_DOMAIN_DESC)
-        return not result.in_scope
-    except Exception:
-        return True  # lớp 1 đã nói ngoài phạm vi — LLM lỗi thì giữ quyết định đó
-
-
 def guardrail_input(state: dict) -> dict:
     """Chặn injection/toxic (raise, HTTP 400 — mối nguy bảo mật/an toàn thật).
 
@@ -138,6 +111,32 @@ def guardrail_input(state: dict) -> dict:
     đánh dấu `out_of_scope=True` để route bỏ qua toàn bộ pipeline (không
     rewrite/crawl/coordinator gì cả), đi thẳng guardrail_output → store.
     """
+
+    def _history_blob(state: dict) -> str:
+        bits: list[str] = []
+        for msg in list(state.get("history") or [])[-8:]:
+            if isinstance(msg, dict):
+                bits.append(str(msg.get("content") or ""))
+            else:
+                bits.append(str(getattr(msg, "content", "") or ""))
+        return " ".join(bits)
+
+    def _out_of_scope(question: str, extra: str) -> bool:
+        """Lớp 1 (keyword/ticker) luôn chạy; lớp 2 (LLM) chỉ chạy khi lớp 1 nói
+        "ngoài phạm vi" VÀ bật GUARDRAILS_LLM_SCOPE_CHECK — bắt câu hợp lệ diễn
+        đạt khéo không chứa từ khóa, tránh false positive của lớp 1."""
+        from app.config import settings
+
+        if in_topic_scope(question, STOCK_KEYWORDS, extra=extra):
+            return False
+        if not settings.guardrails_llm_scope_check:
+            return True
+        try:
+            result = llm_scope_check(question, _SCOPE_DOMAIN_DESC)
+            return not result.in_scope
+        except Exception:
+            return True  # lớp 1 đã nói ngoài phạm vi — LLM lỗi thì giữ quyết định đó
+
     question = str(state.get("question") or "").strip()
     extra = " ".join(
         [
@@ -162,7 +161,11 @@ def guardrail_input(state: dict) -> dict:
                 "trace": list(state.get("trace") or []) + ["Guardrail: câu hỏi ngoài phạm vi cổ phiếu VN"],
             }
         safe = redact_pii(question)
-    out: dict = {}
+    # out_of_scope không có reducer riêng (last-value-wins) — checkpoint theo
+    # thread_id giữ nguyên giá trị cũ nếu không set lại, nên PHẢI trả False ở
+    # đây, không chỉ trả True lúc phát hiện — nếu không, 1 câu ngoài phạm vi ở
+    # đầu thread sẽ khiến MỌI câu hợp lệ sau đó trên cùng thread bị chặn oan.
+    out: dict = {"out_of_scope": False}
     if safe != question:
         out["question"] = safe
         out["trace"] = list(state.get("trace") or []) + ["Guardrail: đã che PII trong câu hỏi"]
