@@ -71,6 +71,9 @@ def fetch(state: NewsState) -> dict:
                     "title": title,
                     "url": urljoin(_CAFEF_ORIGIN, path) if path else "",
                     "publish_time": _deploy_date(str(it.get("DeployDate") or "")),
+                    # SubTitle = mô tả ngắn CafeF trả sẵn trong cùng response —
+                    # không tốn thêm HTTP request. Rỗng với tin CBTT.
+                    "summary": (it.get("SubTitle") or "").strip(),
                 }
             )
         if not rows:
@@ -100,6 +103,7 @@ def parse(state: NewsState) -> dict:
                     title=r["title"],
                     url=r.get("url", ""),
                     publish_time=r.get("publish_time", ""),
+                    summary=r.get("summary", ""),
                 )
                 for r in rows
             ],

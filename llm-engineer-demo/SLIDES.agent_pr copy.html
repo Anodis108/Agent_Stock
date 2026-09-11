@@ -1,0 +1,536 @@
+<title>Hierarchical Supervisor cho cổ phiếu VN</title>
+<!-- Đồng bộ với SLIDES.agent_pr.md (brief) — cập nhật 2026-09-03: thêm Multi-symbol, TTL freshness, Model routing, Trajectory từ tool-call thật. -->
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg: #f6f4ef;
+    --bg-raised: #ffffff;
+    --ink: #201d18;
+    --ink-soft: #55503f;
+    --ink-faint: #8a8471;
+    --line: #ddd6c4;
+    --accent: #b5762c;
+    --accent-soft: #f0e3cb;
+    --accent-ink: #6e4315;
+    --worker: #3f6b52;
+    --worker-soft: #e2ede5;
+    --hitl: #a13f3f;
+    --hitl-soft: #f3dede;
+    --code-bg: #eee9db;
+    --shadow: rgba(40, 32, 10, 0.14);
+  }
+  :root:not([data-theme="light"]) {
+    @media (prefers-color-scheme: dark) {
+      --bg: #14120d;
+      --bg-raised: #1e1a13;
+      --ink: #ece7d9;
+      --ink-soft: #b8b09b;
+      --ink-faint: #7d765f;
+      --line: #35301f;
+      --accent: #d99a4e;
+      --accent-soft: #362811;
+      --accent-ink: #f0c98a;
+      --worker: #7fb894;
+      --worker-soft: #1c2f22;
+      --hitl: #d98a8a;
+      --hitl-soft: #362121;
+      --code-bg: #1a160f;
+      --shadow: rgba(0, 0, 0, 0.5);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14120d;
+    --bg-raised: #1e1a13;
+    --ink: #ece7d9;
+    --ink-soft: #b8b09b;
+    --ink-faint: #7d765f;
+    --line: #35301f;
+    --accent: #d99a4e;
+    --accent-soft: #362811;
+    --accent-ink: #f0c98a;
+    --worker: #7fb894;
+    --worker-soft: #1c2f22;
+    --hitl: #d98a8a;
+    --hitl-soft: #362121;
+    --code-bg: #1a160f;
+    --shadow: rgba(0, 0, 0, 0.5);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  .deck { position: relative; width: 100vw; height: 100vh; }
+
+  .slide {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 6vh 8vw;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateX(24px);
+    transition: opacity 0.35s ease, transform 0.35s ease;
+  }
+  .slide.active { opacity: 1; visibility: visible; transform: translateX(0); }
+
+  .eyebrow {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: clamp(0.68rem, 1vw, 0.8rem);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent-ink);
+    margin: 0 0 1rem;
+  }
+  h1.title {
+    font-family: 'Source Serif 4', Georgia, serif;
+    font-weight: 700;
+    font-size: clamp(2rem, 4.2vw, 3.4rem);
+    line-height: 1.12;
+    margin: 0 0 1.2rem;
+    text-wrap: balance;
+    max-width: 22ch;
+  }
+  h2.sub {
+    font-family: 'Source Serif 4', Georgia, serif;
+    font-weight: 600;
+    font-size: clamp(1.5rem, 2.6vw, 2.1rem);
+    margin: 0 0 1.5rem;
+    text-wrap: balance;
+    max-width: 30ch;
+  }
+  .lede {
+    font-size: clamp(1rem, 1.3vw, 1.25rem);
+    color: var(--ink-soft);
+    max-width: 62ch;
+    line-height: 1.6;
+  }
+  .lede b { color: var(--ink); font-weight: 600; }
+  .lede code, .card code, .row code { font-family: 'IBM Plex Mono', monospace; background: var(--code-bg); padding: 0.1em 0.4em; border-radius: 4px; font-size: 0.88em; color: var(--accent-ink); }
+
+  /* Cover slide */
+  .cover { justify-content: center; align-items: flex-start; }
+  .cover .meta { display: flex; gap: 2rem; margin-top: 2.5rem; flex-wrap: wrap; }
+  .cover .meta div { font-size: 0.85rem; color: var(--ink-faint); }
+  .cover .meta b { color: var(--ink); font-weight: 600; display: block; font-size: 1.1rem; margin-bottom: 0.15rem; }
+
+  /* Grid of cards */
+  .cards { display: grid; gap: 1.1rem; margin-top: 1rem; }
+  .cards.g2 { grid-template-columns: repeat(2, 1fr); }
+  .cards.g3 { grid-template-columns: repeat(3, 1fr); }
+  .card {
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 1.4rem 1.5rem;
+    box-shadow: 0 2px 8px var(--shadow);
+  }
+  .card .k { font-family: 'IBM Plex Mono', monospace; font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent-ink); margin-bottom: 0.5rem; display: block; }
+  .card h3 { font-family: 'Source Serif 4', Georgia, serif; font-size: 1.15rem; margin: 0 0 0.5rem; }
+  .card p { margin: 0; font-size: 0.92rem; color: var(--ink-soft); line-height: 1.5; }
+
+  .worker-card { border-color: var(--worker); }
+  .worker-card .k { color: var(--worker); }
+  .hitl-card { border-color: var(--hitl); background: var(--hitl-soft); }
+  .hitl-card .k { color: var(--hitl); }
+
+  /* Numbered list */
+  .steps { display: flex; flex-direction: column; gap: 0.9rem; margin-top: 1.5rem; }
+  .step { display: flex; gap: 1rem; align-items: flex-start; }
+  .step .n { font-family: 'IBM Plex Mono', monospace; font-size: 1.1rem; color: var(--accent); font-weight: 600; min-width: 2ch; }
+  .step .t { font-size: 1.02rem; }
+  .step .t b { display: block; margin-bottom: 0.15rem; }
+  .step .t span { color: var(--ink-soft); font-size: 0.92rem; }
+
+  /* diagram row for architecture slide */
+  .arch-row { display: flex; align-items: center; gap: 0.6rem; margin-top: 2rem; flex-wrap: nowrap; }
+  .arch-box { background: var(--bg-raised); border: 1.5px solid var(--line); border-radius: 10px; padding: 0.85rem 1.1rem; font-family: 'IBM Plex Mono', monospace; font-size: 0.85rem; white-space: nowrap; box-shadow: 0 2px 6px var(--shadow); }
+  .arch-box.hub { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: 600; }
+  .arch-arrow { color: var(--ink-faint); font-size: 1.3rem; }
+  .worker-col { display: flex; flex-direction: column; gap: 0.5rem; }
+  .worker-col .arch-box { border-color: var(--worker); color: var(--worker); }
+
+  .graph-img-wrap { margin-top: 1.2rem; text-align: center; }
+  .graph-img-wrap img { max-height: 46vh; width: auto; max-width: 100%; border-radius: 10px; border: 1px solid var(--line); background: #fff; box-shadow: 0 2px 10px var(--shadow); }
+
+  /* Tool diagram: agent node + its tool pills */
+  .tool-map { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.9rem; margin-top: 1rem; }
+  .tool-map.g2 { grid-template-columns: repeat(2, 1fr); }
+  .tool-node { background: var(--bg-raised); border: 1.5px solid var(--line); border-radius: 12px; padding: 0.8rem 0.9rem; box-shadow: 0 2px 6px var(--shadow); }
+  .tool-node .head { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.55rem; }
+  .tool-node .head .dot-ic { width: 9px; height: 9px; border-radius: 50%; background: var(--ink-faint); flex: none; }
+  .tool-node .head b { font-family: 'IBM Plex Mono', monospace; font-size: 0.86rem; }
+  .tool-node .role { font-size: 0.68rem; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.04em; margin: -0.3rem 0 0.5rem; }
+  .tool-pill-list { display: flex; flex-direction: column; gap: 0.32rem; }
+  .tool-pill { font-size: 0.76rem; line-height: 1.35; color: var(--ink-soft); border-left: 2px solid var(--line); padding-left: 0.55rem; }
+  .tool-pill b { font-family: 'IBM Plex Mono', monospace; font-weight: 500; color: var(--ink); font-size: 0.78rem; }
+  .tool-pill.req { border-left-color: var(--accent); }
+  .tool-pill.req b { color: var(--accent-ink); }
+
+  .hub-node .head .dot-ic { background: var(--accent); }
+  .hub-node { border-color: var(--accent); }
+  .worker-node .head .dot-ic { background: var(--worker); }
+  .worker-node { border-color: var(--worker); }
+  .guard-node .head .dot-ic { background: var(--hitl); }
+  .guard-node { border-color: var(--hitl); }
+
+  .tool-legend { display: flex; gap: 1.4rem; margin-top: 1rem; flex-wrap: wrap; font-size: 0.78rem; color: var(--ink-faint); }
+  .tool-legend span { display: inline-flex; align-items: center; gap: 0.4rem; }
+  .tool-legend .sw { width: 10px; height: 10px; border-radius: 50%; }
+
+  footer.progress {
+    position: absolute;
+    bottom: 4vh;
+    left: 8vw;
+    right: 8vw;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--line); transition: background 0.25s, transform 0.25s; }
+  .dot.active { background: var(--accent); transform: scale(1.4); }
+  .slide-num { font-family: 'IBM Plex Mono', monospace; font-size: 0.75rem; color: var(--ink-faint); margin-left: auto; }
+
+  .nav-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    color: var(--ink);
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 1.1rem;
+    box-shadow: 0 2px 8px var(--shadow);
+    z-index: 10;
+    opacity: 0.55;
+    transition: opacity 0.2s;
+  }
+  .nav-btn:hover { opacity: 1; }
+  .nav-btn.prev { left: 1.5vw; }
+  .nav-btn.next { right: 1.5vw; }
+
+  .quote-mark { font-family: 'Source Serif 4', serif; font-size: 3.5rem; color: var(--accent); line-height: 1; margin-bottom: 0.5rem; }
+
+  .stat-row { display: flex; gap: 2.5rem; margin-top: 2rem; flex-wrap: wrap; }
+  .stat { }
+  .stat .num { font-family: 'Source Serif 4', serif; font-weight: 700; font-size: clamp(2rem, 3.5vw, 2.8rem); color: var(--accent-ink); line-height: 1; }
+  .stat .label { font-size: 0.85rem; color: var(--ink-soft); margin-top: 0.3rem; max-width: 16ch; }
+
+  .tag-row { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 1rem; }
+  .tag { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; border: 1px solid var(--line); border-radius: 999px; padding: 0.25rem 0.7rem; color: var(--ink-soft); }
+
+  @media (max-width: 720px) {
+    .cards.g2, .cards.g3 { grid-template-columns: 1fr; }
+    .arch-row { flex-wrap: wrap; }
+    .nav-btn { display: none; }
+  }
+</style>
+
+<div class="deck" id="deck">
+
+  <!-- 1. MUC TIEU -->
+  <section class="slide cover active">
+    <p class="eyebrow">Đồ án cuối khóa · LLM Engineer</p>
+    <h1 class="title">Hierarchical Supervisor cho phân tích cổ phiếu Việt Nam</h1>
+    <p class="lede">Trả lời câu hỏi tiếng Việt về cổ phiếu niêm yết — giá, tin tức, nguyên nhân biến động — bằng cách <b>phối hợp nhiều nguồn dữ liệu thật</b> (vnstock, CafeF, SQLite), <b>không bịa số liệu</b> khi thiếu dữ liệu, và <b>không tự ý ghi dữ liệu</b> mới vào kho mà chưa có người duyệt.</p>
+    <div class="stat-row">
+      <div class="stat"><div class="num">4</div><div class="label">worker chuyên biệt: giá, tin, lịch sử DB, đánh giá khớp giá–tin</div></div>
+      <div class="stat"><div class="num">N</div><div class="label">mã CP xử lý cùng lúc trong 1 câu hỏi — routing thật theo từng mã, không giới hạn 1</div></div>
+      <div class="stat"><div class="num">0</div><div class="label">số liệu được phép bịa ra, dù thiếu hay đủ dữ liệu</div></div>
+    </div>
+  </section>
+
+  <!-- 2. KIEN TRUC -->
+  <section class="slide">
+    <p class="eyebrow">Kiến trúc</p>
+    <h2 class="sub">Một Supervisor hỏi LLM sau mỗi worker, không phải máy trạng thái cố định</h2>
+    <p class="lede" style="max-width: 72ch;"><b>Decision point:</b> chọn Hub-and-Spoke với <b>routing động</b> (LLM chọn worker kế tiếp mỗi vòng, theo mẫu <code>agent_m2/hierarchical.py</code>) — thay cho một máy trạng thái nhiều nhánh khó bảo trì. Đổi lại: tốn thêm 1 lời gọi LLM mỗi vòng, nhưng loại bỏ hẳn logic điều kiện cứng trong code.</p>
+    <div class="graph-img-wrap">
+      <img src="images/supervisor_agent_graph.png" alt="Sơ đồ graph thật của Hierarchical Supervisor — LangGraph render">
+    </div>
+    <p class="lede" style="margin-top: 1rem; font-size: 0.88rem;">Ảnh render trực tiếp từ graph LangGraph đang chạy (không phải sơ đồ vẽ tay). Mỗi worker chạy xong quay lại <code>supervisor</code> qua 1 node <code>&lt;domain&gt;_collect</code> gộp kết quả vào <code>notes[symbol][domain]</code>. LLM đọc lại notes, chọn tiếp worker + <b>mã CP cụ thể</b> hoặc <code>"done"</code> — multi-symbol thật: câu "HPG và FPT mã nào mạnh hơn" khiến mỗi worker chạy 2 lần (1 lần/mã), không gộp. <code>db_write</code> là 1 nhánh riêng supervisor có thể chọn (ép chạy trước "done" nếu còn dữ liệu chưa soạn ghi, lặp qua mọi mã); <code>hitl_commit</code> là node duy nhất graph dừng lại chờ người duyệt.</p>
+  </section>
+
+  <!-- 2b. TOOLS -->
+  <section class="slide">
+    <p class="eyebrow">Tools</p>
+    <h2 class="sub">Toàn bộ node của graph — không chỉ 4 worker</h2>
+    <p class="lede" style="max-width: 76ch; font-size: 0.92rem;">Hub (guardrail, supervisor, final_answer) <b>không bind tool</b> — nó dùng <code>with_structured_output</code> để ép LLM trả JSON đúng schema. Chỉ 4 worker (+ nhánh <code>db_write</code>) thật sự bind tool cho LLM tự chọn gọi, qua <code>select_tools()</code> theo catalog riêng từng domain.</p>
+
+    <div class="tool-map g2" style="margin-top: 1.1rem;">
+      <div class="tool-node guard-node">
+        <div class="head"><span class="dot-ic"></span><b>guardrail_input</b></div>
+        <div class="role">Function checks — không LLM, không tool</div>
+        <div class="tool-pill-list">
+          <div class="tool-pill req"><b>check_input()</b> — regex injection/toxic, raise HTTP 400 nếu dính.</div>
+          <div class="tool-pill"><b>in_topic_scope()</b> — lớp 1: khớp từ khoá cổ phiếu VN, rẻ, chạy mọi request.</div>
+          <div class="tool-pill"><b>llm_scope_check()</b> — lớp 2: chỉ gọi LLM khi lớp 1 nghi ngờ, bắt câu diễn đạt khéo.</div>
+          <div class="tool-pill"><b>redact_pii()</b> — che thông tin cá nhân trong câu hỏi trước khi đi tiếp.</div>
+        </div>
+      </div>
+      <div class="tool-node hub-node">
+        <div class="head"><span class="dot-ic"></span><b>rewrite_question → supervisor</b></div>
+        <div class="role">Structured output — không bind tool</div>
+        <div class="tool-pill-list">
+          <div class="tool-pill req"><b>RewrittenQuery</b> — LLM tách <b>tất cả</b> <code>symbols[]</code> (multi-symbol) + câu viết lại rõ nghĩa, không parse free-text.</div>
+          <div class="tool-pill req"><b>RoutingDecision</b> — mỗi vòng: chọn 1 trong price_agent/news_agent/db_agent/db_write/eval_agent/done + <code>symbol</code> cụ thể (mã vòng này xử lý) + lý do.</div>
+          <div class="tool-pill"><b>FinalAnswer</b> (ở <code>final_answer</code>) — tổng hợp thẳng từ <code>notes</code>; model tự chọn <code>gpt-4o</code>/<code>gpt-4o-mini</code> theo độ khó câu hỏi.</div>
+        </div>
+      </div>
+      <div class="tool-node worker-node">
+        <div class="head"><span class="dot-ic"></span><b>price_agent</b></div>
+        <div class="role">ReAct — 3 tool, vnstock VCI</div>
+        <div class="tool-pill-list">
+          <div class="tool-pill req"><b>fetch_latest_close</b> — bắt buộc: giá đóng cửa 2 phiên gần nhất + %. <code>last=0</code> = không lấy được, không bịa số.</div>
+          <div class="tool-pill"><b>normalize_ticker</b> — chuẩn hoá mã (hpg → HPG) khi model cần hỏi thêm.</div>
+          <div class="tool-pill"><b>describe_price_source</b> — trả lời "giá lấy từ đâu" không tốn 1 lượt gọi vnstock thật.</div>
+        </div>
+      </div>
+      <div class="tool-node worker-node">
+        <div class="head"><span class="dot-ic"></span><b>news_agent</b></div>
+        <div class="role">ReAct — 3 tool, CafeF Ajax</div>
+        <div class="tool-pill-list">
+          <div class="tool-pill req"><b>fetch_cafef_news</b> — bắt buộc: bài mới nhất trang mã CafeF, không chấm sentiment, không bịa tiêu đề.</div>
+          <div class="tool-pill"><b>normalize_ticker</b> — chuẩn hoá mã trước khi gọi CafeF.</div>
+          <div class="tool-pill"><b>describe_news_source</b> — mô tả nguồn tin, không gọi mạng.</div>
+        </div>
+      </div>
+      <div class="tool-node worker-node">
+        <div class="head"><span class="dot-ic"></span><b>db_agent</b></div>
+        <div class="role">ReAct — 3 tool, SQLite + idempotency</div>
+        <div class="tool-pill-list">
+          <div class="tool-pill req"><b>read_symbol_store</b> — đọc tối đa 5 phiên giá + tin đã lưu, không HITL vì chỉ đọc.</div>
+          <div class="tool-pill"><b>stage_new_rows</b> — soạn lệnh ghi tin/giá mới, nhận <code>idempotency_key</code> để không soạn trùng khi LLM tự retry.</div>
+          <div class="tool-pill"><b>describe_db_hitl</b> — giải thích vì sao ghi DB cần người duyệt.</div>
+        </div>
+      </div>
+      <div class="tool-node worker-node">
+        <div class="head"><span class="dot-ic"></span><b>eval_agent</b></div>
+        <div class="role">ReAct — 3 tool, keyword rule-based</div>
+        <div class="tool-pill-list">
+          <div class="tool-pill req"><b>score_price_vs_news</b> — bắt buộc: nhận JSON giá + tin, không sửa số, không bịa sentiment.</div>
+          <div class="tool-pill"><b>classify_headline</b> — chấm 1 tiêu đề đơn lẻ (negative/positive/neutral).</div>
+          <div class="tool-pill"><b>list_eval_keywords</b> — liệt kê đúng bộ từ khoá đang dùng, tránh model tự đoán tiêu chí.</div>
+        </div>
+      </div>
+      <div class="tool-node worker-node">
+        <div class="head"><span class="dot-ic"></span><b>db_write</b></div>
+        <div class="role">Dùng lại tool db_agent — vai trò ghi, không đọc</div>
+        <div class="tool-pill-list">
+          <div class="tool-pill req"><b>stage_new_rows</b> — soạn pending từ giá/tin vừa crawl trong turn, chưa COMMIT.</div>
+          <div class="tool-pill"><b>read_symbol_store</b> — đối chiếu tránh soạn trùng dòng đã có trong DB.</div>
+        </div>
+      </div>
+      <div class="tool-node guard-node">
+        <div class="head"><span class="dot-ic"></span><b>hitl_commit → guardrail_output</b></div>
+        <div class="role">Interrupt + function checks — không LLM</div>
+        <div class="tool-pill-list">
+          <div class="tool-pill req"><b>interrupt_before</b> — graph treo lại đúng trước khi COMMIT bảng chính, chờ <code>/pr/approve</code>.</div>
+          <div class="tool-pill"><b>check_output()</b> — độ dài, tiếng Việt, khớp số liệu với evidence, PII, toxicity trước khi trả user.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tool-legend">
+      <span><span class="sw" style="background:var(--hitl)"></span> Guardrail / HITL — function check, không LLM tool</span>
+      <span><span class="sw" style="background:var(--accent)"></span> Hub — LLM structured output, không bind tool</span>
+      <span><span class="sw" style="background:var(--worker)"></span> Worker — LLM tự chọn tool qua ReAct</span>
+    </div>
+    <p class="lede" style="margin-top: 1rem; font-size: 0.85rem;">Mỗi worker ReAct luôn có 1 tool "bắt buộc" làm việc thật (IO) + tool phụ (chuẩn hoá / mô tả nguồn) — pattern lặp lại nhất quán. Hub không cần tool vì việc của nó là quyết định + tổng hợp, ép schema chặt hơn là để LLM tự chọn hàm.</p>
+  </section>
+
+  <!-- 3. DECISION POINTS -->
+  <section class="slide">
+    <p class="eyebrow">Decision points · 1/2</p>
+    <h2 class="sub">Vì sao routing động, và vì sao vẫn cần 1 ngoại lệ code cứng</h2>
+    <div class="cards g3">
+      <div class="card">
+        <span class="k">Routing động thay vì máy trạng thái</span>
+        <h3>Đổi độ phức tạp code lấy thêm 1 LLM call/vòng</h3>
+        <p>Bản trước là 1 hàm <code>_coordinate</code> nhiều nhánh if/else theo thứ tự cố định — khó mở rộng, khó đọc khi thêm nghiệp vụ mới. Bản này: LLM tự đọc <code>notes</code> đã tích luỹ, tự quyết định worker kế tiếp hoặc dừng. Đánh đổi: mỗi vòng tốn thêm 1 lời gọi LLM (<code>RoutingDecision</code>), nhưng loại bỏ hẳn logic điều kiện lồng nhau trong code.</p>
+      </div>
+      <div class="card">
+        <span class="k">Routing tự do, trừ 1 ngoại lệ</span>
+        <h3><code>route_supervisor</code> ép <code>db_write</code></h3>
+        <p>LLM tự do chọn worker <b>đọc</b> dữ liệu (price/news/db/eval) — không side-effect nên an toàn để LLM quyết định. Nhưng <b>ghi dữ liệu mới vào kho</b> là side-effect thật: nếu LLM chọn "done" mà còn giá/tin vừa crawl chưa soạn lệnh ghi, code CƯỠNG BỨC đi qua <code>db_write</code> trước — không phó mặc bước có tác dụng phụ cho routing tự do.</p>
+      </div>
+      <div class="card">
+        <span class="k">Tool retrieval theo từng worker</span>
+        <h3>Không index chung 1 catalog toàn cục</h3>
+        <p>Mỗi worker chỉ nhận catalog tool của riêng nó (<code>PriceAgent</code> không thấy <code>fetch_cafef_news</code>) — <code>select_tools()</code> embed mô tả tool trong catalog đó, cache theo tên catalog. Không dùng Hierarchical Grouping vì mỗi catalog đã là 1 domain hẹp, gom nhóm thêm sẽ thừa.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3b. DECISION POINTS 2 -->
+  <section class="slide">
+    <p class="eyebrow">Decision points · 2/2</p>
+    <h2 class="sub">Guardrail đúng chỗ, và bài học từ hallucination thật</h2>
+    <div class="cards g3">
+      <div class="card">
+        <span class="k">Guardrail 2 lớp, đúng chỗ</span>
+        <h3>Ngoài domain khác "vượt khả năng agent"</h3>
+        <p>Lớp keyword rẻ (<code>in_topic_scope</code>) chạy mọi request; lớp LLM (<code>llm_scope_check</code>) chỉ chạy khi lớp 1 nghi ngờ — bắt câu diễn đạt khéo không chứa từ khoá. Câu "mã nào lãi nhiều nhất" đúng domain chứng khoán (guardrail không chặn) nhưng vượt khả năng agent (chỉ tra được 1 mã cụ thể) — quyết định sửa đúng ở prompt <b>routing</b>, không nhồi thêm điều kiện vào guardrail scope.</p>
+      </div>
+      <div class="card">
+        <span class="k">Diễn giải dữ liệu, không dump thô</span>
+        <h3>Chặn hallucination khi tổng hợp câu trả lời</h3>
+        <p>Model từng tự suy diễn "thiếu lịch sử" khi thấy <code>prev_close=None</code> dù <code>pct_change</code> đã có, hoặc tự bịa "KHÔNG khớp" khi <code>price_matches_news=None</code>. Sửa bằng cách diễn giải rõ từng field quan trọng thành câu tiếng Việt trong prompt gửi LLM, thay vì để model tự đoán từ JSON thô.</p>
+      </div>
+      <div class="card">
+        <span class="k">Gộp worker ghép câu vào hub</span>
+        <h3>Bỏ hẳn <code>synthesis_agent</code> riêng</h3>
+        <p>Worker ghép câu từng là 1 domain riêng trong routing (5 worker), nhưng đã gỡ bỏ hoàn toàn — <code>final_answer_node</code> tự tổng hợp thẳng từ <code>notes</code> tích luỹ. Ít 1 lời gọi LLM/turn, ít 1 domain routing phải dạy LLM khi nào chọn — đổi lại tổng hợp không còn là bước độc lập, tách rời để test riêng.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3c. 4 TINH NANG MOI -->
+  <section class="slide">
+    <p class="eyebrow">Cập nhật 2026-09-03</p>
+    <h2 class="sub">4 tính năng mới: từ "1 mã" sang hệ thống thật đa mã, tự biết khi nào đủ, tự chọn model</h2>
+    <div class="cards g2">
+      <div class="card worker-card">
+        <span class="k">Multi-symbol thật</span>
+        <h3>1 lượt gọi worker = 1 mã, không gộp</h3>
+        <p><code>state["symbol"]</code> đổi ý nghĩa: mã worker <b>VÒNG NÀY</b> xử lý — supervisor set lại mỗi vòng qua <code>RoutingDecision.symbol</code>. <code>notes</code>/<code>price</code>/<code>news</code>/<code>db</code>/<code>eval</code> đều là <code>dict[symbol, X]</code>. Worker <b>không đổi gì nội bộ</b> — chỉ hub-wrapper merge kết quả vào dict. Loop detection symbol-aware: lặp 3 lần <code>"HPG:price_agent"</code> không "lây" chặn oan sang FPT.</p>
+      </div>
+      <div class="card worker-card">
+        <span class="k">TTL freshness — qua prompt</span>
+        <h3>LLM tự quyết, không code chặn cứng</h3>
+        <p><code>db_agent</code> lộ độ mới dữ liệu ("vừa cập nhật", "hơn 1 giờ trước") ngay trong <code>detail</code> → tự chảy vào <code>notes</code>. <code>_SUPERVISOR_SYSTEM</code> dạy: dữ liệu mới hơn <code>AGENT_PR_FRESHNESS_MINUTES</code> (mặc định 20 phút) thì đủ dùng, không crawl lại — trừ khi user yêu cầu rõ "mới nhất".</p>
+      </div>
+      <div class="card worker-card">
+        <span class="k">Model routing — chỉ final_answer</span>
+        <h3><code>gpt-4o</code> cho câu phức tạp, <code>gpt-4o-mini</code> còn lại</h3>
+        <p><code>_select_final_answer_model()</code>: nâng <code>gpt-4o</code> khi ≥2 mã, có từ khoá so sánh/tại sao/phân tích, hoặc ≥3 domain trong notes. Routing/rewrite/sentiment giữ nguyên <code>gpt-4o-mini</code> — chỉ bước tổng hợp cuối (ít lần gọi nhất/turn) mới đáng nâng model.</p>
+      </div>
+      <div class="card worker-card">
+        <span class="k">Trajectory từ tool-call thật</span>
+        <h3>Không đọc checkpointer — trích ngay trong <code>_pack</code></h3>
+        <p>Worker subgraph <b>không có checkpointer</b> (không gì để đọc lại kiểu <code>get_state_history</code>). Giải pháp: <code>react.extract_tool_trace()</code> ghép <code>AIMessage.tool_calls</code> với <code>ToolMessage</code> ngay trong <code>_pack</code>, trước khi <code>messages</code> mất đi. <code>trajectory_steps</code> giờ hiện đúng <code>price_agent.fetch_latest_close</code> thay vì 1 dòng tóm tắt.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. HITL -->
+  <section class="slide">
+    <p class="eyebrow">Human-in-the-Loop</p>
+    <h2 class="sub">Chỉ một điểm dừng — đúng lúc chuẩn bị ghi dữ liệu thật</h2>
+    <p class="lede">Không worker nào tự hỏi ý kiến người dùng — HITL chỉ nằm ở tầng hub. Graph compile với <code>interrupt_before=["hitl_commit"]</code> — dừng đúng lúc chuẩn bị COMMIT tin/giá mới vào SQLite, chờ API <code>/pr/approve</code> mới đi tiếp.</p>
+    <div class="cards g3" style="margin-top: 2rem;">
+      <div class="card worker-card"><span class="k">Bước 1</span><h3>db_write soạn lệnh</h3><p>Có dữ liệu mới crawl (không phải từ DB), soạn thành lệnh ghi chờ duyệt (pending) — chưa commit vào bảng chính.</p></div>
+      <div class="card hitl-card"><span class="k">Bước 2</span><h3>Dừng lại</h3><p>Graph treo ở <code>hitl_commit</code>, trả về câu trả lời tạm (đã tổng hợp) kèm số lệnh đang chờ duyệt.</p></div>
+      <div class="card worker-card"><span class="k">Bước 3</span><h3>Resume</h3><p>Người dùng duyệt/từ chối qua API — theo từng lệnh hoặc cả lô — graph tiếp tục đúng từ điểm dừng, không chạy lại từ đầu.</p></div>
+    </div>
+  </section>
+
+  <!-- 5. KET QUA -->
+  <section class="slide">
+    <p class="eyebrow">Kết quả đạt được</p>
+    <h2 class="sub">Đúng thiết kế, chi phí đo được, không hallucination</h2>
+    <div class="stat-row">
+      <div class="stat"><div class="num">41+</div><div class="label">test pass với LLM/API thật (vnstock, CafeF, OpenAI) — không mock; bao gồm multi-symbol, TTL, model routing, trajectory</div></div>
+      <div class="stat"><div class="num">~$0.0005</div><div class="label">chi phí đo thực tế 1 lượt hỏi giá đơn giản (~2600 token in + ~200 out, gpt-4o-mini)</div></div>
+      <div class="stat"><div class="num">40</div><div class="label"><code>recursion_limit</code> — lưới an toàn cuối cùng nếu routing động lặp vô hạn; đủ cho 2-3 mã cùng lúc</div></div>
+    </div>
+    <div class="cards g3" style="margin-top: 1.8rem;">
+      <div class="card">
+        <span class="k">Đúng thiết kế, giờ đa mã</span>
+        <h3>Dừng sớm khi đủ, mở rộng theo cả worker lẫn số mã</h3>
+        <p>Câu hỏi giá đơn giản chỉ tốn 1 worker + 2 lời gọi routing. Câu "tại sao giảm" tự mở ra 3 worker (price → news → eval). Câu "HPG và FPT mã nào mạnh hơn" tự nhân đôi số lượt gọi worker (1 lần/mã) — cùng 1 cơ chế routing, không cấu hình cứng theo loại câu hỏi hay số mã.</p>
+      </div>
+      <div class="card">
+        <span class="k">Chi phí có kiểm soát theo độ khó</span>
+        <h3>Model routing đo được, không đoán mò</h3>
+        <p><code>_select_final_answer_model()</code> nâng <code>gpt-4o</code> đúng lúc cần (nhiều mã / so sánh / nhiều domain) — routing/rewrite/sentiment vẫn <code>gpt-4o-mini</code>. Kết hợp TTL freshness (không crawl lại khi DB đủ mới) giữ chi phí thấp cho câu lặp lại.</p>
+      </div>
+      <div class="card">
+        <span class="k">Eval nhìn thấy tool-call thật</span>
+        <h3>Trajectory không còn là tóm tắt suy diễn</h3>
+        <p><code>extract_tool_trace()</code> trích tool-call thật ngay trong <code>_pack</code> mỗi worker (subgraph không có checkpointer để đọc lại). <code>/pr/ask/evaluate</code> giờ chấm được <code>tool_correctness</code> tới mức tool cụ thể + đúng mã CP, không chỉ đúng worker.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6. DEMO -->
+  <section class="slide">
+    <p class="eyebrow">Demo</p>
+    <h2 class="sub">6 lượt hỏi — routing động, multi-symbol, TTL, HITL, chống hallucination</h2>
+    <div class="steps">
+      <div class="step"><span class="n">1</span><span class="t"><b>"Giá HPG hôm nay bao nhiêu?"</b><span>Supervisor chỉ chọn <code>price_agent</code> rồi "done" ngay. <code>final_answer_node</code> dùng <code>gpt-4o-mini</code> (câu đơn giản). Minh hoạ routing dừng sớm.</span></span></div>
+      <div class="step"><span class="n">2</span><span class="t"><b>"HPG và FPT mã nào mạnh hơn hôm nay?"</b><span>Multi-symbol thật: <code>trace</code> cho thấy <code>price_agent</code>/<code>news_agent</code> chạy 2 lần (1 lần/mã), <code>final_answer_node</code> tự nâng <code>gpt-4o</code> (≥2 mã) để so sánh.</span></span></div>
+      <div class="step"><span class="n">3</span><span class="t"><b>Hỏi lại giá HPG trong vài phút (cùng thread)</b><span>TTL freshness: <code>notes["HPG"]["db_agent"]</code> có "vừa cập nhật" — supervisor không crawl lại, tự đọc từ DB.</span></span></div>
+      <div class="step"><span class="n">4</span><span class="t"><b>Worker vừa crawl xong tin/giá mới</b><span>Supervisor chọn "done" nhưng còn dữ liệu chưa soạn ghi → code ép qua <code>db_write</code> trước (lặp qua mọi mã nếu multi-symbol), rồi graph dừng ở <code>hitl_commit</code>. Gọi <code>POST /pr/approve</code> để duyệt.</span></span></div>
+      <div class="step"><span class="n">5</span><span class="t"><b><code>POST /pr/ask/evaluate</code> sau câu 2</b><span><code>trajectory_steps</code> hiện đúng <code>price_agent.fetch_latest_close</code>/<code>news_agent.fetch_cafef_news</code> kèm mã CP — tool-call thật, không còn tóm tắt.</span></span></div>
+      <div class="step"><span class="n">6</span><span class="t"><b>"Mã nào lãi nhiều nhất hôm nay?"</b><span>Không nêu mã cụ thể — agent từ chối rõ ràng thay vì bịa mã mặc định.</span></span></div>
+    </div>
+    <p class="lede" style="margin-top: 1.2rem;">Kèm một câu hỏi ngoài phạm vi ("thời tiết Hà Nội hôm nay") để minh hoạ guardrail đầu vào chặn trước khi vào supervisor.</p>
+  </section>
+
+  <button class="nav-btn prev" id="prevBtn" aria-label="Slide trước">‹</button>
+  <button class="nav-btn next" id="nextBtn" aria-label="Slide sau">›</button>
+
+  <footer class="progress" id="progress"></footer>
+</div>
+
+<script>
+  const slides = Array.from(document.querySelectorAll('.slide'));
+  const progress = document.getElementById('progress');
+  let current = 0;
+
+  slides.forEach((_, i) => {
+    const dot = document.createElement('div');
+    dot.className = 'dot' + (i === 0 ? ' active' : '');
+    dot.addEventListener('click', () => goTo(i));
+    progress.appendChild(dot);
+  });
+  const numEl = document.createElement('div');
+  numEl.className = 'slide-num';
+  progress.appendChild(numEl);
+
+  function render() {
+    slides.forEach((s, i) => s.classList.toggle('active', i === current));
+    Array.from(progress.querySelectorAll('.dot')).forEach((d, i) => d.classList.toggle('active', i === current));
+    numEl.textContent = (current + 1) + ' / ' + slides.length;
+  }
+
+  function goTo(i) {
+    current = Math.max(0, Math.min(slides.length - 1, i));
+    render();
+  }
+
+  document.getElementById('prevBtn').addEventListener('click', () => goTo(current - 1));
+  document.getElementById('nextBtn').addEventListener('click', () => goTo(current + 1));
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { e.preventDefault(); goTo(current + 1); }
+    if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); goTo(current - 1); }
+    if (e.key === 'Home') goTo(0);
+    if (e.key === 'End') goTo(slides.length - 1);
+  });
+
+  let touchStartX = null;
+  document.addEventListener('touchstart', (e) => { touchStartX = e.touches[0].clientX; });
+  document.addEventListener('touchend', (e) => {
+    if (touchStartX === null) return;
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    if (Math.abs(dx) > 50) goTo(current + (dx < 0 ? 1 : -1));
+    touchStartX = null;
+  });
+
+  render();
+</script>

@@ -18,7 +18,7 @@ _NEGATIVE = ("xả hàng", "bán ròng", "giảm sàn", "cắt lỗ")
 _POSITIVE = ("tăng trưởng", "lợi nhuận", "khuyến nghị mua")
 
 
-_SENTIMENT_SYSTEM = """Phân loại từng tiêu đề tin cổ phiếu VN (giống ProductReview Bài 1).
+_SENTIMENT_SYSTEM = """Phân loại từng tiêu đề (kèm mô tả ngắn nếu có) tin cổ phiếu VN (giống ProductReview Bài 1).
 Few-shot:
 - "Khối ngoại xả hàng HPG" → negative
 - "HPG báo lợi nhuận tăng trưởng mạnh" → positive
@@ -26,9 +26,12 @@ Few-shot:
 Chỉ negative | positive | neutral. Không bịa tiêu đề. Đúng số lượng / thứ tự đã gửi."""
 
 
-def _sentiment(title: str) -> str:
-    """Khớp cả 2 nhóm hoặc không khớp gì → neutral (không đoán liều)."""
-    t = title.lower()
+def _sentiment(text: str) -> str:
+    """Khớp cả 2 nhóm hoặc không khớp gì → neutral (không đoán liều).
+
+    `text` = title (+ summary nếu có) nối lại — summary (SubTitle CafeF) tăng
+    recall từ khoá mà không đổi ý nghĩa 3 lớp (Sơ đồ 3d)."""
+    t = text.lower()
     neg = any(k in t for k in _NEGATIVE)
     pos = any(k in t for k in _POSITIVE)
     if neg and not pos:
@@ -51,7 +54,10 @@ def score(state: EvalState) -> dict:
         """Một lần chat_parsed cho cả lô — type-safe, không regex."""
         if not articles:
             return []
-        numbered = "\n".join(f"{i + 1}. {a.title}" for i, a in enumerate(articles))
+        numbered = "\n".join(
+            f"{i + 1}. {a.title}" + (f" — {a.summary}" if getattr(a, "summary", "") else "")
+            for i, a in enumerate(articles)
+        )
         batch, usage = chat_parsed_with_usage(
             bound_messages(_SENTIMENT_SYSTEM, numbered),
             HeadlineBatch,
@@ -66,6 +72,7 @@ def score(state: EvalState) -> dict:
                 ScoredItem(
                     title=art.title,
                     url=getattr(art, "url", "") or "",
+                    summary=getattr(art, "summary", "") or "",
                     sentiment=item.sentiment,
                 )
             )
@@ -91,7 +98,15 @@ def score(state: EvalState) -> dict:
             t["output"] = report.detail
             return {"report": report}
 
-        items = [ScoredItem(title=a.title, url=a.url, sentiment=_sentiment(a.title)) for a in news.articles]
+        items = [
+            ScoredItem(
+                title=a.title,
+                url=a.url,
+                summary=a.summary,
+                sentiment=_sentiment(f"{a.title} {a.summary}"),
+            )
+            for a in news.articles
+        ]
         if items:
             try:
                 llm_items = _llm_items(news.articles, str(state.get("turn") or ""))

@@ -1,0 +1,75 @@
+version: '3.7'
+
+volumes:
+  pgdata:
+
+networks:
+  app-tier:
+    driver: bridge
+
+services:
+  logic_app:
+    build:
+      context: src
+      dockerfile: logic_app/Dockerfile
+    ports:
+      - "5001:5001"
+    networks:
+      - app-tier
+    volumes:
+      - type: bind
+        source: ./src/logic_app
+        target: /app
+      - type: bind
+        source: ./resource
+        target: /app/resource
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "5001", "--reload"]
+    environment:
+      - HOST_BOX_DETECTOR=${HOST_BOX_DETECTOR}
+      - HOST_POSE_DETECTOR=${HOST_POSE_DETECTOR}
+      - HOST_HEIGHT_CALCULATOR=${HOST_HEIGHT_CALCULATOR}
+      - HOST_HEIGHT_PREDICTOR=${HOST_HEIGHT_PREDICTOR}
+      - BASE_IMG=${BASE_IMG}
+      - APP__CAMERA_PATH=${APP__CAMERA_PATH}
+      - APP__IMG_LOGO_PATH=${APP__IMG_LOGO_PATH}
+      - APP__SAVE_DIR=${APP__SAVE_DIR}
+
+  model_deployed:
+    build:
+      context: src
+      dockerfile: model_deployed/Dockerfile
+    ports:
+      - "5000:5000"
+    networks:
+      - app-tier
+    volumes:
+      - type: bind
+        source: ./src/model_deployed
+        target: /app
+      - type: bind
+        source: ./resource
+        target: /app/resource
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "5000", "--reload"]
+    environment:
+      - FACE_ALIGN__FILE_CONFIG_PATH=${FACE_ALIGN__FILE_CONFIG_PATH}
+      - BOX_DETECTOR__BASE_H=${BOX_DETECTOR__BASE_H}
+      - BOX_DETECTOR__MODEL_PATH=${BOX_DETECTOR__MODEL_PATH}
+      - BOX_DETECTOR__CONF=${BOX_DETECTOR__CONF}
+      - HEIGHT_PREDICTOR__MODEL_PATH_LINEAR=${HEIGHT_PREDICTOR__MODEL_PATH_LINEAR}
+      - HEIGHT_PREDICTOR__MODEL_PATH_RANDOM_FOREST=${HEIGHT_PREDICTOR__MODEL_PATH_RANDOM_FOREST}
+      - HEIGHT_PREDICTOR__MODEL_PATH_HEIGHT_NET=${HEIGHT_PREDICTOR__MODEL_PATH_HEIGHT_NET}
+      - HEIGHT_PREDICTOR__MODEL_PATH_LINEAR_TORCH=${HEIGHT_PREDICTOR__MODEL_PATH_LINEAR_TORCH}
+      - HEIGHT_PREDICTOR__MODE=${HEIGHT_PREDICTOR__MODE}
+      - HEIGHT_CALCULATOR__MODE=${HEIGHT_CALCULATOR__MODE}
+      - POSE_DETECTOR__MODEL_PATH=${POSE_DETECTOR__MODEL_PATH}
+      - POSE_DETECTOR__OUTPUT_SEGMENTATION_MASKS=${POSE_DETECTOR__OUTPUT_SEGMENTATION_MASKS}
+      - POSE_DETECTOR__NUM_POSES=${POSE_DETECTOR__NUM_POSES}
+      - WRITE_CSV__BODY_PARTS_PATH=${WRITE_CSV__BODY_PARTS_PATH}
+      - WRITE_CSV__DISTANCE2D_PATH=${WRITE_CSV__DISTANCE2D_PATH}
+      - WRITE_CSV__DISTANCE3D_PATH=${WRITE_CSV__DISTANCE3D_PATH}
+      - WRITE_CSV__POSE_LANDMARK_PATH=${WRITE_CSV__POSE_LANDMARK_PATH}
+      - WRITE_CSV__MODE=${WRITE_CSV__MODE}
+      - WRITE_CSV__ACTIVE=${WRITE_CSV__ACTIVE}
+      - DRAW__OUTPUT_DIR=${DRAW__OUTPUT_DIR}
+      - DRAW__ACTIVE=${DRAW__ACTIVE}
+

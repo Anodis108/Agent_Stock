@@ -2,8 +2,9 @@
 
     START → seed → agent ⇄ tools → pack → END
 
-`score` ở nodes.py; tool bọc JSON. Pack ghi `eval` + `eval_turn` (hub so
-với `turn` để không chấm lại cùng lượt HTTP).
+`score` ở nodes.py; tool đọc price/news thẳng từ state qua InjectedState (LLM
+không cần chép tay JSON). Pack ghi `eval` + `eval_turn` (hub so với `turn` để
+không chấm lại cùng lượt HTTP).
 """
 
 from __future__ import annotations
@@ -19,7 +20,7 @@ from app.monitoring.tracing import agent_span, trace_step
 _SYSTEM = """Bạn là EvalAgent — CHỈ chấm tin vs chiều giá bằng tool. Không crawl, không ghép câu user.
 
 Quy tắc:
-- Bắt buộc gọi score_price_vs_news với đúng JSON giá và tin trong tin nhắn (không sửa số).
+- Bắt buộc gọi score_price_vs_news (không cần tham số — giá/tin đã có sẵn từ state, đừng tự bịa JSON).
 - Không bịa sentiment. Từ khoá hẹp: không khớp → neutral / chưa rõ, không đoán.
 - classify_headline / list_eval_keywords không thay score_price_vs_news.
 - Xong tool thì dừng."""
@@ -28,13 +29,8 @@ Quy tắc:
 @lru_cache(maxsize=1)
 def _build_graph():
     def _seed(state: EvalState) -> dict:
-        price, news = state.get("price"), state.get("news")
-        body = (
-            "Chấm khớp giá vs tin.\n"
-            f"price_json={price.model_dump_json() if price else '{}'}\n"
-            f"news_json={news.model_dump_json() if news else '{}'}"
-        )
-        return fresh_user(body)
+        symbol = str(getattr(state.get("price"), "symbol", "") or getattr(state.get("news"), "symbol", "") or "?")
+        return fresh_user(f"Chấm khớp giá vs tin cho mã {symbol}.")
 
     def _pack(state: EvalState) -> dict:
         raw = last_tool_json(state, {"score_price_vs_news"})

@@ -84,9 +84,12 @@ _FINAL_ANSWER_SYSTEM = """Bạn tổng hợp ghi chú (notes) từ các worker c
 trả lời cuối cho user — tiếng Việt, ngắn gọn, đầy đủ thông tin đã thu thập được.
 
 Chỉ dùng dữ liệu có trong notes hoặc hội thoại gần đây; không bịa số liệu/tin không có.
-Thiếu dữ liệu thì nói thiếu. Hỏi tăng/giảm thì nêu chiều + % nếu notes có. Có kết quả
-db_write thì nhắc đã soạn lệnh chờ duyệt. Câu hỏi về CHÍNH hội thoại (vd. "vừa hỏi mã
-nào") thì trả lời thẳng từ "Hội thoại gần đây", không nói "chưa có dữ liệu"."""
+Thiếu dữ liệu thì nói thiếu. Hỏi tăng/giảm thì nêu chiều + % nếu notes có. Hỏi nguyên nhân
+("tại sao/vì sao ... tăng/giảm") thì PHẢI trích tiêu đề tin cụ thể có trong notes (news/eval)
+làm lý do — không trả lời chung chung kiểu "có tin tiêu cực" nếu notes đã có tiêu đề rõ.
+Notes không có tin nào khớp chiều giá thì nói rõ chưa xác định được nguyên nhân, đừng suy
+diễn. Có kết quả db_write thì nhắc đã soạn lệnh chờ duyệt. Câu hỏi về CHÍNH hội thoại (vd.
+"vừa hỏi mã nào") thì trả lời thẳng từ "Hội thoại gần đây", không nói "chưa có dữ liệu"."""
 
 
 def rewrite_question(state: SupervisorState) -> dict:
@@ -119,8 +122,12 @@ def rewrite_question(state: SupervisorState) -> dict:
                 extra_symbols = []
         t["output"] = rewritten or "skip"
         out: dict = {"rewritten_question": rewritten}
-        existing_symbols = list(state.get("symbols") or ([state["symbol"]] if state.get("symbol") else []))
-        if extra_symbols and not existing_symbols:
+        # Câu hỏi HIỆN TẠI trích được mã → luôn ưu tiên mã mới (vd đổi từ VNM
+        # sang "so sánh VNM và FPT" — không được kẹt lại symbols cũ từ turn
+        # trước dù state/checkpointer vẫn còn giữ). Không trích được mã nào từ
+        # câu hỏi hiện tại → giữ nguyên symbols cũ trong state (follow-up kiểu
+        # "còn FPT thì sao").
+        if extra_symbols:
             out["symbols"] = extra_symbols
             out["symbol"] = extra_symbols[0]
         if rewritten and rewritten != original:
@@ -290,11 +297,33 @@ def _make_collect_node(domain: str):
         "eval_agent": "eval",
     }
 
+    def _headline(title: str, summary: str) -> str:
+        """title (+ summary SubTitle CafeF nếu có) — summary thường rỗng với tin CBTT."""
+        return f"{title} ({summary})" if summary else title
+
     def _summarize(field: str, value) -> str:
-        """price/news không có field `detail` (chỉ db/eval có) — dựng câu tóm
-        tắt riêng, tránh in repr Pydantic thô vào notes/trace."""
+        """price không có field `detail` (chỉ db/eval có) — dựng câu tóm tắt
+        riêng, tránh in repr Pydantic thô vào notes/trace.
+
+        news/eval giữ TIÊU ĐỀ (+ summary nếu có) tin cụ thể (không chỉ đếm số
+        lượng) — trước đây chỉ trả "X tin (cafef)" nên final_answer_node không
+        có gì để trích khi user hỏi nguyên nhân tăng/giảm giá."""
         if value is None:
             return "(không có kết quả)"
+        if field == "news":
+            articles = getattr(value, "articles", None) or []
+            if not articles:
+                return f"{value.symbol}: chưa tìm thấy tin ({value.source})."
+            titles = "; ".join(_headline(a.title, a.summary) for a in articles[:5])
+            return f"{value.symbol}: {len(articles)} tin ({value.source}) — {titles}"
+        if field == "eval":
+            detail = str(getattr(value, "detail", "") or "")
+            items = getattr(value, "items", None) or []
+            notable = [i for i in items if i.sentiment != "neutral"]
+            if notable:
+                listed = "; ".join(f"[{i.sentiment}] {_headline(i.title, i.summary)}" for i in notable[:5])
+                return f"{detail} — {listed}"
+            return detail
         detail = getattr(value, "detail", None)
         if detail:
             return str(detail)
@@ -304,9 +333,6 @@ def _make_collect_node(domain: str):
             pct = value.pct_change
             pct_text = f", {'giảm' if pct < 0 else 'tăng'} {abs(pct):.1f}%" if pct is not None else ""
             return f"{value.symbol}: {value.last:,.0f} VND{pct_text} ({value.source})."
-        if field == "news":
-            n = len(value.articles or [])
-            return f"{value.symbol}: {n} tin ({value.source})." if n else f"{value.symbol}: chưa tìm thấy tin ({value.source})."
         return str(value)
 
     def collect(state: SupervisorState) -> dict:

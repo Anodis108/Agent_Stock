@@ -25,6 +25,8 @@ class NewsItem(BaseModel):
     title: str                            # tiêu đề bài, từ field Title CafeF Ajax
     url: str = ""                         # https://cafef.vn/...chn
     publish_time: str = ""                # ISO UTC từ /Date(ms)/
+    summary: str = ""                     # SubTitle CafeF — mô tả ngắn nội dung bài;
+                                           # thường rỗng với tin CBTT (thông báo/nghị quyết)
 
 
 class Agent_Output(BaseModel):

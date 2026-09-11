@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from typing import Annotated
 
 from langchain_core.tools import tool
@@ -22,20 +21,24 @@ def classify_headline(title: str) -> str:
 
 @tool
 def score_price_vs_news(
-    price_json: str, news_json: str, turn: Annotated[str, InjectedState("turn")] = ""
+    price: Annotated[PriceOut | None, InjectedState("price")] = None,
+    news: Annotated[NewsOut | None, InjectedState("news")] = None,
+    turn: Annotated[str, InjectedState("turn")] = "",
 ) -> str:
-    """Bắt buộc khi chấm: JSON giá + tin (Agent_Output craw/news) → báo cáo eval. Không sửa số, không bịa sentiment."""
+    """Bắt buộc khi chấm: giá + tin đã có sẵn trong state (không cần tham số) → báo cáo eval.
+
+    Giá/tin lấy thẳng từ state (InjectedState) — KHÔNG bắt LLM chép tay lại
+    JSON (trước đây `price_json`/`news_json` là tham số LLM phải tự gõ lại
+    nguyên văn; JSON tin dài — nhất là sau khi thêm `summary` — hay bị LLM
+    chép cụt giữa chừng, lỗi "Unterminated string", tốn vòng lặp retry, có
+    lúc chạm recursion_limit. Đọc thẳng state loại bỏ hẳn lỗi này."""
     try:
-        price = PriceOut.model_validate_json(price_json) if (price_json or "").strip() not in ("", "{}") else None
-        news = None
-        if (news_json or "").strip() not in ("", "{}"):
-            news = NewsOut.model_validate(json.loads(news_json))
         report = score({"price": price, "news": news, "turn": turn})["report"]
         return report.model_dump_json()
     except Exception as exc:
         return Agent_Output(
             symbol="",
-            detail=f"Lỗi chấm eval: {exc}. Kiểm tra JSON giá/tin rồi gọi lại.",
+            detail=f"Lỗi chấm eval: {exc}. Gọi lại score_price_vs_news.",
         ).model_dump_json()
 
 

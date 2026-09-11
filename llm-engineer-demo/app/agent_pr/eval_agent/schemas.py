@@ -32,6 +32,7 @@ class ScoredItem(BaseModel):
 
     title: str                            # chép nguyên từ NewsItem.title, không sửa
     url: str = ""                         # chép nguyên từ NewsItem.url
+    summary: str = ""                     # chép nguyên từ NewsItem.summary (SubTitle CafeF)
     sentiment: Literal["negative", "positive", "neutral"] = "neutral"  # _sentiment (fallback) hoặc LLM (HeadlineBatch) gán
 
 
