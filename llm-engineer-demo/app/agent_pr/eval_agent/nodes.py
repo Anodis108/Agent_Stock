@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from app.agent_pr.eval_agent.schemas import Agent_Output, HeadlineBatch, ScoredItem
 from app.agent_pr.eval_agent.state import EvalState
+from app.agent_pr.prompt_registry import registry
 from app.guardrails.injection import bound_messages
 from app.config import settings
 from app.llm.completion import chat_parsed_with_usage
@@ -17,13 +18,8 @@ from app.monitoring.tracing import record_usage, step_parent, trace_step
 _NEGATIVE = ("xả hàng", "bán ròng", "giảm sàn", "cắt lỗ")
 _POSITIVE = ("tăng trưởng", "lợi nhuận", "khuyến nghị mua")
 
-
-_SENTIMENT_SYSTEM = """Phân loại từng tiêu đề (kèm mô tả ngắn nếu có) tin cổ phiếu VN (giống ProductReview Bài 1).
-Few-shot:
-- "Khối ngoại xả hàng HPG" → negative
-- "HPG báo lợi nhuận tăng trưởng mạnh" → positive
-- "HPG họp ĐHĐCĐ thường niên" → neutral
-Chỉ negative | positive | neutral. Không bịa tiêu đề. Đúng số lượng / thứ tự đã gửi."""
+# Prompt "_SENTIMENT_SYSTEM" cũ → agent_pr/prompts/eval_sentiment/v*.yaml
+# (prompt_registry, LLMOps Module III Bài 6).
 
 
 def _sentiment(text: str) -> str:
@@ -58,8 +54,9 @@ def score(state: EvalState) -> dict:
             f"{i + 1}. {a.title}" + (f" — {a.summary}" if getattr(a, "summary", "") else "")
             for i, a in enumerate(articles)
         )
+        sentiment_system = registry().get("eval_sentiment", "production").template
         batch, usage = chat_parsed_with_usage(
-            bound_messages(_SENTIMENT_SYSTEM, numbered),
+            bound_messages(sentiment_system, numbered),
             HeadlineBatch,
             DETERMINISTIC,
         )

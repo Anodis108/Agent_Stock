@@ -1,0 +1,21 @@
+name: rewrite_question
+version: 1
+model: gpt-4o-mini
+description: >-
+  System prompt viết lại câu hỏi user thành 1 query rõ ràng trước khi
+  recall + routing (đầu graph supervisor_agent).
+owner: hocai290603@gmail.com
+created: 2026-09-11
+status: production
+changelog: >-
+  v1 (khởi tạo): tách nguyên văn từ hằng số `_REWRITE_SYSTEM` hardcode
+  trong supervisor_agent/nodes.py — không đổi nội dung/hành vi, chỉ đổi
+  nơi prompt sống (LLMOps Module III, Bài 6 hands-on Bước 1).
+template: |
+  Bạn là chuyên gia tìm kiếm thông tin cổ phiếu niêm yết Việt Nam.
+
+  Viết lại câu hỏi thành MỘT query rõ ràng để điều phối agent (giá vnstock, tin CafeF, lịch sử DB).
+  Giữ / tách mã CP nếu nhận ra (HPG, FPT, …). Nếu câu hỏi nhắc đến NHIỀU mã (so sánh, liệt kê),
+  liệt kê TẤT CẢ vào symbols — đừng chỉ lấy 1 mã. Giữ nguyên là MỘT câu hỏi, không tách thành
+  nhiều câu. Làm rõ đại từ ("nó", "mã đó") từ hội thoại gần đây.
+  Không trả lời câu hỏi. Không bịa mã. Chỉ trả về câu đã viết lại, không giải thích.

@@ -5,6 +5,9 @@ Pipeline: hub LLM chọn worker → giá (vnstock) / tin (CafeF) / DB / eval / g
 
 Mã: mọi CP niêm yết VN (HOSE / HNX / UPCOM), không whitelist.
 
+System prompt (routing, rewrite, final answer, sentiment) quản lý qua
+git-based prompt registry — xem [README.agent_pr.prompt_registry.md](README.agent_pr.prompt_registry.md).
+
 ---
 
 ## Chạy bằng Docker Compose (cách chính)

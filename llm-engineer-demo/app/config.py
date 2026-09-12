@@ -98,6 +98,12 @@ class Settings(BaseSettings):
     # coi là đủ dùng, không tự crawl lại — dạy qua prompt, không code-enforce.
     agent_pr_freshness_minutes: int = Field(default=20, alias="AGENT_PR_FRESHNESS_MINUTES")
 
+    # ── LLMOps Module III, Bài 6: Prompt A/B test (supervisor_routing) ──────
+    # % traffic (sticky theo user_id) nhận bản "treatment" (v2) thay vì
+    # "control" (production alias, v1). 0 = tắt hẳn A/B, luôn dùng production.
+    agent_pr_ab_treatment_pct: int = Field(default=0, alias="AGENT_PR_AB_TREATMENT_PCT")
+    agent_pr_ab_treatment_version: int = Field(default=2, alias="AGENT_PR_AB_TREATMENT_VERSION")
+
     # ── Module II, Bài 4: Agentic Tool Design & Integration ──────────────────
     # Số tool tối đa model được THẤY mỗi lượt (Section 2: Tool Retrieval).
     # 15 tool tổng (tools.py) > ngưỡng chính xác ổn định (5-7) của bài học.

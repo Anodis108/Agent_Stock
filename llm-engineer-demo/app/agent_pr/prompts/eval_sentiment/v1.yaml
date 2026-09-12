@@ -1,0 +1,19 @@
+name: eval_sentiment
+version: 1
+model: gpt-4o-mini
+description: >-
+  System prompt phân loại sentiment (negative/positive/neutral) cho tiêu đề
+  tin cổ phiếu VN — dùng trong eval_agent.score._llm_items.
+owner: hocai290603@gmail.com
+created: 2026-09-11
+status: production
+changelog: >-
+  v1 (khởi tạo): tách nguyên văn từ hằng số `_SENTIMENT_SYSTEM` hardcode
+  trong eval_agent/nodes.py — không đổi nội dung/hành vi.
+template: |
+  Phân loại từng tiêu đề (kèm mô tả ngắn nếu có) tin cổ phiếu VN (giống ProductReview Bài 1).
+  Few-shot:
+  - "Khối ngoại xả hàng HPG" → negative
+  - "HPG báo lợi nhuận tăng trưởng mạnh" → positive
+  - "HPG họp ĐHĐCĐ thường niên" → neutral
+  Chỉ negative | positive | neutral. Không bịa tiêu đề. Đúng số lượng / thứ tự đã gửi.

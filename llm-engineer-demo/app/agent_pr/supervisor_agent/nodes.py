@@ -17,9 +17,12 @@ câu user trước recall + routing; `question` gốc giữ cho history/eval.
 
 from __future__ import annotations
 
+import hashlib
 from datetime import date
 
 from app.agent_pr import context, memory
+from app.agent_pr.prompt_registry import registry
+from app.helper.loging import get_logger
 from app.agent_pr.db_agent.nodes import approve_pending_write
 from app.agent_pr.db_agent.schemas import Agent_Output as DbOut
 from app.agent_pr.db_agent.schemas import PendingWrite
@@ -38,58 +41,27 @@ from app.llm.params import DETERMINISTIC
 from app.guardrails.injection import bound_messages
 from app.monitoring.tracing import pop_usage, record_usage, step_parent, trace_step
 
+_log = get_logger(__name__)
+
 _WORKER_DOMAINS = ["price_agent", "news_agent", "db_agent", "db_write", "eval_agent"]
 
-# Cùng ý retriever._rewrite_query + ngày hiện tại (agent_m2 _system_prompt).
-_REWRITE_SYSTEM = """Bạn là chuyên gia tìm kiếm thông tin cổ phiếu niêm yết Việt Nam.
+# Prompt (_REWRITE_SYSTEM/_SUPERVISOR_SYSTEM/_FINAL_ANSWER_SYSTEM cũ) đã
+# chuyển sang `agent_pr/prompts/*/v*.yaml`, quản lý qua `prompt_registry`
+# (LLMOps Module III, Bài 6 hands-on) — xem docs/prompt_registry.md.
 
-Viết lại câu hỏi thành MỘT query rõ ràng để điều phối agent (giá vnstock, tin CafeF, lịch sử DB).
-Giữ / tách mã CP nếu nhận ra (HPG, FPT, …). Nếu câu hỏi nhắc đến NHIỀU mã (so sánh, liệt kê),
-liệt kê TẤT CẢ vào symbols — đừng chỉ lấy 1 mã. Giữ nguyên là MỘT câu hỏi, không tách thành
-nhiều câu. Làm rõ đại từ ("nó", "mã đó") từ hội thoại gần đây.
-Không trả lời câu hỏi. Không bịa mã. Chỉ trả về câu đã viết lại, không giải thích."""
 
-# Cùng ý _SUPERVISOR_SYSTEM agent_m2: worker không nói với nhau, supervisor chỉ chọn việc.
-_SUPERVISOR_SYSTEM = """Bạn điều phối 4 worker chuyên biệt cho hỏi–đáp cổ phiếu niêm yết Việt Nam:
+def pick_prompt_version(user_id: str, treatment_pct: int, treatment_version: int) -> int:
+    """A/B test `supervisor_routing`: sticky theo user_id (slide "Traffic
+    Splitting", Bài 6 Phần 5). `treatment_pct=0` (mặc định) → luôn v1
+    (alias production hiện tại) — A/B chỉ bật khi cấu hình rõ ràng.
 
-- price_agent: giá đóng cửa / % biến động so phiên trước (vnstock).
-- news_agent: tin tức thô (CafeF).
-- db_agent: đọc lịch sử đã lưu trong sqlite (chạy TRƯỚC khi crawl nếu câu cần giá/tin/lịch sử).
-- eval_agent: chấm tin vs chiều giá — CHỈ chọn khi đã có CẢ price_agent lẫn news_agent chạy
-  xong (xem notes), và câu hỏi thuộc 1 trong 3 dạng: hỏi NGUYÊN NHÂN biến động giá
-  ("tại sao/vì sao ... tăng/giảm"), hỏi ĐỘ TIN CẬY/KHỚP của tin, hoặc hỏi CHẤM sentiment.
-- db_write: soạn lệnh lưu dữ liệu VỪA crawl (không phải từ DB) vào kho — chỉ chọn khi
-  notes đã có price_agent hoặc news_agent với dữ liệu MỚI (chưa lưu).
-
-Worker KHÔNG tự giao tiếp với nhau — bạn quyết định worker nào chạy tiếp theo dựa trên
-nhiệm vụ, hội thoại gần đây và ghi chú (notes) đã có. Không gọi lại worker đã có trong
-notes trừ khi cần làm mới.
-
-Nếu nhiệm vụ có NHIỀU mã (vd so sánh HPG và FPT), mỗi lượt gọi worker BẮT BUỘC trả về
-`symbol` cụ thể (đúng 1 mã trong danh sách "Các mã cần xử lý") — gọi TỪNG MÃ MỘT, không
-gộp nhiều mã vào 1 lượt gọi. Ghi chú (notes) nhóm theo TỪNG MÃ — xem để biết mã nào còn
-thiếu worker nào. Chỉ chọn 'done' khi TẤT CẢ mã đã đủ thông tin cần thiết.
-
-Ghi chú của db_agent có kèm ĐỘ MỚI dữ liệu (vd "5 phút trước", "hơn 1 giờ trước"). Nếu dữ
-liệu trong DB mới hơn khoảng {freshness_minutes} phút, coi là ĐỦ DÙNG — KHÔNG cần gọi lại
-price_agent/news_agent để crawl lại cùng mã. Chỉ crawl lại khi DB chưa có dữ liệu, dữ liệu
-đã quá cũ (hơn vài giờ), hoặc user yêu cầu rõ "mới nhất/cập nhật lại".
-
-Câu hỏi về CHÍNH hội thoại (vd. "vừa rồi tôi hỏi gì", "mã nào tôi hỏi lúc nãy") — trả lời
-được ngay từ "Hội thoại gần đây" bên dưới, không cần gọi worker nào, chọn 'done' luôn.
-
-Chọn 'done' khi đã đủ thông tin (từ notes hoặc hội thoại gần đây) để trả lời user."""
-
-_FINAL_ANSWER_SYSTEM = """Bạn tổng hợp ghi chú (notes) từ các worker cổ phiếu VN thành câu
-trả lời cuối cho user — tiếng Việt, ngắn gọn, đầy đủ thông tin đã thu thập được.
-
-Chỉ dùng dữ liệu có trong notes hoặc hội thoại gần đây; không bịa số liệu/tin không có.
-Thiếu dữ liệu thì nói thiếu. Hỏi tăng/giảm thì nêu chiều + % nếu notes có. Hỏi nguyên nhân
-("tại sao/vì sao ... tăng/giảm") thì PHẢI trích tiêu đề tin cụ thể có trong notes (news/eval)
-làm lý do — không trả lời chung chung kiểu "có tin tiêu cực" nếu notes đã có tiêu đề rõ.
-Notes không có tin nào khớp chiều giá thì nói rõ chưa xác định được nguyên nhân, đừng suy
-diễn. Có kết quả db_write thì nhắc đã soạn lệnh chờ duyệt. Câu hỏi về CHÍNH hội thoại (vd.
-"vừa hỏi mã nào") thì trả lời thẳng từ "Hội thoại gần đây", không nói "chưa có dữ liệu"."""
+    Cùng user luôn rơi vào cùng version (hash ổn định) — tránh trải nghiệm
+    nhảy qua lại giữa 2 bản routing giữa các lượt hỏi của 1 người.
+    """
+    if treatment_pct <= 0 or not user_id:
+        return 1
+    bucket = int(hashlib.sha256(user_id.encode()).hexdigest(), 16) % 100
+    return treatment_version if bucket < treatment_pct else 1
 
 
 def rewrite_question(state: SupervisorState) -> dict:
@@ -109,8 +81,9 @@ def rewrite_question(state: SupervisorState) -> dict:
                     f"Câu hỏi hiện tại: {original}"
                 )
             try:
+                rewrite_system = registry().get("rewrite_question", "production").template
                 parsed, usage = chat_parsed_with_usage(
-                    bound_messages(_REWRITE_SYSTEM, user),
+                    bound_messages(rewrite_system, user),
                     RewrittenQuery,
                     DETERMINISTIC,
                 )
@@ -176,7 +149,16 @@ def supervisor_node(state: SupervisorState) -> dict:
         if memories:
             parts.append("Đã biết về user:\n" + "\n".join(f"- {m}" for m in memories))
         parts.append(f"Ghi chú từ worker đã chạy lượt này:\n{notes_text}")
-        system = _SUPERVISOR_SYSTEM.format(freshness_minutes=settings.agent_pr_freshness_minutes)
+        prompt_version = pick_prompt_version(
+            str(state.get("user_id") or ""),
+            settings.agent_pr_ab_treatment_pct,
+            settings.agent_pr_ab_treatment_version,
+        )
+        system = registry().render(
+            "supervisor_routing",
+            version=prompt_version,
+            freshness_minutes=str(settings.agent_pr_freshness_minutes),
+        )
         try:
             decision, usage = chat_parsed_with_usage(
                 bound_messages(system, "\n\n".join(parts)),
@@ -184,6 +166,13 @@ def supervisor_node(state: SupervisorState) -> dict:
                 DETERMINISTIC,
             )
             record_usage(str(state.get("turn") or ""), settings.llm_model, **usage)
+            # Log version cho mỗi lượt routing — dữ liệu thô để đọc kết quả
+            # A/B test sau này (Bài 6 Phần 5) khi AGENT_PR_AB_TREATMENT_PCT > 0.
+            _log.info(
+                "prompt_ab prompt=supervisor_routing version=%s user_id=%s",
+                prompt_version,
+                str(state.get("user_id") or ""),
+            )
             next_agent = decision.next_agent if decision.next_agent in [*_WORKER_DOMAINS, "done"] else "done"
             chosen_symbol = (decision.symbol or "").strip().upper()
             if next_agent in _WORKER_DOMAINS and not chosen_symbol:
@@ -489,9 +478,10 @@ def final_answer_node(state: SupervisorState) -> dict:
             parts.append("Hội thoại gần đây (các lượt trước):\n" + context.format_messages(shaped))
         parts.append(f"Ghi chú:\n{notes_text}")
         model = _select_final_answer_model(state)
+        final_answer_system = registry().get("final_answer", "production").template
         try:
             parsed, usage = chat_parsed_with_usage(
-                bound_messages(_FINAL_ANSWER_SYSTEM, "\n\n".join(parts)),
+                bound_messages(final_answer_system, "\n\n".join(parts)),
                 FinalAnswer,
                 DETERMINISTIC,
                 model=model,

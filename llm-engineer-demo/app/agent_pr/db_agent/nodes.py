@@ -152,7 +152,8 @@ def _read_rows(symbol: str) -> dict:
 def _freshness_label(ts: float) -> str:
     """Độ mới dữ liệu tính từ `ts` (time.time() lúc ghi) — dùng trong `detail`
     để supervisor (qua prompt, không code-enforce) tự quyết có cần crawl lại
-    hay dữ liệu DB đã đủ mới (xem AGENT_PR_FRESHNESS_MINUTES, _SUPERVISOR_SYSTEM)."""
+    hay dữ liệu DB đã đủ mới (xem AGENT_PR_FRESHNESS_MINUTES, prompt
+    "supervisor_routing" trong agent_pr/prompts/)."""
     if not ts:
         return "chưa rõ thời điểm"
     age_min = (time.time() - ts) / 60
