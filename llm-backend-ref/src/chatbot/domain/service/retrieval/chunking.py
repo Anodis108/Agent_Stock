@@ -17,7 +17,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from app.retrieval.loader import LoadedDoc
+from src.chatbot.domain.service.retrieval.loader import LoadedDoc
 
 # Thứ tự separator: thử tách theo cái "to" trước, nhỏ dần.
 _SEPARATORS = ["\n\n", "\n", ". ", " ", ""]

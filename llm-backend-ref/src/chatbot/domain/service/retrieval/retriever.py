@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from app.config import settings
+from src.chatbot.common.utils import settings
 
 
 @dataclass(slots=True)
@@ -31,8 +31,8 @@ class RetrievedChunk:
 
 def _rewrite_query(query: str) -> str:
     """Dùng LLM viết lại câu hỏi thành query tìm kiếm pháp lý tối ưu (native SDK)."""
-    from app.llm import completion
-    from app.llm.params import GenerationParams
+    from src.chatbot.infrastructure.llm import completion
+    from src.chatbot.domain.entities.params import GenerationParams
 
     messages = [
         {
@@ -57,8 +57,8 @@ def retrieve(query: str, top_k: int | None = None) -> list[RetrievedChunk]:
         top_k: số chunk trả về cuối cùng (mặc định settings.rag_top_k).
     """
     # Import ở đây để tránh vòng import và giữ module nhẹ.
-    from app.retrieval import vectorstore
-    from app.retrieval.embeddings import embed_query
+    from src.chatbot.domain.service.retrieval import vectorstore
+    from .embeddings import embed_query
 
     top_k = top_k or settings.rag_top_k
 
@@ -69,7 +69,7 @@ def retrieve(query: str, top_k: int | None = None) -> list[RetrievedChunk]:
     hits = vectorstore.search(embed_query(search_query), top_k=fetch_k)
 
     if settings.rag_rerank_enabled and hits:
-        from app.retrieval.rerank import rerank
+        from .rerank import rerank
 
         hits = rerank(query, hits, top_k=top_k)
 

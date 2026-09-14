@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from openai import OpenAI
 
-from src.chatbot.common.settings import settings
+from src.chatbot.common.utils import settings
 from .backends import get_backend
 from .resilience import RotatingKeyPool
 

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 
-from src.chatbot.common.settings import settings
+from src.chatbot.common.utils import settings
 
 
 @dataclass(slots=True)

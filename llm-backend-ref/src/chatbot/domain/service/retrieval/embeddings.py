@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from app.config import settings
+from src.chatbot.common.utils import settings
 
 
 @lru_cache(maxsize=1)

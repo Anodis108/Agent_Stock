@@ -4,7 +4,7 @@ from abc import ABC
 from abc import abstractmethod
 from typing import Any
 
-from common.bases import BaseModel
+from .base_model import CustomBaseModel as BaseModel
 
 
 class BaseService(ABC, BaseModel):

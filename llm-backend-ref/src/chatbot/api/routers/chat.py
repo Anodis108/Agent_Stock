@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-from api.helper.exception_handler import ExceptionHandler
-from api.helper.exception_handler import ResponseMessage
-from app.chat import ChatInput
-from app.chat import ChatOutput
-from app.chat import ChatService
-from common.logs import get_logger
-from common.utils import get_settings
-from domain.service.optimization.cache import SemanticCache
 from fastapi import APIRouter
 from fastapi import status
 from fastapi.encoders import jsonable_encoder
+
+from src.chatbot.api.helper.exception_handler import ExceptionHandler
+from src.chatbot.api.helper.exception_handler import ResponseMessage
+from src.chatbot.app.chat import ChatInput
+from src.chatbot.app.chat import ChatOutput
+from src.chatbot.app.chat import ChatService
+from src.chatbot.common.logs import get_logger
+from src.chatbot.common.utils import get_settings
 
 router = APIRouter(prefix='/chat', tags=['chat'])
 logger = get_logger(__name__)

@@ -3,10 +3,11 @@ from __future__ import annotations
 from enum import Enum
 from typing import Optional
 
-from common.bases import BaseModel
 from fastapi import status
 from fastapi.responses import JSONResponse
 from structlog.stdlib import BoundLogger
+
+from src.chatbot.common.bases import BaseModel
 
 
 class ResponseMessage(str, Enum):

@@ -1,17 +1,15 @@
-FROM python:3.11-slim-bullseye
-
-RUN apt-get update \
-    && apt-get install libmagic1 swig wget -y \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN apt-get update && apt-get install ffmpeg libsm6 libxext6  -y
+FROM python:3.12-slim
 
 WORKDIR /app
 
-COPY logic_app/requirements.txt .
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
 
-# Upgrade pip
-RUN pip install --upgrade pip
+COPY src/chatbot/requirements.txt .
+RUN pip install -r requirements.txt
 
-# Increase timeout to wait for the new installation
-RUN pip install --no-cache-dir -r requirements.txt --timeout 200
+COPY src/ src/
+
+EXPOSE 8000
+CMD ["uvicorn", "src.chatbot.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -17,7 +17,7 @@ from typing import TypeVar
 from openai.types.chat import ChatCompletion, ChatCompletionMessageParam
 from pydantic import BaseModel
 
-from src.chatbot.common.settings import settings
+from src.chatbot.common.utils import settings
 from .client import get_client, mark_current_key_limited
 from src.chatbot.domain.entities.params import GenerationParams
 from .resilience import retry_with_backoff

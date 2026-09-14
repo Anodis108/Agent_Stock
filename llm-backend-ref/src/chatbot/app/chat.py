@@ -1,17 +1,15 @@
 from __future__ import annotations
 
-from common.bases import BaseModel
-from common.bases import BaseService
-from common.logs import get_logger
-from common.settings import Settings
-from domain.service.optimization.cache import SemanticCache
-from domain.service.optimization.routed import route
-from src.chatbot.domain.entities.params import GenerationParams
-from infrastructure.llm_client import LLMClient
-from infrastructure.llm_client import LLMClientInput
-from .pipeline import answer
 from pydantic import Field
+
+from src.chatbot.common.bases import BaseModel
+from src.chatbot.common.bases import BaseService
+from src.chatbot.common.logs import get_logger
 from src.chatbot.common.utils import settings
+from src.chatbot.domain.entities.params import GenerationParams
+from src.chatbot.domain.service.optimization.cache import SemanticCache
+from src.chatbot.domain.service.optimization.routed import route
+from .pipeline import answer
 
 logger = get_logger(__name__)
 
@@ -80,10 +78,6 @@ class ChatOutput(BaseModel):
 
 class ChatService(BaseService):
 
-    @property
-    def _get_llm_client(self) -> LLMClient:
-        return LLMClient(settings=self.settings)
-
     def process(self, inputs: ChatInput) -> ChatOutput:
         """Trả lời non-streaming."""
         # Buổi 8: Routing decision (determines which model should be used)
@@ -100,14 +94,13 @@ class ChatService(BaseService):
         if cache_hit:
             answer_text = cached_answer
         else:
-            llm_out = answer(inputs.question, _params_from(inputs))
-            answer_text = llm_out.answer
+            answer_text = answer(inputs.question, _params_from(inputs))
 
         semantic_cache.set(inputs.question, answer_text)
 
         optimization = OptimizationStats(
             routing_model=inputs.model,
-            routing_method=self.settings.routing_query_method,
+            routing_method=settings.routing_query_method,
             cache_hit=cache_hit,
         )
 

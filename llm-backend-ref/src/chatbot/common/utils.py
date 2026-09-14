@@ -5,8 +5,8 @@ import time
 from functools import lru_cache
 from functools import wraps
 
-from common.logs import get_logger
-from common.settings import Settings
+from src.chatbot.common.logs import get_logger
+from src.chatbot.common.settings import Settings
 
 
 @lru_cache

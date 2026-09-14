@@ -11,8 +11,8 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from app.config import settings
-from app.retrieval.vectorstore import SearchHit
+from src.chatbot.common.utils import settings
+from src.chatbot.domain.service.retrieval.vectorstore import SearchHit
 
 
 @lru_cache(maxsize=1)

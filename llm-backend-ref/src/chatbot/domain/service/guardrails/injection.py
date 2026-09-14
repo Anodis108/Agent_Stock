@@ -44,8 +44,8 @@ class _InjectionCheck(BaseModel):
 def llm_injection_check(user_input: str) -> _InjectionCheck:
     """Check bằng LLM — bắt được biến thể tinh vi (paraphrase, ẩn trong ngữ
     cảnh dài) mà regex bỏ sót. Tốn 1 lời gọi LLM mỗi lần gọi."""
-    from app.llm import completion
-    from app.llm.params import GenerationParams
+    from src.chatbot.infrastructure.llm import completion
+    from src.chatbot.domain.entities.params import GenerationParams
 
     messages = [
         {

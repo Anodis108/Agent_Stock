@@ -1,8 +1,8 @@
-from __future__ import annotations
+# from __future__ import annotations
 
-from common.bases import BaseModel
+# from src.chatbot.common.bases import BaseModel
 
 
-class DrawSettings(BaseModel):
-    output_dir: str
-    active: bool
+# class DrawSettings(BaseModel):
+#     output_dir: str
+#     active: bool

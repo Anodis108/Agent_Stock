@@ -13,7 +13,7 @@ import uuid
 from dataclasses import dataclass
 from functools import lru_cache
 
-from app.config import settings
+from src.chatbot.common.utils import settings
 
 
 @dataclass(slots=True)

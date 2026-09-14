@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from api.helper import LoggingMiddleware
-from api.routers.chat import router as chat_api
-from api.routers.height_cal_pred import height_api
 from asgi_correlation_id import CorrelationIdMiddleware
-from common.logs import get_logger
-from common.logs import setup_logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+from src.chatbot.api.helper import LoggingMiddleware
+from src.chatbot.api.routers.chat import router as chat_api
+from src.chatbot.common.logs import get_logger
+from src.chatbot.common.logs import setup_logging
 # from api.routers.sign_up import sign_up_endpoint
 
 setup_logging(json_logs=False)
@@ -29,12 +29,9 @@ app.add_middleware(
 )
 
 app.include_router(
-    height_api,
-)
-app.include_router(
     chat_api,
 )
 
 if __name__ == '__main__':
     import uvicorn
-    uvicorn.run('main:app', host='127.0.0.1', port=5001, reload=True)
+    uvicorn.run('src.chatbot.main:app', host='127.0.0.1', port=5001, reload=True)

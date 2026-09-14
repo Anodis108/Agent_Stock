@@ -16,7 +16,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from src.chatbot.common.settings import settings
+from src.chatbot.common.utils import settings
 from .injection import detect_prompt_injection
 from .pii import detect_pii
 from .injection import llm_injection_check

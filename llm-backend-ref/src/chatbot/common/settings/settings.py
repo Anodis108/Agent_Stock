@@ -17,6 +17,11 @@ class Settings(BaseSettings):
     openai_api_keys: str
     llm_model: str = 'gpt-4o-mini'
 
+    @property
+    def api_keys(self) -> list[str]:
+        """OPENAI_API_KEYS parsed thành list (hỗ trợ nhiều key, ngăn cách dấu phẩy)."""
+        return [k.strip() for k in self.openai_api_keys.split(',') if k.strip()]
+
     # Generation params (mặc định, có thể override mỗi request)
     llm_temperature: float = 0.2
     llm_max_completion_tokens: int = 800
