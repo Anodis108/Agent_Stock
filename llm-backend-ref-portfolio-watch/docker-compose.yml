@@ -1,0 +1,29 @@
+# Portfolio Watch — demo compose (Phase 7)
+# Up:   cp .env.example .env  # điền OPENAI_API_KEYS nếu cần
+#       docker compose up --build
+# Down: docker compose down
+# Data: volume `pw_sqlite` → /app/data (SQLite sống qua restart)
+
+services:
+  app:
+    build: .
+    image: portfolio-watch:demo
+    container_name: portfolio-watch-app
+    # Secret / cấu hình từ host — không bake vào image
+    env_file:
+      - .env
+    ports:
+      # Host bind port (đổi trong .env: APP_HOST_PORT)
+      - "${APP_HOST_PORT:-8000}:8000"
+    environment:
+      # Override bắt buộc trong container (thắng giá trị local trong .env)
+      API_HOST: "0.0.0.0"
+      API_PORT: "8000"
+      SQLITE_PATH: /app/data/portfolio_watch.db
+    volumes:
+      - pw_sqlite:/app/data
+    restart: unless-stopped
+
+volumes:
+  pw_sqlite:
+    name: portfolio-watch-sqlite

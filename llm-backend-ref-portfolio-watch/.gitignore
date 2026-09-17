@@ -1,0 +1,20 @@
+__pycache__
+*.py[cod]
+.venv/
+# weights/
+.vscode
+
+.env
+data/
+*.db
+*.npy
+src/model_deployed/tests/img_kpoint.json
+src/model_deployed/tests/landmark_box.json
+src/model_deployed/shared/weights
+src/checkin/tests/chroma_db
+
+.mypy_cache
+*.egg-info/
+dist/
+build/
+*.pth

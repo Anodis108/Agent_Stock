@@ -1,0 +1,35 @@
+[project]
+name = "portfolio-watch"
+version = "0.1.0"
+description = "Portfolio Watch & Chat Agent — multi-agent giám sát cổ phiếu VN"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.111.0",
+    "uvicorn[standard]>=0.30.0",
+    "langgraph>=0.2.0",
+    "langchain-openai>=0.2.0",
+    "pydantic-settings>=2.3.0",
+    "python-dotenv>=1.0.0",
+    "openai>=1.40.0",
+    "apscheduler>=3.10.0",
+    "vnstock>=3.0.0",
+    "pandas>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2.0",
+    "pytest-asyncio>=0.23.0",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

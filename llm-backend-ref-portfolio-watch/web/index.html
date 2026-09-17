@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Portfolio Watch & Chat</title>
+  <link rel="icon" href="data:," />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <h1>Portfolio Watch & Chat</h1>
+
+  <div id="app-error" class="app-error" role="alert" hidden></div>
+
+  <!-- 1. Chat -->
+  <section id="chat">
+    <h2>Chat</h2>
+    <div id="chat-messages">
+      <p><em>(Chưa có hội thoại)</em></p>
+    </div>
+    <form id="chat-form" onsubmit="return false;">
+      <input
+        id="chat-input"
+        type="text"
+        placeholder="Hỏi về mã trong watchlist…"
+        autocomplete="off"
+      />
+      <button type="submit">Gửi</button>
+    </form>
+  </section>
+
+  <!-- 2. Watchlist (+ quét ngay) -->
+  <section id="watchlist">
+    <h2>Watchlist</h2>
+    <form id="scan-form" onsubmit="return false;" style="margin-bottom:0.75rem;display:flex;gap:0.5rem;flex-wrap:wrap;">
+      <input id="scan-symbol" type="text" placeholder="Mã (vd. FPT)" autocomplete="off" style="width:6rem;padding:0.35rem 0.5rem;" />
+      <button type="submit">Quét ngay</button>
+    </form>
+    <pre id="scan-result" style="display:none;white-space:pre-wrap;background:#fafafa;border:1px solid #ccc;padding:0.5rem;margin-bottom:0.75rem;"></pre>
+    <table>
+      <thead>
+        <tr>
+          <th>Mã</th>
+          <th>Ngưỡng cảnh báo (%)</th>
+        </tr>
+      </thead>
+      <tbody id="watchlist-body">
+        <tr><td colspan="2"><em>Đang tải…</em></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 3. Approvals (HITL) -->
+  <section id="approvals">
+    <h2>Cảnh báo chờ duyệt</h2>
+    <ul id="approvals-list">
+      <li><em>Đang tải…</em></li>
+    </ul>
+  </section>
+
+  <script src="app.js"></script>
+</body>
+</html>
