@@ -1,14 +1,26 @@
-"""EvalAgent — sinh Severity; ReAct có thể gọi read_price_history khi dữ liệu mập mờ."""
+"""EvalAgent — sinh Severity; ReAct có thể gọi read_price_history khi dữ liệu mập mờ.
+
+Phase 8: mặc định dùng LLM qua Prompt Registry (`eval_severity`) +
+`infra/llm.completion.chat`. `HeuristicEvalBrain` giữ cho unit test / inject.
+"""
 
 from __future__ import annotations
 
+import json
+import re
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
 from src.portfolio_watch.domain.agents.news_agent import NewsAgentResult
 from src.portfolio_watch.domain.agents.price_agent import PriceAgentResult
 from src.portfolio_watch.domain.entities import Severity, SeverityLevel
 from src.portfolio_watch.domain.ports import PriceBar, PriceHistoryStore
+from src.portfolio_watch.infra.llm.completion import chat
+from src.portfolio_watch.infra.llm.params import DETERMINISTIC
+from src.portfolio_watch.infra.llm.prompt_registry import registry
+
+_JSON_OBJ_RE = re.compile(r"\{.*\}", re.DOTALL)
 
 
 @dataclass(slots=True)
@@ -142,6 +154,144 @@ def _history_supports(
     return same_sign
 
 
+def _news_summary(news: NewsAgentResult) -> str:
+    items = news.items or []
+    if not items:
+        return "(không có tin)"
+    return "; ".join((i.title or "").strip() for i in items[:5] if (i.title or "").strip()) or "(không có tin)"
+
+
+def _history_summary(history: list[PriceBar]) -> str:
+    if not history:
+        return "(chưa có lịch sử)"
+    parts = []
+    for bar in history[:8]:
+        parts.append(f"{bar.date}:{bar.close}")
+    more = f" (+{len(history) - 8} bars)" if len(history) > 8 else ""
+    return "; ".join(parts) + more
+
+
+def _parse_eval_payload(raw: str) -> dict[str, Any]:
+    text = (raw or "").strip()
+    match = _JSON_OBJ_RE.search(text)
+    payload = match.group(0) if match else text
+    data = json.loads(payload)
+    if not isinstance(data, dict):
+        raise ValueError("EvalAgent LLM không trả JSON object")
+    return data
+
+
+def _severity_from_payload(data: dict[str, Any]) -> Severity:
+    level_raw = str(data.get("level", "low")).strip().lower()
+    level_map = {
+        "low": SeverityLevel.LOW,
+        "medium": SeverityLevel.MEDIUM,
+        "med": SeverityLevel.MEDIUM,
+        "high": SeverityLevel.HIGH,
+    }
+    level = level_map.get(level_raw, SeverityLevel.LOW)
+    try:
+        confidence = float(data.get("confidence", 0.5))
+    except (TypeError, ValueError):
+        confidence = 0.5
+    confidence = max(0.0, min(1.0, confidence))
+    reasoning = str(data.get("reasoning", "")).strip() or "llm eval"
+    evidence_raw = data.get("evidence") or []
+    if isinstance(evidence_raw, list):
+        evidence = [str(x) for x in evidence_raw]
+    else:
+        evidence = [str(evidence_raw)]
+
+    proposed_thr = data.get("proposed_threshold_pct")
+    if proposed_thr is not None:
+        try:
+            proposed_thr = float(proposed_thr)
+        except (TypeError, ValueError):
+            proposed_thr = None
+
+    related = data.get("proposed_related_symbols") or []
+    if not isinstance(related, list):
+        related = []
+    related_syms = [str(s).strip().upper() for s in related if str(s).strip()]
+
+    return Severity(
+        level=level,
+        confidence=confidence,
+        reasoning=reasoning,
+        evidence=evidence,
+        proposed_threshold_pct=proposed_thr,
+        proposed_related_symbols=related_syms,
+    )
+
+
+class LlmEvalBrain:
+    """LLM brain: Prompt Registry `eval_severity` + chat completion."""
+
+    def __init__(
+        self,
+        *,
+        chat_fn: Callable[..., str] | None = None,
+        prompt_version: str | int = "production",
+    ) -> None:
+        self._chat_fn = chat_fn or chat
+        self._prompt_version = prompt_version
+        # Cache kết quả lần gọi khi chưa có history (tránh double-call nếu đủ data)
+        self._cached_empty_history: dict[str, Any] | None = None
+
+    def _call_llm(
+        self,
+        price: PriceAgentResult,
+        news: NewsAgentResult,
+        history: list[PriceBar],
+    ) -> dict[str, Any]:
+        change = price.change_pct
+        prompt_text = registry().render(
+            "eval_severity",
+            version=self._prompt_version,
+            symbol=price.symbol or news.symbol or "",
+            change_pct=f"{change:.4f}" if change is not None else "N/A",
+            news_summary=_news_summary(news),
+            history_summary=_history_summary(history),
+        )
+        raw = self._chat_fn(
+            [{"role": "user", "content": prompt_text}],
+            DETERMINISTIC,
+        )
+        return _parse_eval_payload(raw)
+
+    def needs_history(
+        self,
+        price: PriceAgentResult,
+        news: NewsAgentResult,
+        history: list[PriceBar],
+    ) -> bool:
+        if history:
+            return False
+        data = self._call_llm(price, news, history)
+        self._cached_empty_history = data
+        return bool(data.get("needs_history"))
+
+    def build_severity(
+        self,
+        price: PriceAgentResult,
+        news: NewsAgentResult,
+        history: list[PriceBar],
+    ) -> Severity:
+        if history:
+            data = self._call_llm(price, news, history)
+        elif self._cached_empty_history is not None and not self._cached_empty_history.get(
+            "needs_history"
+        ):
+            data = self._cached_empty_history
+        else:
+            data = self._call_llm(price, news, history)
+        return _severity_from_payload(data)
+
+
+# Production mặc định = LLM; pytest monkeypatch → Heuristic (conftest).
+_DEFAULT_EVAL_BRAIN_FACTORY: Callable[[], EvalAgentBrain] = LlmEvalBrain
+
+
 def run_eval_agent(
     price: PriceAgentResult,
     news: NewsAgentResult,
@@ -150,7 +300,7 @@ def run_eval_agent(
     brain: EvalAgentBrain | None = None,
     history_days: int = 30,
 ) -> EvalAgentResult:
-    evaluator = brain or HeuristicEvalBrain()
+    evaluator = brain or _DEFAULT_EVAL_BRAIN_FACTORY()
     history: list[PriceBar] = []
     history_calls = 0
     symbol = (price.symbol or news.symbol or "").strip()

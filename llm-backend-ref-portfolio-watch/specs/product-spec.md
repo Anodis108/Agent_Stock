@@ -48,6 +48,8 @@ Chi tiết từng agent tham gia 2 luồng trên: xem [specs/agents.md](agents.m
 
 ## Tính năng trong phạm vi (In Scope)
 
+**Ứng dụng cốt lõi:**
+
 - 3 lối vào: API "quét ngay" (chọn 1 mã, dùng để demo), Cron trigger định kỳ
   (giám sát tự động), Chat API (hỏi tự do).
 - Luồng giám sát đầy đủ: PriceAgent + NewsAgent → Event Classifier →
@@ -66,6 +68,18 @@ Chi tiết từng agent tham gia 2 luồng trên: xem [specs/agents.md](agents.m
 - Frontend: 1 trang đơn giản (chat box + xem watchlist + danh sách cảnh báo
   chờ duyệt), không cần polish UI.
 
+**Công cụ chất lượng LLM (spec xong ở Phase 8-10, xem
+[implementation-plan.md](implementation-plan.md)):**
+
+- **Prompt Registry** (git-based) cho mọi agent có dùng LLM: mỗi prompt có
+  version + changelog, alias `production` trỏ version hiện hành — đổi nội
+  dung prompt không cần sửa code gọi.
+- **Golden dataset (30 case) + Eval pipeline**: chấm rule-based trước,
+  LLM-as-judge khi cần, gate cứng cho nhóm case `injection` (không cho phép
+  bị chèn chỉ dẫn giả). Chi tiết: [test-plan.md](test-plan.md).
+- **Script vẽ sơ đồ agent bằng LangGraph**: sinh lại sơ đồ kiến trúc từ code
+  thay vì vẽ tay, tái dùng pattern có sẵn ở `llm-engineer-demo`.
+
 ## Tính năng ngoài phạm vi (Out of Scope — MVP)
 
 - Multi-tenant/auth thật (nhiều user, đăng nhập).
@@ -75,6 +89,10 @@ Chi tiết từng agent tham gia 2 luồng trên: xem [specs/agents.md](agents.m
 - Fine-tune model, RAG trên tài liệu dài hạn.
 - Observability dashboard riêng — tái dùng tracing đã có ở llm-engineer-demo
   (LangFuse) nếu có sẵn key, không bắt buộc.
+- CI tự động chạy eval trên mọi PR — chạy eval bằng lệnh thủ công là đủ cho
+  MVP.
+- A/B testing prompt thật, hosted prompt registry (LangSmith/PromptLayer...)
+  — MVP dùng registry file trong repo (git-based), không cần dịch vụ ngoài.
 
 ## Tiêu chí chấp nhận (Acceptance Criteria)
 
@@ -90,3 +108,10 @@ Chi tiết từng agent tham gia 2 luồng trên: xem [specs/agents.md](agents.m
   dựa trên dữ liệu giá/tin thật, không qua HITL.
 - Guardrail chặn được câu trả lời/cảnh báo có lời khuyên mua/bán chắc chắn
   (test case cụ thể trong test-plan.md).
+- Đổi prompt đang production sang version khác (Prompt Registry) → hành vi
+  agent tương ứng đổi theo, không cần sửa code.
+- Chạy eval trên bộ 30 câu hỏi mẫu → có báo cáo pass/fail tổng và theo từng
+  nhóm case; nhóm case chèn chỉ dẫn giả (injection) phải luôn bị chặn đúng
+  (pass 100%, không có ngoại lệ).
+- Chạy script vẽ sơ đồ agent → ra sơ đồ kiến trúc mới, khớp với luồng đã mô
+  tả ở trên và ở `specs/agents.md`.

@@ -41,6 +41,7 @@ src/portfolio_watch/
     notify/
       console_notifier.py   # implement Notifier — log/console cho MVP
     llm/                    # tái dùng ý tưởng từ llm-engineer-demo (client, backends, resilience)
+      prompt_registry.py    # PromptRegistry: get()/render() theo version + alias "production" (Phase 8)
   shared/
     settings.py
     logging.py
@@ -48,6 +49,24 @@ src/portfolio_watch/
 web/                      # frontend đơn giản (1 trang HTML/JS thuần)
   index.html
   app.js
+prompts/                  # Prompt Registry git-based (Phase 8), 1 thư mục/prompt name
+  event_classification/
+    v1.yaml
+    production.txt        # chứa số version đang production, vd "1"
+  eval_severity/
+  synthesis_alert/
+  supervisor_routing/
+  rewrite_question/
+  answer_compose/
+  news_agent_react/
+specs/eval/
+  golden_dataset.yaml      # 30 case, xem bảng slice ở test-plan.md (Phase 9)
+scripts/
+  run_eval.py               # chấm golden dataset (rule-based + LLM-judge), in báo cáo (Phase 9)
+  draw_agent_graph.py        # sinh sơ đồ agent bằng LangGraph (Phase 10)
+docs/
+  agent_graph.png            # output Phase 10 (cần mạng, mermaid.ink)
+  agent_graph.mmd             # output Phase 10 (offline-safe, fallback)
 ```
 
 Nguyên tắc: `domain/` không import `infra/` — chỉ phụ thuộc `ports.py`
@@ -67,6 +86,8 @@ llm-backend-ref hiện tại (đang trộn domain logic và infra trong cùng
 | `app/guardrails/checks.py` | `domain/guardrails/output_checks.py` | Rule-based checks; injection.py chỉ dùng nếu cần |
 | `app/monitoring/tracing.py` | wiring ở `application/` | 1 span phẳng/lượt, no-op nếu tắt monitoring |
 | `app/eval/agent_eval.py` (trajectory eval) | test/eval thủ công sau MVP | Không bắt buộc cho MVP, ghi chú để làm sau |
+| `llm-backend-ref/src/chatbot/domain/service/eval/judge.py` + `ragas_native.py` | `scripts/run_eval.py` (LLM-judge cho slice lookup/comparison) | Pattern LLM-as-judge "native" (không cần thư viện `ragas`), rubric tuyệt đối (correctness/completeness/grounding), temperature=0, judge model chốt sẵn — tái dùng ý tưởng, không copy nguyên file |
+| `llm-engineer-demo/app/agent_pr/supervisor_agent/graph.py` (`save_graph_visualization`) | `scripts/draw_agent_graph.py` (Phase 10) | `graph.get_graph(xray=True).draw_mermaid_png()`, fallback `draw_mermaid()` → `.mmd` khi không có mạng |
 
 Code cũ trong `llm-backend-ref/src/chatbot/` (ReAct đơn-agent, guardrails/eval
 rỗng) sẽ được **xóa và viết lại** theo cấu trúc trên — không giữ nguyên file,
@@ -144,7 +165,7 @@ chỉ giữ tinh thần kỹ thuật đã kiểm chứng (LLM client, settings p
 - [x] Xác nhận mở `web/index.html` trực tiếp trên trình duyệt (hoặc qua static
       file server đơn giản) hiển thị đúng 3 khu vực, không lỗi console.
 
-## Phase 3 — Core backend / data logic
+## Phase 3 — Core backend or data logic
 
 - [x] Domain entities (`domain/entities/`): `Severity`, `FinalAlert`,
       `RoutingDecision`, `WatchlistItem` — dataclass/pydantic model thuần,
@@ -254,3 +275,101 @@ chỉ giữ tinh thần kỹ thuật đã kiểm chứng (LLM client, settings p
       luồng chính (quét mã, chat, approve/reject) qua UI trong browser.
 - [x] Ghi vào `specs/change-log.md` quyết định Docker (port, volume path,
       image base) và ngày hoàn thành Phase 7.
+
+## Phase 8 — Prompt Registry & LLM wiring
+
+Dựa trên hands-on "LLMOps Prompt Management" (Lesson16). Trước phase này,
+mọi agent "có LLM" theo `specs/agents.md` đang chạy bằng `Heuristic*Brain`
+(rule-based) — phase này thay bằng LLM thật, đi qua registry thay vì hardcode
+prompt string.
+
+- [x] Tạo khung `prompts/` ở root project: 1 thư mục con cho mỗi agent có
+      LLM (`event_classification/`, `eval_severity/`, `synthesis_alert/`,
+      `supervisor_routing/`, `rewrite_question/`, `answer_compose/`,
+      `news_agent_react/`), mỗi thư mục có `v1.yaml` (fields `name, version,
+      model, description, owner, created, changelog, eval_score, template`)
+      + `production.txt` (chứa số version đang production, vd `"1"`).
+- [x] `infra/llm/prompt_registry.py`: class `PromptRegistry` với
+      `get(name, version="production") -> Prompt` và
+      `render(name, version="production", **vars) -> str`; dùng
+      `string.Template` (đủ cho MVP, không cần Jinja2 trừ khi có
+      loop/condition trong prompt); `_required_vars()` raise lỗi rõ ràng khi
+      thiếu biến bắt buộc thay vì render prompt sai âm thầm.
+- [x] `domain/agents/event_classifier.py` — dùng LLM thật qua `infra/llm/` +
+      `registry().render("event_classification", ...)`.
+- [x] `domain/agents/news_agent.py` — dùng LLM thật +
+      `registry().render("news_agent_react", ...)`.
+- [x] `domain/agents/eval_agent.py` — dùng LLM thật +
+      `registry().render("eval_severity", ...)`.
+- [x] `domain/agents/synthesis_agent.py` — dùng LLM thật +
+      `registry().render("synthesis_alert", ...)`.
+- [x] `domain/agents/supervisor.py` — dùng LLM thật +
+      `registry().render("supervisor_routing", ...)` (Supervisor) và
+      `registry().render("rewrite_question", ...)` (RewriteQuestion).
+- [x] `domain/agents/answer_composer.py` — dùng LLM thật +
+      `registry().render("answer_compose", ...)`.
+- [x] Mỗi agent ở trên: giữ nguyên interface Protocol đã có ở
+      `domain/ports.py`, không đổi code gọi từ `application/` (chỉ đổi bên
+      trong từng agent, từ `Heuristic*Brain` sang bản gọi LLM thật).
+- [x] Unit test `PromptRegistry`: `render()` theo version cụ thể và theo
+      alias `production`; thiếu biến bắt buộc → raise lỗi rõ ràng; đổi
+      `production.txt` → agent dùng đúng version mới không cần sửa code.
+- [x] Cập nhật `specs/change-log.md`: ghi quyết định template engine, model
+      mặc định cho từng prompt, ngày hoàn thành Phase 8.
+
+## Phase 9 — Golden dataset & Eval pipeline
+
+Dựa trên hands-on "Class 18 - LLM Evaluation Pipelines" (Lesson17). Áp dụng
+lại tỉ lệ 18/6/3/3 (60%/20%/10%/10%) của bài mẫu, đổi loại case cho đúng
+domain stock — chi tiết bảng slice ở `specs/test-plan.md`.
+
+- [x] `specs/eval/golden_dataset.yaml` — 30 case theo tỉ lệ 18/6/3/3 (xem
+      bảng slice ở `test-plan.md`); schema mỗi case: `id, question,
+      expected, slice:{type, multihop}, must_include, must_not_include`;
+      dataset-level: `dataset, version, created, changelog`. Nguồn case:
+      viết tay theo acceptance criteria + `test-plan.md` (MVP không có
+      production log thật để lấy case từ đó).
+- [x] `scripts/run_eval.py` — scorer rule-based (`must_include`/
+      `must_not_include` trên output thật của từng case) — áp dụng cho cả
+      4 slice, chạy trước tiên.
+- [x] `scripts/run_eval.py` — scorer LLM-judge (correctness/completeness/
+      grounding, temperature=0, model chốt sẵn) cho slice `lookup`/
+      `comparison`, chỉ chạy khi rule-based đã pass (tiết kiệm chi phí gọi
+      LLM) — tái dùng pattern `judge.py`/`ragas_native.py` ở
+      `llm-backend-ref/src/chatbot/domain/service/eval/`.
+- [x] `scripts/run_eval.py` — runner: gọi `application/answer_question.py`
+      (hoặc `POST /chat`) cho từng case trong `golden_dataset.yaml`, ghép
+      kết quả 2 scorer ở trên lại theo từng case.
+- [x] Report: điểm tổng + điểm theo từng slice, liệt kê case fail kèm output
+      thật (không chỉ in số tổng).
+- [x] Regression gate: lưu điểm lần chạy đầu làm baseline; lần chạy sau so
+      với baseline + tolerance đã định.
+- [x] Regression gate cứng riêng cho slice `injection`: bất kỳ case nào fail
+      → coi toàn bộ eval fail, không tolerance (an toàn — không cho phép hệ
+      thống bị chèn chỉ dẫn giả).
+- [x] Cập nhật `specs/change-log.md`: ghi baseline điểm lần chạy đầu tiên,
+      ngày hoàn thành Phase 9.
+
+## Phase 10 — Agent graph visualization (LangGraph)
+
+- [x] `scripts/draw_agent_graph.py` — build 1 `StateGraph` (LangGraph) thuần
+      để biểu diễn kiến trúc: node = từng agent/gate theo `specs/agents.md`
+      (Orchestrator, PriceAgent, NewsAgent, EventClassifier, EvalAgent,
+      SynthesisAgent, Guardrail Output, Confidence Gate, HITL Gate 1, HITL
+      Gate 2, Supervisor, RewriteQuestion, AnswerComposer). Node không cần
+      logic thật (placeholder pass-through) — mục đích là sinh sơ đồ đúng
+      cấu trúc, không phải chạy production.
+- [x] Nối edge giữa các node đúng luồng dữ liệu ở 2 nhánh (giám sát +
+      hỏi-đáp), theo `portfolio-watch-agent-explained.md` và "Sơ đồ quan hệ"
+      ở `specs/agents.md`.
+- [x] Tái dùng pattern `save_graph_visualization` từ
+      `llm-engineer-demo/app/agent_pr/supervisor_agent/graph.py`:
+      `graph.get_graph(xray=True).draw_mermaid_png()` → ghi ra
+      `docs/agent_graph.png`.
+- [x] Fallback khi không có mạng (mermaid.ink lỗi): `draw_mermaid()` → ghi
+      ra `docs/agent_graph.mmd` (luôn chạy được, offline-safe).
+- [x] Đối chiếu thủ công: số node + cạnh trong sơ đồ sinh ra khớp với
+      `specs/agents.md` (không thiếu/thừa so với sơ đồ vẽ tay hiện có ở
+      thư mục cha — `portfolio-watch-agent-v4.png/.mmd`).
+- [x] Cập nhật `README.md` (thêm lệnh chạy script) và `specs/change-log.md`
+      khi hoàn tất.

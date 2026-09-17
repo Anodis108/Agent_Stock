@@ -50,6 +50,8 @@ Watchlist/threshold thay đổi luôn đi qua HITL Gate 2 (không có đường 
 - **Tham khảo:** vòng lặp ReAct trong `app/agent/nodes.py` (agent_node +
   should_continue) của llm-backend-ref hiện tại — tái dùng cơ chế bind_tools +
   tool loop, không tái dùng domain logic.
+- **Prompt Registry:** `prompts/news_agent_react/` (xem implementation-plan.md
+  Phase 8).
 
 ## Event Classifier
 
@@ -59,6 +61,8 @@ Watchlist/threshold thay đổi luôn đi qua HITL Gate 2 (không có đường 
   `bất thường` (đi tiếp EvalAgent).
 - **Ghi chú:** đây là bước lọc rẻ tiền để tránh gọi EvalAgent/SynthesisAgent
   (tốn kém hơn) cho mọi mã ở mọi lần quét.
+- **Prompt Registry:** `prompts/event_classification/` (xem
+  implementation-plan.md Phase 8).
 
 ## EvalAgent
 
@@ -70,6 +74,8 @@ Watchlist/threshold thay đổi luôn đi qua HITL Gate 2 (không có đường 
   kèm đề xuất đổi ngưỡng/thêm mã liên quan vào watchlist (đi qua HITL Gate 2).
 - **Tham khảo:** `llm-engineer-demo/app/agent/nodes.py` (CRAG, đánh giá độ liên
   quan) cho pattern "LLM tự quyết định có cần gọi thêm tool hay không".
+- **Prompt Registry:** `prompts/eval_severity/` (xem implementation-plan.md
+  Phase 8).
 
 ## SynthesisAgent
 
@@ -81,6 +87,8 @@ Watchlist/threshold thay đổi luôn đi qua HITL Gate 2 (không có đường 
 - **Output:** `FinalAlert` draft (đã qua guardrail).
 - **Tham khảo:** `llm-engineer-demo/app/optimization/routed/routing.py` (model
   routing theo độ phức tạp) và `app/guardrails/checks.py`.
+- **Prompt Registry:** `prompts/synthesis_alert/` (xem implementation-plan.md
+  Phase 8).
 
 ## Guardrail Output
 
@@ -114,6 +122,9 @@ Watchlist/threshold thay đổi luôn đi qua HITL Gate 2 (không có đường 
   dụng PriceAgent/NewsAgent, gọi song song đúng những agent cần thiết).
 - **Tham khảo:** `hierarchical.py` (Supervisor pattern) trong
   `llm-engineer-demo/app/agent_m2/multi_agent`.
+- **Prompt Registry:** `prompts/supervisor_routing/` (Supervisor),
+  `prompts/rewrite_question/` (RewriteQuestion) — xem implementation-plan.md
+  Phase 8.
 
 ## AnswerComposer (nhánh hỏi-đáp)
 
@@ -124,6 +135,8 @@ Watchlist/threshold thay đổi luôn đi qua HITL Gate 2 (không có đường 
   này KHÔNG qua HITL vì chỉ cung cấp thông tin, không có tác dụng phụ ra
   ngoài (không gửi email/thay đổi cấu hình).
 - **Sau khi trả lời:** lưu hội thoại vào Memory cho lượt hỏi sau.
+- **Prompt Registry:** `prompts/answer_compose/` (xem implementation-plan.md
+  Phase 8).
 
 ## Kho dữ liệu dùng chung
 
@@ -131,3 +144,15 @@ Watchlist/threshold thay đổi luôn đi qua HITL Gate 2 (không có đường 
 - **Price History DB:** lịch sử giá, đọc bởi EvalAgent.
 - **Memory Store:** preferences, lịch sử cảnh báo, hội thoại — đọc/ghi bởi
   SynthesisAgent, AnswerComposer, và cả 2 HITL Gate khi reject.
+
+## Sơ đồ sinh từ code (LangGraph, Phase 10)
+
+`scripts/draw_agent_graph.py` build 1 `StateGraph` (LangGraph) thuần để vẽ
+lại đúng sơ đồ ở trên — mỗi mục trong file này (Orchestrator, PriceAgent,
+NewsAgent, EventClassifier, EvalAgent, SynthesisAgent, Guardrail Output,
+Confidence Gate, HITL Gate 1, HITL Gate 2, Supervisor, RewriteQuestion,
+AnswerComposer) là 1 node; cạnh nối theo đúng "Sơ đồ quan hệ" ở đầu file.
+Node chỉ là placeholder (không chạy logic thật) — mục đích là giữ sơ đồ luôn
+khớp với spec khi kiến trúc đổi, thay vì vẽ tay như
+`../portfolio-watch-agent-v4.mmd` hiện tại. Output:
+`docs/agent_graph.png` / `.mmd`. Chi tiết: implementation-plan.md Phase 10.

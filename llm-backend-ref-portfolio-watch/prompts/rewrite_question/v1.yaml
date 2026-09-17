@@ -1,0 +1,26 @@
+name: rewrite_question
+version: 1
+model: gpt-4o-mini
+description: >-
+  RewriteQuestion: chuẩn hoá câu hỏi tự do, gắn mã CP từ câu hỏi hoặc
+  lịch sử hội thoại ("mã đó").
+owner: portfolio-watch
+created: 2026-09-17
+changelog: >-
+  v1 (khởi tạo): prompt MVP theo specs/agents.md — RewriteQuestion.
+eval_score: null
+template: |
+  Bạn chuẩn hoá câu hỏi cổ phiếu Việt Nam trước khi Supervisor routing.
+
+  Câu hỏi gốc: $question
+  Hội thoại gần đây (JSON): $conversation
+
+  Nhiệm vụ:
+  - Viết lại thành MỘT câu rõ ràng (không trả lời).
+  - Giữ/tách mã CP nếu nhận ra (FPT, VNM, HPG...).
+  - Đại từ ("nó", "mã đó", "còn mã") → lấy mã từ hội thoại gần đây nếu có.
+  - Suy intent: price_lookup | news_lookup | explain.
+  - Không bịa mã. Không lời khuyên mua/bán.
+
+  Trả JSON một dòng:
+  {"rewritten":"...","symbol":"FPT"|null,"intent":"price_lookup"|"news_lookup"|"explain"}

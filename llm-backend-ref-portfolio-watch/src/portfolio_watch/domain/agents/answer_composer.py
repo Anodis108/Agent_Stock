@@ -1,7 +1,12 @@
-"""AnswerComposer — soạn câu trả lời hỏi-đáp + guardrail (không HITL)."""
+"""AnswerComposer — soạn câu trả lời hỏi-đáp + guardrail (không HITL).
+
+Phase 8: mặc định dùng LLM qua Prompt Registry (`answer_compose`) +
+`infra/llm.completion.chat`. `HeuristicAnswerDraftBrain` giữ cho test / inject.
+"""
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -11,6 +16,9 @@ from src.portfolio_watch.domain.agents.price_agent import PriceAgentResult
 from src.portfolio_watch.domain.entities import SeverityLevel
 from src.portfolio_watch.domain.guardrails.output_checks import check_output
 from src.portfolio_watch.domain.ports import MemoryStore
+from src.portfolio_watch.infra.llm.completion import chat
+from src.portfolio_watch.infra.llm.params import DETERMINISTIC
+from src.portfolio_watch.infra.llm.prompt_registry import registry
 
 MODEL_LIGHT = "gpt-4o-mini"
 MODEL_HEAVY = "gpt-4o"
@@ -41,6 +49,33 @@ class AnswerDraftBrain(Protocol):
         previous_violations: list[str],
     ) -> str:
         ...
+
+
+def _price_summary(price: PriceAgentResult | None) -> str:
+    if price is None:
+        return "(không có)"
+    parts = []
+    if price.latest_close is not None:
+        parts.append(f"latest_close={price.latest_close}")
+    if price.change_pct is not None:
+        parts.append(f"change_pct={price.change_pct:.2f}%")
+    if price.error:
+        parts.append(f"error={price.error}")
+    return "; ".join(parts) if parts else "(không có)"
+
+
+def _news_summary(news: NewsAgentResult | None) -> str:
+    if news is None or not news.items:
+        return "(không có tin)"
+    titles = [i.title for i in news.items[:5] if i.title]
+    return "; ".join(titles) if titles else "(không có tin)"
+
+
+def _eval_summary(eval_result: EvalAgentResult | None) -> str:
+    if eval_result is None:
+        return "(không có)"
+    sev = eval_result.severity
+    return f"level={sev.level.value}; confidence={sev.confidence:.2f}; {sev.reasoning}"
 
 
 @dataclass
@@ -85,6 +120,65 @@ class HeuristicAnswerDraftBrain:
                 "Đã chỉnh lại để loại khuyến nghị mua/bán và số không có trong evidence."
             )
         return " ".join(parts)
+
+
+class LlmAnswerDraftBrain:
+    """LLM composer: Prompt Registry `answer_compose` + chat (plain text)."""
+
+    def __init__(
+        self,
+        *,
+        chat_fn: Callable[..., str] | None = None,
+        prompt_version: str | int = "production",
+    ) -> None:
+        self._chat_fn = chat_fn or chat
+        self._prompt_version = prompt_version
+
+    def compose(
+        self,
+        *,
+        question: str,
+        symbol: str | None,
+        price: PriceAgentResult | None,
+        news: NewsAgentResult | None,
+        eval_result: EvalAgentResult | None,
+        evidence: list[str],
+        model: str,
+        attempt: int,
+        previous_violations: list[str],
+    ) -> str:
+        evid = "; ".join(evidence) if evidence else "(không có)"
+        viol = (
+            "; ".join(previous_violations) if previous_violations else "(không)"
+        )
+        prompt_text = registry().render(
+            "answer_compose",
+            version=self._prompt_version,
+            question=question or "",
+            symbol=symbol or (price.symbol if price else "") or "",
+            price_summary=_price_summary(price),
+            news_summary=_news_summary(news),
+            eval_summary=_eval_summary(eval_result),
+            evidence=evid,
+            violations=viol,
+        )
+        raw = self._chat_fn(
+            [
+                {
+                    "role": "user",
+                    "content": f"{prompt_text}\n\n(model gợi ý: {model}, attempt={attempt})",
+                }
+            ],
+            DETERMINISTIC,
+        )
+        answer = (raw or "").strip()
+        if not answer:
+            raise ValueError("AnswerComposer LLM trả về rỗng")
+        return answer
+
+
+# Production mặc định = LLM; pytest monkeypatch → Heuristic (conftest).
+_DEFAULT_ANSWER_BRAIN_FACTORY: Callable[[], AnswerDraftBrain] = LlmAnswerDraftBrain
 
 
 @dataclass(slots=True)
@@ -146,7 +240,7 @@ def run_answer_composer(
     _ = memory_store, user_id  # preferences có thể dùng sau; MVP heuristic không cần
     evidence = build_evidence(price, news, eval_result)
     model = select_answer_model(eval_result)
-    draft_brain = brain or HeuristicAnswerDraftBrain()
+    draft_brain = brain or _DEFAULT_ANSWER_BRAIN_FACTORY()
     violations: list[str] = []
     answer = ""
     attempts = 0

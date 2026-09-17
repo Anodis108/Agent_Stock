@@ -4,6 +4,11 @@ Project này tuân theo simple spec-driven development.
 
 Domain agents (PriceAgent, NewsAgent, …): xem `specs/agents.md`.
 
+Prompt Registry (`prompts/`), Golden dataset & Eval pipeline
+(`specs/eval/golden_dataset.yaml`, `scripts/run_eval.py`), và script vẽ sơ đồ
+agent bằng LangGraph (`scripts/draw_agent_graph.py`): xem Phase 8/9/10 ở
+`specs/implementation-plan.md` trước khi code phần này.
+
 ## Nguyên tắc chính
 
 Luôn đọc các file trong `specs/` trước khi code.

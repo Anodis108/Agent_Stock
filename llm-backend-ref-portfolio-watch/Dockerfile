@@ -22,6 +22,9 @@ RUN pip install --no-cache-dir -U pip \
 # Static UI (served by FastAPI at /)
 COPY web ./web
 
+# Prompt Registry git-based (Phase 8) — cần trong image khi wire LLM
+COPY prompts ./prompts
+
 RUN mkdir -p /app/data
 
 EXPOSE 8000

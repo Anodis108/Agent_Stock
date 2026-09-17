@@ -19,9 +19,9 @@ from src.portfolio_watch.domain.agents.eval_agent import (
     run_eval_agent,
 )
 from src.portfolio_watch.domain.agents.news_agent import (
-    HeuristicNewsBrain,
     NewsAgentBrain,
     NewsAgentResult,
+    default_news_brain,
     run_news_agent,
 )
 from src.portfolio_watch.domain.agents.price_agent import (
@@ -131,7 +131,7 @@ def answer_question(
                     run_news_agent,
                     symbol,
                     news_source,
-                    news_brain or HeuristicNewsBrain(),
+                    news_brain or default_news_brain(),
                     days=news_days,
                 )
                 price = fut_p.result()
@@ -142,7 +142,7 @@ def answer_question(
             news = run_news_agent(
                 symbol,
                 news_source,
-                news_brain or HeuristicNewsBrain(),
+                news_brain or default_news_brain(),
                 days=news_days,
             )
 
@@ -153,7 +153,7 @@ def answer_question(
                 news = run_news_agent(
                     symbol,
                     news_source,
-                    news_brain or HeuristicNewsBrain(),
+                    news_brain or default_news_brain(),
                     days=news_days,
                 )
             eval_result = run_eval_agent(

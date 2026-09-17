@@ -31,6 +31,12 @@ class GuardrailResult:
     violations: list[str] = field(default_factory=list)
 
 
+def find_buy_sell_phrases(text: str) -> list[str]:
+    """Trả về các cụm mua/bán chắc chắn tìm thấy (cùng list Guardrail Output)."""
+    lowered = (text or "").lower()
+    return [pat for pat in _BUY_SELL_PATTERNS if pat in lowered]
+
+
 def check_output(
     title: str,
     body: str,
@@ -40,9 +46,8 @@ def check_output(
     violations: list[str] = []
     text = f"{title}\n{body}".lower()
 
-    for pat in _BUY_SELL_PATTERNS:
-        if pat in text:
-            violations.append(f"lời khuyên mua/bán chắc chắn: '{pat}'")
+    for pat in find_buy_sell_phrases(text):
+        violations.append(f"lời khuyên mua/bán chắc chắn: '{pat}'")
 
     evidence_blob = " ".join(evidence or []).lower()
     for match in _NUMBER_RE.findall(f"{title} {body}"):

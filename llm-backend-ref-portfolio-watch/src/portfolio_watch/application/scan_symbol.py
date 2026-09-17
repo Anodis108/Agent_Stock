@@ -16,9 +16,9 @@ from src.portfolio_watch.domain.agents.eval_agent import (
     run_eval_agent,
 )
 from src.portfolio_watch.domain.agents.news_agent import (
-    HeuristicNewsBrain,
     NewsAgentBrain,
     NewsAgentResult,
+    default_news_brain,
     run_news_agent,
 )
 from src.portfolio_watch.domain.agents.price_agent import (
@@ -166,7 +166,7 @@ def scan_symbol(
         )
 
     thr = _resolve_threshold(sym, user_id, threshold_pct, watchlist_store)
-    brain_news = news_brain or HeuristicNewsBrain()
+    brain_news = news_brain or default_news_brain()
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         fut_price = pool.submit(run_price_agent, sym, price_source)

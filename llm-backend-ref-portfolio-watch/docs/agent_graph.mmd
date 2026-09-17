@@ -1,0 +1,44 @@
+%% Portfolio Watch — architecture graph (Phase 10)
+%% Khớp specs/agents.md — 13 agent/gate + 2 nhánh
+flowchart TD
+  __start__(["START / Cron·Scan·Chat"])
+  __end__(["END"])
+  Orchestrator["Orchestrator"]
+  PriceAgent["PriceAgent"]
+  NewsAgent["NewsAgent"]
+  EventClassifier["EventClassifier"]
+  EvalAgent["EvalAgent"]
+  SynthesisAgent["SynthesisAgent"]
+  Guardrail_Output["Guardrail Output"]
+  Confidence_Gate["Confidence Gate"]
+  HITL_Gate_1["HITL Gate 1"]
+  HITL_Gate_2["HITL Gate 2"]
+  Supervisor["Supervisor"]
+  RewriteQuestion["RewriteQuestion"]
+  AnswerComposer["AnswerComposer"]
+  __start__ --> Orchestrator
+  __start__ --> RewriteQuestion
+  Orchestrator --> PriceAgent
+  Orchestrator --> NewsAgent
+  PriceAgent --> EventClassifier
+  NewsAgent --> EventClassifier
+  EventClassifier --> __end__
+  EventClassifier --> EvalAgent
+  EvalAgent --> SynthesisAgent
+  EvalAgent --> HITL_Gate_2
+  SynthesisAgent --> Guardrail_Output
+  Guardrail_Output --> SynthesisAgent
+  Guardrail_Output --> Confidence_Gate
+  Confidence_Gate --> __end__
+  Confidence_Gate --> HITL_Gate_1
+  HITL_Gate_1 --> __end__
+  HITL_Gate_2 --> __end__
+  RewriteQuestion --> Supervisor
+  Supervisor --> PriceAgent
+  Supervisor --> NewsAgent
+  Supervisor --> EvalAgent
+  PriceAgent --> AnswerComposer
+  NewsAgent --> AnswerComposer
+  EvalAgent --> AnswerComposer
+  AnswerComposer --> Guardrail_Output
+  Guardrail_Output --> __end__

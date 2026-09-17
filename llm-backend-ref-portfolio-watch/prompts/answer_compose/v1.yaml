@@ -1,0 +1,30 @@
+name: answer_compose
+version: 1
+model: gpt-4o-mini
+description: >-
+  AnswerComposer: soạn câu trả lời hỏi-đáp từ kết quả worker + evidence;
+  qua guardrail (không mua/bán chắc chắn, khớp số liệu).
+owner: portfolio-watch
+created: 2026-09-17
+changelog: >-
+  v1 (khởi tạo): prompt MVP theo specs/agents.md — AnswerComposer.
+eval_score: null
+template: |
+  Bạn soạn câu trả lời hỏi–đáp cổ phiếu VN từ dữ liệu worker đã thu thập.
+
+  Câu hỏi: $question
+  Mã: $symbol
+  Giá: $price_summary
+  Tin: $news_summary
+  Đánh giá (nếu có): $eval_summary
+  Evidence được phép dùng: $evidence
+  Vi phạm guardrail lần trước (nếu có): $violations
+
+  Yêu cầu:
+  - Tiếng Việt, ngắn gọn, đủ ý từ dữ liệu có sẵn.
+  - Chỉ dùng số liệu/tiêu đề có trong evidence — thiếu thì nói thiếu.
+  - Câu "tại sao giảm/tăng" phải trích tiêu đề tin cụ thể nếu có trong tin/eval.
+  - CẤM lời khuyên mua/bán chắc chắn.
+  - Nếu $violations không rỗng: chỉnh lại để hết vi phạm.
+
+  Chỉ trả về nội dung câu trả lời (plain text), không JSON, không markdown thừa.

@@ -28,22 +28,126 @@ trả lời câu hỏi tự do của người dùng về cổ phiếu họ đang
 - [specs/change-log.md](specs/change-log.md) — nhật ký thay đổi theo thời gian.
 - [AGENTS.md](AGENTS.md) — quy tắc làm việc của coding agent (spec-driven).
 - [specs/agents.md](specs/agents.md) — mô tả từng domain agent (vai trò, input/output, tool).
+- [specs/mvp-status-report.md](specs/mvp-status-report.md) — báo cáo trạng thái MVP cuối.
 
-## Chạy local (Phase 6)
+## Quick start (chọn 1 cách)
 
-Yêu cầu: Python **>= 3.10**. Làm việc từ thư mục `llm-backend-ref/`.
+Hai cách chạy bằng terminal — **conda env `dong312`** hoặc **Docker Compose**.
+UI + API cùng cổng **8000** → mở http://127.0.0.1:8000/ (hoặc http://localhost:8000/).
 
-### 1. Cài dependency
+### Cách A — Conda env `dong312`
 
 ```bash
-python -m pip install -U pip
-pip install -e .
+cd d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/llm-backend-ref-portfolio-watch
 
-# (tuỳ chọn) chạy test
+# Kích hoạt env (đã có sẵn trên máy)
+conda activate dong312
+
+# Lần đầu (hoặc khi dependency đổi)
+pip install -U pip
 pip install -e ".[dev]"
+
+# .env — copy nếu chưa có; điền OPENAI_API_KEYS nếu dùng LLM OpenAI
+cp .env.example .env          # Git Bash / Linux / macOS
+# Copy-Item .env.example .env # PowerShell
+
+# Chạy server
+python -m src.portfolio_watch.main
+# hoặc reload khi dev:
+# uvicorn src.portfolio_watch.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-### 2. Cấu hình môi trường
+Mở trình duyệt: **http://127.0.0.1:8000/**
+
+Seed watchlist (terminal khác, env vẫn `dong312`):
+
+```bash
+conda activate dong312
+curl -X POST http://127.0.0.1:8000/watchlist \
+  -H "Content-Type: application/json" \
+  -d "{\"symbol\":\"FPT\",\"threshold_pct\":3.0}"
+```
+
+Dừng: `Ctrl+C` trong terminal đang chạy uvicorn/main.
+
+### Cách B — Docker Compose
+
+Yêu cầu: Docker Desktop (hoặc Docker Engine + Compose) đang chạy.
+
+```bash
+cd d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/llm-backend-ref-portfolio-watch
+
+# .env bắt buộc (compose dùng env_file: .env)
+cp .env.example .env          # điền OPENAI_API_KEYS nếu cần
+# Tuỳ chọn: APP_HOST_PORT=8000 trong .env
+
+docker compose up --build
+# nền: docker compose up --build -d
+```
+
+Mở: **http://localhost:8000/** · Health: http://localhost:8000/health
+
+```bash
+# Log
+docker compose logs -f app
+
+# Dừng (giữ SQLite volume)
+docker compose down
+
+# Dừng + xoá DB demo
+docker compose down -v
+```
+
+Smoke 3 luồng (máy có Docker):
+
+```bash
+conda activate dong312   # hoặc bất kỳ Python có sẵn deps project
+python scripts/verify_clean_docker.py
+# Kỳ vọng: CLEAN_DOCKER_SMOKE_OK
+```
+
+### Thử nhanh sau khi server lên
+
+| Việc | UI | curl |
+|------|-----|------|
+| Health | — | `curl http://127.0.0.1:8000/health` |
+| Quét | Watchlist → Quét ngay `FPT` | `curl -X POST http://127.0.0.1:8000/scan -H "Content-Type: application/json" -d "{\"symbol\":\"FPT\"}"` |
+| Chat | ô Chat | `curl -X POST http://127.0.0.1:8000/chat -H "Content-Type: application/json" -d "{\"question\":\"Giá FPT hiện tại?\"}"` |
+| HITL | Cảnh báo chờ duyệt | `curl http://127.0.0.1:8000/approvals` |
+
+Cần **mạng** để lấy giá/tin. Chi tiết env, troubleshooting, ngrok: các mục bên dưới.
+
+---
+
+## Chạy local
+
+Hướng dẫn chi tiết (prerequisites, biến môi trường, troubleshooting).
+Làm việc từ thư mục `llm-backend-ref-portfolio-watch/`.
+
+### Prerequisites
+
+| Thành phần | Yêu cầu |
+|------------|---------|
+| Python | **>= 3.10** — khuyến nghị conda env **`dong312`** (Python 3.12) |
+| pip | Trong env đang active |
+| Mạng | Cần cho giá (`vnstock`) / tin (CafeF) và (tuỳ chọn) OpenAI |
+| Trình duyệt | Chrome / Edge / Firefox — mở UI |
+| (Tuỳ chọn) OpenAI API key | Khi `LLM_BACKEND=openai` và muốn LLM thật |
+| (Tuỳ chọn) Docker | Cách B — Docker Compose |
+
+### Install (conda `dong312`)
+
+```bash
+cd llm-backend-ref-portfolio-watch
+conda activate dong312
+python -m pip install -U pip
+pip install -e .
+pip install -e ".[dev]"   # nếu chạy pytest
+```
+
+(Thay bằng `python -m venv .venv` nếu không dùng conda.)
+
+### Environment variables
 
 ```bash
 # macOS / Linux
@@ -56,100 +160,232 @@ Copy-Item .env.example .env
 copy .env.example .env
 ```
 
-Mở `.env` và điền tối thiểu:
+Chỉnh `.env` theo bảng (chi tiết thêm trong `.env.example`):
 
-| Biến | Bắt buộc? | Ghi chú |
-|------|-----------|---------|
-| `OPENAI_API_KEYS` | Khi `LLM_BACKEND=openai` và dùng LLM composer | Key OpenAI (nhiều key cách nhau dấu phẩy). Nhiều luồng MVP dùng heuristic — vẫn chạy được scan/chat/HITL với fake/heuristic; giá/tin thật cần mạng (`vnstock` / CafeF). |
-| `API_HOST` / `API_PORT` | Không | Mặc định `127.0.0.1` / `8000`. |
-| `SQLITE_PATH` | Không | Mặc định `./data/portfolio_watch.db`. |
-| `DEFAULT_WATCHLIST` | Không | Mã seed gợi ý (FPT,VNM,HPG) — vẫn nên thêm qua API/UI nếu DB trống. |
-| `SCAN_INTERVAL_MINUTES` | Không | Dùng khi gắn cron vào process (Phase 6 xác nhận / Phase 7 Docker). |
+| Biến | Bắt buộc? | Mặc định / ghi chú |
+|------|-----------|-------------------|
+| `OPENAI_API_KEYS` | Khi `LLM_BACKEND=openai` + LLM thật | Nhiều key cách nhau dấu phẩy. Không có key → vẫn chạy được nhiều luồng với heuristic; scan/chat cần mạng cho giá/tin. |
+| `LLM_BACKEND` | Không | `openai` (hoặc `ollama` / `vllm`) |
+| `LLM_MODEL` | Không | `gpt-4o-mini` |
+| `API_HOST` | Không | `127.0.0.1` (local) |
+| `API_PORT` | Không | `8000` |
+| `SQLITE_PATH` | Không | `./data/portfolio_watch.db` |
+| `DEFAULT_WATCHLIST` | Không | `FPT,VNM,HPG` (gợi ý; nên seed qua API nếu DB trống) |
+| `DEFAULT_ALERT_THRESHOLD_PCT` | Không | `3.0` |
+| `SCAN_INTERVAL_MINUTES` | Không | `60` |
+| `PRICE_SOURCE` / `NEWS_SOURCE` | Không | `vnstock` / `cafef` |
+| `MONITORING_ENABLED` | Không | `false` (LangFuse tuỳ chọn) |
 
-### 3. Khởi tạo SQLite
+### Khởi tạo SQLite
 
-Không cần migration tay. Lần đầu app (hoặc store) mở DB, `sqlite_db.connect()` sẽ:
+Không cần migration tay. Lần đầu app mở DB sẽ tạo thư mục `data/` và các bảng.
 
-- tạo thư mục cha của `SQLITE_PATH` (vd. `./data/`);
-- tạo bảng (`watchlist`, `price_history`, `preferences`, `conversations`,
-  `alert_events`, `rejections`) nếu chưa có.
-
-Có thể chủ động tạo schema trước khi chạy server:
+Chủ động tạo schema:
 
 ```bash
 python -c "from src.portfolio_watch.shared.settings import settings; from src.portfolio_watch.infra.storage.sqlite_db import connect; connect(settings.sqlite_path); print('SQLite OK:', settings.sqlite_path)"
 ```
 
-### 4. Chạy backend
+### Backend run command (conda `dong312`)
 
 ```bash
+conda activate dong312
 python -m src.portfolio_watch.main
 ```
 
-Tương đương:
+Hoặc:
 
 ```bash
+conda activate dong312
 uvicorn src.portfolio_watch.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-- API + static UI: **http://127.0.0.1:8000/**
-- Health: `curl http://127.0.0.1:8000/health` → `{"status":"ok"}`
+Một process phục vụ **API + static UI** (không cần server frontend riêng).
 
-### 5. Mở UI
+### Frontend run command
 
-Mở trình duyệt tới **http://127.0.0.1:8000/** (cùng origin với API — `web/` được
-FastAPI mount tại `/`). Không cần mở `web/index.html` bằng `file://` (dễ lệch
-CORS / base URL).
+UI nằm trong `web/` và được FastAPI mount tại `/` — **không** chạy
+`npm start` / mở `web/index.html` bằng `file://` (dễ lệch CORS / base URL).
 
-Ba khu vực UI: Chat, Watchlist (+ Quét ngay), Cảnh báo chờ duyệt.
+Chỉ cần backend đang chạy, rồi mở trình duyệt (xem Local URLs).
 
-Seed watchlist demo (nếu bảng trống):
+### Local URLs
+
+| Mục | URL |
+|-----|-----|
+| UI (Chat / Watchlist / Approvals) | http://127.0.0.1:8000/ |
+| Health | http://127.0.0.1:8000/health → `{"status":"ok"}` |
+| OpenAPI docs | http://127.0.0.1:8000/docs |
+
+Seed watchlist demo (nếu bảng trống — Quét/Chat cần mã trong list):
 
 ```bash
 curl -X POST http://127.0.0.1:8000/watchlist -H "Content-Type: application/json" -d "{\"symbol\":\"FPT\",\"threshold_pct\":3.0}"
 ```
 
-### 6. Chạy cron / quét watchlist thủ công
+### Kiểm nhanh 3 luồng chính
 
-Scheduler interval **chưa** gắn sẵn vào `main.py` lifespan (tránh side-effect
-khi demo API). Để quét cả watchlist một lần (test-plan #7), chạy:
+1. **Quét:** UI → Quét ngay `FPT`, hoặc  
+   `curl -X POST http://127.0.0.1:8000/scan -H "Content-Type: application/json" -d "{\"symbol\":\"FPT\"}"`
+2. **Chat:** UI Chat hoặc  
+   `curl -X POST http://127.0.0.1:8000/chat -H "Content-Type: application/json" -d "{\"question\":\"Giá FPT hiện tại?\"}"`
+3. **HITL:** `GET /approvals` → `POST /approvals/{id}/approve` hoặc `.../reject` với `{"reason":"..."}`.
+
+Quét cả watchlist một lần (scheduler không gắn sẵn vào lifespan):
 
 ```bash
 python -c "from src.portfolio_watch.api.deps import get_app_deps; from src.portfolio_watch.application.scan_watchlist import scan_watchlist; d=get_app_deps(); r=scan_watchlist(watchlist_store=d.watchlist_store, price_source=d.price_source, news_source=d.news_source, history_store=d.history_store, memory_store=d.memory_store, notifier=d.notifier); print('scanned', r.scanned, 'failed', r.failed)"
 ```
 
-Hoặc quét một mã qua API/UI: `POST /scan` với `{"symbol":"FPT"}`.
-
-### 7. Kiểm nhanh 3 luồng chính
-
-1. **Quét:** UI → Quét ngay `FPT`, hoặc `curl -X POST http://127.0.0.1:8000/scan -H "Content-Type: application/json" -d "{\"symbol\":\"FPT\"}"`
-2. **Chat:** UI Chat hoặc `curl -X POST http://127.0.0.1:8000/chat -H "Content-Type: application/json" -d "{\"question\":\"Giá FPT hiện tại?\"}"`
-3. **HITL:** nếu có pending → `GET /approvals` rồi `POST /approvals/{id}/approve` hoặc `.../reject` với `{"reason":"..."}`.
-
-### 8. Xác nhận máy sạch / virtualenv mới
-
-Script tự động (venv tạm + `pip install -e .` + 3 luồng), không cần sửa code:
-
-```bash
-python scripts/verify_clean_local.py
-```
-
-Kỳ vọng log kết thúc bằng `CLEAN_VENV_SMOKE_OK` (cần mạng cho giá/tin thật).
-
-### Chạy test
+### Chạy test / xác nhận máy sạch
 
 ```bash
 pytest -q
+python scripts/verify_clean_local.py
+# Kỳ vọng: CLEAN_VENV_SMOKE_OK (cần mạng cho giá/tin thật)
 ```
 
-## Demo bằng Docker
+### Troubleshooting
 
-Yêu cầu: **Docker** và **Docker Compose** đã cài (Docker Desktop trên Windows/macOS,
-hoặc engine + plugin `compose` trên Linux).
+| Hiện tượng | Việc nên thử |
+|------------|----------------|
+| `ModuleNotFoundError: portfolio_watch` / import lỗi | Đã `cd` đúng thư mục project? Đã `pip install -e .` trong venv đang active? |
+| Port `8000` bị chiếm | Đổi `API_PORT` trong `.env`, hoặc dừng process cũ; chạy lại `uvicorn ... --port <port>`. |
+| UI trắng / API 404 khi mở file HTML | Mở **http://127.0.0.1:8000/** — không dùng `file://web/index.html`. |
+| Scan/chat báo không lấy được giá/tin | Cần mạng; kiểm tra `PRICE_SOURCE`/`NEWS_SOURCE`; thử lại sau vài giây (nguồn ngoài có thể chậm). |
+| Chat/scan “mã không trong watchlist” | Seed `POST /watchlist` (xem trên) hoặc thêm mã trên UI Watchlist. |
+| LLM lỗi / hết quota OpenAI | Điền `OPENAI_API_KEYS` hợp lệ, hoặc tạm chấp nhận heuristic (nhiều agent vẫn chạy được trong test với Heuristic brains). |
+| DB “lạ” / dữ liệu cũ | Xoá `./data/portfolio_watch.db` (hoặc đổi `SQLITE_PATH`) rồi chạy lại app. |
+| Windows: lệnh `python` không tìm thấy | `conda activate dong312` rồi dùng `python` trong env; hoặc `py -3.12`. |
+| `conda: command not found` | Mở Anaconda/Miniconda Prompt, hoặc `source "$(conda info --base)/etc/profile.d/conda.sh"` (Git Bash). |
+| Docker `env_file .env` lỗi | Phải có file `.env` (copy từ `.env.example`) trước `docker compose up`. |
+| Port 8000 chiếm (conda lẫn Docker) | Chỉ chạy **một** trong hai: dừng `Ctrl+C` hoặc `docker compose down`. |
+| `verify_clean_local.py` fail | Đọc log tới dòng lỗi; thường thiếu mạng hoặc port conflict. |
 
-### 1. Chuẩn bị `.env`
+## Eval golden dataset (Phase 9)
 
-Từ thư mục `llm-backend-ref/`:
+```bash
+# Self-check scorers + runner stub (không gọi LLM/app)
+python scripts/run_eval.py --self-check
+
+# Chạy eval trên 30 case (gọi answer_question); --skip-judge để bỏ LLM-judge
+python scripts/run_eval.py --run --skip-judge
+
+# Lưu / so baseline regression (specs/eval/baseline.json)
+python scripts/run_eval.py --run --save-baseline
+```
+
+Chi tiết slice và gate: `specs/test-plan.md` (Eval pipeline).
+
+## Vẽ sơ đồ agent (Phase 10)
+
+Sinh sơ đồ kiến trúc từ `StateGraph` (13 agent/gate, 2 nhánh + 2 HITL) theo
+`specs/agents.md`:
+
+```bash
+# Ghi docs/agent_graph.mmd (bắt buộc, offline) + docs/agent_graph.png (nếu có mạng)
+python scripts/draw_agent_graph.py
+
+# Đối chiếu node/cạnh với agents.md + ánh xạ ../portfolio-watch-agent-v4.mmd
+python scripts/draw_agent_graph.py --verify
+```
+
+Kỳ vọng: `VERIFY_OK` (13 node / 26 edge). Output: `docs/agent_graph.mmd`,
+`docs/agent_graph.png` (PNG cần mermaid.ink).
+
+## Demo with local (conda `dong312`)
+
+Project này **một process** phục vụ cả backend API và frontend static (`web/`)
+trên cổng **8000**. UI gọi API cùng origin (`API_BASE = ""` trong `web/app.js`).
+
+### 1. Start the backend locally
+
+```bash
+cd d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/llm-backend-ref-portfolio-watch
+conda activate dong312
+pip install -e .          # nếu chưa cài trong env này
+cp .env.example .env      # nếu chưa có .env
+
+python -m src.portfolio_watch.main
+```
+
+Port: **8000** (`API_PORT` trong `.env`).
+
+### 2. Start the frontend locally
+
+Không chạy `npm` / Vite. Frontend đã được backend mount tại `/`.
+
+Mở trình duyệt:
+
+- UI: **http://127.0.0.1:8000/**
+- Health: **http://127.0.0.1:8000/health**
+
+### 3. Configure frontend API base URL (local backend)
+
+Mặc định trong `web/app.js`:
+
+```js
+const API_BASE = "";
+```
+
+Giữ `""` khi mở UI qua **http://127.0.0.1:8000/** — mọi `fetch("/scan")`,
+`fetch("/chat")`, … đi về local backend cùng host/port.
+
+**Không** trỏ `API_BASE` sang URL khác nếu bạn đang demo local cùng origin
+(tránh CORS / lệch môi trường). Chỉ đổi `API_BASE` khi cố ý tách UI và API
+sang hai host (không phải luồng demo local mặc định).
+
+Seed watchlist nếu trống:
+
+```bash
+curl -X POST http://127.0.0.1:8000/watchlist -H "Content-Type: application/json" -d "{\"symbol\":\"FPT\",\"threshold_pct\":3.0}"
+```
+
+### 4. Expose với ngrok (tuỳ chọn — demo từ máy khác / internet)
+
+Cài [ngrok](https://ngrok.com/) và đăng nhập. Vì UI + API cùng cổng **8000**,
+chỉ cần **một** tunnel:
+
+```bash
+# Terminal 1 — conda
+conda activate dong312
+python -m src.portfolio_watch.main
+
+# Terminal 2 — expose cả UI và API
+ngrok http 8000
+```
+
+Dùng HTTPS URL mà ngrok in ra (ví dụ `https://xxxx.ngrok-free.app`) để mở UI.
+Vẫn giữ `API_BASE = ""` — browser gọi API trên **cùng** host ngrok.
+
+**Không cần** tunnel ngrok thứ hai cho “backend riêng”, trừ khi bạn tách
+frontend/backend thành hai process/port (kiến trúc hiện tại không làm vậy).
+
+Nếu bắt buộc hai URL ngrok (hiếm): đặt `API_BASE` trong `web/app.js` thành
+URL ngrok của backend, rồi serve UI từ tunnel frontend — dễ gặp CORS; MVP
+khuyến nghị một tunnel vào port **8000**.
+
+### 5. Kiểm nhanh sau khi demo local
+
+1. http://127.0.0.1:8000/health → `{"status":"ok"}`
+2. UI: Quét `FPT` / Chat / Approvals
+3. (Nếu dùng ngrok) mở URL ngrok → cùng 3 luồng
+
+## Demo bằng Docker Compose
+
+Xem **Quick start → Cách B** ở trên. Tóm tắt:
+
+```bash
+cd d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/llm-backend-ref-portfolio-watch
+cp .env.example .env    # nếu chưa có
+docker compose up --build
+```
+
+- UI: http://localhost:8000/
+- Health: http://localhost:8000/health → `{"status":"ok"}`
+- Volume SQLite: `portfolio-watch-sqlite` → `/app/data/portfolio_watch.db`
+
+### Chuẩn bị `.env` cho Compose
 
 ```bash
 # macOS / Linux
@@ -215,3 +451,9 @@ python scripts/verify_clean_docker.py
 ```
 
 Tuỳ chọn xoá luôn volume DB sau khi chạy: `VERIFY_DOCKER_DOWN_V=1 python scripts/verify_clean_docker.py`.
+
+## Prompt Registry (Phase 8)
+
+Prompts git-based trong `prompts/<name>/vN.yaml` + `production.txt`. Đổi
+`production.txt` → agent dùng version mới (không sửa code gọi). Chi tiết:
+`specs/agents.md`, `tests/test_prompt_registry.py`.

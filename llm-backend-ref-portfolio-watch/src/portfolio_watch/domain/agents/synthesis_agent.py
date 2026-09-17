@@ -1,7 +1,14 @@
-"""SynthesisAgent — model routing + soạn FinalAlert + vòng guardrail rewrite."""
+"""SynthesisAgent — model routing + soạn FinalAlert + vòng guardrail rewrite.
+
+Phase 8: mặc định dùng LLM qua Prompt Registry (`synthesis_alert`) +
+`infra/llm.completion.chat`. `HeuristicAlertComposer` giữ cho unit test / inject.
+"""
 
 from __future__ import annotations
 
+import json
+import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -13,10 +20,14 @@ from src.portfolio_watch.domain.entities import (
 )
 from src.portfolio_watch.domain.guardrails.output_checks import check_output
 from src.portfolio_watch.domain.ports import MemoryStore
+from src.portfolio_watch.infra.llm.completion import chat
+from src.portfolio_watch.infra.llm.params import DETERMINISTIC
+from src.portfolio_watch.infra.llm.prompt_registry import registry
 
 MODEL_LIGHT = "gpt-4o-mini"
 MODEL_HEAVY = "gpt-4o"
 MAX_DRAFT_ATTEMPTS = 3
+_JSON_OBJ_RE = re.compile(r"\{.*\}", re.DOTALL)
 
 
 def select_model(severity: Severity) -> str:
@@ -70,6 +81,73 @@ class HeuristicAlertComposer:
         return title, body
 
 
+def _parse_alert_json(raw: str) -> tuple[str, str]:
+    text = (raw or "").strip()
+    match = _JSON_OBJ_RE.search(text)
+    payload = match.group(0) if match else text
+    data = json.loads(payload)
+    if not isinstance(data, dict):
+        raise ValueError("SynthesisAgent LLM không trả JSON object")
+    title = str(data.get("title", "")).strip()
+    body = str(data.get("body", "")).strip()
+    if not title or not body:
+        raise ValueError("SynthesisAgent LLM thiếu title/body")
+    return title, body
+
+
+class LlmAlertComposer:
+    """LLM composer: Prompt Registry `synthesis_alert` + chat completion."""
+
+    def __init__(
+        self,
+        *,
+        chat_fn: Callable[..., str] | None = None,
+        prompt_version: str | int = "production",
+    ) -> None:
+        self._chat_fn = chat_fn or chat
+        self._prompt_version = prompt_version
+
+    def compose(
+        self,
+        symbol: str,
+        severity: Severity,
+        preferences: dict,
+        *,
+        model: str,
+        attempt: int,
+        previous_violations: list[str],
+    ) -> tuple[str, str]:
+        evid = "; ".join(severity.evidence[:8]) or "(không có evidence)"
+        prefs = "; ".join(f"{k}={v}" for k, v in (preferences or {}).items()) or "(mặc định)"
+        viol = "; ".join(previous_violations) if previous_violations else "(không)"
+        prompt_text = registry().render(
+            "synthesis_alert",
+            version=self._prompt_version,
+            symbol=symbol or "",
+            severity_level=severity.level.value,
+            confidence=f"{severity.confidence:.4f}",
+            reasoning=severity.reasoning or "",
+            evidence=evid,
+            preferences=prefs,
+            violations=viol,
+        )
+        # model routing đã chọn ở run_synthesis_agent; ghi vào prompt context nhẹ
+        raw = self._chat_fn(
+            [
+                {
+                    "role": "user",
+                    "content": f"{prompt_text}\n\n(model gợi ý: {model}, attempt={attempt})",
+                }
+            ],
+            DETERMINISTIC,
+        )
+        return _parse_alert_json(raw)
+
+
+# Production mặc định = LLM; pytest monkeypatch → Heuristic (conftest).
+_DEFAULT_COMPOSER_FACTORY: Callable[[], AlertComposer] = LlmAlertComposer
+
+
 @dataclass(slots=True)
 class SynthesisResult:
     alert: FinalAlert
@@ -104,7 +182,7 @@ def run_synthesis_agent(
             guardrail_violations=["symbol rỗng"],
         )
 
-    writer = composer or HeuristicAlertComposer()
+    writer = composer or _DEFAULT_COMPOSER_FACTORY()
     model = select_model(severity)
     try:
         preferences = memory_store.read_preferences(user_id) or {}

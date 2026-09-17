@@ -16,6 +16,7 @@ def test_dockerfile_covers_phase7_first_item():
     assert "-e ." in text or "pip install --no-cache-dir -e ." in text
     assert "COPY src" in text or "COPY ./src" in text
     assert "COPY web" in text or "COPY ./web" in text
+    assert "COPY prompts" in text or "COPY ./prompts" in text
     assert "EXPOSE 8000" in text
     assert "uvicorn" in text
     assert "src.portfolio_watch.main:app" in text

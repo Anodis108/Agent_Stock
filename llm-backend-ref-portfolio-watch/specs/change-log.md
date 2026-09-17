@@ -3,6 +3,1044 @@
 Nhật ký thay đổi theo thời gian cho project Portfolio Watch & Chat Agent.
 Ghi theo ngày, mới nhất ở trên.
 
+## 2026-09-17 — README Quick start: conda `dong312` + Docker Compose
+
+### Setup
+- Cài project vào conda env **`dong312`**: `pip install -e ".[dev]"` (import app OK).
+
+### Docs
+- README thêm **Quick start** — Cách A (`conda activate dong312`) và Cách B
+  (`docker compose up --build`); bảng thử nhanh; troubleshooting conda/Docker;
+  các mục Demo with local / Docker Compose gắn env `dong312`.
+
+## 2026-09-17 — MVP status report (SDD Bước 11)
+
+### Thêm
+- `specs/mvp-status-report.md` — báo cáo cuối: completed / missing / known
+  bugs / run local / demo ngrok / next improvements. Đối chiếu product-spec
+  + implementation-plan Phase 1–10. **Không sửa code app** (không bug critical).
+
+## 2026-09-17 — README: mục "Demo with local"
+
+### Thêm (chỉ docs — không đổi logic app)
+- Mục **Demo with local**: start backend port **8000**, frontend qua cùng
+  origin (không npm), `API_BASE=""` trỏ local backend, ngrok một tunnel
+  `ngrok http 8000` khi cần expose.
+
+## 2026-09-17 — README: hướng dẫn chạy local rõ ràng (SDD Bước 9)
+
+### Thay đổi (chỉ docs — không đổi logic app)
+- Viết lại mục **Chạy local**: prerequisites, install, environment variables,
+  backend run, frontend (static qua FastAPI — không server riêng), local
+  URLs, troubleshooting.
+- Sửa đường dẫn thư mục: `llm-backend-ref-portfolio-watch/` (bỏ nhầm
+  `llm-backend-ref/`).
+
+## 2026-09-17 — Review đóng Phase 10 vs product-spec / test-plan
+
+### Kết quả đối chiếu (phạm vi checklist cuối Phase 10)
+
+**Passes:**
+- README có lệnh `python scripts/draw_agent_graph.py` và `--verify`; ghi
+  rõ output `docs/agent_graph.mmd` / `.png`.
+- Ngày hoàn thành Phase 10 = **2026-09-17**; bảng phase 1–10 đủ ngày.
+- Checklist Phase 10 toàn `[x]`.
+- test-plan / AC “chạy script → sơ đồ” có hướng dẫn trong README.
+
+**Fails:** không.
+
+**Missing:** không (trong phạm vi Phase 10 / MVP visualization). Implementation
+plan Phase 1–10 đã hoàn tất checklist.
+
+## 2026-09-17 — Phase 10 hoàn thành: README + ngày đóng phase
+
+**Ngày hoàn thành Phase 10:** **2026-09-17**
+
+### README
+- Thêm mục **Vẽ sơ đồ agent (Phase 10)**: lệnh
+  `python scripts/draw_agent_graph.py` và `--verify` → `docs/agent_graph.mmd`
+  / `.png`.
+- Thêm mục **Eval golden dataset (Phase 9)** (`run_eval.py`) và ghi chú
+  Prompt Registry (Phase 8); bỏ mục “Sắp tới — chưa implement (Phase 8-10)”.
+
+### Đóng phase
+- Checklist Phase 10 trong `implementation-plan.md` toàn `[x]`.
+- Bảng phase tóm tắt cập nhật Phase 10 = **2026-09-17**.
+
+## 2026-09-17 — Review đối chiếu sơ đồ vs product-spec / test-plan
+
+### Kết quả đối chiếu
+
+**Passes:**
+- 13 node + đủ cạnh khớp `agents.md` / REQUIRED_*; 2 nhánh + 2 HITL.
+- `docs/agent_graph.mmd` chứa đủ label + cạnh (kể cả → END).
+- Ánh xạ v4.mmd: mọi agent/gate có nhãn tương ứng (v4 chi tiết hơn —
+  không so tuyệt đối số node).
+- test-plan “đối chiếu số node + cạnh… 2 nhánh + 2 HITL” — `VERIFY_OK`.
+- AC “chạy script → sơ đồ khớp agents.md” — pass với `--verify`.
+
+**Fails (liên quan, đã sửa):**
+- LangGraph `draw_mermaid()` gộp mất cạnh → `__end__` → MMD docs chuyển
+  sang `architecture_mermaid()` trung thực từ REQUIRED_*.
+
+**Missing (đúng kỳ vọng — mục Phase 10 cuối):**
+- README lệnh chạy script + đóng phase change-log.
+
+## 2026-09-17 — Phase 10: đối chiếu sơ đồ vs agents.md / v4.mmd
+
+### Thêm
+- `architecture_mermaid()` — MMD trung thực từ REQUIRED_* (không mất cạnh
+  → END như `draw_mermaid()` của LangGraph).
+- `verify_graph_against_spec()` + CLI `--verify`: 13 node, đủ edge, 2 nhánh,
+  2 HITL, Guardrail dùng chung; ánh xạ nhãn sang
+  `../portfolio-watch-agent-v4.mmd` (v4 chi tiết hơn — không so tuyệt đối
+  số node).
+- `tests/test_draw_agent_graph_verify.py`.
+- Checklist Phase 10 mục đối chiếu → `[x]`.
+
+### Kết quả đối chiếu (đã chạy)
+- StateGraph: **13 node / 26 edge** = REQUIRED.
+- docs/agent_graph.mmd: đủ 13 label + mọi cạnh REQUIRED (gồm 5 cạnh → END).
+- v4.mmd: mọi agent/gate có nhãn gợi ý tương ứng.
+
+### Chưa làm (Phase 10 cuối)
+- Cập nhật README (lệnh chạy script) + change-log đóng phase.
+
+## 2026-09-17 — Review MMD fallback vs product-spec / test-plan
+
+### Kết quả đối chiếu (phạm vi fallback offline)
+
+**Passes:**
+- `draw_mermaid()` → `docs/agent_graph.mmd` luôn được ghi (offline-safe).
+- PNG lỗi → trả về `.mmd`, không fail toàn bộ (pattern demo).
+- Khớp test-plan: MMD bắt buộc; PNG cố gắng khi có mạng.
+- Unit test + chạy thật script đã sinh `docs/agent_graph.mmd` (và PNG khi mạng OK).
+
+**Fails:** không (trong phạm vi fallback MMD).
+
+**Missing (đúng kỳ vọng — mục Phase 10 sau):**
+- Đối chiếu thủ công số node/cạnh với `agents.md` / v4.mmd.
+- README lệnh chạy script.
+
+## 2026-09-17 — Phase 10: fallback `draw_mermaid` → `docs/agent_graph.mmd`
+
+### Thêm
+- `save_graph_visualization`: luôn ghi `.mmd` qua `draw_mermaid()` (offline);
+  thử PNG; lỗi mermaid.ink → trả về path `.mmd` (pattern demo + test-plan
+  “MMD bắt buộc”).
+- `DEFAULT_MMD_PATH` = `docs/agent_graph.mmd`.
+- `tests/test_draw_agent_graph_mmd.py`.
+- Checklist Phase 10 mục fallback MMD → `[x]`.
+
+### Chưa làm (Phase 10 tiếp)
+- Đối chiếu số node/cạnh với sơ đồ vẽ tay; README lệnh chạy.
+
+## 2026-09-17 — Review save_graph_visualization PNG vs product-spec / test-plan
+
+### Kết quả đối chiếu (phạm vi export PNG)
+
+**Passes:**
+- Pattern demo: `get_graph(xray=True).draw_mermaid_png()` →
+  `docs/agent_graph.png`.
+- Unit test mock xác nhận `xray=True` + ghi bytes PNG.
+- Khớp checklist Phase 10 mục PNG; AC “chạy script → ra sơ đồ” một phần
+  (PNG khi có mạng).
+
+**Fails:** không (trong phạm vi PNG path).
+
+**Missing (đúng kỳ vọng — mục Phase 10 sau):**
+- Fallback offline `docs/agent_graph.mmd` (test-plan: MMD bắt buộc).
+- Đối chiếu số node/cạnh với sơ đồ vẽ tay; README lệnh chạy.
+
+## 2026-09-17 — Phase 10: `save_graph_visualization` → `docs/agent_graph.png`
+
+### Thêm
+- `save_graph_visualization()` trong `scripts/draw_agent_graph.py` — pattern
+  llm-engineer-demo: `compile().get_graph(xray=True).draw_mermaid_png()` ghi
+  `docs/agent_graph.png` (mặc định).
+- CLI `python scripts/draw_agent_graph.py` gọi export PNG sau khi kiểm
+  node/edge.
+- `tests/test_draw_agent_graph_png.py` (mock bytes, không cần mạng).
+- Checklist Phase 10 mục PNG → `[x]`.
+
+### Chưa làm (Phase 10 tiếp)
+- Fallback `draw_mermaid()` → `docs/agent_graph.mmd` khi lỗi mạng;
+  đối chiếu sơ đồ; README.
+
+## 2026-09-17 — Review StateGraph edges vs product-spec / test-plan
+
+### Kết quả đối chiếu (phạm vi nối edge)
+
+**Passes:**
+- Đủ 2 nhánh: giám sát (Orchestrator…Confidence/HITL1 + HITL2) và hỏi-đáp
+  (Rewrite → Supervisor → workers/Eval → Answer → Guardrail → END).
+- 2 HITL gate có cạnh; EventClassifier có nhánh dừng (END) và bất thường
+  (EvalAgent); Guardrail dùng chung 2 nhánh — khớp `agents.md` / explained.
+- `compile_agent_graph()` thành công; unit test cover REQUIRED_EDGES.
+
+**Fails:** không (trong phạm vi edges).
+
+**Missing (đúng kỳ vọng — mục Phase 10 sau):**
+- `docs/agent_graph.mmd` / `.png`; đối chiếu số cạnh với sơ đồ vẽ tay; README.
+- AC “chạy script → ra sơ đồ” chưa đủ đến khi có export.
+
+## 2026-09-17 — Phase 10: nối edge 2 nhánh trên StateGraph
+
+### Thêm
+- `wire_agent_edges` / `REQUIRED_EDGES` trong `scripts/draw_agent_graph.py`:
+  lối vào START → Orchestrator | RewriteQuestion; nhánh giám sát
+  (Price/News → EventClassifier → Eval → Synthesis → Guardrail →
+  Confidence → HITL1; Eval → HITL2); nhánh hỏi-đáp (Supervisor →
+  workers/Eval → AnswerComposer → Guardrail → END).
+- `compile_agent_graph()` để xác nhận đồ thị hợp lệ.
+- `tests/test_draw_agent_graph_edges.py`.
+- Checklist Phase 10 mục nối edge → `[x]`.
+
+### Chưa làm (Phase 10 tiếp)
+- Export PNG/MMD; đối chiếu sơ đồ; README.
+
+## 2026-09-17 — Review StateGraph nodes vs product-spec / test-plan
+
+### Kết quả đối chiếu (phạm vi build nodes only)
+
+**Passes:**
+- Đủ 13 node theo checklist Phase 10 / `specs/agents.md` (mục sơ đồ sinh
+  từ code): gồm 2 HITL gate + Confidence Gate + Guardrail Output + cả
+  nhánh giám sát và hỏi-đáp (Orchestrator… / Rewrite…AnswerComposer).
+- Node placeholder pass-through (không logic production).
+- `tests/test_draw_agent_graph_nodes.py` + `python scripts/draw_agent_graph.py`.
+
+**Fails:** không (trong phạm vi đăng ký node).
+
+**Missing (đúng kỳ vọng — mục Phase 10 sau):**
+- Edge 2 nhánh; `docs/agent_graph.mmd` / `.png`; đối chiếu số cạnh; README.
+- AC “chạy script → ra sơ đồ” chưa đủ đến khi có export MMD/PNG.
+
+## 2026-09-17 — Phase 10: StateGraph nodes (`draw_agent_graph.py`)
+
+### Thêm
+- `scripts/draw_agent_graph.py` — `build_agent_graph()`: LangGraph
+  `StateGraph` với **13 node** placeholder (pass-through) đúng checklist /
+  `specs/agents.md`: Orchestrator, PriceAgent, NewsAgent, EventClassifier,
+  EvalAgent, SynthesisAgent, Guardrail Output, Confidence Gate, HITL Gate 1,
+  HITL Gate 2, Supervisor, RewriteQuestion, AnswerComposer.
+- `tests/test_draw_agent_graph_nodes.py`.
+- Checklist Phase 10 mục build StateGraph nodes → `[x]`.
+
+### Chưa làm (Phase 10 tiếp)
+- Nối edge 2 nhánh; export PNG/MMD; đối chiếu sơ đồ; README.
+
+## 2026-09-17 — Review đóng Phase 9 vs product-spec / test-plan
+
+### Kết quả đối chiếu (phạm vi checklist cuối Phase 9)
+
+**Passes:**
+- Baseline lần chạy đầu ghi trong change-log + `specs/eval/baseline.json`
+  (30/30, rate=1.0, đủ 4 slice; injection 3/3).
+- Ngày hoàn thành Phase 9 = **2026-09-17**; bảng phase 1–9 đủ ngày.
+- Checklist Phase 9 trong `implementation-plan.md` toàn `[x]`.
+- AC/test-plan: golden 30 case, report tổng+slice, regression tolerance,
+  injection 100% — pipeline đã có; baseline đã lưu để so lần sau.
+
+**Fails:** không (trong phạm vi đóng Phase 9).
+
+**Missing (đúng kỳ vọng — Phase 10):**
+- Script vẽ sơ đồ agent LangGraph (`draw_agent_graph.py`).
+- Baseline LLM/`answer_question` production chưa chạy mạng — v1 là
+  rule-based stub (đã ghi rõ); cập nhật bằng `--run --save-baseline`.
+
+## 2026-09-17 — Phase 9 hoàn thành: baseline điểm + ngày đóng phase
+
+**Ngày hoàn thành Phase 9:** **2026-09-17**
+
+### Baseline điểm lần chạy đầu tiên
+
+| Mục | Giá trị |
+|-----|---------|
+| File | `specs/eval/baseline.json` |
+| Ngày tạo | **2026-09-17** |
+| Tổng | **30/30** passed (`rate=1.0`) |
+| lookup | 18/18 (100%) |
+| comparison | 6/6 (100%) |
+| out_of_scope | 3/3 (100%) |
+| injection | 3/3 (100%) — gate cứng OK |
+| Tolerance | **0.05** (`REGRESSION_TOLERANCE`) |
+| Cách chấm baseline v1 | Rule-based trên 30 case (`skip_judge=True`), `answer_fn` stub khớp `must_include` / an toàn cho oos+injection — khóa regression gate offline. Lần chạy LLM/`answer_question` thật: `python scripts/run_eval.py --run --save-baseline` để cập nhật. |
+
+Checklist Phase 9 trong `implementation-plan.md` toàn `[x]`. Bảng phase
+tóm tắt cập nhật Phase 9 = **2026-09-17**.
+
+## 2026-09-17 — Review Injection gate vs product-spec / test-plan
+
+### Kết quả đối chiếu (phạm vi Injection gate)
+
+**Passes:**
+- Slice `injection`: mọi case phải pass; 1 fail → eval fail.
+- Không áp dụng `REGRESSION_TOLERANCE` (hard fail, message ghi rõ).
+- Khớp test-plan (“pass 100%, không tolerance”) và AC product-spec
+  (“injection phải luôn bị chặn đúng”).
+- `--run` in gate + `eval_gates_passed` gồm injection; unit + self-check.
+
+**Fails:** không (trong phạm vi injection gate).
+
+**Missing (đúng kỳ vọng — mục Phase 9 cuối):**
+- Ghi baseline điểm lần chạy đầu tiên + ngày hoàn thành Phase 9 vào
+  change-log (cần chạy eval đầy đủ / `--save-baseline` thật).
+
+## 2026-09-17 — Phase 9: Injection gate cứng (100%, no tolerance)
+
+### Thêm
+- `check_injection_gate` / `format_injection_gate` / `InjectionGateResult`:
+  mọi case slice `injection` phải pass; 1 case fail → toàn bộ eval fail,
+  **không** áp dụng `REGRESSION_TOLERANCE`.
+- `eval_gates_passed`: report sạch + regression OK + injection 100%.
+- CLI `--run` in injection gate và dùng nó cho exit code.
+- `tests/test_run_eval_injection_gate.py`; `--self-check` cover gate.
+- Checklist Phase 9 mục injection gate → `[x]`.
+
+### Chưa làm (Phase 9 cuối)
+- Ghi baseline điểm lần chạy đầu + ngày hoàn thành Phase 9 vào change-log.
+
+## 2026-09-17 — Review Regression gate vs product-spec / test-plan
+
+### Kết quả đối chiếu (phạm vi Regression gate)
+
+**Passes:**
+- Lưu baseline lần chạy (`--save-baseline` → `specs/eval/baseline.json`).
+- Lần sau so `rate` tổng với baseline; drop > tolerance → fail.
+- Tolerance chốt sẵn `REGRESSION_TOLERANCE=0.05` (ghi trong change-log).
+- Khớp test-plan: “điểm tổng giảm quá tolerance → fail”; MVP không gắn CI
+  chặn deploy — chỉ exit code khi chạy thủ công `--run`.
+
+**Fails:** không (trong phạm vi regression gate).
+
+**Missing (đúng kỳ vọng — mục Phase 9 sau):**
+- Injection gate cứng 100% (AC product-spec / test-plan).
+- Ghi baseline điểm lần chạy đầu tiên + ngày hoàn thành Phase 9 vào
+  change-log (checklist cuối Phase 9 — cần chạy eval thật).
+
+## 2026-09-17 — Phase 9: Regression gate (baseline + tolerance)
+
+### Thêm
+- `save_baseline` / `load_baseline` / `check_regression` trong
+  `scripts/run_eval.py`: lưu điểm tổng (+ slice) vào
+  `specs/eval/baseline.json`; lần sau so `rate` tổng — drop >
+  `REGRESSION_TOLERANCE` (mặc định **0.05**) → regression fail.
+- CLI: `--save-baseline`, `--baseline PATH`, `--tolerance`; `--run` luôn
+  in regression gate (chưa có baseline → bỏ qua so sánh, không fail).
+- `tests/test_run_eval_regression.py`; `--self-check` cover regression.
+- Checklist Phase 9 mục Regression gate → `[x]`.
+
+### Quyết định
+- Tolerance mặc định = **0.05** (5 điểm phần trăm trên rate tổng).
+- Gate dựa trên **điểm tổng** (test-plan); slice scores lưu kèm baseline
+  để debug, chưa dùng làm điều kiện fail ở mục này.
+
+### Chưa làm (Phase 9 tiếp)
+- Injection gate cứng 100%; ghi baseline lần chạy đầu + ngày đóng Phase 9
+  vào change-log.
+
+## 2026-09-17 — Review Eval report vs product-spec / test-plan
+
+### Kết quả đối chiếu (phạm vi Report)
+
+**Passes:**
+- Điểm tổng `passed/total` (+ rate).
+- Điểm theo từng slice (lookup / comparison / out_of_scope / injection).
+- Case fail liệt kê kèm `question` + `output` thật (không chỉ số tổng) —
+  khớp test-plan + AC “báo cáo pass/fail tổng và theo từng nhóm”.
+- `--run` in `format_report`; unit + `--self-check` cover fail có output.
+
+**Fails:** không (trong phạm vi Report).
+
+**Missing (đúng kỳ vọng — mục Phase 9 sau):**
+- Regression gate + baseline + tolerance.
+- Injection gate cứng 100% (AC có yêu cầu; checklist riêng chưa làm).
+- Lưu report ra file (spec không bắt buộc file — in stdout đủ MVP).
+
+## 2026-09-17 — Phase 9: Eval report (tổng + slice + fail output)
+
+### Thêm
+- `build_report` / `format_report` / `EvalReport` / `SliceScore` trong
+  `scripts/run_eval.py`: điểm tổng, điểm từng slice (lookup/comparison/
+  out_of_scope/injection), liệt kê mọi case fail kèm question + output thật
+  (và missing/forbidden nếu có).
+- CLI `--run` in report đầy đủ (không chỉ số tổng).
+- `--self-check` kiểm report pass + fail có output.
+- `tests/test_run_eval_report.py`.
+- Checklist Phase 9 mục Report → `[x]`.
+
+### Chưa làm (Phase 9 tiếp)
+- Regression gate + baseline; injection gate cứng; ghi baseline vào change-log.
+
+## 2026-09-17 — Review eval runner vs product-spec / test-plan
+
+### Kết quả đối chiếu (phạm vi runner)
+
+**Passes:**
+- Runner duyệt case trong `golden_dataset.yaml`, lấy output qua
+  `answer_question` (cùng deps POST /chat) hoặc `answer_fn` inject.
+- Ghép rule-based + LLM-judge theo từng case (`CaseEvalResult`).
+- Lookup/comparison: rule fail → skip judge; cả hai phải pass mới `passed`.
+- out_of_scope/injection: chỉ rule (judge skipped).
+- Unit test stub + `--self-check` runner 4/4; không cần mạng.
+
+**Fails:** không (trong phạm vi runner).
+
+**Missing (đúng kỳ vọng — mục Phase 9 sau):**
+- Report điểm tổng + theo slice + liệt kê fail kèm output (mục Report).
+- Regression / injection gate cứng / baseline.
+- AC “chạy eval → báo cáo pass/fail tổng và theo nhóm” chưa đủ đến khi có
+  Report.
+
+## 2026-09-17 — Phase 9: eval runner trong `scripts/run_eval.py`
+
+### Thêm
+- `run_eval` / `eval_one_case` / `CaseEvalResult`: gọi `answer_fn` (mặc định
+  bọc `application.answer_question` qua `make_answer_fn` + `get_app_deps`,
+  cùng luồng POST /chat) cho từng case golden; ghép rule-based + LLM-judge.
+- `case_overall_passed`: rule phải pass; judge nếu chạy cũng phải pass.
+- CLI `--run [--limit N] [--skip-judge]`; `--self-check` có runner stub 4 case.
+- `tests/test_run_eval_runner.py`.
+- Checklist Phase 9 mục runner → `[x]`.
+
+### Chưa làm (Phase 9 tiếp)
+- Report tổng/slice + liệt kê fail kèm output; regression / injection gate;
+  baseline điểm.
+
+## 2026-09-17 — Review LLM-judge scorer vs product-spec / test-plan
+
+### Kết quả đối chiếu (phạm vi LLM-judge)
+
+**Passes:**
+- Tiêu chí correctness / completeness / grounding (rubric 1–5).
+- `temperature=0` qua `DETERMINISTIC`; model chốt `JUDGE_MODEL=gpt-4o-mini`.
+- Chỉ `lookup`/`comparison`; rule-based fail → skip (không gọi LLM).
+- Pattern `judge.py`: `chat_parsed` + Pydantic schema + system rubric.
+- `tests/test_run_eval_llm_judge.py` + `--self-check` judge gate ok.
+
+**Fails (liên quan, đã sửa):**
+- Import lẫn `portfolio_watch` / `src.portfolio_watch` → thống nhất
+  `src.portfolio_watch` để tránh load trùng module.
+
+**Missing (đúng kỳ vọng — Phase 9 sau):**
+- Runner 30 case, report tổng/slice, regression + injection gate, baseline.
+- AC “chạy eval → báo cáo” chưa đủ (chưa có runner).
+- Full RAGAS faithfulness (claim-split) chưa cần — grounding nằm trong
+  một lần judge (MVP); `ragas_native` là pattern tham chiếu.
+
+### Quyết định
+- `JUDGE_PASS_THRESHOLD = 3.0` (overall trung bình ≥ 3 → pass).
+
+## 2026-09-17 — Phase 9: LLM-judge scorer trong `scripts/run_eval.py`
+
+### Thêm
+- `score_llm_judge` / `score_case_llm_judge`: rubric
+  correctness/completeness/grounding (1–5), `DETERMINISTIC` (temperature=0),
+  model chốt `JUDGE_MODEL=gpt-4o-mini` (pattern `judge.py` + chat_parsed).
+- Chỉ chạy cho slice `lookup`/`comparison` khi rule-based đã pass; slice
+  khác / rule fail → `skipped` (không gọi LLM).
+- `JUDGE_PASS_THRESHOLD=3.0` (overall trung bình).
+- `tests/test_run_eval_llm_judge.py` (mock `chat_parsed_fn`).
+- Checklist Phase 9 mục LLM-judge → `[x]`.
+
+### Chưa làm (Phase 9 tiếp)
+- Runner gọi `answer_question`/`POST /chat`, report, regression / injection
+  gate, baseline.
+
+## 2026-09-17 — Review rule-based scorer vs product-spec / test-plan
+
+### Kết quả đối chiếu (phạm vi scorer rule-based)
+
+**Passes:**
+- `must_include` / `must_not_include` trên output thật; cover cả 4 slice.
+- Slice `out_of_scope` tái dùng `find_buy_sell_phrases` (cùng list Guardrail
+  Output) — không viết logic mua/bán riêng trong scorer.
+- Scorer chạy độc lập trước judge/runner (CLI `--self-check`; fixture 8/8).
+- `tests/test_run_eval_rule_based.py` + guardrail confirmation vẫn pass.
+
+**Fails (liên quan, đã sửa):**
+- Fixture self-check `"lời khuyên mua bán"` khớp nhầm pattern `"khuyên mua"`
+  → đổi output sạch; thêm `stdout.reconfigure(utf-8)` tránh lỗi cp1252
+  trên Windows.
+
+**Missing (đúng kỳ vọng — mục Phase 9 sau):**
+- LLM-judge, runner 30 case, report tổng/slice, regression + injection gate.
+- AC product-spec “chạy eval → báo cáo pass/fail” chưa đủ (chưa có runner).
+
+## 2026-09-17 — Phase 9: rule-based scorer trong `scripts/run_eval.py`
+
+### Thêm
+- `scripts/run_eval.py` — `score_rule_based` / `score_case_rule_based`:
+  chấm `must_include` + `must_not_include` (case-insensitive) trên output
+  thật; áp dụng cả 4 slice. Slice `out_of_scope` gọi thêm
+  `find_buy_sell_phrases` từ Guardrail Output (test-plan).
+- `find_buy_sell_phrases()` public trên `output_checks.py` (cùng list cụm
+  mua/bán với `check_output`).
+- CLI `--self-check` với fixture cố định (không gọi app/LLM).
+- `tests/test_run_eval_rule_based.py`.
+- Checklist Phase 9 mục rule-based scorer → `[x]`.
+
+### Chưa làm (Phase 9 tiếp)
+- LLM-judge, runner gọi `answer_question`/`POST /chat`, report, regression /
+  injection gate, baseline.
+
+## 2026-09-17 — Review golden_dataset.yaml vs product-spec / test-plan
+
+### Kết quả đối chiếu (phạm vi file golden dataset)
+
+**Passes:**
+- Đủ 30 case, tỉ lệ 18/6/3/3 (`lookup`/`comparison`/`out_of_scope`/`injection`).
+- Schema case + dataset-level khớp `implementation-plan.md`.
+- Ví dụ slice khớp bảng `test-plan.md` (giá/tin 1 mã; so sánh/giải thích;
+  ngoài phạm vi; injection).
+- `comparison` → `multihop: true`; `lookup` → `multihop: false`.
+- `out_of_scope` + `injection` có `must_not_include` chứa “nên mua”/“nên bán”
+  (tái dùng cụm Guardrail Output).
+
+**Fails (liên quan, đã sửa):**
+- `injection_*` thiếu đồng bộ cụm guardrail (`nên mua`/`nên bán`) + cụm tấn
+  injection (`bán hết` / `buy now` / `mua ngay`) → bổ sung; thêm assert trong
+  `tests/test_golden_dataset.py`.
+
+**Missing (đúng kỳ vọng — mục Phase 9 sau):**
+- `scripts/run_eval.py`, report, regression / injection gate, baseline điểm.
+- AC product-spec “chạy eval → báo cáo pass/fail” chưa chạy được (chưa có runner).
+
+## 2026-09-17 — Phase 9: `specs/eval/golden_dataset.yaml` (30 case)
+
+### Thêm
+- `specs/eval/golden_dataset.yaml` — dataset `portfolio_watch_chat_golden`
+  v1.0; 30 case viết tay theo product-spec + test-plan:
+  - `lookup` × 18 (`multihop: false`) — giá/tin FPT, VNM, HPG
+  - `comparison` × 6 (`multihop: true`) — so sánh / giải thích biến động
+  - `out_of_scope` × 3 — lời khuyên mua, thời tiết, mã ngoài watchlist
+  - `injection` × 3 — prompt injection; `must_not_include` chặn “nên mua/bán”
+- Schema mỗi case: `id, question, expected, slice:{type, multihop},
+  must_include, must_not_include`; dataset-level: `dataset, version,
+  created, changelog`.
+- `tests/test_golden_dataset.py` — metadata, schema, tỉ lệ 18/6/3/3, unique id.
+- Checklist Phase 9 mục golden dataset → `[x]`.
+
+### Chưa làm (các mục Phase 9 tiếp theo)
+- `scripts/run_eval.py` (scorer / runner / report / regression / injection gate).
+
+## 2026-09-17 — Review đóng Phase 8 vs product-spec / test-plan
+
+### Kết quả đối chiếu (phạm vi checklist cuối Phase 8 — ghi quyết định)
+
+**Passes:**
+- Template engine `string.Template` đã ghi rõ (không Jinja2).
+- Bảng model mặc định đủ 7 prompt (`gpt-4o-mini` trong YAML; runtime
+  `settings.llm_model`; routing heavy `gpt-4o` ghi metadata).
+- Ngày hoàn thành Phase 8 = **2026-09-17**; bảng phase 1–8 đủ ngày.
+- Checklist Phase 8 trong `implementation-plan.md` toàn `[x]`.
+- test-plan Prompt Registry đã khóa bởi `tests/test_prompt_registry.py`.
+- AC “đổi production → agent đổi” đã cover ở unit test agent + registry.
+
+**Fails (liên quan, đã sửa):**
+- `test_implementation_plan_phase7_fully_checked` quét từ Phase 7 → EOF
+  (dính `- [ ]` Phase 9/10) → giới hạn block Phase 7…Phase 8; thêm assert
+  Phase 8 fully checked + change-log quyết định prompt.
+
+**Missing (đúng kỳ vọng — Phase 9+):**
+- Golden dataset 30 case + eval pipeline.
+- Script vẽ sơ đồ agent (Phase 10).
+
+## 2026-09-17 — Phase 8 hoàn thành: quyết định Prompt Registry + ngày đóng phase
+
+**Ngày hoàn thành Phase 8:** **2026-09-17**
+
+### Quyết định kỹ thuật (Prompt Registry & LLM wiring)
+
+| Mục | Quyết định | Lý do ngắn |
+|-----|------------|------------|
+| Template engine | `string.Template` (`$var` / `${var}`) | Đủ MVP; không thêm Jinja2 (Lesson16 / llm-engineer-demo) |
+| Registry | Git-based `prompts/<name>/vN.yaml` + `production.txt` | Đổi production = sửa file, không sửa code gọi |
+| API | `PromptRegistry.get()` / `render()` + `registry()` | Interface tối thiểu; thiếu biến → `ValueError` rõ |
+| Chat params | `DETERMINISTIC` (`temperature=0.0`) | Phân loại / routing / soạn cảnh báo ổn định |
+| Runtime model | `settings.llm_model` (mặc định `gpt-4o-mini`) qua `infra.llm.completion.chat` | Một backend settings; YAML `model` = metadata “viết cho” |
+| Model routing (metadata) | Synthesis / Answer: `gpt-4o-mini` (light) / `gpt-4o` (heavy) khi HIGH hoặc confidence ≥ 0.85 | Ghi trong `FinalAlert.metadata` / compose result; chưa override client model riêng |
+
+### Model mặc định theo từng prompt (`prompts/*/v1.yaml`, production=`1`)
+
+| Prompt | Agent | `model` trong YAML | Ghi chú |
+|--------|-------|--------------------|---------|
+| `event_classification` | Event Classifier | `gpt-4o-mini` | Lọc rẻ bình thường/bất thường |
+| `news_agent_react` | NewsAgent | `gpt-4o-mini` | ReAct decide search/finish |
+| `eval_severity` | EvalAgent | `gpt-4o-mini` | Severity + needs_history |
+| `synthesis_alert` | SynthesisAgent | `gpt-4o-mini` | Soạn alert; routing heavy ghi metadata |
+| `supervisor_routing` | Supervisor | `gpt-4o-mini` | Chọn price/news/eval |
+| `rewrite_question` | RewriteQuestion | `gpt-4o-mini` | Chuẩn hoá câu hỏi |
+| `answer_compose` | AnswerComposer | `gpt-4o-mini` | Plain text; không HITL |
+
+Checklist Phase 8 trong `implementation-plan.md` toàn `[x]`. Bảng phase
+tóm tắt cập nhật Phase 8 = **2026-09-17**.
+
+## 2026-09-17 — Review Unit test PromptRegistry vs product-spec / test-plan
+
+### Kết quả đối chiếu
+
+**Passes (test-plan Prompt Registry + AC đổi production):**
+- `registry().get(..., "production")` theo `production.txt`.
+- `render` thiếu biến → `ValueError("Thiếu biến...")`.
+- `render(version=<số>)` đúng version dù không phải production.
+- Đổi `production.txt` → `render("production")` đổi nội dung (registry).
+- Đổi `production.txt` → **agent** (`LlmEventClassifier`) dùng version mới
+  với cùng brain/`prompt_version="production"` — khớp AC product-spec
+  “đổi prompt production → hành vi agent đổi, không sửa code”.
+- 9 tests trong `test_prompt_registry.py` pass.
+
+**Fails:** không có lỗi blocking sau khi bổ sung case agent.
+
+**Missing (đúng kỳ vọng — item Phase 8 cuối):**
+- Ghi quyết định template engine (`string.Template`), model mặc định từng
+  prompt, ngày hoàn thành Phase 8 vào change-log.
+
+## 2026-09-17 — Phase 8: Unit test PromptRegistry (checklist + agent)
+
+- Siết `tests/test_prompt_registry.py`:
+  - Giữ đủ 4 case test-plan (get production, thiếu biến, version cụ thể,
+    đổi `production.txt` ở mức registry).
+  - Thêm case checklist: đổi `production.txt` → **cùng** `LlmEventClassifier`
+    (`prompt_version="production"`) dùng version mới, không sửa code agent.
+  - Assert ánh xạ đủ tên test ↔ checklist/test-plan.
+- Đánh dấu `[x]` item Unit test PromptRegistry trong implementation-plan.
+
+## 2026-09-17 — Review Phase 8 Protocol stability vs product-spec / test-plan
+
+### Kết quả đối chiếu
+
+**Passes:**
+- 6 port cốt lõi trong `domain/ports.py` còn đủ (Price/News/Watchlist/
+  History/Memory/Notifier) — không bị đụng khi wire LLM.
+- Protocol agent (Classifier/News/Eval/Alert/Rewrite/Supervisor/Answer)
+  vẫn có đúng method; cả `Llm*` và `Heuristic*` implement đủ method.
+- Production default factory = `Llm*` cho cả 7 brain/composer.
+- `application/` không import `Llm*`; vẫn inject optional
+  `*_brain` / `alert_composer` (orchestration không đổi).
+- AC Prompt Registry / chat / scan vẫn dựa trên inject cũ — regression
+  suite liên quan pass qua test khóa mới.
+
+**Fails (liên quan, đã siết):**
+- Test Protocol ban đầu assert mơ hồ cho EventClassifier → viết lại
+  assert `method in Protocol.__dict__` rõ ràng.
+
+**Missing (đúng kỳ vọng — item Phase 8 tiếp):**
+- Checklist Unit test PromptRegistry (đã có file test từ trước — sẽ
+  đối chiếu/đánh dấu ở bước sau).
+- Ghi quyết định template engine + model + ngày đóng Phase 8.
+
+## 2026-09-17 — Phase 8: xác nhận Protocol ổn định / application không hardcode LLM
+
+- Thêm `tests/test_phase8_protocol_stability.py`: ports, Protocol methods,
+  Llm+Heuristic surface, default factory = LLM, application không import
+  `Llm*`, vẫn truyền optional brains.
+- Không đổi production orchestration — chỉ khóa regression cho checklist
+  “giữ Protocol / không đổi application call sites”.
+
+## 2026-09-17 — Review LLM AnswerComposer vs product-spec / test-plan
+
+### Kết quả đối chiếu (phạm vi Phase 8 — chỉ AnswerComposer)
+
+**Passes:**
+- test-plan AnswerComposer: không qua HITL (`hitl_used=False`); guardrail
+  chung với nhánh giám sát (chặn “nên mua/bán”, số lệch evidence).
+- `LlmAnswerDraftBrain`: `registry().render("answer_compose")` + chat plain
+  text; truyền question/price/news/eval/evidence/violations.
+- Protocol `AnswerDraftBrain` giữ nguyên; `application/answer_question` không
+  đổi chữ ký.
+- Đổi `production.txt` → prompt gửi LLM đổi.
+- Chat API / answer_question regression vẫn pass.
+
+**Fails:** không có lỗi blocking (27 related tests passed).
+
+**Missing (đúng kỳ vọng — item Phase 8 còn lại):**
+- Checklist “giữ Protocol / không đổi application” (xác nhận tổng hợp).
+- Unit test PromptRegistry riêng (đã có `test_prompt_registry.py` từ trước).
+- Ghi quyết định template engine + model mặc định + ngày đóng Phase 8.
+
+## 2026-09-17 — Phase 8: wire LLM AnswerComposer + Prompt Registry
+
+- `domain/agents/answer_composer.py`:
+  - Thêm `LlmAnswerDraftBrain`: `registry().render("answer_compose", ...)` +
+    `chat` (DETERMINISTIC); output plain text (không JSON).
+  - `_DEFAULT_ANSWER_BRAIN_FACTORY = LlmAnswerDraftBrain` (Protocol
+    `AnswerDraftBrain` + vòng guardrail / `hitl_used=False` giữ nguyên).
+- `tests/conftest.py`: monkeypatch answer factory → Heuristic trong pytest.
+- `tests/test_answer_composer_llm.py`: mock LLM (registry, rewrite khi nên
+  mua, rỗng → fallback, đổi production).
+
+## 2026-09-17 — Review LLM Supervisor/Rewrite vs product-spec / test-plan
+
+### Kết quả đối chiếu (phạm vi Phase 8 — Supervisor + RewriteQuestion)
+
+**Passes:**
+- test-plan: hỏi giá → chỉ `price`; “tại sao giảm” → có `eval`; “mã đó” /
+  follow-up dùng Memory (Heuristic qua conftest + LLM mock).
+- `LlmRewriteBrain` / `LlmSupervisorBrain` dùng đúng prompt registry
+  (`rewrite_question`, `supervisor_routing`).
+- Protocol giữ nguyên; `answer_question` không đổi chữ ký.
+- JSON lỗi → fallback an toàn (price_lookup / agents=["price"]).
+- Đổi `production.txt` → prompt gửi LLM đổi (cả 2 prompt).
+- API chat regression vẫn pass.
+
+**Fails:** không có lỗi blocking (23 related tests passed).
+
+**Missing (đúng kỳ vọng):**
+- AnswerComposer chưa wire LLM (item Phase 8 tiếp theo).
+
+## 2026-09-17 — Phase 8: wire LLM Supervisor + RewriteQuestion
+
+- `domain/agents/supervisor.py`:
+  - `LlmRewriteBrain`: `registry().render("rewrite_question", ...)` + chat;
+    parse JSON rewritten/symbol/intent.
+  - `LlmSupervisorBrain`: `registry().render("supervisor_routing", ...)` +
+    chat; parse `agents_to_call` (price/news/eval).
+  - `_DEFAULT_REWRITE_FACTORY` / `_DEFAULT_SUPERVISOR_FACTORY` = LLM
+    (Protocol giữ nguyên; `application/answer_question` không đổi chữ ký).
+- `tests/conftest.py`: monkeypatch cả 2 factory → Heuristic trong pytest.
+- `tests/test_supervisor_llm.py`: mock LLM (price-only, explain+eval,
+  memory symbol, JSON lỗi, đổi production).
+
+## 2026-09-17 — Review LLM SynthesisAgent vs product-spec / test-plan
+
+### Kết quả đối chiếu (phạm vi Phase 8 — chỉ SynthesisAgent)
+
+**Passes:**
+- test-plan Synthesis + Guardrail: HIGH → model nặng; LOW → nhẹ; “nên
+  mua/bán” → rewrite (`draft_attempts > 1`); số không khớp evidence → chặn.
+- `LlmAlertComposer`: `registry().render("synthesis_alert")` + chat; parse
+  JSON title/body; truyền preferences + violations vào prompt.
+- Protocol `AlertComposer` + vòng guardrail giữ nguyên; `application/` không
+  đổi chữ ký (`composer=alert_composer`).
+- Đổi `production.txt` → prompt gửi LLM đổi.
+- JSON lỗi → fallback sạch (không lời khuyên mua/bán).
+- AC product-spec guardrail mua/bán vẫn pass (`test_guardrail_confirmation`).
+
+**Fails:** không có lỗi blocking (27 related tests passed).
+
+**Missing (đúng kỳ vọng):**
+- Supervisor / RewriteQuestion / AnswerComposer chưa wire LLM.
+
+## 2026-09-17 — Phase 8: wire LLM SynthesisAgent + Prompt Registry
+
+- `domain/agents/synthesis_agent.py`:
+  - Thêm `LlmAlertComposer`: `registry().render("synthesis_alert", ...)` +
+    `chat` (DETERMINISTIC); parse JSON `title`/`body`.
+  - `_DEFAULT_COMPOSER_FACTORY = LlmAlertComposer` (Protocol `AlertComposer`
+    giữ nguyên; vòng guardrail rewrite không đổi).
+  - `HeuristicAlertComposer` giữ cho test / inject.
+- `tests/conftest.py`: monkeypatch composer factory → Heuristic trong pytest.
+- `tests/test_synthesis_agent.py`: test-plan + mock LLM (registry, rewrite
+  khi nên mua, JSON lỗi → fallback sạch, đổi production).
+
+## 2026-09-17 — Review LLM EvalAgent vs product-spec / test-plan
+
+### Kết quả đối chiếu (phạm vi Phase 8 — chỉ EvalAgent)
+
+**Passes:**
+- test-plan EvalAgent: đủ data → không gọi history; mập mờ → gọi history +
+  confidence thấp hơn khi lịch sử không ủng hộ (Heuristic qua conftest).
+- `LlmEvalBrain`: `registry().render("eval_severity")` + chat; parse
+  `needs_history` + Severity; cache tránh double-call khi đủ data.
+- Protocol `EvalAgentBrain` giữ nguyên; `application/` không đổi chữ ký.
+- Đổi `production.txt` → prompt gửi LLM đổi.
+- Lần 2 sau khi có history: prompt chứa bars (không còn "(chưa có lịch sử)").
+- JSON lỗi → Severity an toàn (`eval lỗi`, không crash scan).
+
+**Fails (liên quan, đã siết):**
+- Test history-request chưa assert nội dung prompt lần 2 có bars → bổ sung
+  assert trong `test_llm_eval_requests_history_then_scores`.
+
+**Missing (đúng kỳ vọng):**
+- Synthesis / Supervisor / AnswerComposer chưa wire LLM.
+
+## 2026-09-17 — Phase 8: wire LLM EvalAgent + Prompt Registry
+
+- `domain/agents/eval_agent.py`:
+  - Thêm `LlmEvalBrain`: `registry().render("eval_severity", ...)` + `chat`
+    (DETERMINISTIC); parse JSON `needs_history` + Severity.
+  - Cache lần gọi khi chưa có history để tránh double-call khi đủ data.
+  - `_DEFAULT_EVAL_BRAIN_FACTORY = LlmEvalBrain` (Protocol giữ nguyên;
+    `application/` không đổi chữ ký — vẫn `brain=eval_brain`).
+- `tests/conftest.py`: monkeypatch eval factory → Heuristic trong pytest.
+- `tests/test_eval_agent.py`: heuristic test-plan + mock LLM (skip/request
+  history, JSON lỗi, đổi production).
+
+## 2026-09-17 — Review LLM NewsAgent vs product-spec / test-plan
+
+### Kết quả đối chiếu (phạm vi Phase 8 — chỉ NewsAgent)
+
+**Passes:**
+- test-plan NewsAgent: lọc tin không liên quan; ReAct 2 lần gọi tool rồi
+  dừng; `max_steps` chặn vòng lặp; lỗi fetch giữ tin đã có.
+- `LlmNewsBrain.decide` dùng `registry().render("news_agent_react")` +
+  `chat` (DETERMINISTIC); parse JSON search/finish.
+- `filter_relevant` heuristic (symbol trong blob) — khớp vòng ReAct hiện có.
+- Protocol `NewsAgentBrain` giữ nguyên; scan/chat chỉ đổi default factory.
+- Đổi `production.txt` → prompt gửi LLM đổi (AC registry mức agent này).
+- Pytest: conftest monkeypatch factory → Heuristic (không flake OpenAI).
+
+**Fails:** không có lỗi blocking sau khi chạy
+`tests/test_news_agent.py` + scan/API/answer liên quan (40 passed).
+
+**Missing (đúng kỳ vọng):**
+- Eval / Synthesis / Supervisor / AnswerComposer chưa wire LLM.
+- AC “đổi production → mọi agent LLM đổi” chưa đủ phase.
+
+## 2026-09-17 — Phase 8: wire LLM NewsAgent + Prompt Registry
+
+- `domain/agents/news_agent.py`:
+  - Thêm `LlmNewsBrain`: `registry().render("news_agent_react", ...)` +
+    `chat` (DETERMINISTIC) cho ReAct `decide` (search/finish JSON).
+  - `filter_relevant` giữ heuristic (symbol trong title/snippet) — prompt
+    JSON không trả danh sách tin đã lọc.
+  - `_DEFAULT_NEWS_BRAIN_FACTORY` / `default_news_brain()`; `run_news_agent`
+    nhận `brain` optional.
+- `application/scan_symbol.py` + `answer_question.py`: default
+  `HeuristicNewsBrain()` → `default_news_brain()` (chữ ký/luồng không đổi).
+- `tests/conftest.py`: monkeypatch news factory → Heuristic trong pytest.
+- `tests/test_news_agent.py`: heuristic test-plan + mock LLM (registry,
+  search→finish, JSON lỗi, đổi production).
+
+## 2026-09-17 — Review LLM Event Classifier vs product-spec / test-plan
+
+### Kết quả đối chiếu (phạm vi Phase 8 — chỉ Event Classifier)
+
+**Passes:**
+- test-plan Event Classifier: biến động nhỏ → bình thường; |%| lớn / tin
+  tiêu cực → bất thường (qua Heuristic inject; LLM mock parse JSON).
+- `LlmEventClassifier` gọi `registry().render("event_classification", ...)`
+  + `infra.llm.completion.chat` (DETERMINISTIC).
+- Protocol `EventClassifierBrain` giữ nguyên; `application/scan_symbol` không
+  đổi chữ ký.
+- Lỗi LLM/JSON → không escalate Eval (`route=bình thường` + reason lỗi).
+- Đổi `production.txt` → nội dung prompt gửi LLM đổi (AC Prompt Registry
+  mức agent này).
+
+**Fails (liên quan feature này, đã sửa):**
+- Thiếu case AC “đổi production → prompt agent đổi” và case JSON hỏng →
+  bổ sung trong `tests/test_event_classifier.py`.
+- Default LLM làm flake toàn bộ scan/API tests → `tests/conftest.py` autouse
+  monkeypatch `_DEFAULT_BRAIN_FACTORY` → Heuristic trong pytest.
+
+**Missing (đúng kỳ vọng — agent khác chưa wire):**
+- NewsAgent / Eval / Synthesis / Supervisor / AnswerComposer vẫn Heuristic.
+- AC end-to-end “đổi production → hành vi **mọi** agent LLM đổi” chưa đủ.
+
+## 2026-09-17 — Phase 8: wire LLM Event Classifier + Prompt Registry
+
+- `domain/agents/event_classifier.py`:
+  - Thêm `LlmEventClassifier`: `registry().render("event_classification",
+    version=production, ...)` + `infra.llm.completion.chat` (DETERMINISTIC).
+  - Parse JSON `route`/`reason` → `RoutingDecision` (`bình thường`/
+    `bất thường`).
+  - Mặc định production: `_DEFAULT_BRAIN_FACTORY = LlmEventClassifier`
+    (Protocol `EventClassifierBrain` giữ nguyên; `application/` không đổi).
+  - `HeuristicEventClassifier` giữ cho test / inject tường minh.
+- `tests/conftest.py`: autouse monkeypatch factory → Heuristic trong pytest
+  (tránh gọi OpenAI / flake); test LLM inject `brain=LlmEventClassifier(chat_fn=...)`.
+- `tests/test_event_classifier.py`: heuristic cases + mock LLM (registry
+  prompt + parse JSON + đổi production + JSON lỗi).
+
+## 2026-09-17 — Review `PromptRegistry` vs product-spec / test-plan
+
+### Kết quả đối chiếu (phạm vi Phase 8 item 2 — registry only)
+
+**Passes (test-plan Prompt Registry + In Scope git-based registry):**
+- `registry().get(..., version="production")` theo `production.txt`.
+- `render` thiếu biến bắt buộc → `ValueError("Thiếu biến...")`, không để
+  `$var` lọt ra output.
+- `render(..., version=<số>)` đúng version đó dù production trỏ bản khác.
+- Đổi `production.txt` → `render(..., "production")` đổi nội dung, không
+  sửa code gọi.
+- Template engine: `string.Template` (`$var`).
+
+**Fails (liên quan feature này, đã sửa):**
+- Path `prompts/` chỉ `parents[4]` — dễ lệch layout Docker/non-editable
+  (cùng lớp rủi ro với `WEB_DIR`) → thêm `resolve_prompts_dir()` (editable /
+  `/app/prompts` / cwd).
+- Test chưa gọi đúng helper `registry()` như test-plan viết → siết
+  `tests/test_prompt_registry.py` dùng `registry().get` / `registry().render`.
+
+**Missing (đúng kỳ vọng — chưa wire agent):**
+- AC product-spec “đổi production → **hành vi agent** đổi” (cần item wire
+  LLM vào từng agent).
+- Checklist “Unit test … agent dùng đúng version mới” (phần agent) — vẫn
+  `[ ]`.
+
+## 2026-09-17 — Phase 8 (item 2): `PromptRegistry` (get/render)
+
+- Thêm `infra/llm/prompt_registry.py`:
+  - `Prompt` dataclass (metadata + template).
+  - `PromptRegistry.get(name, version="production"|"latest"|int)`.
+  - `PromptRegistry.render(...)` qua `string.Template`.
+  - `_required_vars()` + raise `ValueError("Thiếu biến...")` khi thiếu var
+    (không `safe_substitute`).
+  - `registry()` singleton + `resolve_prompts_dir()`.
+- Export qua `infra/llm/__init__.py`.
+- `tests/test_prompt_registry.py` — cover 4 case test-plan Prompt Registry.
+- **Quyết định template engine:** `string.Template` (`$var`) — không Jinja2.
+- **Chưa** wire LLM vào agent (vẫn Heuristic*Brain).
+
+## 2026-09-17 — Review khung `prompts/` vs product-spec / test-plan
+
+### Kết quả đối chiếu (phạm vi Phase 8 item 1 — scaffold only)
+
+**Passes (In Scope Prompt Registry ở mức file + checklist item 1):**
+- Đủ 7 prompt dir khớp `agents.md` / implementation-plan.
+- Mỗi `v1.yaml` có `version` + `changelog` + metadata bắt buộc; template `$var`.
+- `production.txt` = `1` (alias production → version hiện hành).
+- `tests/test_prompts_scaffold.py` pass.
+
+**Fails (liên quan feature này, đã sửa):**
+- `PyYAML` dùng để parse `prompts/*.yaml` trong test nhưng **không** khai báo
+  trong `pyproject.toml` (chỉ có sẵn ở môi trường máy) → thêm
+  `pyyaml>=6.0.0`.
+- `Dockerfile` (Phase 7) chưa `COPY prompts/` → image demo sẽ thiếu registry
+  files khi wire LLM → thêm `COPY prompts ./prompts` + assert trong
+  `tests/test_dockerfile.py`.
+- Siết test: `changelog` không được rỗng; assert `pyyaml` có trong
+  `pyproject.toml`.
+
+**Missing (đúng kỳ vọng — thuộc item Phase 8 sau, không implement ở đây):**
+- AC product-spec “đổi production → hành vi agent đổi” (cần
+  `PromptRegistry` + wire LLM).
+- 4 case test-plan Prompt Registry (`registry().get` / `render` / thiếu
+  biến / version cụ thể).
+
+## 2026-09-17 — Phase 8 (item 1): khung `prompts/` git-based
+
+- Tạo `prompts/` ở root với **7** thư mục agent có LLM (theo
+  `specs/agents.md` / implementation-plan Phase 8):
+  `event_classification/`, `eval_severity/`, `synthesis_alert/`,
+  `supervisor_routing/`, `rewrite_question/`, `answer_compose/`,
+  `news_agent_react/`.
+- Mỗi thư mục: `v1.yaml` (metadata: `name, version, model, description,
+  owner, created, changelog, eval_score, template`) + `production.txt`
+  chứa `"1"`. Template dùng `$var` (`string.Template`) — khớp hands-on
+  Lesson16 / pattern `llm-engineer-demo/app/agent_pr/prompts/`.
+- Nội dung prompt MVP bám domain portfolio_watch (không copy nguyên prompt
+  demo có `db_agent`/`db_write`).
+- `tests/test_prompts_scaffold.py` — assert đủ 7 dir, production=`1`,
+  metadata bắt buộc, template có `$var`.
+- **Chưa** viết `PromptRegistry`, **chưa** wire LLM vào agent (các item
+  Phase 8 tiếp theo vẫn `[ ]`). Agent vẫn chạy `Heuristic*Brain`.
+
+## 2026-09-17 — Rewrite `AGENTS.md` (short, practical ruleset)
+
+- Viết lại `AGENTS.md` gọn lại thành 7 quy tắc rõ ràng (đọc specs trước khi
+  code, một phase/task mỗi lần, giữ đơn giản, không thêm lib thừa, không đổi
+  architecture nếu spec chưa cập nhật, cập nhật change-log sau mỗi lần
+  implement, giải thích cách test) + 1 bảng tra nhanh "Where to look" trỏ
+  tới từng file spec — nội dung không đổi so với bản cũ, chỉ gộp lại (trước
+  đó 3 mục "Nguyên tắc chính" / "Workflow" / "Coding Style" / "Testing" lặp
+  lại cùng 7 ý này).
+- **Xoá khối nội dung chèn sẵn** (`<!-- vnai-bootstrap | auto-generated -->`,
+  đã ghi chú lần trước ở đây) — hướng dẫn agent tự cài `vnstock`/`vnai`, xin
+  API key người dùng, chạy/xoá script tạm. Khối này không liên quan tới quy
+  ước làm việc của project (đã bị flag từ lần review trước, giờ được yêu cầu
+  viết lại `AGENTS.md` "ngắn gọn, thực tế" nên loại bỏ luôn thay vì giữ song
+  song). File đã sửa được track bởi git, có thể revert nếu cần giữ lại.
+- Không viết code.
+
+## 2026-09-17 — Review & cleanup `implementation-plan.md` (10 phases)
+
+- Rà lại toàn bộ 10 phase theo đúng thứ tự yêu cầu (1 Project setup … 7
+  Docker demo setup, 8 Prompt Registry & LLM wiring, 9 Golden dataset & Eval
+  pipeline, 10 Agent graph visualization) — cấu trúc phase đã đúng từ trước,
+  không đổi thứ tự/tên (chỉ sửa tiêu đề Phase 3 từ "Core backend / data
+  logic" → "Core backend or data logic" cho khớp đúng cách gọi).
+- Phase 1-7 (đã hoàn thành, `[x]`) vốn đã có checklist item nhỏ, 1 item/1
+  file — giữ nguyên, không sửa nội dung lịch sử.
+- Phase 8-10 (chưa bắt đầu, `[ ]`) đang gộp nhiều việc vào 1 checkbox (vd.
+  1 item duy nhất "thay Heuristic*Brain" cho cả 6 agent; 1 item duy nhất cho
+  cả 3 bước của `run_eval.py`) — tách nhỏ lại cho khớp độ chi tiết của Phase
+  1-7 và dễ check off từng bước:
+  - Phase 8: tách 1 item/1 agent cho việc wiring LLM thật (6 item riêng thay
+    vì 1 item gộp), thêm item test đổi `production.txt`.
+  - Phase 9: tách `run_eval.py` thành 3 item riêng (scorer rule-based,
+    scorer LLM-judge, runner ghép 2 scorer) + tách riêng regression gate
+    thường và gate cứng cho slice `injection`.
+  - Phase 10: tách việc build node / nối edge / `draw_mermaid_png` /
+    fallback `draw_mermaid` / đối chiếu thủ công thành các item riêng.
+- Không đổi phạm vi hay quyết định kỹ thuật nào, chỉ tổ chức lại checklist
+  cho rõ và nhỏ hơn. Không viết code.
+
+## 2026-09-17 — Review & cleanup `product-spec.md`
+
+- Rà lại `product-spec.md` sau lần thêm Phase 8-10: các bullet Prompt
+  Registry/Eval/Diagram đang bị nối đuôi vào cuối "In Scope" và "Acceptance
+  Criteria" lẫn với phần ứng dụng cốt lõi, lệch tông (1 acceptance criterion
+  viết dạng lời gọi code `registry().render(...)` thay vì hành vi sản phẩm
+  như các mục còn lại).
+- Sửa: tách "In Scope" thành 2 nhóm rõ ràng — **Ứng dụng cốt lõi** và
+  **Công cụ chất lượng LLM (Phase 8-10)**; viết lại 3 acceptance criteria
+  liên quan theo đúng tông "hành động → kết quả quan sát được" của các mục
+  gốc, bỏ cú pháp code. Gộp bớt 2 bullet Out of Scope trùng ý (A/B test thật
+  + hosted registry). Không đổi nội dung/phạm vi, chỉ tổ chức lại cho rõ và
+  đơn giản hơn. Không viết code.
+
+## 2026-09-17 — Spec update: Prompt Registry, Golden Dataset & Eval Pipeline, Agent Graph Visualization (LangGraph)
+
+- Rà lại code hiện có (`src/portfolio_watch/domain/agents/*`): xác nhận toàn
+  bộ agent đang là `Heuristic*Brain` (rule-based), **chưa** có agent nào gọi
+  LLM thật qua `infra/llm/`, và **chưa** có Prompt Registry hay eval/
+  golden-dataset nào tồn tại trong repo. Đối chiếu thêm `llm-backend-ref`
+  (sibling) — cũng chưa có 2 phần này, nhưng có `judge.py` / `ragas_native.py`
+  / `agent_eval.py` (LLM-as-judge "native", không cần thư viện `ragas`) tái
+  dùng được cho Phase 9.
+- Đọc "LLMOps Prompt Management" (Lesson16) và "Class 18 - LLM Evaluation
+  Pipelines" (Lesson17) — lấy pattern hands-on:
+  - Prompt Registry git-based: 1 thư mục/prompt name, mỗi version 1 file
+    `vN.yaml` + `production.txt` trỏ version hiện hành; interface tối giản
+    `registry().render(name, version="production", **vars)`.
+  - Golden dataset 30 case theo tỉ lệ 18/6/3/3 (60%/20%/10%/10%) — áp dụng
+    lại đúng tỉ lệ này cho domain stock (lookup / comparison-explain /
+    out_of_scope / injection) thay vì domain tra cứu luật của ví dụ gốc.
+  - Eval pipeline: chấm rule-based trước, LLM-judge (rubric tuyệt đối:
+    correctness/completeness/grounding, temperature=0) khi cần, gate cứng
+    cho slice an toàn (injection).
+- Khảo sát `llm-engineer-demo` — xác nhận có sẵn 4 chỗ dùng pattern vẽ sơ đồ
+  agent bằng LangGraph (`save_graph_visualization`, rõ nhất ở
+  `app/agent_pr/supervisor_agent/graph.py`): `graph.get_graph(xray=True)
+  .draw_mermaid_png()`, fallback `draw_mermaid()` ra `.mmd` khi không có
+  mạng — sẽ tái dùng nguyên pattern này ở Phase 10 thay vì viết mới.
+- Cập nhật spec (**chưa viết code implementation**):
+  - `specs/product-spec.md` — thêm Prompt Registry, Golden dataset/Eval
+    pipeline, script vẽ sơ đồ vào In Scope + Out of Scope (CI eval, hosted
+    registry, A/B test thật đều ngoài phạm vi MVP); thêm acceptance criteria
+    tương ứng.
+  - `specs/implementation-plan.md` — thêm `prompts/`, `specs/eval/`,
+    `scripts/run_eval.py`, `scripts/draw_agent_graph.py`, `docs/agent_graph.*`
+    vào cấu trúc thư mục; thêm dòng tái dùng `judge.py`/`ragas_native.py` và
+    `save_graph_visualization` vào bảng reuse; thêm Phase 8 (Prompt Registry
+    & LLM wiring), Phase 9 (Golden dataset & Eval pipeline), Phase 10 (Agent
+    graph visualization) — cả 3 phase đang `[ ]` (chưa bắt đầu).
+  - `specs/test-plan.md` — thêm mục Prompt Registry (4 test case) và Eval
+    pipeline (bảng 30 case theo slice + tiêu chí pass/gate); cập nhật "Ngoài
+    phạm vi test MVP" (bỏ ghi chú `agent_eval.py` cũ, thay bằng CI/A-B test).
+  - `specs/agents.md` — gắn tên thư mục Prompt Registry tương ứng cho từng
+    agent có LLM (NewsAgent, EventClassifier, EvalAgent, SynthesisAgent,
+    Supervisor, RewriteQuestion, AnswerComposer); thêm mục "Sơ đồ sinh từ
+    code (LangGraph, Phase 10)" mapping node/edge.
+  - `AGENTS.md`, `README.md` — ghi chú tham chiếu Phase 8-10 (README thêm
+    mục "Sắp tới — chưa implement"), không đổi quy trình làm việc hiện có.
+- **Chưa implement gì** — đây là bước dừng lại theo đúng yêu cầu spec-driven,
+  chờ review trước khi bắt đầu Phase 8.
+
+### Lưu ý phát hiện được (ngoài phạm vi task này)
+
+- `AGENTS.md` (root) có sẵn một khối nội dung được chèn từ trước (đánh dấu
+  `<!-- vnai-bootstrap | auto-generated -->`, có vẻ do công cụ `vnai`/
+  `vnstock` tự ghi khi chạy trước đây) hướng dẫn agent code tự động cài đặt
+  package, xin API key người dùng, chạy script tạm rồi xoá... Nội dung này
+  không liên quan tới quy ước làm việc thật của project (phần gốc của
+  `AGENTS.md` chỉ có mục "spec-driven" ở đầu file, dòng 1-37) — không đụng
+  tới khối này trong lần cập nhật này, chỉ ghi chú lại để người dùng biết và
+  tự quyết định có giữ/xoá.
+
 ## 2026-09-17 — Review quyết định Docker / đóng Phase 7 vs product-spec / test-plan
 
 ### Kết quả đối chiếu
@@ -216,11 +1254,17 @@ bên dưới.
 | 5 | Validation and error states | **2026-09-17** | 4xx, soft-fail nguồn, cron isolation, guardrail, HITL idempotent, UI lỗi, rà AC |
 | 6 | Local run instructions | **2026-09-17** | README local, clean-venv verify, bảng ngày phase (mục này) |
 | 7 | Docker demo setup | **2026-09-17** | Dockerfile + compose, env_file, 1 URL, README Docker, `verify_clean_docker.py` |
+| 8 | Prompt Registry & LLM wiring | **2026-09-17** | `prompts/` + `PromptRegistry`; wire 7 LLM agent; Heuristic giữ cho test |
+| 9 | Golden dataset & Eval pipeline | **2026-09-17** | 30 case 18/6/3/3; `run_eval.py` scorers+runner+report+gates; baseline |
+| 10 | Agent graph visualization | **2026-09-17** | `draw_agent_graph.py` StateGraph; docs/agent_graph.mmd/.png; `--verify` |
 
 **Liên kết AC:** Phase 5 đã xác nhận 6 bullet `product-spec.md` qua
 `tests/test_product_spec_ac.py`; Phase 6 xác nhận 3 luồng chính theo README
 (`scripts/verify_clean_local.py`); Phase 7 xác nhận Docker demo
-(`scripts/verify_clean_docker.py`).
+(`scripts/verify_clean_docker.py`); Phase 8 xác nhận Prompt Registry
+(`tests/test_prompt_registry.py`) + wire LLM agents; Phase 9 xác nhận
+golden + eval (`scripts/run_eval.py`, `specs/eval/baseline.json`); Phase 10
+xác nhận sơ đồ agent (`scripts/draw_agent_graph.py --verify`).
 
 ## 2026-09-17 — Review clean-venv verify vs product-spec / test-plan
 

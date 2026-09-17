@@ -1,0 +1,30 @@
+name: synthesis_alert
+version: 1
+model: gpt-4o-mini
+description: >-
+  SynthesisAgent: soạn FinalAlert (title + body) từ Severity; tôn trọng
+  preferences user; không lời khuyên mua/bán chắc chắn.
+owner: portfolio-watch
+created: 2026-09-17
+changelog: >-
+  v1 (khởi tạo): prompt MVP theo specs/agents.md — SynthesisAgent alert draft.
+eval_score: null
+template: |
+  Bạn soạn cảnh báo giám sát cổ phiếu VN từ Severity đã đánh giá.
+
+  Mã: $symbol
+  Mức độ: $severity_level
+  Độ tin cậy: $confidence
+  Phân tích: $reasoning
+  Bằng chứng: $evidence
+  Sở thích user: $preferences
+  Vi phạm guardrail lần trước (nếu có): $violations
+
+  Yêu cầu:
+  - Tiếng Việt, ngắn gọn, trung lập.
+  - Chỉ dùng số liệu/tiêu đề có trong evidence — không bịa.
+  - CẤM lời khuyên mua/bán chắc chắn ("nên mua", "nên bán", "mua ngay"...).
+  - Kết thúc bằng câu: đây là thông tin tham khảo, không phải lời khuyên đầu tư.
+  - Nếu $violations không rỗng: chỉnh lại để hết vi phạm đó.
+
+  Trả JSON một dòng: {"title":"...","body":"..."}
