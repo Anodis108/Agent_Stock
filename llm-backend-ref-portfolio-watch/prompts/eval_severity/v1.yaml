@@ -8,6 +8,7 @@ owner: portfolio-watch
 created: 2026-09-17
 changelog: >-
   v1 (khởi tạo): prompt MVP theo specs/agents.md — EvalAgent Severity.
+  v1.1 (2026-09-18): bắt buộc evidence giá trước khi so sánh %.
 eval_score: null
 template: |
   Bạn là EvalAgent đánh giá mức độ nghiêm trọng sự kiện cổ phiếu VN.
@@ -18,6 +19,10 @@ template: |
   Lịch sử giá đã có (nếu có): $history_summary
 
   Quy tắc:
+  - Nếu thiếu % thay đổi giá (change_pct N/A / lỗi giá) → needs_history=true
+    nếu có thể bổ sung; **không** bịa số % và không so sánh biến động.
+  - evidence phải chứa change_pct=…% khi đã có giá; nếu thiếu ghi
+    price_evidence:missing_change_pct.
   - Nếu thiếu căn cứ (không có % rõ, không tin, lịch sử trống) → cần_history=true.
   - Nếu đủ dữ liệu → cần_history=false và chấm Severity.
   - level: low | medium | high

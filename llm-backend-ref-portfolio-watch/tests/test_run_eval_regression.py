@@ -93,4 +93,5 @@ def test_tolerance_constant_defined() -> None:
 
 def test_checklist_regression_gate_checked() -> None:
     text = (ROOT / "specs" / "implementation-plan.md").read_text(encoding="utf-8")
-    assert "- [x] Regression gate: lưu điểm lần chạy đầu làm baseline" in text
+    assert "- [x] Chạy baseline eval hiện tại" in text
+    assert "baseline_debug.json" in text

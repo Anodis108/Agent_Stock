@@ -1,44 +1,59 @@
 # AGENTS.md
 
-Project này tuân theo simple spec-driven development.
+Project này tuân theo **simple spec-driven development**.
 
-Domain agents (PriceAgent, NewsAgent, …): xem `specs/agents.md`.
+Vòng hiện tại: **Quality Loop (golden case-by-case) + tách Frontend /
+Backend / AI + Langfuse**. Đọc `specs/product-spec.md` và
+`specs/implementation-plan.md` trước mọi thay đổi.
 
-Prompt Registry (`prompts/`), Golden dataset & Eval pipeline
-(`specs/eval/golden_dataset.yaml`, `scripts/run_eval.py`), và script vẽ sơ đồ
-agent bằng LangGraph (`scripts/draw_agent_graph.py`): xem Phase 8/9/10 ở
-`specs/implementation-plan.md` trước khi code phần này.
+Domain agents (PriceAgent, NewsAgent, …): `specs/agents.md`.
+
+Eval / golden: `specs/eval/golden_dataset.yaml`, `scripts/run_eval.py`.
+Ý tưởng chấm task_success + trajectory: tham khảo
+`../llm-engineer-demo/app/agent_pr/eval.py` (port ý tưởng, không copy nguyên
+file). Tracing: tham khảo `../llm-engineer-demo/app/monitoring/tracing.py`.
 
 ## Nguyên tắc chính
 
-Luôn đọc các file trong `specs/` trước khi code.
+1. Luôn đọc spec liên quan trước khi code.
+2. Chỉ triển khai **một** task / phase (hoặc **một** golden case) tại một thời điểm.
+3. Giữ giải pháp đơn giản — không over-engineer.
+4. Không đổi architecture trừ khi cập nhật spec trước.
+5. Sau mỗi thay đổi có ý nghĩa: cập nhật `specs/change-log.md`.
+6. **Không** nới scorer / sửa expected chỉ để case “pass” — sửa multi-agent,
+   prompt (registry), hoặc tool.
+7. Khi case fail cần năng lực mới: thêm task vào Phase **3c** trong
+   `implementation-plan.md` rồi mới code.
 
-## Workflow
+## Workflow — debug một golden case
 
-Với mỗi task:
+1. Chạy eval đúng `--case-id`.
+2. Đọc fail reason + trajectory / trace.
+3. Sửa hệ thống agent (ưu tiên) hoặc prompt version.
+4. Chạy lại cùng case đến khi pass.
+5. Ghi change-log ngắn; bổ sung backlog nếu còn gap.
+6. Sang case tiếp theo.
 
-1. Đọc các file spec liên quan.
-2. Chỉ triển khai một task hoặc một phase tại một thời điểm.
-3. Giữ giải pháp đơn giản.
-4. Tránh thêm thư viện không cần thiết.
-5. Không thay đổi architecture trừ khi spec được cập nhật.
-6. Sau khi triển khai, cập nhật `specs/change-log.md`.
-7. Giải thích cách test thay đổi.
+## Workflow — feature tách FE/BE/AI
 
-## Coding Style
+1. Đọc phase tương ứng trong implementation-plan.
+2. Implement đúng ranh giới: Frontend → Backend → AI (HTTP).
+3. Backend không import `domain.agents`.
+4. Giải thích cách test (3 process + UI timeline + Langfuse nếu đụng).
 
-- Ưu tiên code đơn giản, dễ đọc.
-- Không over-engineer.
-- Không thêm feature không liên quan.
-- Giữ thay đổi nhỏ và dễ review.
+## Coding style
 
-## Testing
+- Code ngắn, dễ đọc; tránh abstraction thừa.
+- Không thêm thư viện trừ khi phase yêu cầu.
+- Không thêm feature ngoài scope phase/case đang làm.
 
-Trước khi nói task đã hoàn thành, hãy cung cấp:
+## Testing (trước khi claim xong)
 
-- command để chạy app
-- các bước test thủ công
-- các issue đã biết nếu có
+Cung cấp:
+
+- Lệnh chạy (AI / Backend / Frontend nếu liên quan).
+- Cách tái hiện case hoặc checklist thủ công.
+- Issue đã biết (nếu có).
 
 <!-- vnai-bootstrap | auto-generated -->
 # Vnstock Vibe Onboarding

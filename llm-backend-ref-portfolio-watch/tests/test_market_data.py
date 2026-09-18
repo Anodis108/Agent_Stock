@@ -25,18 +25,25 @@ def test_parse_cafef_html_extracts_items():
     assert items[0].published_at.startswith("16/09/2026")
 
 
-def test_cafef_fetch_news_filters_query(monkeypatch):
+def test_cafef_fetch_news_ignores_query_text_filter(monkeypatch):
+    """CafeF theo mã — query dài từ LLM không được lọc mất tin."""
     html = """
     <ul class="News_Title_Link">
-      <li><span>16/09/2026</span><a href="/a.chn">FPT lãi lớn</a></li>
-      <li><span>16/09/2026</span><a href="/b.chn">VNM tăng giá sữa</a></li>
+      <li><span>16/09/2026</span><a href="/a.chn">Vinamilk công bố KQKD</a></li>
+      <li><span>16/09/2026</span><a href="/b.chn">Thị trường sữa biến động</a></li>
     </ul>
     """
     src = CafefNewsSource()
     monkeypatch.setattr(src, "_http_get", lambda url: html)
-    items = src.fetch_news("FPT", query="FPT")
-    assert len(items) == 1
-    assert "FPT" in items[0].title
+    items = src.fetch_news("VNM", query="tin VNM gần đây")
+    assert len(items) == 2
+
+
+def test_cafef_news_url_uses_du_lieu_host():
+    from src.portfolio_watch.infra.market_data import news_source as ns
+
+    assert "cafef.vn/du-lieu/Ajax/Events_RelatedNews_New.aspx" in ns._CAFEF_NEWS_URL
+    assert "s.cafef.vn/Ajax/" not in ns._CAFEF_NEWS_URL
 
 
 def test_cafef_fetch_news_filters_days(monkeypatch):

@@ -11,10 +11,12 @@ from html import unescape
 
 from src.portfolio_watch.domain.ports import NewsItem
 
+# Host `s.cafef.vn/Ajax/...` trả ul rỗng; endpoint còn dữ liệu nằm dưới cafef.vn/du-lieu.
 _CAFEF_NEWS_URL = (
-    "https://s.cafef.vn/Ajax/Events_RelatedNews_New.aspx"
+    "https://cafef.vn/du-lieu/Ajax/Events_RelatedNews_New.aspx"
     "?symbol={symbol}&floorID=0&configID=0&PageIndex=1&PageSize={page_size}&Type=2"
 )
+_CAFEF_ORIGIN = "https://cafef.vn"
 
 _LI_RE = re.compile(r"<li[^>]*>(.*?)</li>", re.I | re.S)
 _SPAN_RE = re.compile(r"<span[^>]*>(.*?)</span>", re.I | re.S)
@@ -43,11 +45,11 @@ def _parse_cafef_html(html: str, symbol: str) -> list[NewsItem]:
         if href.startswith("//"):
             url = "https:" + href
         elif href.startswith("/"):
-            url = "https://s.cafef.vn" + href
+            url = _CAFEF_ORIGIN + href
         elif href.startswith("http"):
             url = href
         else:
-            url = "https://s.cafef.vn/" + href.lstrip("/")
+            url = _CAFEF_ORIGIN + "/" + href.lstrip("/")
         items.append(
             NewsItem(
                 title=title,
@@ -102,14 +104,8 @@ class CafefNewsSource:
 
         items = _parse_cafef_html(html, sym)
 
-        if query:
-            q = query.strip().lower()
-            if q:
-                items = [
-                    i
-                    for i in items
-                    if q in i.title.lower() or q in (i.snippet or "").lower()
-                ]
+        # CafeF endpoint đã lọc theo mã. Không lọc thêm theo `query` chữ trong
+        # title — LLM NewsAgent hay search query dài ("tin VNM gần đây") → 0 tin.
 
         if days is not None and days > 0:
             cutoff = datetime.now() - timedelta(days=days)
@@ -130,6 +126,7 @@ class CafefNewsSource:
                     "Mozilla/5.0 (compatible; PortfolioWatch/0.1; +local-demo)"
                 ),
                 "Accept": "text/html,application/xhtml+xml",
+                "Referer": f"{_CAFEF_ORIGIN}/",
             },
         )
         with urllib.request.urlopen(req, timeout=self.timeout_seconds) as resp:

@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 
 from src.portfolio_watch.domain.entities import RoutingDecision
@@ -33,15 +33,31 @@ _TICKER_STOPWORDS = frozenset(
         "SAO",
         "NAY",
         "ROI",
-        "THE",
         "CUA",
         "NHE",
         "VAY",
-        "THE",
+        "TIN",  # "tin tức" — không phải mã
+        "TUC",
+        "MOT",
+        "HAY",
+        "CHO",
+        "CAC",
+        "DEN",
+        "VOI",
+        "NUA",
+        "RAT",
+        "HOM",
+        "NAY",
+        "BAO",  # «bao nhiêu» — không phải mã
     }
 )
 _REF_PREV_RE = re.compile(
-    r"(mã đó|ma do|còn mã|con ma|mã vừa|ma vua|cùng mã|cung ma)",
+    r"("
+    r"mã đó|ma do|mã này|ma nay|"
+    r"còn mã|con ma|mã vừa|ma vua|cùng mã|cung ma|"
+    r"cổ phiếu đó|co phieu do|cổ phiếu này|co phieu nay|"
+    r"\bnó\b|\bno\b|em đó|em do"
+    r")",
     re.IGNORECASE,
 )
 _EXPLAIN_HINTS = (
@@ -53,6 +69,12 @@ _EXPLAIN_HINTS = (
     "giai thich",
     "so sánh",
     "so sanh",
+    "đối chiếu",
+    "doi chieu",
+    "biến động",
+    "bien dong",
+    "mạnh hơn",
+    "manh hon",
     "nguyên nhân",
     "nguyen nhan",
     "lý do",
@@ -82,6 +104,8 @@ class RewrittenQuestion:
     rewritten: str
     symbol: str | None
     intent: str  # price_lookup | news_lookup | explain
+    # So sánh đa mã (VNM+HPG…); symbol = mã chính (phần tử đầu).
+    symbols: list[str] = field(default_factory=list)
 
 
 class RewriteBrain(Protocol):
@@ -96,26 +120,83 @@ class SupervisorBrain(Protocol):
         ...
 
 
-def _extract_symbol(text: str) -> str | None:
+def _extract_symbols(text: str) -> list[str]:
+    """Lấy mọi mã 3 chữ cái (theo thứ tự xuất hiện, không trùng)."""
     if not text:
-        return None
-    ma = _MA_SYMBOL_RE.search(text)
-    if ma:
-        return ma.group(1).strip().upper()
-    for match in _TICKER_RE.finditer(text):
+        return []
+    out: list[str] = []
+    for ma in _MA_SYMBOL_RE.finditer(text):
+        sym = ma.group(1).strip().upper()
+        if sym and sym not in out:
+            out.append(sym)
+    for match in _TICKER_RE.finditer(text.upper()):
         sym = match.group(1)
-        if sym not in _TICKER_STOPWORDS:
-            return sym
-    return None
+        if sym not in _TICKER_STOPWORDS and sym not in out:
+            out.append(sym)
+    return out
+
+
+def _extract_symbol(text: str) -> str | None:
+    syms = _extract_symbols(text)
+    return syms[0] if syms else None
+
+
+def _normalize_symbols(
+    *,
+    primary: str | None,
+    from_text: list[str],
+    from_llm: list[str] | None = None,
+) -> tuple[str | None, list[str]]:
+    ordered: list[str] = []
+    for sym in list(from_llm or []) + ([primary] if primary else []) + list(from_text):
+        s = (sym or "").strip().upper()
+        if s and s not in ordered:
+            ordered.append(s)
+    return (ordered[0] if ordered else None), ordered
 
 
 def _symbol_from_conversation(conversation: list[dict]) -> str | None:
+    """Lấy mã gần nhất từ hội thoại (user trước, rồi assistant)."""
     for turn in reversed(conversation or []):
         content = str(turn.get("content") or "")
         sym = _extract_symbol(content)
         if sym:
             return sym
     return None
+
+
+def _apply_memory_symbol(
+    question: str,
+    *,
+    symbol: str | None,
+    symbols: list[str],
+    conversation: list[dict],
+) -> tuple[str | None, list[str]]:
+    """Gắn mã từ memory khi câu hỏi dùng đại từ / follow-up không có ticker."""
+    if not _needs_memory_symbol(question, symbol):
+        return symbol, symbols
+    mem = _symbol_from_conversation(conversation)
+    if not mem:
+        return symbol, symbols
+    # Đại từ → memory thắng (tránh false ticker kiểu BAO từ «bao nhiêu»).
+    if _REF_PREV_RE.search(question):
+        return mem, [mem]
+    if not symbols:
+        return mem, [mem]
+    if mem not in symbols:
+        return mem, [mem, *symbols]
+    return mem, symbols
+
+
+def _ground_rewritten(question: str, symbols: list[str], rewritten: str) -> str:
+    """Đảm bảo câu rewrite gắn mã tường minh (downstream agents)."""
+    q = (rewritten or question or "").strip() or (question or "").strip()
+    if not symbols:
+        return q
+    tag = "+".join(symbols)
+    if tag in q.upper():
+        return q
+    return f"[{tag}] {q}"
 
 
 def _has_news_intent(lower: str) -> bool:
@@ -129,10 +210,11 @@ def _has_news_intent(lower: str) -> bool:
 
 
 def _needs_memory_symbol(question: str, symbol: str | None) -> bool:
-    if symbol is not None:
-        return False
+    # Đại từ luôn resolve từ hội thoại (kể cả khi extract nhầm ticker).
     if _REF_PREV_RE.search(question):
         return True
+    if symbol is not None:
+        return False
     # Câu follow-up ngắn không có ticker → lấy symbol từ hội thoại
     return bool(_FOLLOWUP_RE.search(question)) and len(question.strip()) < 80
 
@@ -154,9 +236,11 @@ class HeuristicRewriteBrain:
         self, question: str, conversation: list[dict]
     ) -> RewrittenQuestion:
         q = (question or "").strip()
-        symbol = _extract_symbol(q)
-        if _needs_memory_symbol(q, symbol):
-            symbol = _symbol_from_conversation(conversation)
+        symbols = _extract_symbols(q)
+        symbol = symbols[0] if symbols else None
+        symbol, symbols = _apply_memory_symbol(
+            q, symbol=symbol, symbols=symbols, conversation=conversation
+        )
 
         intent = "price_lookup"
         lower = q.lower()
@@ -165,15 +249,14 @@ class HeuristicRewriteBrain:
         elif _has_news_intent(lower):
             intent = "news_lookup"
 
-        if symbol:
-            rewritten = f"[{symbol}] {q}" if symbol.upper() not in q.upper() else q
-        else:
-            rewritten = q
+        symbol, symbols = _normalize_symbols(primary=symbol, from_text=symbols)
+        rewritten = _ground_rewritten(q, symbols, q)
         return RewrittenQuestion(
             original=q,
             rewritten=rewritten,
             symbol=symbol,
             intent=intent,
+            symbols=symbols,
         )
 
 
@@ -233,14 +316,38 @@ class LlmRewriteBrain:
             if symbol_raw not in (None, "", "null")
             else None
         )
+        llm_syms: list[str] = []
+        raw_syms = data.get("symbols")
+        if isinstance(raw_syms, list):
+            for s in raw_syms:
+                if s not in (None, "", "null"):
+                    llm_syms.append(str(s).strip().upper())
         intent = str(data.get("intent") or "price_lookup").strip().lower()
         if intent not in _ALLOWED_INTENTS:
             intent = "price_lookup"
+        # Heuristic bổ sung: LLM hay chỉ trả 1 mã dù câu hỏi so sánh nhiều mã.
+        symbol, symbols = _normalize_symbols(
+            primary=symbol,
+            from_text=_extract_symbols(f"{q} {rewritten}"),
+            from_llm=llm_syms,
+        )
+        # Đại từ / follow-up không có ticker → lấy mã từ conversation.
+        symbol, symbols = _apply_memory_symbol(
+            q, symbol=symbol, symbols=symbols, conversation=conversation
+        )
+        symbol, symbols = _normalize_symbols(primary=symbol, from_text=symbols)
+        rewritten = _ground_rewritten(q, symbols, rewritten)
+        # Đa mã / từ khóa so sánh → explain (price+news+eval).
+        blob = f"{q} {rewritten}".lower()
+        if len(symbols) > 1 or any(h in blob for h in _EXPLAIN_HINTS):
+            if intent == "price_lookup":
+                intent = "explain"
         return RewrittenQuestion(
             original=q,
             rewritten=rewritten,
             symbol=symbol,
             intent=intent,
+            symbols=symbols,
         )
 
 
@@ -302,11 +409,16 @@ def rewrite_question(
     try:
         return rewriter.rewrite(question, conversation)
     except Exception:  # noqa: BLE001
+        q = (question or "").strip()
+        symbol, symbols = _normalize_symbols(
+            primary=None, from_text=_extract_symbols(q)
+        )
         return RewrittenQuestion(
-            original=(question or "").strip(),
-            rewritten=(question or "").strip(),
-            symbol=_extract_symbol(question or ""),
+            original=q,
+            rewritten=q,
+            symbol=symbol,
             intent="price_lookup",
+            symbols=symbols,
         )
 
 

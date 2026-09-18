@@ -64,6 +64,16 @@ def test_post_chat_price_lookup():
     assert mem.alert_events == []
     assert list_pending_approvals(mem) == []
     assert len(mem.list_conversation("default")) >= 2
+    steps = data["steps"]
+    assert isinstance(steps, list) and len(steps) >= 3
+    names = [s["name"] for s in steps]
+    assert names[0] == "rewrite_question"
+    assert "supervisor" in names
+    assert "price_agent" in names
+    assert "answer_composer" in names
+    for s in steps:
+        assert set(s) >= {"id", "name", "status"}
+        assert s["status"] in ("done", "error", "pending", "running")
 
 
 def test_post_chat_explain_with_news():

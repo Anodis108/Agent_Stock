@@ -18,7 +18,13 @@ from src.portfolio_watch.domain.entities import (
     Severity,
     SeverityLevel,
 )
-from src.portfolio_watch.domain.guardrails.output_checks import check_output
+from src.portfolio_watch.domain.guardrails.output_checks import (
+    check_output,
+    check_rewrite_grounding,
+    has_evidence_grounding,
+    rewrite_keep_grounding,
+    strip_buy_sell,
+)
 from src.portfolio_watch.domain.ports import MemoryStore
 from src.portfolio_watch.infra.llm.completion import chat
 from src.portfolio_watch.infra.llm.params import DETERMINISTIC
@@ -192,6 +198,7 @@ def run_synthesis_agent(
     violations: list[str] = []
     title, body = "", ""
     attempts = 0
+    last_grounded_body = ""
 
     for attempt in range(max_attempts):
         attempts += 1
@@ -209,8 +216,13 @@ def run_synthesis_agent(
             title, body = f"Cảnh báo {symbol}", "; ".join(severity.evidence)
             continue
 
+        if has_evidence_grounding(body, severity.evidence):
+            last_grounded_body = body
         result = check_output(title, body, severity.evidence)
-        if result.ok:
+        ground = check_rewrite_grounding(
+            body, severity.evidence, require=attempt > 0
+        )
+        if result.ok and ground.ok:
             alert = FinalAlert(
                 symbol=symbol,
                 title=title,
@@ -225,10 +237,12 @@ def run_synthesis_agent(
                 draft_attempts=attempts,
                 guardrail_violations=[],
             )
-        violations = result.violations
+        violations = list(result.violations) + list(ground.violations)
 
-    # Hết lần thử — fallback chỉ còn evidence (đã kiểm guardrail lại)
-    title, body = _safe_fallback_text(symbol, severity)
+    # Hết lần thử — giữ grounding từ bản đã có số liệu (bỏ mua/bán)
+    title, body = _safe_fallback_text(
+        symbol, severity, last_grounded=last_grounded_body or body
+    )
     alert = FinalAlert(
         symbol=symbol,
         title=title,
@@ -250,34 +264,25 @@ def run_synthesis_agent(
     )
 
 
-def _safe_fallback_text(symbol: str, severity: Severity) -> tuple[str, str]:
+def _safe_fallback_text(
+    symbol: str,
+    severity: Severity,
+    *,
+    last_grounded: str = "",
+) -> tuple[str, str]:
     title = f"Cảnh báo {symbol}"
-    body = "; ".join(severity.evidence) or _strip_buy_sell(severity.reasoning)
-    body = _strip_buy_sell(body)
+    if last_grounded:
+        body = rewrite_keep_grounding(last_grounded, severity.evidence)
+        if check_output(title, body, severity.evidence).ok:
+            return title, body
+    body = "; ".join(severity.evidence) or strip_buy_sell(severity.reasoning)
+    body = strip_buy_sell(body)
     check = check_output(title, body, severity.evidence)
     if check.ok:
         return title, body
-    # Chỉ còn chuỗi evidence thô đã biết khớp chính nó
     return title, "; ".join(severity.evidence) or "Không đủ bằng chứng an toàn để công bố."
 
 
 def _strip_buy_sell(text: str) -> str:
-    lower = text.lower()
-    out = text
-    for pat in (
-        "nên mua",
-        "nên bán",
-        "khuyên mua",
-        "khuyên bán",
-        "mua ngay",
-        "bán ngay",
-        "nên hold",
-        "nên giữ",
-    ):
-        while True:
-            idx = lower.find(pat)
-            if idx < 0:
-                break
-            out = out[:idx] + out[idx + len(pat) :]
-            lower = out.lower()
-    return out.strip()
+    """Tương thích cũ — ủy quyền strip_buy_sell chung."""
+    return strip_buy_sell(text)

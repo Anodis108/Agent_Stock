@@ -85,6 +85,23 @@ class HeuristicEvalBrain:
         for item in (news.items or [])[:3]:
             evidence.append(f"news:{item.title}")
 
+        # Phase 3c: không so sánh % khi thiếu evidence giá
+        if change is None or price.error:
+            if price.error:
+                evidence.append(f"price_error:{price.error}")
+            else:
+                evidence.append("price_evidence:missing_change_pct")
+            return Severity(
+                level=SeverityLevel.LOW,
+                confidence=0.3,
+                reasoning=(
+                    "Thiếu evidence giá (% thay đổi) — không so sánh biến động "
+                    "cho đến khi có giá phiên hiện tại và phiên trước."
+                ),
+                evidence=evidence,
+                proposed_threshold_pct=None,
+            )
+
         level = SeverityLevel.LOW
         confidence = 0.55
         if change is not None:
@@ -118,10 +135,6 @@ class HeuristicEvalBrain:
                 reasoning = "Đã đọc lịch sử giá nhưng tín hiệu trung tính."
         else:
             reasoning = "Đủ tín hiệu giá/tin để đánh giá mức độ nghiêm trọng."
-
-        if price.error:
-            evidence.append(f"price_error:{price.error}")
-            confidence = min(confidence, 0.4)
 
         # Đề xuất ngưỡng khi biến động lớn (Gate 2 downstream)
         proposed_thr: float | None = None

@@ -7,6 +7,8 @@ Tương đương checklist:
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from src.portfolio_watch.api.deps import AppDeps, set_app_deps
@@ -23,6 +25,8 @@ from tests.fakes import (
     FakePriceSource,
     FakeWatchlistStore,
 )
+
+WEB = Path(__file__).resolve().parents[1] / "web"
 
 
 def _client(
@@ -82,13 +86,13 @@ def _with_low_conf_eval(client: TestClient, payload: dict) -> dict:
 
 
 def test_ui_page_loads_three_zones():
-    client, _, _ = _client()
-    html = client.get("/").text
+    _client()
+    html = (WEB / "index.html").read_text(encoding="utf-8")
     assert 'id="chat"' in html
     assert 'id="watchlist"' in html
     assert 'id="approvals"' in html
     assert "scan-form" in html
-    js = client.get("/app.js").text
+    js = (WEB / "app.js").read_text(encoding="utf-8")
     assert "scanSymbol" in js and "sendChat" in js and "approveAlert" in js
     assert "showScanResult" in js and "severity" in js
 

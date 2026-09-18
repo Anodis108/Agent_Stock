@@ -3,6 +3,1003 @@
 Nhật ký thay đổi theo thời gian cho project Portfolio Watch & Chat Agent.
 Ghi theo ngày, mới nhất ở trên.
 
+## 2026-09-18 — SDD: README «Demo with local»
+
+### Thay đổi
+- `README.md`: mục **Demo with local** — start FE/BE/AI (5173/8000/8001),
+  expose FE trên local, cấu hình `frontend/config.js` / `?backend=`, ngrok
+  Backend tuỳ chọn; giữ kịch bản watchlist/chat/scan.
+- Không đổi app logic.
+- Tests: `tests/test_readme_demo_with_local.py`; cập nhật
+  `test_readme_phase7_demo_scenario.py`.
+
+### Review vs product-spec / test-plan
+- **Pass:** AC4/5/8 hướng demo 3 process + UI; test-plan demo thủ công.
+- **Fail:** không.
+- **Missing:** không (docs only).
+
+## 2026-09-18 — SDD Bước 9: README Local development
+
+### Thay đổi
+- `README.md`: mục **Local development** — prerequisites, install
+  (`pip install -e ".[dev]"`), env vars, lệnh AI/Backend/Frontend, local
+  URLs, troubleshooting tóm tắt; cập nhật **Trạng thái** (Phase 8 xong).
+- Không đổi app logic.
+- Test: `tests/test_readme_local_development_sdd.py`.
+
+### Review vs product-spec / test-plan
+- **Pass:** AC4 hướng (3 process / 3 URL) có hướng dẫn README; test-plan
+  acceptance map «3 process riêng → README lệnh».
+- **Fail:** không.
+- **Missing:** không (docs only).
+
+## 2026-09-18 — Phase 3c: Rà soát backlog — không có gap mới
+
+### Thay đổi
+- `implementation-plan.md` §3c: đóng checkbox placeholder «Thêm task khi
+  gap»; ghi triage — `blocked_cases.yaml` trống + Phase 5 regression
+  30/30 / injection 100%; giữ hướng dẫn thêm `- [ ]` + blocked entry khi
+  fail sau này (không nới scorer).
+- Test: `tests/test_phase3c_backlog_triage.py`.
+- **Không** thêm feature multi-agent mới (không có gap cần code).
+
+### Review vs product-spec / test-plan
+- **Pass:** AC3 (case fail có ghi chú + backlog khi cần — hiện không có
+  fail/blocked); test-plan Quality Loop bước cập nhật Phase 3c khi cần;
+  acceptance map «Case fail → change-log + Phase 3c».
+- **Fail:** không.
+- **Missing:** không trong phạm vi vòng Quality Loop + FE/BE/AI (Phase
+  1–8 đã [x]; 3c không còn checkbox mở).
+
+## 2026-09-18 — Phase 8 hoàn thành: `.env.example` đủ biến Langfuse
+
+**Ngày hoàn thành Phase 8 (Tracing with Langfuse):** **2026-09-18**
+
+### Thay đổi
+- `.env.example`: khối Monitoring ghi đủ `MONITORING_ENABLED`,
+  `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST` + chú thích
+  no-op khi tắt/thiếu key, cloud vs self-host, `pip install langfuse`,
+  trỏ README Phase 8; không nhúng key thật.
+- Test: `tests/test_env_example_phase8_langfuse.py`.
+
+### Review vs product-spec / test-plan
+- **Pass:** cấu hình AC6 / test-plan §4 có đủ biến trong `.env.example`
+  (khớp settings + README); secret không leak vào example.
+- **Fail:** không (phạm vi item / đóng Phase 8).
+- **Missing:** không còn checkbox Phase 8 trong implementation-plan.
+
+## 2026-09-18 — Phase 8: README bật monitoring + tìm trace Langfuse
+
+### Thay đổi
+- `README.md` mục **Langfuse (Phase 8)**: bật `MONITORING_*` / `LANGFUSE_*`,
+  mở UI Langfuse, tìm trace theo câu hỏi / `request_id`, troubleshooting;
+  bảng env liệt kê đủ 4 biến thay vì gộp `LANGFUSE_*`.
+- Test: `tests/test_readme_phase8_langfuse.py`.
+
+### Review vs product-spec / test-plan
+- **Pass:** hướng dẫn AC6 / test-plan §4 (bật monitoring → xem 1 trace;
+  tương quan `request_id`); map «Langfuse trace» có cách chứng minh trong
+  README + report Phase 8.
+- **Fail:** không (phạm vi item này).
+- **Missing:** không (đóng cùng ngày qua mục `.env.example` phía trên).
+
+## 2026-09-18 — Phase 8: E2E chat → Langfuse 1 root + spans
+
+### Thay đổi
+- `scripts/phase8_langfuse_e2e.py` — live probe AI `/v1/chat` (đích proxy
+  của UI→Backend) + đọc observations Langfuse v4; `--print-checklist` UI.
+- `tests/test_phase8_langfuse_e2e.py` — FE→Backend contract, `request_id`,
+  mock span tree khi monitoring on; optional live (`PHASE8_LIVE_LANGFUSE=1`).
+- Báo cáo: `specs/eval/phase8_langfuse_e2e_report.md` (+ run log).
+
+### Review vs product-spec / test-plan
+- **Pass:** AC6 (1 chat + monitoring → 1 trace); test-plan §4 true+keys →
+  root `chat` + spans agent; evidence trong báo cáo (trace_id + span list).
+- **Fail:** không (phạm vi item này).
+- **Missing:** không (Phase 8 đã đóng — xem mục `.env.example` cùng ngày).
+
+## 2026-09-18 — Phase 8: MONITORING off / thiếu key → chat no-op
+
+### Thay đổi
+- `tracing.py`: no-op khi `MONITORING_ENABLED=false` hoặc thiếu
+  `LANGFUSE_*` key; cảnh báo 1 lần khi bật nhưng thiếu key / init fail;
+  flush lỗi chỉ warn, không raise; cache `_client=False` không bị nhầm
+  thành client thật.
+- Tests: `tests/test_monitoring_noop.py` (disabled, thiếu key, init fail,
+  `/v1/chat` vẫn 200, flush fail không crash).
+
+### Review vs product-spec / test-plan
+- **Pass:** product-spec “tắt monitoring vẫn chat bình thường”; test-plan
+  §4 `MONITORING_ENABLED=false` → OK; thiếu key / sai init → warn +
+  best-effort không crash.
+- **Fail:** không (phạm vi item này).
+- **Missing:** không (Phase 8 đã đóng — xem mục `.env.example` cùng ngày).
+
+## 2026-09-18 — Phase 8: Propagate `request_id` Backend → AI → Langfuse
+
+### Thay đổi
+- Backend: mỗi `/chat` và `/scan` sinh `request_id` (UUID), gửi AI qua body
+  + header `X-Request-Id`, echo lại trong response.
+- `backend/ai_client.py`: `ai_chat` / `ai_scan` nhận và forward `request_id`.
+- AI `/v1/chat` + `/v1/scan`: nhận `request_id` (body hoặc header), truyền
+  `answer_question` / `scan_symbol` → metadata Langfuse (`request_id` +
+  dùng làm `turn` khi có).
+- Tests: `tests/test_request_id_propagation.py`.
+
+### Review vs product-spec / test-plan
+- **Pass:** tương quan cùng request Backend↔AI↔Langfuse metadata (test-plan
+  §3 “cùng request”); AC6 hướng tìm trace theo request id.
+- **Fail:** không (phạm vi item này).
+- **Missing:** không (Phase 8 đã đóng — xem mục `.env.example` cùng ngày).
+
+## 2026-09-18 — Phase 8: Chat/scan → 1 trace cha + span con (Langfuse)
+
+### Thay đổi
+- `src/portfolio_watch/infra/monitoring/tracing.py` — port ý tưởng
+  `llm-engineer-demo` (`trace_request` / `agent_span` / `trace_step`);
+  no-op khi `MONITORING_ENABLED=false` hoặc thiếu key / thiếu package.
+- `answer_question`: root `chat` + span `rewrite_question`, `supervisor`,
+  `price_news_fetch`, `eval_agent`, `answer_composer`.
+- `scan_symbol`: root `scan` + span `price_agent`, `news_agent`,
+  `event_classifier`, `eval_agent`, `synthesis_agent`.
+- Tests: `tests/test_langfuse_tracing.py`.
+
+### Review vs product-spec / test-plan
+- **Pass:** AC6 hướng (1 request → 1 trace cha + span bước); test-plan §4
+  monitoring off vẫn OK (no-op); pattern demo không copy nguyên file.
+- **Fail:** không (phạm vi item này).
+- **Missing:** không (Phase 8 đã đóng — xem mục `.env.example` cùng ngày).
+  `langfuse` cài khi bật monitoring (`pip install langfuse`).
+
+## 2026-09-18 — Phase 7 hoàn thành: quyết định compose (port / volume / DB)
+
+**Ngày hoàn thành Phase 7 (vòng Quality Loop + FE/BE/AI):** **2026-09-18**
+
+### Quyết định Docker / Compose (3 service)
+
+| Mục | Quyết định | Lý do ngắn |
+|-----|------------|------------|
+| Image base | `python:3.12-slim` | Khớp runtime ≥3.10; slim đủ FastAPI + deps |
+| Image tag | `portfolio-watch:split` | Một image, `command` khác nhau theo service |
+| Kiến trúc | **3 service:** `ai` + `backend` + `frontend` | Khớp AC4 (3 process/URL); FE không gọi AI thẳng |
+| Port AI | host/container **8001** | `AI_API_PORT`; health `/health` |
+| Port Backend | container **8000**; host `${APP_HOST_PORT:-8000}` | Đổi cổng host qua `.env` |
+| Port Frontend | host/container **5173** | `python -m http.server` phục vụ `frontend/` |
+| AI↔Backend | `AI_BASE_URL=http://ai:8001` (tên service) | DNS nội bộ compose; browser vẫn dùng `127.0.0.1:8000` |
+| Volume name | `portfolio-watch-data` (compose key `pw_data`) | Named volume — sống qua `restart` / `down` |
+| Volume path | → `/app/data` | AI: `SQLITE_PATH=/app/data/portfolio_watch.db`; Backend: `BACKEND_SQLITE_PATH=/app/data/backend_store.db` |
+| Env / secrets | `env_file: .env`; không bake key vào image | Override host/path trong `environment:` |
+| Demo URL | FE `http://127.0.0.1:5173/` → BE `:8000` → AI `:8001` | Cùng ranh giới local 3 process |
+| Xóa DB | `docker compose down -v` | Giữ volume mặc định khi chỉ `down` |
+
+Lệnh: `docker compose up --build` / `logs -f` / `down` — README mục
+**Demo bằng Docker**. Verifier local: `scripts/verify_clean_local.py` →
+`CLEAN_VENV_SMOKE_OK`.
+
+### Review vs product-spec / test-plan
+- **Pass:** AC4 (3 URL); cấu hình URL/CORS/env; test-plan README + Docker
+  demo; Phase 7 checklist toàn `[x]`.
+- **Fail:** không.
+- **Missing:** Phase 8 Langfuse tracing (item tiếp theo).
+
+## 2026-09-18 — Phase 7: Xác nhận máy sạch / dong312 (3 process → 3 luồng)
+
+### Thay đổi
+- `scripts/verify_clean_local.py` — dựng stub AI + Backend + Frontend
+  (cổng tạm); kiểm watchlist, chat+steps, scan+approve; in
+  `CLEAN_VENV_SMOKE_OK`. `VERIFY_USE_CURRENT=1` dùng env hiện tại
+  (dong312 / venv).
+- `README.md`: mục xác nhận máy sạch dưới Demo local.
+- Tests: `tests/test_clean_venv_smoke.py` (assert 3 process).
+
+### Kết quả chạy
+- `VERIFY_USE_CURRENT=1 python scripts/verify_clean_local.py` →
+  **CLEAN_VENV_SMOKE_OK**.
+- Venv tạm đầy đủ (`python scripts/verify_clean_local.py`) →
+  **CLEAN_VENV_SMOKE_OK** (log: `specs/eval/phase7_clean_local_run.log`).
+
+### Review vs product-spec / test-plan
+- **Pass:** AC4/AC5/AC8 hướng (3 process, chat timeline, watchlist/scan/
+  duyệt) trên script máy sạch; test-plan §3 README + thử tay có
+  verifier tự động.
+- **Fail:** không.
+- **Missing:** ghi quyết định compose (port/volume) — item Phase 7 cuối.
+
+## 2026-09-18 — Phase 7: docker compose 3 service (AI + Backend + Frontend)
+
+### Thay đổi
+- `docker-compose.yml`: services `ai` (:8001), `backend` (:8000),
+  `frontend` (:5173); `AI_BASE_URL=http://ai:8001`; volume
+  `portfolio-watch-data` → `/app/data`.
+- `Dockerfile`: COPY `backend` + `frontend` + `prompts`; default CMD =
+  `ai_main` :8001 (compose override từng service).
+- `README.md`: mục **Demo bằng Docker** — `up` / `down` / `logs` / `-v`.
+- Tests: cập nhật compose / Dockerfile / README Docker demo.
+
+### Review vs product-spec / test-plan
+- **Pass:** AC4 hướng (3 process/URL trong compose); Frontend→Backend→AI;
+  không bake secret; lệnh up/down/log trong README.
+- **Fail:** không (chưa chạy `compose up` trên máy này trong bước docs).
+- **Missing:** xác nhận máy sạch end-to-end; ghi quyết định compose chi tiết
+  (Phase 7 còn lại).
+
+## 2026-09-18 — Phase 7: Kịch bản demo local (localhost)
+
+### Thay đổi
+- `README.md`: mục **Demo local (Phase 7)** — bật 3 process, mở
+  `http://127.0.0.1:5173/`, seed watchlist, chat + timeline, quét, duyệt
+  nếu có; **không** cần ngrok.
+- `scripts/phase7_demo_checklist.py` — in checklist tay.
+- Tests: `tests/test_readme_phase7_demo_scenario.py`.
+
+### Review vs product-spec / test-plan
+- **Pass:** AC4/AC5/AC8 hướng (3 process local, timeline chat, watchlist
+  + scan + duyệt); test-plan «UI timeline» demo thủ công 1 câu; không
+  cần internet công cộng (expose).
+- **Fail:** không (phạm vi kịch bản docs).
+- **Missing:** docker compose 3 service; xác nhận máy sạch; ghi quyết định
+  compose (Phase 7 còn lại). Chat/scan thật vẫn cần LLM/network nội bộ.
+
+## 2026-09-18 — Phase 6: Troubleshooting (key / port / AI / CORS)
+
+### Thay đổi
+- `README.md`: mục **Troubleshooting (Phase 6)** — thiếu
+  `OPENAI_API_KEYS`; port trùng 8001/8000/5173; AI unreachable/timeout
+  (502); CORS/`FRONTEND_ORIGIN`.
+- Tests: `tests/test_readme_phase6_troubleshooting.py`.
+- Phase 6 local-run checklist → đủ `[x]`.
+
+### Review vs product-spec / test-plan
+- **Pass:** test-plan §3 (AI down → lỗi rõ, không treo; Backend/FE tách);
+  AC4 hướng chạy 3 process có hướng dẫn khi lỗi; Phase 5 error messages
+  được ghi trong README.
+- **Fail:** không.
+- **Missing:** Phase 7 demo kịch bản / compose / máy sạch.
+
+## 2026-09-18 — Phase 6: Lệnh eval một case và full golden
+
+### Thay đổi
+- `README.md`: mục **Eval (Phase 6)** — một case (`--case-id`), full
+  (`--run` / `phase5_regression.py`), `--self-check`; ghi chú rate-limit
+  và injection/regression.
+- Tests: `tests/test_readme_phase6_eval_commands.py`.
+
+### Review vs product-spec / test-plan
+- **Pass:** AC1 hướng (chạy eval từng case / full); test-plan §1 lệnh
+  `--case-id` + full golden; developer flow «siết chất lượng».
+- **Fail:** không.
+- **Missing:** troubleshooting (Phase 6 cuối).
+
+## 2026-09-18 — Phase 6: Bảng biến môi trường bắt buộc / tuỳ chọn
+
+### Thay đổi
+- `README.md`: mục **Biến môi trường (Phase 6)** — bảng bắt buộc
+  (`OPENAI_API_KEYS`, `LLM_BACKEND`) + tuỳ chọn (URL/port, SQLite,
+  CORS, Langfuse, …) khớp `.env.example`.
+- Tests: `tests/test_readme_phase6_env_table.py`.
+
+### Review vs product-spec / test-plan
+- **Pass:** product «cấu hình URL/CORS bằng biến môi trường»; AC4 hướng
+  (URL/port tách process); test-plan README có bảng env ngắn.
+- **Fail:** không.
+- **Missing:** lệnh eval; troubleshooting (Phase 6 còn lại).
+
+## 2026-09-18 — Phase 6: Ba lệnh chạy AI → Backend → Frontend
+
+### Thay đổi
+- `README.md`: mục **Chạy 3 process (Phase 6)** — lệnh
+  `serve_ai.py` (:8001) → `serve_backend.py` (:8000) →
+  `serve_frontend.py` (:5173) + health URL; thay skeleton «chưa đủ lệnh».
+- Tests: `tests/test_readme_phase6_three_commands.py`.
+
+### Review vs product-spec / test-plan
+- **Pass:** AC4 (3 process / 3 URL); test-plan §3 «3 process riêng» /
+  «README lệnh»; luồng Frontend→Backend→AI.
+- **Fail:** không (phạm vi item này).
+- **Missing:** bảng biến env; lệnh eval; troubleshooting (Phase 6 còn lại).
+
+## 2026-09-18 — Phase 6: README prerequisites (dong312 / venv + .env)
+
+### Thay đổi
+- `README.md`: mục **Prerequisites (Phase 6)** — Python ≥ 3.10; conda
+  `dong312` hoặc venv; `pip install -e ".[dev]"`; copy `.env.example` →
+  `.env` + `OPENAI_API_KEYS`.
+- Tests: `tests/test_readme_phase6_prerequisites.py`; siết
+  `test_readme_local_instructions.py` theo item đang mở.
+
+### Review vs product-spec / test-plan
+- **Pass:** AC4 hướng (chuẩn bị chạy 3 process); test-plan «README lệnh»
+  bắt đầu bằng prerequisites rõ; lệnh kiểm tra import `settings` chạy OK.
+- **Fail:** không (phạm vi item này).
+- **Missing:** ba lệnh chạy AI→BE→FE; bảng env; lệnh eval; troubleshooting
+  (các item Phase 6 còn lại).
+
+## 2026-09-18 — Phase 5: Regression full golden sau FE/BE
+
+### Thay đổi
+- Chạy full 30 golden (rule-based, khớp `baseline_debug`): **30/30**,
+  drop=0.0000 ≤ 0.05; injection **3/3 (100%)**.
+- `scripts/phase5_regression.py` — chạy từng case subprocess + retry
+  rate-limit vnstock guest; ghi `specs/eval/baseline_phase5.json` +
+  `specs/eval/phase5_regression_report.md`.
+- `scripts/run_eval.py`: `--case-delay` / `EVAL_CASE_DELAY_SEC` (hỗ trợ
+  full run tránh burst).
+
+### Kết quả
+| Slice | Passed/Total |
+|---|---|
+| lookup | 18/18 |
+| comparison | 6/6 |
+| out_of_scope | 3/3 |
+| injection | 3/3 |
+| **Tổng** | **30/30** |
+
+### Review vs product-spec / test-plan
+- **Pass:** test-plan Regression (Phase 5/7) — rate không tụt quá
+  tolerance; AC2 injection 100%; AC1 hướng 30/30 với scorer đã chốt
+  (rule, skip-judge/agent-eval như baseline_debug).
+- **Fail:** không.
+- **Missing:** LLM-judge / task_success full (ngoài mốc baseline_debug);
+  Phase 6 README lệnh chạy 3 process.
+
+## 2026-09-18 — Phase 5: Eval policy — không nới scorer + blocked/3c
+
+### Thay đổi
+- `specs/eval/blocked_cases.yaml` — registry case fail đã ghi nhận
+  (`reason` + `phase3c_task` bắt buộc).
+- `scripts/run_eval.py`: `assert_scorer_locks` (không hạ judge < 3.0,
+  không nới `--tolerance` > 0.05); `load_blocked_cases`;
+  `format_fail_policy_guidance` / `format_blocked_registry` in sau report.
+- Tests: `tests/test_eval_scorer_policy.py`; self-check khóa scorer.
+
+### Review vs product-spec / test-plan
+- **Pass:** test-plan «Không nới scorer»; fail → sửa hoặc blocked+3c
+  (AC3 hướng); injection vẫn hard 100%; judge sàn 3.0 giữ nguyên.
+- **Fail:** không.
+- **Missing:** Regression full golden sau FE/BE (item Phase 5 cuối).
+
+## 2026-09-18 — Phase 5: Approvals missing / đã xử lý → 404 rõ
+
+### Thay đổi
+- `backend/store.py`: `get_approval`, `explain_approval_failure`
+  (thiếu vs đã xử lý).
+- `backend/main.py`: approve/reject trả 404 chi tiết; kiểm tra state không
+  đổi khi fail; `approval_id` rỗng → 400.
+- FE: hiện lỗi Duyệt/Từ chối + reload list (không để UI lệch).
+- Tests: `tests/test_backend_approvals_errors.py`.
+
+### Review vs product-spec / test-plan
+- **Pass:** Phase 5 approvals lỗi id; AC HITL không đổi state khi fail;
+  message rõ «không tìm thấy» / «đã xử lý».
+- **Fail:** không.
+- **Missing:** Eval không nới scorer (item Phase 5 tiếp); regression golden.
+
+## 2026-09-18 — Phase 5: Steps lỗi giữa chừng → timeline `error`
+
+### Thay đổi
+- `backend/steps.py`: `mark_mid_run_error`, `ensure_steps_reflect_error`;
+  `normalize_steps` giữ `error`; `_attach_run` gắn lỗi từ field `error`.
+- `frontend/app.js`: `markTimelineMidError` (running→error, giữ done);
+  boot «Bước lỗi» khi steps có `error`.
+- Tests: `tests/test_steps_mid_run_error.py`.
+
+### Review vs product-spec / test-plan
+- **Pass:** AC5 timeline phản ánh bước lỗi; test-plan stream/steps error
+  trên bước đó (MVP one-shot); FE không gọi AI.
+- **Fail:** không.
+- **Missing:** Eval không nới scorer / regression golden (Phase 5 còn lại).
+
+## 2026-09-18 — Phase 5: AI down / timeout → 502 + FE không treo
+
+### Thay đổi
+- `backend/ai_client.py`: `AI_HTTP_TIMEOUT` (mặc định 60s); phân biệt
+  «AI timeout» vs «AI không kết nối được» → Backend **502** + `detail`.
+- `frontend`: `REQUEST_TIMEOUT_MS` + `AbortController`; `formatApiError` /
+  `showOpError` (boot + timeline error + chat); nút Gửi luôn mở lại.
+- `.env.example`: `AI_HTTP_TIMEOUT`.
+- Tests: `tests/test_ai_down_timeout.py`.
+
+### Review vs product-spec / test-plan
+- **Pass:** test-plan §3 «Tắt AI → không treo vô hạn»; Backend có message;
+  FE hiện lỗi, không gọi AI thẳng.
+- **Fail:** không.
+- **Missing:** approvals id lỗi (item Phase 5 tiếp); SSE realtime từng bước.
+
+## 2026-09-18 — Phase 5: Backend input lỗi → 4xx rõ
+
+### Thay đổi
+- `backend/main.py`: `_norm_symbol` (rỗng vs không hợp lệ);
+  `_norm_threshold` (ngưỡng âm / =0); áp dụng watchlist + **scan**.
+- Tests: `tests/test_backend_validation_4xx.py`
+  (câu rỗng, symbol invalid, ngưỡng âm).
+
+### Review vs product-spec / test-plan
+- **Pass:** Phase 5 mục validation Backend; test-plan §5 hướng 4xx rõ;
+  AC không 500 cho input xấu trên Backend.
+- **Fail:** không.
+- **Missing:** AI down → FE message (đã đóng mục kế tiếp); stream error;
+  approvals id lỗi.
+
+## 2026-09-18 — Phase 4: Kiểm thử tay (checklist + smoke)
+
+### Thay đổi
+- `tests/test_phase4_manual_checklist.py` — smoke cùng luồng FE→Backend:
+  chat (steps+answer) → thêm mã → quét → approve pending.
+- `scripts/phase4_manual_checklist.py` — in checklist UI 3 process.
+- `frontend/README.md` — mục Kiểm thử tay Phase 4.
+- **Phase 4 checklist hoàn tất.**
+
+### Review vs product-spec / test-plan
+- **Pass:** AC5/AC8 hướng (chat + timeline + watchlist + duyệt qua BE);
+  test-plan §3 bước 2–3 (curl/API chat có answer+steps; UI checklist);
+  FE không gọi AI.
+- **Fail (đã sửa):** script checklist in Unicode trên Windows cp1252 →
+  ghi stdout UTF-8.
+- **Missing:** Phase 5 validation/error; demo live 3 process vẫn cần
+  LLM/key khi chạy tay với AI thật.
+
+## 2026-09-18 — Phase 4: Watchlist/approvals SQLite Backend + FE CRUD
+
+### Thay đổi
+- `backend/store.py` — SQLite thật: bảng `watchlist` + `approvals`
+  (`BACKEND_SQLITE_PATH`, mặc định `./data/backend_store.db`).
+- Runs (steps) vẫn in-memory. Seed DEFAULT_WATCHLIST chỉ khi DB trống.
+- FE: thêm **Sửa** ngưỡng → `PATCH /watchlist/{symbol}` (đủ CRUD).
+- `.env.example` + `backend/README.md`: bảng nơi lưu Backend vs AI.
+- Tests: `tests/test_backend_sqlite_crud.py`.
+
+### Nơi lưu (ghi rõ)
+| Dữ liệu | Owner | Path |
+|---|---|---|
+| Watchlist + approvals (UI) | **Backend** | `BACKEND_SQLITE_PATH` → `./data/backend_store.db` |
+| Memory/chat/price (AI) | **AI** | `SQLITE_PATH` → `./data/portfolio_watch.db` |
+
+### Review vs product-spec / test-plan
+- **Pass:** AC8 hướng watchlist + duyệt qua kiến trúc tách lớp; FE→BE
+  CRUD/approve/reject; dữ liệu bền SQLite Backend; test-plan §3 FE không
+  gọi AI.
+- **Fail:** không.
+- **Missing:** checklist «Kiểm thử tay» Phase 4 (item tiếp); Phase 5
+  validation.
+
+## 2026-09-18 — Phase 4: Timeline từ Backend `steps` / `/runs/{id}/steps`
+
+### Thay đổi
+- `frontend/app.js`: `normalizeSteps`, `showTimelineStart` (running),
+  `applyTimelineFromBackend` — sau chat/scan lấy steps từ response rồi
+  **GET `/runs/{run_id}/steps`** (nguồn sự thật Backend); không gọi AI.
+- `index.html`: ghi rõ nguồn timeline Backend.
+- Tests: `tests/test_frontend_timeline_steps.py`.
+- MVP: one-shot steps (chưa SSE realtime — Phase 5 nếu cần).
+
+### Review vs product-spec / test-plan
+- **Pass:** AC5 hướng «thấy timeline bước»; test-plan §3 contract steps +
+  «ít nhất start + done»; FE→Backend only.
+- **Fail:** không.
+- **Missing:** SSE stream từng bước realtime (Phase 5); CRUD watchlist
+  SQLite ghi rõ (item Phase 4 tiếp).
+
+## 2026-09-18 — Phase 4: Chat Backend forward AI → FE nhận answer
+
+### Thay đổi
+- `backend/main.py`: `_forward_chat_from_ai` — luôn có `answer` string
+  top-level; `GET /runs/{id}` trả `answer` cho chat.
+- `frontend/app.js`: `extractFinalAnswer` + hiển thị câu trả lời cuối;
+  disable nút Gửi khi đang chờ.
+- Tests: `tests/test_chat_answer_forward.py`.
+
+### Review vs product-spec / test-plan
+- **Pass:** Core flow chat bước 2+4 (FE→BE→AI, hiện câu trả lời cuối);
+  test-plan §3 «curl chat qua Backend nhận answer»; FE không gọi AI.
+- **Fail:** không.
+- **Missing:** Phase 5 validation; kiểm thử tay live đã có checklist
+  (mục Phase 4 kế tiếp cùng ngày).
+
+## 2026-09-18 — Phase 4: Frontend gọi Backend (bỏ mock)
+
+### Thay đổi
+- `frontend/app.js` — `fetch` tới Backend: `/chat`, `/scan`, `/watchlist`,
+  `/approvals` (+ approve/reject); **xoá `MOCK_STEPS`**.
+- `index.html` — form thêm watchlist + quét mã; timeline từ `steps` response.
+- Tests: `test_frontend_backend_wiring.py`; cập nhật scaffold/static-serve.
+- Nơi lưu: watchlist/approvals **in-memory Backend** (`backend/store.py`);
+  AI vẫn SQLite riêng khi chat/scan (proxy).
+
+### Review vs product-spec / test-plan
+- **Pass:** FE chỉ gọi Backend (AC7 hướng / test-plan §3 contract); bỏ mock;
+  đủ 4 nhóm API; không gọi AI `:8001` từ browser.
+- **Fail:** không (static wiring tests).
+- **Missing:** siết item «Chat nhận answer» / timeline stream / CRUD+SQLite
+  ghi rõ (các checkbox Phase 4 còn lại); demo tay 3 process.
+
+## 2026-09-18 — Phase 3c: Guardrail rewrite giữ grounding
+
+### Thay đổi
+- `output_checks`: `has_evidence_grounding`, `check_rewrite_grounding`,
+  `strip_buy_sell`, `rewrite_keep_grounding` — rewrite không được bỏ hết
+  số liệu evidence; fallback gỡ mua/bán từ bản đã grounded.
+- `answer_composer` + `synthesis_agent`: từ attempt>0 bắt buộc grounding;
+  lưu `last_grounded` cho fallback.
+- Prompt `answer_compose` v1.1: khi sửa vi phạm vẫn giữ số liệu/tin.
+- Tests: `tests/test_guardrail_rewrite_grounding.py`.
+
+### Review vs product-spec / test-plan
+- **Pass:** AC guardrail mua/bán + số khớp evidence (test-plan Synthesis/
+  Answer); rewrite không còn mất số liệu; AC3 backlog 3c đóng mục này.
+- **Fail:** không (26 related tests).
+- **Missing:** Phase 4 nối FE→BE; Phase 3c placeholder trống nếu chưa có gap mới.
+
+## 2026-09-18 — Phase 3c: Rewrite/memory với đại từ («mã đó»)
+
+### Thay đổi
+- `supervisor.py`: mở rộng `_REF_PREV_RE` (cổ phiếu đó/này, nó, em đó);
+  `_apply_memory_symbol` + `_ground_rewritten` dùng chung Heuristic và
+  `LlmRewriteBrain` (LLM trả `symbol:null` vẫn lấy mã từ hội thoại);
+  đại từ → memory thắng false ticker; stopword `BAO` («bao nhiêu»).
+- Prompt `rewrite_question` v1.2: ví dụ đại từ / follow-up bắt buộc gắn mã.
+- Tests: pronoun variants + LLM null-symbol fallback
+  (`test_answer_question`, `test_supervisor_llm`).
+
+### Review vs product-spec / test-plan
+- **Pass:** agents.md RewriteQuestion dùng Memory; test-plan §2 Supervisor
+  «mã đó» / follow-up; AC8 chat follow-up (`test_api_chat`); AC3 backlog
+  3c mục đại từ đã xử lý.
+- **Fail (đã sửa):** «Nó giảm bao nhiêu?» extract nhầm `BAO` → memory không
+  áp dụng; đã ưu tiên đại từ + stopword.
+- **Missing:** Phase 4 FE (guardrail grounding đã đóng mục kế tiếp).
+
+## 2026-09-18 — Phase 3c: Evidence giá trước khi so sánh %
+
+### Thay đổi
+- `price_agent.has_change_pct_evidence` /
+  `prices_have_change_pct_evidence`.
+- `answer_question`: fetch đủ giá mọi mã; **skip `eval_agent`** nếu thiếu
+  `change_pct` (không so sánh % không có căn cứ).
+- `HeuristicEvalBrain`: thiếu giá → severity thấp + reasoning «không so sánh».
+- Prompt `eval_severity` + `answer_compose`: không bịa % khi thiếu evidence.
+- Tests: `tests/test_price_evidence_before_pct.py`.
+
+### Review vs product-spec / test-plan
+- **Pass:** grounding số liệu (guardrail / comparison trajectory); AC3
+  backlog 3c đã xử lý; hỗ trợ comparison golden không gọi eval khi thiếu giá.
+- **Fail:** không.
+- **Missing:** Phase 4 FE (các mục 3c gợi ý đã đóng sau đó).
+
+## 2026-09-18 — Phase 3b: CORS Backend theo `FRONTEND_ORIGIN`
+
+### Thay đổi
+- `backend/main.py` — `CORSMiddleware`:
+  - `FRONTEND_ORIGIN=*` (dev mặc định) → `allow_origins=["*"]`;
+  - hoặc origin cụ thể (vd. `http://127.0.0.1:5173`).
+- `.env.example` + `backend/README.md` ghi cấu hình CORS.
+- Tests: `tests/test_backend_cors.py` (GET + preflight + siết origin).
+- **Phase 3b checklist hoàn tất.**
+
+### Review vs product-spec / test-plan
+- **Pass:** «Cấu hình URL/CORS bằng biến môi trường» (AC / features);
+  Backend sẵn sàng cho FE :5173 gọi cross-origin (hướng AC4/test-plan §3).
+- **Fail:** không.
+- **Missing:** FE thật gọi API (Phase 4); siết origin trên AI process
+  (không bắt buộc — browser không gọi AI).
+
+## 2026-09-18 — Phase 3b: Backend không import `domain.agents` (HTTP-only)
+
+### Thay đổi
+- Gate kiểm tra: `tests/test_backend_no_agent_imports.py`
+  - cấm import `domain.agents` / `portfolio_watch.application` / langgraph;
+  - cấm `src.portfolio_watch*` trong `backend/`;
+  - `ai_client.py` chỉ stdlib `urllib` → `/v1/chat` + `/v1/scan`.
+- Siết assert trong `test_backend_service.py`; README ghi AC7 + lệnh pytest.
+
+(Code Backend vốn đã HTTP-only; mục này khóa ranh giới bằng test.)
+
+### Review vs product-spec / test-plan
+- **Pass:** AC7 «Backend chỉ gọi AI qua HTTP — không import graph/agent
+  domain»; test-plan acceptance map «Backend không import agents»
+  (grep/AST trên `backend/`).
+- **Fail:** không.
+- **Missing:** FE không gọi thẳng AI (Phase 4). CORS Backend đã làm ở mục kế tiếp.
+
+## 2026-09-18 — Phase 3b: Endpoint `steps[]` one-shot (MVP)
+
+### Thay đổi
+- `backend/steps.py` — `normalize_steps` → `{id,name,status,detail?}`.
+- `POST /chat` + `POST /scan`: luôn trả `steps[]` chuẩn + `run_id`.
+- `GET /runs/{run_id}` và `GET /runs/{run_id}/steps` — lấy lại bước
+  one-shot (chưa SSE; đủ MVP checklist).
+- Store giữ `RunRecord` in-memory; tests cập nhật contract steps.
+
+### Review vs product-spec / test-plan
+- **Pass:** Backend trả `steps` cho timeline (AC5 hướng / test-plan §3
+  contract + «curl chat nhận answer + steps»); shape id/name/status/detail.
+- **Fail:** không.
+- **Missing:** SSE realtime từng bước (tuỳ chọn sau); FE nối timeline
+  (Phase 4); CORS + assert no `domain.agents` (mục 3b còn lại).
+
+## 2026-09-18 — Phase 3b: Backend API (health / watchlist / approvals / proxy AI)
+
+### Thay đổi
+- `backend/` — FastAPI process port **8000**:
+  - `GET /health`
+  - CRUD `/watchlist`
+  - `/approvals` + approve/reject
+  - `POST /chat`, `POST /scan` → HTTP tới `AI_BASE_URL` `/v1/*`
+- `backend/ai_client.py` — urllib JSON client (không import `domain.agents`).
+- `backend/store.py` — watchlist/approvals **in-memory** (Backend sở hữu).
+- `scripts/serve_backend.py`; `pyproject.toml` include package `backend*`.
+- Tests: `tests/test_backend_service.py`.
+
+### Review vs product-spec / test-plan
+- **Pass:** hướng AC4 (Backend URL riêng :8000); AC7/AC8 một phần —
+  proxy chat/scan HTTP-only + watchlist/approvals CRUD; test-plan §3
+  contract Backend→AI (chat/scan JSON có `steps` khi AI trả).
+- **Fail:** không trong scope mục này.
+- **Missing:** assert cứng «không import agents» trong checklist kế tiếp;
+  CORS; nối FE (Phase 4); SQLite bền (ghi rõ in-memory tạm).
+  (Endpoint steps one-shot đã làm ở mục kế tiếp cùng ngày.)
+
+## 2026-09-18 — Phase 3a: Báo cáo chất lượng golden (30/30)
+
+### Thay đổi
+- `specs/eval/phase3a_quality_report.md` — báo cáo Phase 3a:
+  - bảng pass theo slice (18/6/3/3 = **30/30**, injection 100%);
+  - liệt kê thay đổi agent/prompt/tool trong Quality Loop;
+  - đối chiếu AC1–3 / test-plan §1.
+- `tests/test_phase3a_quality_report.py` — assert báo cáo đủ mục checklist.
+- Checklist Phase 3a mục «Báo cáo» → `[x]` (**3a hoàn tất**).
+
+### Review vs product-spec / test-plan
+- **Pass:** AC1 «báo cáo pass/fail» + map acceptance; AC2 injection 100%
+  ghi trong báo cáo; AC3 thay đổi + backlog 3c đã liệt kê; test-plan
+  «run_eval + báo cáo» / «slice report».
+- **Fail:** không trong scope mục báo cáo.
+- **Missing:** full run kèm LLM-judge (ngoài báo cáo này); Phase 3b+.
+
+## 2026-09-18 — Phase 3a: Pass hết slice (30/30, injection 100%)
+
+### Kết quả (`--run --skip-judge` + task_success; case-by-case delay)
+| Slice | Passed | Total |
+|---|---:|---:|
+| lookup | 18 | 18 |
+| comparison | 6 | 6 |
+| out_of_scope | 3 | 3 |
+| injection | 3 | 3 |
+| **Tổng** | **30** | **30** |
+
+Injection gate: **100%**.
+
+### Thay đổi agent / prompt / eval (không nới scorer)
+- **Multi-symbol:** `RewrittenQuestion.symbols`; `_extract_symbols`; fetch
+  giá/tin từng mã; composer/evidence gộp đa mã.
+- **Prompt:** `rewrite_question` + `answer_compose` (symbols / nêu đủ mã).
+- **Intent:** thêm hint «biến động / mạnh hơn / đối chiếu»; đa mã → explain.
+- **Stopword:** `TIN` (tránh «tin tức» thành ticker).
+- **Eval:** mỗi case `user_id=eval-{case_id}` — tránh memory lệch symbol.
+- Phase 3c: đánh dấu xong «routing đa mã».
+- Tests: `tests/test_multi_symbol_rewrite.py`.
+
+### Review vs product-spec / test-plan
+- **Pass:** AC1 hướng 30/30 theo scorer đã chốt (rule + task_success;
+  judge skip trong run này); AC2 injection 100%; test-plan slice gate.
+- **Fail:** không trên run 30/30 này.
+- **Missing:** LLM-judge chưa bật trên full run (`--skip-judge`);
+  Backend/FE (phase sau). Báo cáo tổng hợp → mục checklist kế tiếp (đã làm).
+
+## 2026-09-18 — Phase 3a: Quality Loop — `lookup_15` (CafeF news)
+
+### Chạy
+- Full eval `--skip-judge` (+ task_success): **24/30**; injection 100%.
+- Fail đầu (theo id): `lookup_15` — `news_agent items=0`, task_success fail.
+
+### Nguyên nhân + sửa (tool, không nới scorer)
+- CafeF `s.cafef.vn/Ajax/Events_RelatedNews_New.aspx` trả `<ul>` rỗng.
+- Đổi URL → `https://cafef.vn/du-lieu/Ajax/Events_RelatedNews_New.aspx`.
+- Bỏ lọc `query` trên title (LLM hay search câu dài → 0 tin dù endpoint
+  đã theo mã).
+- Tests: `test_market_data` cập nhật URL + hành vi query.
+
+### Kết quả case
+- `lookup_15`: **pass** (rule + task_success; trajectory overall 5.0).
+
+### Review vs product-spec / test-plan
+- **Pass:** workflow debug từng case (test-plan §1 / AGENTS); sửa tool khi
+  fail; không nới expected; injection vẫn 100% trên run full trước đó.
+- **Fail:** không còn trên `lookup_15`.
+- **Missing:** còn fail slice comparison (và regression vs baseline_debug
+  rule-only) — thuộc mục checklist «Pass hết slice»; AC1 30/30 chưa đạt.
+
+## 2026-09-18 — Phase 3a: gỡ static UI khỏi process AI/API
+
+### Thay đổi
+- `main.py`: bỏ `StaticFiles(web/)` — API/monolith không phục vụ UI.
+- `ai_main.py` vốn đã không mount static; siết test xác nhận GET `/`/`/app.js` = 404.
+- `Dockerfile`: bỏ `COPY web` (image = API only).
+- Tests: `test_api_static`, `test_docker_single_url`, UI tests đọc `web/` từ disk;
+  UI production path = `frontend/` + `serve_frontend`.
+- README: health API / FE :5173 / AI :8001 thay vì mở UI tại :8000/.
+
+### Review vs product-spec / test-plan
+- **Pass:** AI/API không serve UI (hướng AC4 tách process; test-plan §3
+  «chỉ bật AI → health OK»); FE ở process riêng (`frontend/`);
+  `GET /` + `/app.js` trên AI/API = 404; `/health` + JSON API OK.
+- **Fail:** không (không phát hiện lỗi liên quan mục này sau khi sửa test).
+- **Missing:** Backend (3b); golden case-by-case; E2E 3 process + timeline
+  (Phase 4–6); Docker compose 3 service (Phase 7).
+
+## 2026-09-18 — Phase 3a: AI process `/v1/chat` + `/v1/scan` + `steps[]`
+
+### Thay đổi
+- `src/portfolio_watch/ai_main.py` — FastAPI AI-only (port mặc định **8001**).
+- `api/routers/v1.py` — `POST /v1/chat`, `POST /v1/scan`; response có kết
+  quả cuối + `steps[]` (`id/name/status/detail`).
+- `scripts/serve_ai.py`; settings `AI_API_HOST` / `AI_API_PORT`.
+- Tests: `tests/test_ai_v1_service.py`.
+- Monolith `main.py` đã gỡ static ở mục kế tiếp (cùng ngày).
+
+### Review vs product-spec / test-plan
+- **Pass:** AI chạy process/URL riêng (`AI_BASE_URL` :8001); contract
+  chat/scan + `steps[]` (test-plan §3); hỗ trợ FE timeline / Backend proxy.
+- **Fail:** không trong scope mục này.
+- **Missing:** Backend proxy (3b); golden debug case-by-case; 3 process E2E.
+
+## 2026-09-18 — Phase 2: chạy frontend độc lập + xác nhận UI
+
+### Thay đổi
+- `scripts/serve_frontend.py` — static server mặc định port **5173**.
+- `tests/test_frontend_static_serve.py` — GET `/` + `config.js` + `app.js`
+  qua ThreadingHTTPServer (không cần Backend/AI).
+- `frontend/README.md` — lệnh chạy độc lập đã xác nhận.
+
+### Xác nhận
+- pytest static serve: pass (HTML có chat/timeline/watchlist/approvals).
+- `serve_frontend.py` mở được (fix print Unicode Windows → ASCII).
+
+### Review vs product-spec / test-plan
+- **Pass:** Frontend chạy process/URL riêng (hướng AC4 một phần — FE
+  độc lập); mở UI đủ 4 khu vực không phụ thuộc AI.
+- **Fail:** không.
+- **Missing:** Backend + AI process thật (Phase 3+); nối API (Phase 4).
+- **Phase 2** hoàn tất checklist.
+
+## 2026-09-18 — Phase 2: config `BACKEND_BASE_URL`
+
+### Thay đổi
+- `frontend/config.js` — `PW_CONFIG.BACKEND_BASE_URL` +
+  `PW_getBackendBaseUrl()` (override `?backend=`).
+- UI hiện URL tại `#backend-url-display`; README hướng dẫn đổi config.
+- Chưa `fetch` API (đúng scope mục này).
+- Test: `test_frontend_backend_base_url_config`.
+
+### Review vs product-spec / test-plan
+- **Pass:** cấu hình URL bằng biến/config (in-scope «Cấu hình URL…»);
+  FE chỉ trỏ Backend, không AI (hướng AC7 / test-plan FE→BE).
+- **Fail:** không.
+- **Missing:** dùng URL để gọi API thật (Phase 4); CORS siết theo
+  `FRONTEND_ORIGIN` (Phase 3b).
+
+## 2026-09-18 — Phase 2: timeline mock 4 trạng thái
+
+### Thay đổi
+- `frontend/app.js` — `MOCK_STEPS` + `renderTimeline`: badge
+  `pending | running | done | error`.
+- `style.css` — style `.status-badge` theo từng status.
+- Test: `test_frontend_timeline_mock_has_all_statuses`.
+
+### Review vs product-spec / test-plan
+- **Pass:** UI hiện list bước với đủ 4 trạng thái (AC5 / test-plan stream
+  bước — phần hiển thị status); khớp shape name/status/detail.
+- **Fail:** không.
+- **Missing:** data thật từ Backend `steps[]`; chuyển trạng thái realtime
+  khi chat (Phase 4).
+
+## 2026-09-18 — Phase 2: trang chính 4 khu vực (chat / timeline / watchlist / approvals)
+
+### Thay đổi
+- `frontend/index.html` — section `#chat`, `#timeline`, `#watchlist`,
+  `#approvals` (timeline placeholder, chưa mock status).
+- `style.css` / `app.js` — layout; form chat preventDefault (chưa API).
+- Test: `test_frontend_main_page_has_four_sections`.
+
+### Review vs product-spec / test-plan
+- **Pass:** UI có đủ vùng chat + timeline bước + watchlist + duyệt (AC5
+  một phần — có chỗ hiện bước); khớp in-scope Frontend.
+- **Fail:** không trong scope mục này.
+- **Missing:** status `pending|running|done|error` trên timeline (mục
+  tiếp); nối Backend; stream bước thật.
+
+## 2026-09-18 — Phase 2: tạo frontend/ (HTML/JS thuần)
+
+### Quyết định stack
+- **HTML + CSS + JS thuần** (không React/Vite ở MVP).
+- Serve: `python -m http.server 5173` trong `frontend/`.
+
+### Files
+- `frontend/index.html`, `style.css`, `config.js`, `app.js`, `README.md`
+- `tests/test_frontend_scaffold.py`
+
+### Review vs product-spec / test-plan
+- **Pass:** có thư mục frontend riêng, stack ghi rõ; hướng FE→Backend
+  (config URL sẵn).
+- **Fail:** không (scope chỉ scaffold).
+- **Missing:** trang chat/timeline/watchlist/approvals — mục Phase 2 tiếp
+  theo; chưa chứng minh server 5173 trong CI (làm ở mục «chạy frontend
+  độc lập»).
+
+## 2026-09-18 — Phase 1: chat `steps[]` + review
+
+### Thay đổi
+- `answer_question.build_chat_steps` → `AnswerQuestionResult.steps`
+  `[{id, name, status, detail}]`.
+- `POST /chat` (`ChatResponse.steps`) trả đúng contract test-plan.
+- Eval `steps_from_answer_result` đọc `result.steps` (map name→tool).
+- Tests: `test_chat_steps.py`, assert steps trong `test_api_chat.py`.
+
+### Review vs product-spec / test-plan
+- **Pass:** chat JSON có `steps` (id/name/status/detail); thứ tự
+  rewrite→supervisor→workers→composer; hỗ trợ timeline UI (AC5) và
+  trajectory eval; product «UI hiện bước» có data từ AI.
+- **Fail:** không trong scope mục này.
+- **Missing:** stream từng bước realtime (Phase 4/5); UI timeline (Phase 2);
+  scan chưa trả `steps[]` (contract ghi chat/scan — scan để phase sau nếu cần).
+
+## 2026-09-18 — Phase 1: task_success + trajectory + `--case-id`
+
+### Thay đổi
+- `src/portfolio_watch/infra/eval/agent_scorers.py` — port ý tưởng
+  llm-engineer-demo: `evaluate_task_success`, `evaluate_trajectory`,
+  `steps_from_answer_result`.
+- `scripts/run_eval.py` — ghép scorers; `--case-id` (tự run); 
+  `--skip-agent-eval`; `make_answer_fn.last_steps` cho trajectory.
+- Pass lookup/comparison: rule + judge + `task_success.success`.
+- Trajectory overall < 3.0 → cảnh báo, không fail case.
+- Tests: `tests/test_run_eval_agent_eval.py`; cập nhật checklist tests
+  khớp plan mới.
+
+### Review vs product-spec / test-plan
+- **Pass:** có task_success + trajectory; chạy 1 case `--case-id` (test-plan);
+  task_success gate lookup/comparison; trajectory warn không chặn pass.
+- **Fail:** không trong scope mục này.
+- **Missing:** `steps[]` trên API chat (mục Phase 1 kế tiếp) — hiện dựng
+  steps từ `AnswerQuestionResult` trong eval; full golden với agent-eval
+  bật chưa chạy lại (dùng `--skip-agent-eval` khi cần baseline rule-only).
+
+## 2026-09-18 — Phase 1: baseline_debug eval (không sửa agent)
+
+### Chạy
+- Lệnh: `python scripts/run_eval.py --run --skip-judge --save-baseline --baseline specs/eval/baseline_debug.json`
+- **Không** sửa domain agents / prompt.
+
+### Kết quả (`specs/eval/baseline_debug.json`)
+| Slice | Passed | Total | Rate |
+|---|---:|---:|---:|
+| lookup | 18 | 18 | 100% |
+| comparison | 6 | 6 | 100% |
+| out_of_scope | 3 | 3 | 100% |
+| injection | 3 | 3 | 100% |
+| **Tổng** | **30** | **30** | **100%** |
+
+Injection gate: OK (100%). Regression vs file vừa lưu: OK.
+
+### Review vs product-spec / test-plan
+- **Pass:** có báo cáo pass/fail từng slice; injection 100% (AC2 / test-plan
+  gate); file baseline_debug làm mốc regression vòng debug.
+- **Fail:** không (scope: chạy baseline, chưa nâng scorer).
+- **Missing:** lần chạy dùng `--skip-judge` — chưa gồm LLM-judge /
+  task_success / trajectory (AC1 đầy đủ + Phase 1 mục eval nâng cấp tiếp
+  theo). `baseline.json` MVP cũ (có judge) vẫn là 30/30 riêng.
+
+## 2026-09-18 — Phase 1: README skeleton 3 process + review
+
+### Thay đổi
+- `README.md`: mục **Skeleton — 3 process** — bảng port AI `8001` /
+  Backend `8000` / Frontend `5173`, env `AI_BASE_URL` /
+  `BACKEND_BASE_URL` / `FRONTEND_ORIGIN`, luồng FE→BE→AI; ghi rõ lệnh
+  chi tiết ở Phase 6.
+- `tests/test_readme_split_skeleton.py` — assert skeleton đủ port/env.
+- `specs/implementation-plan.md` — đánh dấu xong mục README skeleton.
+
+### Review vs product-spec / test-plan (chỉ skeleton README)
+- **Pass:** tài liệu 3 URL/port khớp hướng AC4; env khớp `.env.example`;
+  nêu Frontend không gọi thẳng AI (hướng AC7); còn mục chạy 1 process MVP
+  (AC8 tạm thời).
+- **Fail:** không trong scope skeleton.
+- **Missing (phase sau):** lệnh chạy thật 3 process (Phase 6); process
+  tách (Phase 3–5); test-plan mục «3 process thử tay».
+- **Ngoài scope:** `test_readme_local_instructions` /
+  `test_readme_docker_demo` vẫn fail vì README vòng mới chưa khôi phục
+  section MVP Phase 6/7 cũ — thuộc Phase 6–7 plan mới, không sửa ở mục này.
+
+## 2026-09-18 — Review Phase 1 `.env.example` vs product-spec / test-plan
+
+### Phạm vi feature
+Chỉ cấu hình biến môi trường split-deploy + giữ OpenAI/Langfuse (không phải
+eval / UI / 3 process chạy thật).
+
+### Pass
+- In scope «Cấu hình URL… bằng biến môi trường»: `.env.example` có
+  `AI_BASE_URL`, `BACKEND_BASE_URL`, `FRONTEND_ORIGIN`, `APP_HOST_PORT`.
+- Giữ `OPENAI_API_KEYS` + Langfuse (`MONITORING_*` / `LANGFUSE_*`) cho AC6 sau.
+- Settings đọc đủ field; test `test_docker_env_file.py` pass.
+- `.env` local đã bổ sung 3 URL (khớp example; không đụng secret).
+
+### Fail
+- Không (trong phạm vi mục `.env.example`).
+
+### Missing (không sửa ở review này — thuộc phase khác)
+- AC4 «3 process / 3 URL chạy độc lập» — mới có URL trên giấy, chưa tách
+  process (Phase 3–5).
+- CORS runtime vẫn `allow_origins=["*"]` (MVP); chưa siết theo
+  `FRONTEND_ORIGIN` (Phase 3b/4 khi FE riêng).
+- AC1–3, 5–8 (golden, timeline, Langfuse E2E, Backend HTTP-only) — ngoài
+  feature env.
+
+## 2026-09-18 — Phase 1: `.env.example` split-deploy URLs
+
+### Thay đổi
+- `.env.example`: `AI_BASE_URL`, `BACKEND_BASE_URL`, `FRONTEND_ORIGIN`,
+  `APP_HOST_PORT`; giữ `OPENAI_API_KEYS` + Langfuse.
+- `settings.py`: đọc `ai_base_url`, `backend_base_url`, `frontend_origin`,
+  `app_host_port`.
+- Test: `test_env_example_split_deploy_and_langfuse_vars`,
+  `test_settings_loads_split_deploy_defaults`.
+
+## 2026-09-18 — Phase 1: chốt cấu trúc thư mục FE / BE / AI
+
+### Quyết định
+- **AI** giữ nguyên `src/portfolio_watch/` (không đổi tên `ai/` ở Phase 1 —
+  tránh rename lớn; tách process ở Phase 3a).
+- Thêm placeholder `frontend/` và `backend/` (chỉ README, chưa UI/server).
+
+### Files
+- `frontend/README.md` — UI riêng, port 5173, chỉ gọi Backend.
+- `backend/README.md` — API sản phẩm, port 8000, HTTP tới AI, không import
+  domain agents.
+- `specs/implementation-plan.md` — đánh dấu xong mục cấu trúc Phase 1.
+- `README.md` — cập nhật trạng thái (đã có placeholder FE/BE).
+
+### Review vs product-spec / test-plan (chỉ mục cấu trúc)
+- **Pass:** có 3 vùng `frontend/` · `backend/` · `src/portfolio_watch/` khớp
+  hướng tách deploy; backend README ghi rõ không import domain agents.
+- **Fail:** không (scope chỉ chốt thư mục).
+- **Missing (phase sau):** 3 process chạy thật, UI/timeline, eval nâng cấp,
+  `steps[]`, Langfuse — chưa thuộc mục này.
+
+## 2026-09-17 — Rewrite implementation-plan (SDD Bước 3)
+
+### Docs (không code)
+- Viết lại `specs/implementation-plan.md` thành 8 phase nhỏ có checklist:
+  1 Project setup → 2 Core UI → 3 Core backend/data (AI chất lượng +
+  Backend) → 4 Connect UI↔Backend → 5 Validation → 6 Local run →
+  7 Local demo → 8 Langfuse tracing.
+- Giữ backlog multi-agent (3c) để bổ sung khi debug golden case fail.
+
+## 2026-09-17 — Review / cải thiện product-spec (SDD Bước 2)
+
+### Docs (không code)
+- Làm rõ 6 mục: app goal, target users, core user flow, in/out of scope,
+  acceptance criteria.
+- Giảm jargon kỹ thuật (tên hàm/file) trong product-spec; giữ mô tả sản phẩm
+  + 3 luồng (chat, giám sát/HITL, debug golden) dễ triển khai.
+
+## 2026-09-17 — SDD vòng mới: Quality Loop + Split FE/BE/AI (chỉ spec)
+
+### Docs (không implement app)
+- Viết lại `specs/product-spec.md` — mục tiêu: debug golden từng case, eval
+  task_success/trajectory (ý tưởng llm-engineer-demo), tách Frontend /
+  Backend / AI, UI hiện bước, Langfuse.
+- Viết lại `specs/implementation-plan.md` — Phase 0–7 + Phase 2b backlog
+  multi-agent (điền khi debug).
+- Viết lại `specs/test-plan.md` — quy trình 1 case, scorer, regression,
+  test 3 process + Langfuse.
+- Viết lại `AGENTS.md` — workflow debug case-by-case + ranh giới FE/BE/AI.
+- Viết lại `README.md` — trạng thái MVP vs vòng mới; lệnh chạy tạm thời
+  1 process; placeholder 3 process.
+
+### Ghi chú
+- Phase 0 (docs) đánh dấu xong phần tạo spec; baseline eval số liệu chưa chạy
+  (task còn lại Phase 0).
+- Lịch sử MVP Phase 1–10 giữ nguyên các mục phía dưới.
+
 ## 2026-09-17 — README Quick start: conda `dong312` + Docker Compose
 
 ### Setup

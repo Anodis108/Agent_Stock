@@ -25,6 +25,15 @@ class Settings(BaseSettings):
     api_host: str = "127.0.0.1"
     api_port: int = 8000
 
+    # Split deploy
+    ai_base_url: str = "http://127.0.0.1:8001"
+    backend_base_url: str = "http://127.0.0.1:8000"
+    frontend_origin: str = "http://127.0.0.1:5173"
+    app_host_port: int = 8000
+    # AI process bind (Phase 3a)
+    ai_api_host: str = "127.0.0.1"
+    ai_api_port: int = 8001
+
     # Watchlist defaults (MVP — 1 demo user)
     default_watchlist: str = "FPT,VNM,HPG"
     default_alert_threshold_pct: float = 3.0

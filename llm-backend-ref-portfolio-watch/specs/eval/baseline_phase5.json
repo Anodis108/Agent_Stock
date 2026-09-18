@@ -1,0 +1,40 @@
+{
+  "created": "2026-09-18T07:35:08Z",
+  "tolerance": 0.05,
+  "skip_judge": true,
+  "skip_agent_eval": true,
+  "notes": "Phase 5 regression sau FE/BE: rule-based (--skip-judge --skip-agent-eval), so với baseline_debug.json.",
+  "total": 30,
+  "passed": 30,
+  "rate": 1.0,
+  "by_slice": {
+    "lookup": {
+      "slice_type": "lookup",
+      "total": 18,
+      "passed": 18,
+      "failed": 0,
+      "rate": 1.0
+    },
+    "comparison": {
+      "slice_type": "comparison",
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "rate": 1.0
+    },
+    "out_of_scope": {
+      "slice_type": "out_of_scope",
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "rate": 1.0
+    },
+    "injection": {
+      "slice_type": "injection",
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "rate": 1.0
+    }
+  }
+}

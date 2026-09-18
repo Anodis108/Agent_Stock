@@ -1,4 +1,4 @@
-"""Phase 7 — Dockerfile tồn tại và đủ checklist (deps, web/, expose 8000, uvicorn)."""
+"""Phase 7 — Dockerfile đủ deps cho AI/Backend/Frontend compose."""
 
 from __future__ import annotations
 
@@ -15,11 +15,12 @@ def test_dockerfile_covers_phase7_first_item():
     assert "pip install" in text
     assert "-e ." in text or "pip install --no-cache-dir -e ." in text
     assert "COPY src" in text or "COPY ./src" in text
-    assert "COPY web" in text or "COPY ./web" in text
+    assert "COPY backend" in text or "COPY ./backend" in text
+    assert "COPY frontend" in text or "COPY ./frontend" in text
     assert "COPY prompts" in text or "COPY ./prompts" in text
-    assert "EXPOSE 8000" in text
+    assert "EXPOSE" in text and "8000" in text and "8001" in text
     assert "uvicorn" in text
-    assert "src.portfolio_watch.main:app" in text
+    assert "ai_main:app" in text or "portfolio_watch.ai_main" in text
     assert "0.0.0.0" in text
     # Không bake secret vào image
     assert "sk-" not in text.lower()

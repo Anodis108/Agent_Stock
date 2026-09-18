@@ -1,0 +1,14 @@
+# Blocked golden cases — Phase 5 eval policy
+#
+# Khi case fail mà chưa sửa được hệ thống: ghi vào đây + thêm task Phase 3c
+# trong specs/implementation-plan.md. KHÔNG nới scorer / expected để “pass”.
+#
+# Schema mỗi entry:
+#   id: <case_id trong golden_dataset.yaml>
+#   reason: <nguyên nhân ngắn>
+#   phase3c_task: <mô tả task backlog 3c>
+#   since: <YYYY-MM-DD>
+#
+# blocked: []  # hiện trống — mọi fail phải sửa agent/prompt hoặc ghi entry
+
+blocked: []

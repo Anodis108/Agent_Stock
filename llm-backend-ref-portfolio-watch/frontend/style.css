@@ -1,0 +1,234 @@
+:root {
+  --bg: #f6f7f9;
+  --text: #1a1a1a;
+  --muted: #5c5c5c;
+  --accent: #0b6e4f;
+  --border: #d8dce3;
+  --panel: #fff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+}
+
+main {
+  max-width: 44rem;
+  margin: 1.5rem auto 3rem;
+  padding: 0 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.app-header h1 {
+  font-size: 1.75rem;
+  font-weight: 650;
+  margin: 0 0 0.35rem;
+  color: var(--accent);
+}
+
+.muted {
+  color: var(--muted);
+  margin: 0 0 0.5rem;
+}
+
+.boot {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin: 0;
+}
+
+.config-line {
+  font-size: 0.9rem;
+  margin: 0 0 0.35rem;
+}
+
+.config-line code {
+  font-size: 0.85rem;
+  background: #eef2f0;
+  padding: 0.1rem 0.35rem;
+  border-radius: 3px;
+}
+
+section h2 {
+  font-size: 1.1rem;
+  margin: 0 0 0.5rem;
+}
+
+.panel,
+.panel-table {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.panel {
+  padding: 0.75rem 1rem;
+  min-height: 2.5rem;
+  margin: 0 0 0.5rem;
+}
+
+.panel-table {
+  width: 100%;
+  border-collapse: collapse;
+  overflow: hidden;
+}
+
+.panel-table th,
+.panel-table td {
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.panel-table th {
+  background: #eef2f0;
+  font-weight: 600;
+}
+
+.panel-table tr:last-child td {
+  border-bottom: none;
+}
+
+.row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.row input {
+  flex: 1 1 12rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font: inherit;
+}
+
+.row button {
+  padding: 0.45rem 0.9rem;
+  border: none;
+  border-radius: 4px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+
+.row button:hover {
+  filter: brightness(1.05);
+}
+
+.placeholder {
+  color: var(--muted);
+  margin: 0;
+}
+
+.timeline-list {
+  list-style: decimal;
+  padding-left: 1.5rem;
+  margin: 0;
+}
+
+.timeline-item {
+  margin: 0.35rem 0;
+  padding: 0.15rem 0;
+}
+
+.status-badge {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  vertical-align: middle;
+}
+
+.status-badge.status-pending {
+  background: #e8e8e8;
+  color: #555;
+}
+
+.status-badge.status-running {
+  background: #d6eaf8;
+  color: #1a5276;
+}
+
+.status-badge.status-done {
+  background: #d5f5e3;
+  color: #196f3d;
+}
+
+.status-badge.status-error {
+  background: #fadbd8;
+  color: #922b21;
+}
+
+.step-name {
+  font-weight: 600;
+}
+
+.step-detail {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.tiny {
+  font-size: 0.85rem;
+  margin: 0 0 0.35rem;
+}
+
+.boot-error {
+  color: #922b21;
+}
+
+.btn-small {
+  padding: 0.2rem 0.5rem;
+  margin-right: 0.25rem;
+  border: none;
+  border-radius: 3px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.btn-small.btn-muted {
+  background: #6c757d;
+}
+
+.chat-msg {
+  margin: 0.35rem 0;
+}
+
+.chat-user {
+  color: var(--text);
+}
+
+.chat-assistant {
+  color: #1a5276;
+}
+
+.approval-item {
+  margin: 0.5rem 0;
+}
+
+.approval-actions {
+  display: inline-block;
+  margin-left: 0.5rem;
+}
+
+#approvals-list {
+  list-style: disc;
+  padding-left: 1.25rem;
+}

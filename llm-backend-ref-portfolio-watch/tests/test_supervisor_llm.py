@@ -54,6 +54,29 @@ def test_llm_rewrite_memory_symbol_from_prompt_conversation():
     assert rw.symbol == "VNM"
 
 
+def test_llm_rewrite_null_symbol_falls_back_to_conversation():
+    """LLM quên gắn mã → post-process lấy từ Memory/hội thoại."""
+
+    def fake_chat(messages, params=None):
+        return (
+            '{"rewritten":"Còn mã đó thì sao?",'
+            '"symbol":null,"symbols":[],"intent":"price_lookup"}'
+        )
+
+    conversation = [
+        {"role": "user", "content": "Cho hỏi về mã VNM"},
+        {"role": "assistant", "content": "VNM đang ổn."},
+    ]
+    rw = rewrite_question(
+        "Còn mã đó thì sao?",
+        conversation,
+        brain=LlmRewriteBrain(chat_fn=fake_chat),
+    )
+    assert rw.symbol == "VNM"
+    assert rw.symbols == ["VNM"]
+    assert "VNM" in rw.rewritten.upper()
+
+
 def test_llm_supervisor_routes_explain_to_eval():
     seen: list[str] = []
 

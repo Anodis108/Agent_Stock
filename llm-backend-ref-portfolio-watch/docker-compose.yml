@@ -1,29 +1,79 @@
-# Portfolio Watch — demo compose (Phase 7)
-# Up:   cp .env.example .env  # điền OPENAI_API_KEYS nếu cần
+# Portfolio Watch — Phase 7 compose: AI + Backend + Frontend (3 service)
+# Up:   cp .env.example .env   # điền OPENAI_API_KEYS nếu LLM_BACKEND=openai
 #       docker compose up --build
+# Logs: docker compose logs -f
+#       docker compose logs -f ai
 # Down: docker compose down
-# Data: volume `pw_sqlite` → /app/data (SQLite sống qua restart)
+# Data: volume `pw_data` → /app/data (AI SQLITE + Backend SQLite)
 
 services:
-  app:
+  ai:
     build: .
-    image: portfolio-watch:demo
-    container_name: portfolio-watch-app
-    # Secret / cấu hình từ host — không bake vào image
+    image: portfolio-watch:split
+    container_name: portfolio-watch-ai
     env_file:
       - .env
+    command:
+      [
+        "uvicorn",
+        "src.portfolio_watch.ai_main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8001",
+      ]
     ports:
-      # Host bind port (đổi trong .env: APP_HOST_PORT)
-      - "${APP_HOST_PORT:-8000}:8000"
+      - "8001:8001"
     environment:
-      # Override bắt buộc trong container (thắng giá trị local trong .env)
-      API_HOST: "0.0.0.0"
-      API_PORT: "8000"
+      AI_API_HOST: "0.0.0.0"
+      AI_API_PORT: "8001"
       SQLITE_PATH: /app/data/portfolio_watch.db
     volumes:
-      - pw_sqlite:/app/data
+      - pw_data:/app/data
+    restart: unless-stopped
+
+  backend:
+    image: portfolio-watch:split
+    container_name: portfolio-watch-backend
+    env_file:
+      - .env
+    depends_on:
+      - ai
+    command:
+      ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "${APP_HOST_PORT:-8000}:8000"
+    environment:
+      API_HOST: "0.0.0.0"
+      API_PORT: "8000"
+      # Trong mạng compose: Backend gọi AI qua tên service
+      AI_BASE_URL: http://ai:8001
+      BACKEND_SQLITE_PATH: /app/data/backend_store.db
+      FRONTEND_ORIGIN: "*"
+    volumes:
+      - pw_data:/app/data
+    restart: unless-stopped
+
+  frontend:
+    image: portfolio-watch:split
+    container_name: portfolio-watch-frontend
+    depends_on:
+      - backend
+    command:
+      [
+        "python",
+        "-m",
+        "http.server",
+        "5173",
+        "--bind",
+        "0.0.0.0",
+        "--directory",
+        "frontend",
+      ]
+    ports:
+      - "5173:5173"
     restart: unless-stopped
 
 volumes:
-  pw_sqlite:
-    name: portfolio-watch-sqlite
+  pw_data:
+    name: portfolio-watch-data

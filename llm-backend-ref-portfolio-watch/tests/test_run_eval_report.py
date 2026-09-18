@@ -90,4 +90,4 @@ def test_format_report_none_failures() -> None:
 
 def test_checklist_report_checked() -> None:
     text = (ROOT / "specs" / "implementation-plan.md").read_text(encoding="utf-8")
-    assert "- [x] Report: điểm tổng + điểm theo từng slice" in text
+    assert "- [x] Nâng eval: port ý tưởng `task_success` + `trajectory`" in text

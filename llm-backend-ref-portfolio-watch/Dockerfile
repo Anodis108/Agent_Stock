@@ -1,6 +1,6 @@
-# Portfolio Watch — demo image (API + static web/)
-# Build: docker build -t portfolio-watch .
-# Run:   docker run --rm -p 8000:8000 --env-file .env portfolio-watch
+# Portfolio Watch — split demo image (AI / Backend / Frontend via compose command)
+# Build: docker build -t portfolio-watch:split .
+# Compose: docker compose up --build
 
 FROM python:3.12-slim
 
@@ -10,24 +10,25 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     API_HOST=0.0.0.0 \
     API_PORT=8000 \
-    SQLITE_PATH=/app/data/portfolio_watch.db
+    AI_API_HOST=0.0.0.0 \
+    AI_API_PORT=8001 \
+    SQLITE_PATH=/app/data/portfolio_watch.db \
+    BACKEND_SQLITE_PATH=/app/data/backend_store.db
 
 # Dependencies first (layer cache)
 COPY pyproject.toml README.md ./
 COPY src ./src
+COPY backend ./backend
 RUN pip install --no-cache-dir -U pip \
     && pip install --no-cache-dir -e .
-# Editable: __file__ vẫn dưới /app/src → WEB_DIR=/app/web (StaticFiles)
 
-# Static UI (served by FastAPI at /)
-COPY web ./web
-
-# Prompt Registry git-based (Phase 8) — cần trong image khi wire LLM
+# Prompt Registry + static Frontend (FE served by compose `frontend` service)
 COPY prompts ./prompts
+COPY frontend ./frontend
 
 RUN mkdir -p /app/data
 
-EXPOSE 8000
+EXPOSE 8000 8001 5173
 
-# Production-like demo: no --reload
-CMD ["uvicorn", "src.portfolio_watch.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Default = AI service; compose overrides command per service
+CMD ["uvicorn", "src.portfolio_watch.ai_main:app", "--host", "0.0.0.0", "--port", "8001"]

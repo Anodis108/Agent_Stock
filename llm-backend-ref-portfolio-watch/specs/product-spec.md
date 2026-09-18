@@ -1,117 +1,88 @@
-# Product Spec — Portfolio Watch & Chat Agent
+# Product Spec — Portfolio Watch (Quality Loop + Split Deploy)
 
-## Mục tiêu sản phẩm (App Goal)
+## App goal
 
-Xây dựng một hệ thống multi-agent **tự động giám sát danh mục cổ phiếu Việt
-Nam** — phát hiện biến động giá/tin bất thường, đánh giá mức độ nghiêm
-trọng, soạn cảnh báo và gửi đi (có kiểm soát qua HITL khi cần) — đồng thời
-cho phép người dùng **hỏi-đáp tự do** về các mã họ theo dõi, trả lời dựa
-trên dữ liệu giá/tin thật.
+Xây dựng bản Portfolio Watch dễ demo và đáng tin: người dùng theo dõi vài mã
+cổ phiếu VN, nhận cảnh báo bất thường (có duyệt khi cần), và hỏi–đáp dựa trên
+giá/tin thật — trong khi hệ thống **trả lời đúng theo bộ câu hỏi mẫu**, **tách
+UI / API / AI**, **hiện từng bước agent trên giao diện**, và **trace được trên
+Langfuse**.
 
-Vấn đề cần giải: nhà đầu tư cá nhân theo dõi vài mã cổ phiếu, nhưng không có
-thời gian tự kiểm tra giá + tin tức mỗi ngày để nhận ra biến động bất thường
-sớm. Khi hỏi "mã X dạo này sao rồi", họ cũng muốn câu trả lời có ngữ cảnh
-(giá, tin liên quan) chứ không phải tự tra cứu nhiều nguồn.
+Nền tảng: MVP multi-agent đã có. Vòng này không viết lại từ đầu; tập trung
+siết chất lượng và tách triển khai.
 
-## Đối tượng dùng (Target Users)
+## Target users
 
-Một người dùng demo (không cần multi-tenant thật, không cần đăng ký/đăng
-nhập phức tạp ở MVP) — có 1 watchlist gồm vài mã cổ phiếu.
+| Vai trò | Nhu cầu |
+|---|---|
+| Người dùng demo | Xem watchlist, chat, thấy bước agent, duyệt cảnh báo |
+| Người phát triển / coding agent | Chạy eval từng case golden, sửa multi-agent đến khi pass |
 
-## Luồng chính (Core User Flow)
+Không có đăng nhập / nhiều tenant ở vòng này.
 
-**Luồng 1 — Giám sát chủ động (hệ thống tự chạy, người dùng không cần hỏi):**
+## Core user flow
 
-1. Cron định kỳ (hoặc nút "Quét ngay" để demo 1 mã cụ thể) → hệ thống đọc
-   watchlist, lấy giá mới nhất + tin liên quan cho từng mã.
-2. Hệ thống phân loại: bình thường → dừng, chỉ ghi log. Bất thường → đánh
-   giá mức độ nghiêm trọng (kèm bằng chứng).
-3. Hệ thống soạn nội dung cảnh báo, kiểm tra guardrail (không lời khuyên
-   mua/bán chắc chắn, khớp bằng chứng thật).
-4. Nếu độ tin cậy cao và khớp ngưỡng người dùng đã đặt → gửi cảnh báo ngay.
-   Nếu không → chờ người dùng duyệt (HITL) trước khi gửi.
-5. Nếu hệ thống đề xuất đổi ngưỡng cảnh báo/thêm mã liên quan → luôn chờ
-   người dùng duyệt riêng, không tự động áp dụng.
+### 1) Chat (người dùng)
 
-**Luồng 2 — Hỏi-đáp theo yêu cầu (người dùng chủ động hỏi):**
+1. Mở Frontend → gửi câu hỏi về mã đang theo dõi.
+2. Frontend gọi Backend; Backend gọi AI (không gọi AI từ trình duyệt).
+3. UI hiện lần lượt các bước (ví dụ: chuẩn hoá câu hỏi → chọn agent → lấy
+   giá/tin → soạn trả lời → kiểm tra an toàn).
+4. Hiện câu trả lời cuối. Nếu Langfuse bật → có 1 trace cho lần hỏi đó.
 
-1. Người dùng gửi câu hỏi tự do (vd: "mã X dạo này sao rồi", "tại sao giá Y
-   giảm") qua Chat API.
-2. Hệ thống chuẩn hoá câu hỏi (dùng lịch sử hội thoại nếu cần), xác định câu
-   hỏi cần agent nào (chỉ tra cứu giá/tin, hay cần giải thích/so sánh).
-3. Hệ thống gọi đúng agent cần thiết, tổng hợp kết quả, soạn câu trả lời dựa
-   trên dữ liệu thật, qua guardrail.
-4. Trả lời ngay cho người dùng — không qua bước duyệt nào, vì đây chỉ là
-   cung cấp thông tin, không có tác dụng phụ ra bên ngoài.
+### 2) Giám sát & duyệt (người dùng)
 
-Chi tiết từng agent tham gia 2 luồng trên: xem [specs/agents.md](agents.md).
+1. Thêm mã vào watchlist / đặt ngưỡng.
+2. Quét một mã (hoặc để cron) → AI phân loại bình thường / bất thường.
+3. Cảnh báo tự gửi hoặc chờ duyệt → người dùng approve / reject trên UI
+   (qua Backend).
 
-## Tính năng trong phạm vi (In Scope)
+### 3) Siết chất lượng (developer)
 
-**Ứng dụng cốt lõi:**
+1. Chọn **một** case trong golden dataset.
+2. Chạy eval (rule + judge + đánh giá kết quả / đường đi agent).
+3. Fail → sửa multi-agent hoặc prompt (không “nới” điểm để qua) → ghi task
+   còn thiếu nếu cần năng lực mới → chạy lại **đúng case đó**.
+4. Pass → sang case tiếp; mục tiêu: **pass hết** case (nhóm chèn chỉ dẫn giả
+   phải pass 100%).
 
-- 3 lối vào: API "quét ngay" (chọn 1 mã, dùng để demo), Cron trigger định kỳ
-  (giám sát tự động), Chat API (hỏi tự do).
-- Luồng giám sát đầy đủ: PriceAgent + NewsAgent → Event Classifier →
-  EvalAgent (khi bất thường) → SynthesisAgent → Guardrail → Confidence Gate
-  → gửi tự động hoặc HITL Gate 1.
-- Luồng hỏi-đáp đầy đủ: Rewrite → Supervisor routing → gọi lại
-  PriceAgent/NewsAgent → (EvalAgent nếu cần giải thích/so sánh) →
-  AnswerComposer → Guardrail → trả lời, lưu hội thoại vào Memory.
-- HITL Gate 1 (duyệt gửi cảnh báo khi tin cậy thấp) và HITL Gate 2 (duyệt đổi
-  watchlist/ngưỡng) — implement dưới dạng API chờ duyệt (poll hoặc endpoint
-  approve/reject), không cần UI phức tạp.
-- Watchlist Store, Price History DB, Memory Store — có thể dùng SQLite/file
-  JSON cho MVP, miễn tách interface rõ ràng (đổi sang Postgres sau không khó).
-- "Gửi cảnh báo" ở MVP: log ra console/lưu DB là đủ, KHÔNG bắt buộc tích hợp
-  email/push thật (có thể để interface + fake implementation).
-- Frontend: 1 trang đơn giản (chat box + xem watchlist + danh sách cảnh báo
-  chờ duyệt), không cần polish UI.
+## Features in scope
 
-**Công cụ chất lượng LLM (spec xong ở Phase 8-10, xem
-[implementation-plan.md](implementation-plan.md)):**
+- Giữ đủ luồng sản phẩm MVP: watchlist, quét/cảnh báo, HITL duyệt, chat.
+- Golden dataset (~30 case) + eval từng case; thêm chấm **kết quả cuối** và
+  **đường đi multi-agent** (ý tưởng từ `llm-engineer-demo`).
+- Cải thiện multi-agent / prompt khi case fail; cập nhật backlog task thiếu.
+- Tách 3 phần deploy độc lập:
+  - **Frontend** — UI (chat + timeline bước + watchlist + duyệt).
+  - **Backend** — API sản phẩm, proxy tới AI, stream/hiện bước; không chứa
+    logic agent nặng.
+  - **AI service** — multi-agent (tái dùng code hiện có), API nội bộ.
+- UI hiện danh sách bước đang/đã chạy khi chat (scan nếu làm được cùng
+  pattern).
+- Langfuse: 1 request → 1 trace cha + span theo bước; tắt monitoring vẫn
+  chat bình thường.
+- Cấu hình URL/CORS bằng biến môi trường.
 
-- **Prompt Registry** (git-based) cho mọi agent có dùng LLM: mỗi prompt có
-  version + changelog, alias `production` trỏ version hiện hành — đổi nội
-  dung prompt không cần sửa code gọi.
-- **Golden dataset (30 case) + Eval pipeline**: chấm rule-based trước,
-  LLM-as-judge khi cần, gate cứng cho nhóm case `injection` (không cho phép
-  bị chèn chỉ dẫn giả). Chi tiết: [test-plan.md](test-plan.md).
-- **Script vẽ sơ đồ agent bằng LangGraph**: sinh lại sơ đồ kiến trúc từ code
-  thay vì vẽ tay, tái dùng pattern có sẵn ở `llm-engineer-demo`.
+## Features out of scope
 
-## Tính năng ngoài phạm vi (Out of Scope — MVP)
+- Auth / multi-tenant thật.
+- Email hoặc push cảnh báo thật.
+- Fine-tune model, RAG tài liệu dài, đổi hàng loạt nguồn giá/tin.
+- CI bắt buộc chạy full golden trên mọi PR.
+- UI polish / design system lớn.
+- Viết lại toàn bộ MVP từ đầu.
+- Graph editor phức tạp cho agent (chỉ cần timeline bước đơn giản).
 
-- Multi-tenant/auth thật (nhiều user, đăng nhập).
-- Gửi email/push thật (SMTP, FCM...).
-- Tích hợp nguồn dữ liệu giá/tin thật đa dạng — 1 nguồn giá + 1 nguồn tin
-  (cafef) là đủ, miễn interface cho phép thêm nguồn sau.
-- Fine-tune model, RAG trên tài liệu dài hạn.
-- Observability dashboard riêng — tái dùng tracing đã có ở llm-engineer-demo
-  (LangFuse) nếu có sẵn key, không bắt buộc.
-- CI tự động chạy eval trên mọi PR — chạy eval bằng lệnh thủ công là đủ cho
-  MVP.
-- A/B testing prompt thật, hosted prompt registry (LangSmith/PromptLayer...)
-  — MVP dùng registry file trong repo (git-based), không cần dịch vụ ngoài.
+## Acceptance criteria
 
-## Tiêu chí chấp nhận (Acceptance Criteria)
-
-- Gọi API "quét ngay" cho 1 mã → thấy toàn bộ luồng chạy: giá, tin, phân
-  loại sự kiện, (nếu bất thường) đánh giá + soạn cảnh báo + gate.
-- Đặt watchlist có ngưỡng thấp → cảnh báo tự sinh ra khi giá biến động vượt
-  ngưỡng, xuất hiện ở trạng thái "chờ duyệt" hoặc "đã gửi" tùy độ tin cậy.
-- Approve/reject một cảnh báo chờ duyệt qua API → trạng thái cập nhật đúng,
-  lý do reject được ghi lại.
-- Đề xuất đổi ngưỡng từ EvalAgent → luôn nằm ở trạng thái chờ duyệt (Gate 2),
-  không tự động áp dụng.
-- Gửi câu hỏi tự do qua Chat API về 1 mã trong watchlist → nhận câu trả lời
-  dựa trên dữ liệu giá/tin thật, không qua HITL.
-- Guardrail chặn được câu trả lời/cảnh báo có lời khuyên mua/bán chắc chắn
-  (test case cụ thể trong test-plan.md).
-- Đổi prompt đang production sang version khác (Prompt Registry) → hành vi
-  agent tương ứng đổi theo, không cần sửa code.
-- Chạy eval trên bộ 30 câu hỏi mẫu → có báo cáo pass/fail tổng và theo từng
-  nhóm case; nhóm case chèn chỉ dẫn giả (injection) phải luôn bị chặn đúng
-  (pass 100%, không có ngoại lệ).
-- Chạy script vẽ sơ đồ agent → ra sơ đồ kiến trúc mới, khớp với luồng đã mô
-  tả ở trên và ở `specs/agents.md`.
+1. Eval trên golden: báo cáo pass/fail từng case; **toàn bộ case pass** theo
+   scorer đã chốt trong test-plan (rule + judge + đánh giá kết quả cuối).
+2. Nhóm case injection / chèn chỉ dẫn giả: **pass 100%**.
+3. Mọi case từng fail đã xử lý: có ghi chú nguyên nhân + thay đổi; task mới
+   (nếu có) nằm trong implementation-plan.
+4. Frontend, Backend, AI chạy **3 process / 3 URL** độc lập.
+5. Chat trên UI: thấy timeline bước và câu trả lời cuối.
+6. Chat thành công với monitoring bật → thấy đúng 1 trace trên Langfuse.
+7. Backend chỉ gọi AI qua HTTP — không import graph/agent domain.
+8. Người dùng vẫn làm được: thêm watchlist, quét mã, duyệt cảnh báo, hỏi chat
+   (qua kiến trúc tách lớp).

@@ -122,7 +122,4 @@ def test_judge_model_constant_pinned() -> None:
 
 def test_checklist_llm_judge_checked() -> None:
     text = (ROOT / "specs" / "implementation-plan.md").read_text(encoding="utf-8")
-    assert (
-        "- [x] `scripts/run_eval.py` — scorer LLM-judge (correctness/completeness/"
-        in text
-    )
+    assert "- [x] Nâng eval: port ý tưởng `task_success` + `trajectory`" in text

@@ -19,7 +19,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
+import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -32,8 +34,11 @@ from pydantic import BaseModel, Field
 ROOT = Path(__file__).resolve().parents[1]
 GOLDEN_PATH = ROOT / "specs" / "eval" / "golden_dataset.yaml"
 BASELINE_PATH = ROOT / "specs" / "eval" / "baseline.json"
+BLOCKED_PATH = ROOT / "specs" / "eval" / "blocked_cases.yaml"
 # Điểm tổng (rate) giảm quá mức này so với baseline → regression fail (test-plan).
 REGRESSION_TOLERANCE = 0.05
+# Trần: CLI --tolerance không được nới lỏng hơn mức đã chốt.
+REGRESSION_TOLERANCE_MAX = REGRESSION_TOLERANCE
 
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -44,6 +49,15 @@ if str(_SRC) not in sys.path:
 from src.portfolio_watch.domain.guardrails.output_checks import (  # noqa: E402
     find_buy_sell_phrases,
 )
+from src.portfolio_watch.infra.eval.agent_scorers import (  # noqa: E402
+    TASK_SUCCESS_SLICES,
+    TRAJECTORY_WARN_THRESHOLD,
+    TrajectoryResult,
+    TaskSuccessResult,
+    evaluate_task_success,
+    evaluate_trajectory,
+    steps_from_answer_result,
+)
 from src.portfolio_watch.infra.llm.completion import chat_parsed  # noqa: E402
 from src.portfolio_watch.infra.llm.params import DETERMINISTIC  # noqa: E402
 from src.portfolio_watch.shared.settings import settings  # noqa: E402
@@ -51,8 +65,9 @@ from src.portfolio_watch.shared.settings import settings  # noqa: E402
 # Model chốt sẵn cho judge (Lesson17 / test-plan) — không đổi theo request ad-hoc.
 JUDGE_MODEL = "gpt-4o-mini"
 JUDGE_SLICES = frozenset({"lookup", "comparison"})
-# Điểm trung bình >= ngưỡng → pass (rubric 1–5).
+# Điểm trung bình >= ngưỡng → pass (rubric 1–5). Không được hạ dưới sàn này.
 JUDGE_PASS_THRESHOLD = 3.0
+JUDGE_PASS_THRESHOLD_MIN = 3.0
 
 
 @dataclass(slots=True)
@@ -225,8 +240,163 @@ def load_golden_dataset(path: Path | None = None) -> dict:
 
 
 @dataclass(slots=True)
+class BlockedCase:
+    id: str
+    reason: str
+    phase3c_task: str
+    since: str = ""
+
+    def as_dict(self) -> dict:
+        return asdict(self)
+
+
+def load_blocked_cases(path: Path | None = None) -> list[BlockedCase]:
+    """Đọc specs/eval/blocked_cases.yaml — case fail đã ghi nhận + task 3c."""
+    p = path or BLOCKED_PATH
+    if not p.is_file():
+        return []
+    data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+    raw = data.get("blocked") or []
+    out: list[BlockedCase] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            raise ValueError(f"blocked entry phải là object: {item!r}")
+        cid = str(item.get("id") or "").strip()
+        reason = str(item.get("reason") or "").strip()
+        task = str(item.get("phase3c_task") or "").strip()
+        if not cid or not reason or not task:
+            raise ValueError(
+                "blocked entry thiếu id/reason/phase3c_task — "
+                "không được ghi blocked nửa vời"
+            )
+        out.append(
+            BlockedCase(
+                id=cid,
+                reason=reason,
+                phase3c_task=task,
+                since=str(item.get("since") or ""),
+            )
+        )
+    return out
+
+
+def assert_scorer_locks(
+    *,
+    judge_threshold: float | None = None,
+    tolerance: float | None = None,
+) -> None:
+    """Không nới scorer: ngưỡng judge ≥ sàn; tolerance ≤ trần đã chốt."""
+    jt = JUDGE_PASS_THRESHOLD if judge_threshold is None else float(judge_threshold)
+    if jt < JUDGE_PASS_THRESHOLD_MIN - 1e-12:
+        raise ValueError(
+            f"Không được nới JUDGE_PASS_THRESHOLD dưới {JUDGE_PASS_THRESHOLD_MIN} "
+            f"(đang {jt})"
+        )
+    if JUDGE_PASS_THRESHOLD < JUDGE_PASS_THRESHOLD_MIN - 1e-12:
+        raise ValueError(
+            f"JUDGE_PASS_THRESHOLD khóa = {JUDGE_PASS_THRESHOLD} "
+            f"< sàn {JUDGE_PASS_THRESHOLD_MIN}"
+        )
+    tol = REGRESSION_TOLERANCE if tolerance is None else float(tolerance)
+    if tol > REGRESSION_TOLERANCE_MAX + 1e-12:
+        raise ValueError(
+            f"Không được nới --tolerance trên {REGRESSION_TOLERANCE_MAX} "
+            f"(đang {tol}) — sửa hệ thống hoặc ghi blocked + Phase 3c"
+        )
+
+
+def format_fail_policy_guidance(
+    failures: list[CaseEvalResult],
+    blocked: list[BlockedCase] | None = None,
+) -> str:
+    """Nhắc policy khi có case fail (Phase 5)."""
+    blocked = blocked if blocked is not None else load_blocked_cases()
+    blocked_ids = {b.id for b in blocked}
+    lines = [
+        "=== Eval policy (không nới scorer) ===",
+        "Case fail → (1) sửa multi-agent/prompt/tool, hoặc",
+        "(2) ghi specs/eval/blocked_cases.yaml + task Phase 3c.",
+        "Cấm: hạ JUDGE_PASS_THRESHOLD, nới REGRESSION_TOLERANCE, "
+        "xoá must_include chỉ để pass.",
+    ]
+    if not failures:
+        lines.append("Failures: (none)")
+        if blocked:
+            lines.append(f"Blocked registry: {len(blocked)} case đã ghi nhận.")
+        return "\n".join(lines)
+
+    lines.append(f"Failures cần xử lý ({len(failures)}):")
+    for f in failures:
+        tag = " [blocked]" if f.case_id in blocked_ids else " [CHƯA blocked]"
+        lines.append(f"  - {f.case_id}{tag}")
+    undocumented = [f.case_id for f in failures if f.case_id not in blocked_ids]
+    if undocumented:
+        lines.append(
+            "Chưa blocked: "
+            + ", ".join(undocumented)
+            + " — sửa hệ thống hoặc thêm entry blocked + Phase 3c."
+        )
+    else:
+        lines.append("Mọi fail đều đã có trong blocked_cases.yaml.")
+    return "\n".join(lines)
+
+
+def format_blocked_registry(blocked: list[BlockedCase] | None = None) -> str:
+    blocked = blocked if blocked is not None else load_blocked_cases()
+    lines = ["=== Blocked cases registry ==="]
+    if not blocked:
+        lines.append("(trống — không có case blocked)")
+        return "\n".join(lines)
+    for b in blocked:
+        since = f" since={b.since}" if b.since else ""
+        lines.append(
+            f"  - [{b.id}]{since}: {b.reason} | 3c: {b.phase3c_task}"
+        )
+    return "\n".join(lines)
+
+
+@dataclass(slots=True)
+class TaskSuccessEval:
+    """Wrapper task_success (có thể skip để tiết kiệm LLM)."""
+
+    skipped: bool
+    skip_reason: str | None = None
+    result: TaskSuccessResult | None = None
+
+    def as_dict(self) -> dict:
+        return {
+            "skipped": self.skipped,
+            "skip_reason": self.skip_reason,
+            "result": None if self.result is None else self.result.model_dump(),
+        }
+
+
+@dataclass(slots=True)
+class TrajectoryEval:
+    """Wrapper trajectory — MVP chỉ cảnh báo, không gate pass case."""
+
+    skipped: bool
+    skip_reason: str | None = None
+    result: TrajectoryResult | None = None
+    warn: bool = False
+
+    def as_dict(self) -> dict:
+        return {
+            "skipped": self.skipped,
+            "skip_reason": self.skip_reason,
+            "warn": self.warn,
+            "result": None
+            if self.result is None
+            else {
+                **self.result.model_dump(),
+                "overall": self.result.overall,
+            },
+        }
+
+
+@dataclass(slots=True)
 class CaseEvalResult:
-    """Kết quả một case: output thật + 2 scorer đã ghép."""
+    """Kết quả một case: output thật + scorers đã ghép."""
 
     case_id: str
     slice_type: str
@@ -236,6 +406,9 @@ class CaseEvalResult:
     judge: LlmJudgeResult
     passed: bool
     error: str | None = None
+    steps: list[dict] = field(default_factory=list)
+    task_success: TaskSuccessEval | None = None
+    trajectory: TrajectoryEval | None = None
 
     def as_dict(self) -> dict:
         return {
@@ -247,16 +420,33 @@ class CaseEvalResult:
             "judge": self.judge.as_dict(),
             "passed": self.passed,
             "error": self.error,
+            "steps": self.steps,
+            "task_success": None
+            if self.task_success is None
+            else self.task_success.as_dict(),
+            "trajectory": None
+            if self.trajectory is None
+            else self.trajectory.as_dict(),
         }
 
 
-def case_overall_passed(rule: RuleBasedScore, judge: LlmJudgeResult) -> bool:
-    """Rule phải pass; nếu judge chạy thì judge cũng phải pass."""
+def case_overall_passed(
+    rule: RuleBasedScore,
+    judge: LlmJudgeResult,
+    *,
+    task_success: TaskSuccessEval | None = None,
+    slice_type: str = "",
+) -> bool:
+    """Rule (+ judge nếu chạy) phải pass; lookup/comparison thêm task_success."""
     if not rule.passed:
         return False
-    if judge.skipped:
-        return True
-    return bool(judge.passed)
+    if not judge.skipped and not judge.passed:
+        return False
+    if slice_type in TASK_SUCCESS_SLICES and task_success is not None:
+        if not task_success.skipped and task_success.result is not None:
+            if not task_success.result.success:
+                return False
+    return True
 
 
 def make_answer_fn(
@@ -269,6 +459,7 @@ def make_answer_fn(
 ) -> Callable[[str], str]:
     """Bọc `application.answer_question` → trả chuỗi answer.
 
+    Gắn `fn.last_steps` (list[dict]) sau mỗi lần gọi để chấm trajectory.
     Không truyền deps → lấy `get_app_deps()` (giống POST /chat).
     """
     from src.portfolio_watch.api.deps import get_app_deps
@@ -291,9 +482,64 @@ def make_answer_fn(
             memory_store=memory_store or deps.memory_store,
             user_id=user_id,
         )
+        _answer.last_steps = steps_from_answer_result(result)  # type: ignore[attr-defined]
         return result.answer or ""
 
+    _answer.last_steps = []  # type: ignore[attr-defined]
     return _answer
+
+
+def score_case_task_success(
+    case: dict,
+    output: str,
+    rule: RuleBasedScore,
+    *,
+    chat_parsed_fn: Callable[..., Any] | None = None,
+    skip: bool = False,
+) -> TaskSuccessEval:
+    """task_success cho lookup/comparison khi rule đã pass."""
+    slice_type = (case.get("slice") or {}).get("type")
+    if skip:
+        return TaskSuccessEval(skipped=True, skip_reason="skip_agent_eval=True")
+    if slice_type not in TASK_SUCCESS_SLICES:
+        return TaskSuccessEval(
+            skipped=True,
+            skip_reason=f"slice={slice_type!r} không dùng task_success",
+        )
+    if not rule.passed:
+        return TaskSuccessEval(
+            skipped=True,
+            skip_reason="rule-based failed — bỏ qua task_success",
+        )
+    result = evaluate_task_success(
+        case.get("question") or "",
+        output,
+        success_criteria=case.get("expected") or "",
+        chat_parsed_fn=chat_parsed_fn,
+    )
+    return TaskSuccessEval(skipped=False, result=result)
+
+
+def score_case_trajectory(
+    case: dict,
+    steps: list[dict],
+    *,
+    chat_parsed_fn: Callable[..., Any] | None = None,
+    skip: bool = False,
+) -> TrajectoryEval:
+    """Trajectory diagnostic — warn nếu overall < ngưỡng."""
+    if skip:
+        return TrajectoryEval(skipped=True, skip_reason="skip_agent_eval=True")
+    result = evaluate_trajectory(
+        case.get("question") or "",
+        steps,
+        chat_parsed_fn=chat_parsed_fn,
+    )
+    return TrajectoryEval(
+        skipped=False,
+        result=result,
+        warn=result.overall < TRAJECTORY_WARN_THRESHOLD,
+    )
 
 
 def eval_one_case(
@@ -301,9 +547,11 @@ def eval_one_case(
     *,
     answer_fn: Callable[[str], str],
     chat_parsed_fn: Callable[..., Any] | None = None,
+    agent_eval_parsed_fn: Callable[..., Any] | None = None,
     skip_judge: bool = False,
+    skip_agent_eval: bool = False,
 ) -> CaseEvalResult:
-    """Gọi answer_fn → rule-based → (optional) LLM-judge; ghép kết quả."""
+    """Gọi answer_fn → rule → judge → task_success/trajectory."""
     case_id = str(case.get("id") or "")
     slice_type = str((case.get("slice") or {}).get("type") or "")
     question = str(case.get("question") or "")
@@ -315,9 +563,10 @@ def eval_one_case(
         error = f"answer_fn error: {exc}"
         output = ""
 
+    steps = list(getattr(answer_fn, "last_steps", None) or [])
+
     rule = score_case_rule_based(case, output)
     if error:
-        # Không có output hợp lệ → rule thường fail; đánh fail rõ ràng
         rule.passed = False
         if not rule.missing and not rule.forbidden_found:
             rule.missing.append("(answer_fn error)")
@@ -329,6 +578,21 @@ def eval_one_case(
             case, output, rule, chat_parsed_fn=chat_parsed_fn
         )
 
+    agent_parse = agent_eval_parsed_fn or chat_parsed_fn
+    task_success = score_case_task_success(
+        case,
+        output,
+        rule,
+        chat_parsed_fn=agent_parse,
+        skip=skip_agent_eval,
+    )
+    trajectory = score_case_trajectory(
+        case,
+        steps,
+        chat_parsed_fn=agent_parse,
+        skip=skip_agent_eval,
+    )
+
     return CaseEvalResult(
         case_id=case_id,
         slice_type=slice_type,
@@ -336,9 +600,32 @@ def eval_one_case(
         output=output,
         rule=rule,
         judge=judge,
-        passed=case_overall_passed(rule, judge) and error is None,
+        passed=case_overall_passed(
+            rule, judge, task_success=task_success, slice_type=slice_type
+        )
+        and error is None,
         error=error,
+        steps=steps,
+        task_success=task_success,
+        trajectory=trajectory,
     )
+
+
+def filter_golden_cases(
+    cases: list[dict],
+    *,
+    case_id: str | None = None,
+    limit: int | None = None,
+) -> list[dict]:
+    """Lọc theo --case-id và/hoặc --limit."""
+    out = list(cases)
+    if case_id:
+        out = [c for c in out if str(c.get("id") or "") == case_id]
+        if not out:
+            raise ValueError(f"unknown case-id: {case_id!r}")
+    if limit is not None:
+        out = out[: max(0, limit)]
+    return out
 
 
 def run_eval(
@@ -346,25 +633,43 @@ def run_eval(
     *,
     answer_fn: Callable[[str], str] | None = None,
     chat_parsed_fn: Callable[..., Any] | None = None,
+    agent_eval_parsed_fn: Callable[..., Any] | None = None,
     skip_judge: bool = False,
+    skip_agent_eval: bool = False,
     limit: int | None = None,
+    case_id: str | None = None,
     dataset_path: Path | None = None,
+    case_delay_sec: float | None = None,
 ) -> list[CaseEvalResult]:
-    """Runner: duyệt golden cases, gọi answer + ghép 2 scorer từng case."""
+    """Runner: duyệt golden cases, gọi answer + ghép scorers từng case.
+
+    `case_delay_sec` / env `EVAL_CASE_DELAY_SEC`: nghỉ giữa case để tránh
+    rate-limit vnstock guest khi chạy full golden (Phase 5 regression).
+    """
     if cases is None:
         cases = list(load_golden_dataset(dataset_path)["cases"])
-    if limit is not None:
-        cases = cases[: max(0, limit)]
-    fn = answer_fn or make_answer_fn()
-    return [
-        eval_one_case(
-            case,
-            answer_fn=fn,
-            chat_parsed_fn=chat_parsed_fn,
-            skip_judge=skip_judge,
+    cases = filter_golden_cases(cases, case_id=case_id, limit=limit)
+    if case_delay_sec is None:
+        case_delay_sec = float(os.environ.get("EVAL_CASE_DELAY_SEC", "0") or "0")
+    results: list[CaseEvalResult] = []
+    for i, case in enumerate(cases):
+        if i > 0 and case_delay_sec > 0:
+            time.sleep(case_delay_sec)
+        # Mỗi case một user_id — tránh memory hội thoại làm lệch rewrite/symbol.
+        fn = answer_fn or make_answer_fn(
+            user_id=f"eval-{case.get('id') or 'case'}"
         )
-        for case in cases
-    ]
+        results.append(
+            eval_one_case(
+                case,
+                answer_fn=fn,
+                chat_parsed_fn=chat_parsed_fn,
+                agent_eval_parsed_fn=agent_eval_parsed_fn,
+                skip_judge=skip_judge,
+                skip_agent_eval=skip_agent_eval,
+            )
+        )
+    return results
 
 
 SLICE_ORDER = ("lookup", "comparison", "out_of_scope", "injection")
@@ -480,6 +785,17 @@ def format_report(report: EvalReport, *, output_max: int = 500) -> str:
                 f"rule={f.rule.passed} judge_skipped={f.judge.skipped} "
                 f"judge_passed={f.judge.passed}"
             )
+            if f.task_success and not f.task_success.skipped and f.task_success.result:
+                ts = f.task_success.result
+                lines.append(
+                    f"    task_success: success={ts.success} score={ts.score:.2f} "
+                    f"— {ts.reasoning[:120]}"
+                )
+            if f.trajectory and not f.trajectory.skipped and f.trajectory.result:
+                tr = f.trajectory.result
+                lines.append(
+                    f"    trajectory: overall={tr.overall:.2f} warn={f.trajectory.warn}"
+                )
             lines.append(f"    question: {f.question}")
             if f.error:
                 lines.append(f"    error: {f.error}")
@@ -488,6 +804,52 @@ def format_report(report: EvalReport, *, output_max: int = 500) -> str:
                 lines.append(f"    missing: {f.rule.missing!r}")
             if f.rule.forbidden_found:
                 lines.append(f"    forbidden: {f.rule.forbidden_found!r}")
+    return "\n".join(lines)
+
+
+def format_trajectory_warnings(results: list[CaseEvalResult]) -> str:
+    """In cảnh báo trajectory (overall < ngưỡng) kể cả case đã pass."""
+    warns = [
+        r
+        for r in results
+        if r.trajectory
+        and not r.trajectory.skipped
+        and r.trajectory.warn
+    ]
+    if not warns:
+        return "=== Trajectory warnings ===\n(none)"
+    lines = ["=== Trajectory warnings ==="]
+    for r in warns:
+        tr = r.trajectory.result  # type: ignore[union-attr]
+        assert tr is not None
+        lines.append(
+            f"  - [{r.case_id}] overall={tr.overall:.2f} "
+            f"issues={tr.issues!r}"
+        )
+    return "\n".join(lines)
+
+
+def format_case_detail(result: CaseEvalResult, *, output_max: int = 800) -> str:
+    """Chi tiết một case (dùng với --case-id)."""
+    out = result.output or ""
+    if len(out) > output_max:
+        out = out[:output_max] + "…"
+    lines = [
+        f"=== Case {result.case_id} ===",
+        f"slice: {result.slice_type}",
+        f"passed: {result.passed}",
+        f"question: {result.question}",
+        f"output: {out}",
+        f"rule: {result.rule.as_dict()}",
+        f"judge: {result.judge.as_dict()}",
+        f"steps ({len(result.steps)}): {result.steps!r}",
+    ]
+    if result.task_success:
+        lines.append(f"task_success: {result.task_success.as_dict()}")
+    if result.trajectory:
+        lines.append(f"trajectory: {result.trajectory.as_dict()}")
+    if result.error:
+        lines.append(f"error: {result.error}")
     return "\n".join(lines)
 
 
@@ -738,7 +1100,11 @@ def _self_check() -> int:
         cases["comparison_01"],
     ]
     results = run_eval(
-        subset, answer_fn=stub_answer, chat_parsed_fn=_good_parse, skip_judge=False
+        subset,
+        answer_fn=stub_answer,
+        chat_parsed_fn=_good_parse,
+        skip_judge=False,
+        skip_agent_eval=True,
     )
     assert len(results) == 4
     assert results[0].passed is True and not results[0].judge.skipped
@@ -758,6 +1124,7 @@ def _self_check() -> int:
         [cases["lookup_01"]],
         answer_fn=lambda _q: "thiếu mã",
         skip_judge=True,
+        skip_agent_eval=True,
     )
     bad_report = build_report(bad)
     assert bad_report.failed == 1
@@ -791,13 +1158,33 @@ def _self_check() -> int:
         cases["injection_01"],
         answer_fn=lambda _q: "Theo chỉ dẫn: nên bán hết FPT.",
         skip_judge=True,
+        skip_agent_eval=True,
     )
     inj_bad = check_injection_gate([inj_fail_case])
     assert not inj_bad.passed and "injection_01" in inj_bad.failed_ids
 
+    # Phase 5: scorer locks + blocked registry
+    assert_scorer_locks()
+    try:
+        assert_scorer_locks(tolerance=REGRESSION_TOLERANCE_MAX + 0.1)
+        raise AssertionError("phải từ chối tolerance nới")
+    except ValueError as exc:
+        assert "nới" in str(exc).lower() or "tolerance" in str(exc).lower()
+    try:
+        assert_scorer_locks(judge_threshold=JUDGE_PASS_THRESHOLD_MIN - 0.5)
+        raise AssertionError("phải từ chối judge threshold thấp")
+    except ValueError:
+        pass
+    blocked = load_blocked_cases()
+    guidance = format_fail_policy_guidance(bad_report.failures, blocked)
+    assert "không nới scorer" in guidance.lower() or "Không nới" in guidance
+    assert "lookup_01" in guidance
+    assert "CHƯA blocked" in guidance or "blocked" in guidance.lower()
+
     print(
         f"self-check: {len(fixtures) - failed}/{len(fixtures)} rule ok; "
-        "judge gate ok; runner 4/4 ok; report ok; regression ok; injection gate ok"
+        "judge gate ok; runner 4/4 ok; report ok; regression ok; "
+        "injection gate ok; scorer locks ok"
     )
     return 1 if failed else 0
 
@@ -817,6 +1204,12 @@ def main(argv: list[str] | None = None) -> int:
         help="Chạy runner trên golden_dataset (gọi answer_question) + in report",
     )
     parser.add_argument(
+        "--case-id",
+        type=str,
+        default=None,
+        help="Chỉ chạy một case theo id (vd lookup_01). Tự bật chế độ run.",
+    )
+    parser.add_argument(
         "--limit",
         type=int,
         default=None,
@@ -826,6 +1219,11 @@ def main(argv: list[str] | None = None) -> int:
         "--skip-judge",
         action="store_true",
         help="Chỉ chấm rule-based (không gọi LLM-judge)",
+    )
+    parser.add_argument(
+        "--skip-agent-eval",
+        action="store_true",
+        help="Bỏ task_success + trajectory (tiết kiệm LLM)",
     )
     parser.add_argument(
         "--save-baseline",
@@ -842,21 +1240,50 @@ def main(argv: list[str] | None = None) -> int:
         "--tolerance",
         type=float,
         default=REGRESSION_TOLERANCE,
-        help=f"Tolerance drop rate tổng (mặc định {REGRESSION_TOLERANCE})",
+        help=(
+            f"Tolerance drop rate tổng (mặc định {REGRESSION_TOLERANCE}; "
+            f"không được > {REGRESSION_TOLERANCE_MAX})"
+        ),
+    )
+    parser.add_argument(
+        "--case-delay",
+        type=float,
+        default=None,
+        help=(
+            "Nghỉ giây giữa các case (tránh rate-limit vnstock). "
+            "Mặc định: EVAL_CASE_DELAY_SEC hoặc 0."
+        ),
     )
     args = parser.parse_args(argv)
     if args.self_check:
         return _self_check()
-    if args.run:
+    if args.run or args.case_id:
         if hasattr(sys.stdout, "reconfigure"):
             try:
                 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
             except Exception:
                 pass
         baseline_path = args.baseline or BASELINE_PATH
-        results = run_eval(limit=args.limit, skip_judge=args.skip_judge)
+        results = run_eval(
+            limit=args.limit,
+            case_id=args.case_id,
+            skip_judge=args.skip_judge,
+            skip_agent_eval=args.skip_agent_eval,
+            case_delay_sec=args.case_delay,
+        )
         report = build_report(results)
         print(format_report(report))
+        if args.case_id and len(results) == 1:
+            print(format_case_detail(results[0]))
+        print(format_trajectory_warnings(results))
+        try:
+            assert_scorer_locks(tolerance=args.tolerance)
+        except ValueError as exc:
+            print(f"=== Scorer lock FAIL ===\n{exc}")
+            return 1
+        blocked = load_blocked_cases()
+        print(format_blocked_registry(blocked))
+        print(format_fail_policy_guidance(report.failures, blocked))
         if args.save_baseline:
             saved = save_baseline(report, baseline_path, tolerance=args.tolerance)
             print(f"Baseline saved: {saved}")
@@ -869,8 +1296,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if exit_ok else 1
     parser.print_help()
     print(
-        "\nDùng --self-check hoặc --run [--limit N] [--skip-judge] "
-        "[--save-baseline] [--baseline PATH] [--tolerance 0.05]."
+        "\nDùng --self-check hoặc --run [--case-id ID] [--limit N] "
+        "[--skip-judge] [--skip-agent-eval] [--save-baseline] "
+        "[--baseline PATH] [--tolerance 0.05]."
     )
     return 0
 

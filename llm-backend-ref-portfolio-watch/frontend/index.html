@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Portfolio Watch — Frontend</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main>
+    <header class="app-header">
+      <h1>Portfolio Watch</h1>
+      <p class="muted">Frontend tách riêng — chat, timeline bước, watchlist, duyệt.</p>
+      <p class="config-line">
+        Backend:
+        <code id="backend-url-display">…</code>
+      </p>
+      <p id="boot-status" class="boot">Đang tải…</p>
+    </header>
+
+    <!-- 1. Chat -->
+    <section id="chat" aria-labelledby="chat-heading">
+      <h2 id="chat-heading">Chat</h2>
+      <div id="chat-messages" class="panel">
+        <p class="placeholder"><em>(Chưa có hội thoại)</em></p>
+      </div>
+      <form id="chat-form" class="row" onsubmit="return false;">
+        <input
+          id="chat-input"
+          type="text"
+          placeholder="Hỏi về mã trong watchlist…"
+          autocomplete="off"
+        />
+        <button type="submit" id="chat-send">Gửi</button>
+      </form>
+    </section>
+
+    <!-- 2. Timeline bước (từ Backend steps[]) -->
+    <section id="timeline" aria-labelledby="timeline-heading">
+      <h2 id="timeline-heading">Timeline bước</h2>
+      <p class="muted tiny">
+        Timeline từ Backend: <code>steps[]</code> (chat/scan) và
+        <code>GET /runs/&#123;id&#125;/steps</code> — không gọi AI từ trình duyệt.
+      </p>
+      <ol id="timeline-steps" class="panel timeline-list"></ol>
+    </section>
+
+    <!-- 3. Watchlist -->
+    <section id="watchlist" aria-labelledby="watchlist-heading">
+      <h2 id="watchlist-heading">Watchlist</h2>
+      <form id="watchlist-form" class="row" onsubmit="return false;">
+        <input id="watchlist-symbol" type="text" placeholder="Mã (vd. FPT)" maxlength="3" />
+        <input id="watchlist-threshold" type="number" step="0.1" min="0.1" placeholder="Ngưỡng %" />
+        <button type="submit" id="watchlist-add">Thêm</button>
+      </form>
+      <form id="scan-form" class="row" onsubmit="return false;">
+        <input id="scan-symbol" type="text" placeholder="Quét mã…" maxlength="3" />
+        <button type="submit" id="scan-send">Quét</button>
+      </form>
+      <table class="panel-table">
+        <thead>
+          <tr>
+            <th>Mã</th>
+            <th>Ngưỡng (%)</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="watchlist-body">
+          <tr>
+            <td colspan="3" class="placeholder"><em>(Chưa có mã)</em></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- 4. Approvals (HITL) -->
+    <section id="approvals" aria-labelledby="approvals-heading">
+      <h2 id="approvals-heading">Cảnh báo chờ duyệt</h2>
+      <ul id="approvals-list" class="panel">
+        <li class="placeholder"><em>(Không có cảnh báo chờ duyệt)</em></li>
+      </ul>
+    </section>
+  </main>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from typing import Any
 
 from src.portfolio_watch.domain.agents.event_classifier import (
     EventClassifierBrain,
@@ -45,6 +46,7 @@ from src.portfolio_watch.domain.ports import (
     PriceSource,
     WatchlistStore,
 )
+from src.portfolio_watch.infra.monitoring.tracing import agent_span, trace_request
 from src.portfolio_watch.shared.logging import get_logger
 
 # Confidence Gate: tin cậy cao VÀ |change_pct| khớp ngưỡng user
@@ -140,6 +142,7 @@ def scan_symbol(
     watchlist_store: WatchlistStore | None = None,
     user_id: str = "default",
     threshold_pct: float | None = None,
+    request_id: str | None = None,
     news_brain: NewsAgentBrain | None = None,
     classifier_brain: EventClassifierBrain | None = None,
     eval_brain: EvalAgentBrain | None = None,
@@ -167,99 +170,144 @@ def scan_symbol(
 
     thr = _resolve_threshold(sym, user_id, threshold_pct, watchlist_store)
     brain_news = news_brain or default_news_brain()
+    rid = (request_id or "").strip() or None
+    turn = rid or str(uuid.uuid4())
 
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        fut_price = pool.submit(run_price_agent, sym, price_source)
-        fut_news = pool.submit(
-            run_news_agent,
-            sym,
-            news_source,
-            brain_news,
-            days=news_days,
-        )
-        price = fut_price.result()
-        news = fut_news.result()
+    meta: dict[str, Any] = {
+        "turn": turn,
+        "user_id": user_id,
+        "kind": "scan",
+        "symbol": sym,
+    }
+    if rid:
+        meta["request_id"] = rid
+    with trace_request(
+        "scan",
+        sym,
+        metadata=meta,
+    ) as root:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            fut_price = pool.submit(run_price_agent, sym, price_source)
+            fut_news = pool.submit(
+                run_news_agent,
+                sym,
+                news_source,
+                brain_news,
+                days=news_days,
+            )
+            price = fut_price.result()
+            news = fut_news.result()
 
-    routing = classify_event(
-        price, news, threshold_pct=thr, brain=classifier_brain
-    )
-    result = ScanSymbolResult(
-        symbol=sym,
-        price=price,
-        news=news,
-        routing=routing,
-        threshold_pct=thr,
-    )
-
-    if not _is_abnormal(routing.route):
-        _logger.info(
-            "scan %s NORMAL — %s", sym, routing.reason or "không escalate"
-        )
-        return result
-
-    try:
-        eval_result: EvalAgentResult = run_eval_agent(
-            price, news, history_store, brain=eval_brain
-        )
-        severity = eval_result.severity
-        result.severity = severity
-
-        if _has_gate2_proposal(severity):
-            gate2_event = {
-                "kind": "pending_approval",
-                "gate": "gate2",
-                "proposal_id": str(uuid.uuid4()),
-                "symbol": sym,
-                "status": AlertStatus.PENDING_APPROVAL.value,
-                "proposed_threshold_pct": severity.proposed_threshold_pct,
-                "proposed_related_symbols": list(
-                    severity.proposed_related_symbols
-                ),
-                "severity": severity.model_dump(mode="json"),
+        with agent_span(turn, "price_agent", input=sym) as box:
+            box["output"] = {
+                "close": price.latest_close,
+                "change_pct": price.change_pct,
+                "error": price.error,
             }
-            memory_store.append_alert_event(user_id, gate2_event)
-            result.gate2_pending = True
-            result.pending_events.append(gate2_event)
 
-        synthesis: SynthesisResult = run_synthesis_agent(
-            sym,
-            severity,
-            memory_store,
-            user_id=user_id,
-            composer=alert_composer,
+        with agent_span(turn, "news_agent", input=sym) as box:
+            box["output"] = {
+                "items": len(news.items or []),
+                "error": news.error,
+            }
+
+        with agent_span(turn, "event_classifier", input=sym) as box:
+            routing = classify_event(
+                price, news, threshold_pct=thr, brain=classifier_brain
+            )
+            box["output"] = {
+                "route": str(getattr(routing.route, "value", routing.route)),
+                "reason": routing.reason,
+            }
+
+        result = ScanSymbolResult(
+            symbol=sym,
+            price=price,
+            news=news,
+            routing=routing,
+            threshold_pct=thr,
         )
-        alert = synthesis.alert
-        if not alert.id:
-            alert.id = str(uuid.uuid4())
-        alert.metadata = {**alert.metadata, "user_id": user_id}
-        result.alert = alert
 
-        if should_auto_send(severity, price, thr):
-            try:
-                notifier.send(alert)
-                if alert.status != AlertStatus.SENT:
-                    alert.status = AlertStatus.SENT
-                result.gate1_action = "sent"
-                _logger.info("scan %s Gate1 auto-send id=%s", sym, alert.id)
-            except Exception as exc:  # noqa: BLE001 — không crash; về Gate 1
+        if not _is_abnormal(routing.route):
+            _logger.info(
+                "scan %s NORMAL — %s", sym, routing.reason or "không escalate"
+            )
+            root["output"] = {"route": "normal", "symbol": sym}
+            return result
+
+        try:
+            with agent_span(turn, "eval_agent", input=sym) as box:
+                eval_result: EvalAgentResult = run_eval_agent(
+                    price, news, history_store, brain=eval_brain
+                )
+                severity = eval_result.severity
+                result.severity = severity
+                box["output"] = str(severity)
+
+            if _has_gate2_proposal(severity):
+                gate2_event = {
+                    "kind": "pending_approval",
+                    "gate": "gate2",
+                    "proposal_id": str(uuid.uuid4()),
+                    "symbol": sym,
+                    "status": AlertStatus.PENDING_APPROVAL.value,
+                    "proposed_threshold_pct": severity.proposed_threshold_pct,
+                    "proposed_related_symbols": list(
+                        severity.proposed_related_symbols
+                    ),
+                    "severity": severity.model_dump(mode="json"),
+                }
+                memory_store.append_alert_event(user_id, gate2_event)
+                result.gate2_pending = True
+                result.pending_events.append(gate2_event)
+
+            with agent_span(turn, "synthesis_agent", input=sym) as box:
+                synthesis: SynthesisResult = run_synthesis_agent(
+                    sym,
+                    severity,
+                    memory_store,
+                    user_id=user_id,
+                    composer=alert_composer,
+                )
+                alert = synthesis.alert
+                if not alert.id:
+                    alert.id = str(uuid.uuid4())
+                alert.metadata = {**alert.metadata, "user_id": user_id}
+                result.alert = alert
+                box["output"] = {"alert_id": alert.id, "title": alert.title}
+
+            if should_auto_send(severity, price, thr):
+                try:
+                    notifier.send(alert)
+                    if alert.status != AlertStatus.SENT:
+                        alert.status = AlertStatus.SENT
+                    result.gate1_action = "sent"
+                    _logger.info("scan %s Gate1 auto-send id=%s", sym, alert.id)
+                except Exception as exc:  # noqa: BLE001 — không crash; về Gate 1
+                    gate1_event = _append_gate1_pending(
+                        memory_store, user_id, alert, sym
+                    )
+                    result.gate1_action = "pending_approval"
+                    result.pending_events.append(gate1_event)
+                    result.error = f"gửi cảnh báo lỗi, chuyển chờ duyệt: {exc}"
+                    _logger.warning(
+                        "scan %s auto-send failed → Gate1 pending: %s", sym, exc
+                    )
+            else:
                 gate1_event = _append_gate1_pending(
                     memory_store, user_id, alert, sym
                 )
                 result.gate1_action = "pending_approval"
                 result.pending_events.append(gate1_event)
-                result.error = f"gửi cảnh báo lỗi, chuyển chờ duyệt: {exc}"
-                _logger.warning(
-                    "scan %s auto-send failed → Gate1 pending: %s", sym, exc
-                )
-        else:
-            gate1_event = _append_gate1_pending(
-                memory_store, user_id, alert, sym
-            )
-            result.gate1_action = "pending_approval"
-            result.pending_events.append(gate1_event)
-            _logger.info("scan %s Gate1 pending id=%s", sym, alert.id)
-    except Exception as exc:  # noqa: BLE001
-        result.error = f"scan lỗi: {exc}"
-        _logger.exception("scan %s failed: %s", sym, exc)
+                _logger.info("scan %s Gate1 pending id=%s", sym, alert.id)
+        except Exception as exc:  # noqa: BLE001
+            result.error = f"scan lỗi: {exc}"
+            _logger.exception("scan %s failed: %s", sym, exc)
 
-    return result
+        root["output"] = {
+            "symbol": sym,
+            "route": str(getattr(routing.route, "value", routing.route)),
+            "gate1_action": result.gate1_action,
+            "error": result.error,
+        }
+        return result

@@ -28,6 +28,34 @@ def test_env_example_documents_docker_vars():
     assert "API_HOST" in text
 
 
+def test_env_example_split_deploy_and_langfuse_vars():
+    """Phase 1 — URL 3 process + giữ Langfuse / OpenAI keys."""
+    text = (ROOT / ".env.example").read_text(encoding="utf-8")
+    for key in (
+        "AI_BASE_URL",
+        "BACKEND_BASE_URL",
+        "FRONTEND_ORIGIN",
+        "APP_HOST_PORT",
+        "OPENAI_API_KEYS",
+        "MONITORING_ENABLED",
+        "LANGFUSE_PUBLIC_KEY",
+        "LANGFUSE_SECRET_KEY",
+        "LANGFUSE_HOST",
+    ):
+        assert key in text, f"missing {key} in .env.example"
+
+
+def test_settings_loads_split_deploy_defaults():
+    from src.portfolio_watch.shared.settings import settings
+
+    assert settings.ai_base_url.startswith("http")
+    assert "8001" in settings.ai_base_url
+    assert settings.backend_base_url.startswith("http")
+    assert "8000" in settings.backend_base_url
+    assert "5173" in settings.frontend_origin
+    assert settings.app_host_port == 8000
+
+
 def test_dockerfile_and_dockerignore_keep_secrets_out_of_image():
     df = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     ignore = (ROOT / ".dockerignore").read_text(encoding="utf-8")

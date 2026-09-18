@@ -49,8 +49,24 @@ def test_rewrite_uses_memory_for_ma_do():
     ]
     rw = rewrite_question("Còn mã đó thì sao?", conversation)
     assert rw.symbol == "VNM"
+    assert "VNM" in rw.rewritten.upper()
     decision = route_question(rw)
     assert "price" in decision.agents_to_call
+
+
+def test_rewrite_pronoun_variants_use_memory():
+    conversation = [
+        {"role": "user", "content": "Theo dõi mã HPG giúp tôi"},
+        {"role": "assistant", "content": "HPG đã ghi nhận."},
+    ]
+    for q in (
+        "Cổ phiếu đó thế nào?",
+        "Nó giảm bao nhiêu?",
+        "Giá mã này ra sao?",
+    ):
+        rw = rewrite_question(q, conversation)
+        assert rw.symbol == "HPG", q
+        assert "HPG" in rw.rewritten.upper(), q
 
 
 def test_rewrite_followup_without_ticker_uses_memory():
@@ -58,6 +74,7 @@ def test_rewrite_followup_without_ticker_uses_memory():
     rw = rewrite_question("Tại sao giảm?", conversation)
     assert rw.symbol == "FPT"
     assert rw.intent == "explain"
+    assert "FPT" in rw.rewritten.upper()
 
 
 def test_answer_composer_guardrail_blocks_buy():

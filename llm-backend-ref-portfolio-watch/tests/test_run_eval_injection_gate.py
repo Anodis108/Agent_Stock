@@ -101,7 +101,5 @@ def test_eval_gates_passed_requires_injection() -> None:
 
 def test_checklist_injection_gate_checked() -> None:
     text = (ROOT / "specs" / "implementation-plan.md").read_text(encoding="utf-8")
-    assert (
-        "- [x] Regression gate cứng riêng cho slice `injection`:"
-        in text
-    )
+    assert "- [x] Chạy baseline eval hiện tại" in text
+    assert "baseline_debug.json" in text

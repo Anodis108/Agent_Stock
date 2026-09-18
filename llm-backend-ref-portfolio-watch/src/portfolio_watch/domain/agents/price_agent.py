@@ -16,6 +16,28 @@ class PriceAgentResult:
     error: str | None = None
 
 
+def has_change_pct_evidence(price: PriceAgentResult | None) -> bool:
+    """Đủ evidence giá để so sánh % (Phase 3c)."""
+    return (
+        price is not None
+        and not price.error
+        and price.change_pct is not None
+    )
+
+
+def prices_have_change_pct_evidence(
+    prices: list[PriceAgentResult],
+    symbols: list[str] | None = None,
+) -> bool:
+    """Mọi mã (hoặc tập symbols) đều có change_pct trước khi so sánh %."""
+    if not prices:
+        return False
+    by_sym = {p.symbol.upper(): p for p in prices if p.symbol}
+    targets = [s.upper() for s in symbols] if symbols else list(by_sym)
+    if not targets:
+        return False
+    return all(has_change_pct_evidence(by_sym.get(s)) for s in targets)
+
 def run_price_agent(symbol: str, price_source: PriceSource) -> PriceAgentResult:
     try:
         quote = price_source.fetch_latest_close(symbol)

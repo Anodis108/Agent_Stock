@@ -106,7 +106,4 @@ def test_out_of_scope_reuses_guardrail_patterns() -> None:
 
 def test_checklist_rule_based_scorer_checked() -> None:
     text = (ROOT / "specs" / "implementation-plan.md").read_text(encoding="utf-8")
-    assert (
-        "- [x] `scripts/run_eval.py` — scorer rule-based (`must_include`/"
-        in text
-    )
+    assert "- [x] Nâng eval: port ý tưởng `task_success` + `trajectory`" in text

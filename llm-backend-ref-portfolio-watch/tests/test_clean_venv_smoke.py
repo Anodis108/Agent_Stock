@@ -1,4 +1,4 @@
-"""Phase 6 — xác nhận clean venv / README smoke helpers."""
+"""Phase 7 — xác nhận clean venv / 3 process README smoke helpers."""
 
 from __future__ import annotations
 
@@ -17,6 +17,11 @@ def test_verify_clean_local_script_exists():
     assert "CLEAN_VENV_SMOKE_OK" in text
     assert "/scan" in text and "/chat" in text and "/approvals" in text
     assert "pip" in text and "venv" in text
+    # Phase 7: 3 process (AI + Backend + Frontend)
+    assert "backend.main:app" in text
+    assert "http.server" in text or "frontend" in text
+    assert "AI_BASE_URL" in text
+    assert "VERIFY_USE_CURRENT" in text
 
 
 def test_settings_env_overrides_dotenv_file(tmp_path):

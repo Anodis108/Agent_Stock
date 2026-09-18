@@ -42,7 +42,9 @@ def test_run_eval_merges_rule_and_judge_per_case() -> None:
             correctness=4, completeness=4, grounding=4, reasoning="ok"
         )
 
-    results = mod.run_eval(cases, answer_fn=answer_fn, chat_parsed_fn=fake_parse)
+    results = mod.run_eval(
+        cases, answer_fn=answer_fn, chat_parsed_fn=fake_parse, skip_agent_eval=True
+    )
     assert len(results) == 3
     assert calls == [c["question"] for c in cases]
 
@@ -79,7 +81,12 @@ def test_run_eval_lookup_fails_when_judge_fails() -> None:
             correctness=1, completeness=1, grounding=1, reasoning="yếu"
         )
 
-    results = mod.run_eval([case], answer_fn=answer_fn, chat_parsed_fn=weak_parse)
+    results = mod.run_eval(
+        [case],
+        answer_fn=answer_fn,
+        chat_parsed_fn=weak_parse,
+        skip_agent_eval=True,
+    )
     assert results[0].rule.passed is True
     assert results[0].judge.passed is False
     assert results[0].passed is False
@@ -102,7 +109,9 @@ def test_run_eval_skips_judge_when_rule_fails() -> None:
     def boom(*_a, **_k):
         raise AssertionError("judge must not run")
 
-    results = mod.run_eval([case], answer_fn=answer_fn, chat_parsed_fn=boom)
+    results = mod.run_eval(
+        [case], answer_fn=answer_fn, chat_parsed_fn=boom, skip_agent_eval=True
+    )
     assert results[0].rule.passed is False
     assert results[0].judge.skipped is True
     assert results[0].passed is False
@@ -115,6 +124,7 @@ def test_run_eval_limit_and_answer_fn_error() -> None:
         data["cases"],
         answer_fn=lambda _q: "FPT VNM HPG",
         skip_judge=True,
+        skip_agent_eval=True,
         limit=2,
     )
     assert len(results) == 2
@@ -123,7 +133,7 @@ def test_run_eval_limit_and_answer_fn_error() -> None:
         raise RuntimeError("down")
 
     one = mod.eval_one_case(
-        data["cases"][0], answer_fn=boom, skip_judge=True
+        data["cases"][0], answer_fn=boom, skip_judge=True, skip_agent_eval=True
     )
     assert one.error and "down" in one.error
     assert one.passed is False
@@ -162,7 +172,5 @@ def test_make_answer_fn_calls_answer_question(monkeypatch) -> None:
 
 def test_checklist_runner_checked() -> None:
     text = (ROOT / "specs" / "implementation-plan.md").read_text(encoding="utf-8")
-    assert (
-        "- [x] `scripts/run_eval.py` — runner: gọi `application/answer_question.py`"
-        in text
-    )
+    assert "- [x] Nâng eval: port ý tưởng `task_success` + `trajectory`" in text
+    assert "--case-id" in text

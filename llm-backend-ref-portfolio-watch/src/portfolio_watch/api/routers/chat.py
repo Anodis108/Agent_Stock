@@ -19,6 +19,13 @@ class ChatRequest(BaseModel):
     user_id: str = "default"
 
 
+class ChatStep(BaseModel):
+    id: str
+    name: str
+    status: str = "done"
+    detail: str | None = None
+
+
 class ChatResponse(BaseModel):
     question: str
     rewritten: str
@@ -28,6 +35,7 @@ class ChatResponse(BaseModel):
     route: str = ""
     reason: str = ""
     answer: str
+    steps: list[ChatStep] = Field(default_factory=list)
     hitl_used: bool = False
     pending_approvals_created: int = 0
     error: str | None = None
@@ -92,6 +100,7 @@ def post_chat(
         route=str(getattr(result.routing.route, "value", result.routing.route)),
         reason=result.routing.reason or "",
         answer=result.answer,
+        steps=[ChatStep.model_validate(s) for s in (result.steps or [])],
         hitl_used=result.hitl_used,
         pending_approvals_created=result.pending_approvals_created,
         error=result.error,
