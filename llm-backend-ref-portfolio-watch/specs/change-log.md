@@ -3,6 +3,531 @@
 Nhật ký thay đổi theo thời gian cho project Portfolio Watch & Chat Agent.
 Ghi theo ngày, mới nhất ở trên.
 
+## 2026-09-21 — README local development instructions
+
+### What
+
+- Cập nhật `README.md`: mục **Local development** — prerequisites, install,
+  env, lệnh chạy AI / Backend / Frontend, URL local, troubleshooting.
+- Giữ Docker làm đường chạy product khuyến nghị; **không** đổi app logic.
+
+### Test
+
+Đọc README; (tuỳ chọn) chạy 3 process local và mở http://127.0.0.1:5173.
+
+## 2026-09-19 — Phase 15c–15d volume + healthcheck
+
+### 15c
+
+- Volume `pw_data` → `/app/data` (ai + backend). **Giữ path:** AI
+  `portfolio_watch.db`, Backend `backend_store.db` — không migrate.
+
+### 15d
+
+- `docker-compose.yml` — healthcheck `/health` cho `ai` (:8001) và `backend` (:8000).
+
+### Test
+
+```bash
+python -m pytest tests/test_docker_compose.py -q
+docker compose up --build -d
+docker compose ps   # ai/backend healthy
+```
+
+## 2026-09-19 — Tests dùng dependency thật (bỏ fakes.py)
+
+### What
+
+- Xóa `tests/fakes.py`; `conftest.py` wire `VnstockPriceSource`, `CafefNewsSource`,
+  SQLite thật qua `build_real_deps()`.
+- Bỏ patch Heuristic brain — pytest dùng LLM production (cần `.env` + network).
+- Backend `test_chat_proxy_to_real_ai`: uvicorn AI session fixture + HTTP thật.
+- Langfuse hierarchy mock bỏ; giữ test no-op khi `MONITORING_ENABLED=false`.
+
+### Test
+
+```bash
+cp .env.example .env   # điền OPENAI_API_KEYS
+python -m pytest tests/ -q
+```
+
+## 2026-09-19 — Gom tests còn 7 file
+
+### What
+
+- Xóa ~95 file `tests/test_*.py` rời; giữ 7 file cốt lõi:
+  `test_docker`, `test_backend`, `test_ai`, `test_agents`, `test_eval`,
+  `test_tracing`, `test_frontend` (+ `conftest.py`, `fakes.py`).
+
+### Test
+
+```bash
+python -m pytest tests/ -q
+```
+
+## 2026-09-19 — Phase 15b Dockerfile src-only (review — agy scratch)
+
+### Implement
+
+- `Dockerfile` — bỏ `COPY backend/`, `COPY frontend/`; UI nằm trong `COPY src`.
+- Image tag giữ `portfolio-watch:split` (compose).
+- `tests/test_dockerfile.py`, `tests/test_docker_single_url.py` — assert path mới.
+
+### Test
+
+```bash
+python -m pytest tests/test_dockerfile.py tests/test_docker_env_file.py tests/test_docker_single_url.py -q
+docker compose build
+```
+
+## 2026-09-19 — Phase 15a Compose 3 service trỏ entry mới trong src/portfolio_watch/
+
+### Implement
+
+- Copy legacy backend `backend/*.py` → `src/portfolio_watch/backend/` và đổi absolute import `backend.` thành `src.portfolio_watch.backend.`.
+- Copy legacy frontend `frontend/*` → `src/portfolio_watch/frontend/`.
+- Cập nhật `docker-compose.yml`: backend trỏ uvicorn command tới `src.portfolio_watch.backend.main:app`, frontend trỏ directory tới `src/portfolio_watch/frontend`. (Không xoá các thư mục cũ).
+
+### Test
+
+```bash
+python -m pytest tests/test_docker_compose.py tests/test_backend_no_agent_imports.py -q
+```
+
+## 2026-09-19 — Phase 14f–14g Langfuse no-op + mock hierarchy
+
+### 14f
+
+- `tests/test_monitoring_noop.py` — `test_v1_scan_ok_when_monitoring_disabled`.
+
+### 14g (review — agy ghi scratch, implement lại trong repo)
+
+- `tests/test_langfuse_tracing.py` — `test_agent_step_child_of_agent_not_root`,
+  `test_agent_step_noop_when_monitoring_disabled`.
+
+### Test
+
+```bash
+python -m pytest tests/test_monitoring_noop.py tests/test_langfuse_tracing.py -q
+```
+
+**Checklist thủ công (test-plan §4):** Langfuse `:3000` + `docker compose up` → 1 chat →
+1 trace, expand ≥ 3 cấp span.
+
+## 2026-09-19 — Phase 14e Docker Langfuse env (agy)
+
+### Implement
+
+- `docker-compose.yml` — AI service: `LANGFUSE_HOST=http://host.docker.internal:3000`,
+  `extra_hosts: host.docker.internal:host-gateway` (keys vẫn từ `.env`).
+- `tests/test_docker_env_file.py` — `test_compose_configures_langfuse_host`.
+
+### Test
+
+```bash
+python -m pytest tests/test_docker_env_file.py -q
+```
+
+## 2026-09-19 — Phase 14d wire agent_step + graph turn propagation
+
+### Implement
+
+- `agents/*/nodes.py` — `agent_step(turn, …)` ở bước nội bộ (price fetch, news react,
+  draft, guardrail, classify, …).
+- **Review fix:** `graph/chat.py`, `graph/scan.py` truyền `turn=turn` xuống mọi
+  `run_*_agent` / `rewrite_question` / `route_question` / `classify_event` để step span
+  lồng đúng dưới agent span.
+- `tests/test_langfuse_tracing.py` — fake stubs nhận `turn=`.
+
+### Test
+
+```bash
+python -m pytest tests/test_langfuse_tracing.py tests/test_graph_chat.py tests/test_graph_scan.py -q
+```
+
+## 2026-09-19 — Phase 14c agent_step (trace_step helper) + review
+
+### Implement
+
+- agy SUCCESS nhưng ghi scratch workspace — implement lại trong repo.
+- `tracing.py` — thêm `agent_step(turn, agent_name, step_name, …)`.
+- `tests/test_langfuse_tracing.py` — `test_trace_step_three_level_hierarchy`.
+
+### Review vs test-plan §4
+
+- **Pass:** root → agent → step 3 cấp (mock).
+- **Missing (14d):** wire `agent_step` vào `agents/*/nodes.py`.
+
+### Test
+
+```bash
+python -m pytest tests/test_langfuse_tracing.py -q
+```
+
+## 2026-09-19 — Phase 14a root trace + 14b agent span (review)
+
+### 14a Implement (agy)
+
+- `v1.py` — gọi `answer_question` / `scan_symbol` (wrapper có `trace_request`).
+- **Quyết định:** 1 POST `/v1/scan` = 1 trace (per-request, không per-symbol batch).
+
+### 14b Review
+
+- Graph nodes (`chat.py`, `scan.py`) đã gọi `agent_span(turn, …)`; `turn` đồng bộ
+  qua application wrapper (`turn = request_id or uuid`).
+- **Pass:** `test_trace_request_and_agent_spans_when_enabled` — hierarchy root → agent.
+- agy 14b fail (503) — xác nhận code hiện tại đủ spec.
+
+### Test
+
+```bash
+python -m pytest tests/test_langfuse_tracing.py tests/test_request_id_propagation.py tests/test_monitoring_noop.py tests/test_ai_v1_service.py -q
+docker compose up --build
+# Gửi 1 chat → Langfuse UI :3000 → 1 trace (checklist 14g thủ công sau)
+```
+
+## 2026-09-19 — Phase 13f deprecate application → graph + review
+
+### Implement (agy `gemini-3.1-pro-high`)
+
+- `application/answer_question.py` — wrapper `run_chat_graph()` + `trace_request`.
+- `application/scan_symbol.py` — wrapper `run_scan_graph()` + helpers giữ nguyên.
+- Phase 13 pytest stub: `test_graph_chat.py`, `test_graph_scan.py`, `test_graph_steps.py`.
+
+### Review vs product-spec / test-plan
+
+- **Pass:** eval/router vẫn gọi `answer_question`/`scan_symbol`; orchestration qua graph.
+- **Fixed:** tests patch `graph.chat.*` thay vì `application.answer_question.*`.
+
+### Test
+
+```bash
+python -m pytest tests/test_answer_question.py tests/test_scan_symbol.py tests/test_graph_chat.py tests/test_graph_scan.py tests/test_langfuse_tracing.py -q
+docker compose run --rm ai pytest tests/test_ai_v1_service.py -q
+```
+
+## 2026-09-19 — Phase 13d steps[] from graph + review
+
+### Implement (agy `gemini-3.1-pro-high`)
+
+- `graph/steps.py` — `build_steps_from_chunks()` từ `stream_mode="updates"`.
+- `chat.py` / `scan.py` — gán `result.steps` từ stream chunks.
+- `v1.py` — `/v1/scan` dùng `result.steps`; xóa `build_scan_steps()`.
+- `tests/test_graph_steps.py` — unit chat + scan step mapping.
+
+### Review vs product-spec / test-plan
+
+- **Pass:** test-plan §3 — chat/scan invoke trả `steps[]` theo graph nodes.
+- **Missing (13e–13f):** export PNG, deprecate application layer.
+
+### Test
+
+```bash
+python -m pytest tests/test_graph_steps.py tests/test_graph_chat.py tests/test_ai_v1_service.py -q
+```
+
+## 2026-09-19 — Phase 13b review vs product-spec / test-plan
+
+### Pass
+
+- test-plan §3 (scan): graph compile OK; nodes khớp luồng `agents.md` (price+news →
+  classifier → eval → synthesis → Gate1/Gate2).
+- product-spec §2 (giám sát): normal END; abnormal → eval → synthesis → auto-send /
+  HITL Gate1; Gate2 proposal pending.
+- `run_scan_graph()` contract `ScanSymbolResult` giống `scan_symbol`.
+
+### Fixed (review)
+
+- Error handling: eval/synthesis node catch → route END, giữ price/news/routing.
+- `request_id` + fallback `turn` UUID (parity `scan_symbol`).
+- Warning log khi notifier fail ở `gate1_auto`.
+- Tests: port parity từ `test_scan_symbol.py` (+ eval error path mock).
+
+### Missing (không thuộc 13b — phase sau)
+
+- Wire API `/v1/scan` → graph (**13c**).
+- `steps[]` từ graph events (**13d**).
+- `trace_request` root span (**14a**); export graph PNG (**13e**).
+
+### Test
+
+```bash
+python -m pytest tests/test_graph_scan.py -q
+```
+
+## 2026-09-19 — Phase 13b agy validate + review
+
+### Agy `--task implement` (validation)
+
+- Prompt: `.agy-runs/phase13b-validate-prompt.txt` → output:
+  `.agy-runs/phase13b-implement-validate.json` (SUCCESS, ~205s).
+- **So sánh với bản Cursor:** `scan.py`, `state.py` **giống hệt** (agy không sửa core).
+- **Agy bổ sung:** 3 test (`low_confidence`, `gate2`, `empty_symbol`) trong
+  `tests/test_graph_scan.py`; export `ChatState`/`ScanState` trong `graph/__init__.py`.
+- **Giữ bản hiện tại** + cải tiến agy (tests/exports); backup Cursor:
+  `.agy-runs/backup-13b-cursor/`.
+
+### Agy `--task review --skip-permissions`
+
+- Output: `.agy-runs/20260919-042044-review.json`.
+- High: thiếu `trace_request` (Phase 14), thiếu try/except abnormal pipeline.
+- Medium: thiếu `request_id` param, 4 test parity còn thiếu vs `test_scan_symbol.py`.
+
+### Workflow (từ 13c, mọi `/antigravity-cli`)
+
+1. `agy --task implement` trước (prompt trong `.agy-runs/`).
+2. Đọc JSON output; pytest verify.
+3. Chỉ sửa tay khi agy fail / test fail.
+4. `agy --task review --skip-permissions` khi cần.
+
+## 2026-09-19 — Phase 13b LangGraph scan
+
+### Implement
+
+- `src/portfolio_watch/graph/scan.py` — graph: fetch (price+news) → event_classifier
+  → (normal END | eval → gate2? → synthesis → gate1 auto/pending);
+  `run_scan_graph()` trả `ScanSymbolResult` (cùng contract `scan_symbol`).
+- `src/portfolio_watch/graph/state.py` — thêm `ScanState`.
+- `tests/test_graph_scan.py` — compile + normal/abnormal invoke stub.
+- Reuse helpers từ `application/scan_symbol.py`; runtime deps qua `contextvars`.
+
+### Test
+
+```bash
+python -m pytest tests/test_graph_scan.py -q
+```
+
+## 2026-09-19 — Phase 13a LangGraph chat + review
+
+### Implement
+
+- `src/portfolio_watch/graph/chat.py` — graph thật: rewrite → supervisor →
+  workers → answer_composer; `run_chat_graph()` trả `AnswerQuestionResult`.
+- `src/portfolio_watch/graph/state.py` — `ChatState`.
+- `tests/test_graph_chat.py` — compile + invoke stub (heuristic brains).
+- Runtime deps qua `contextvars` (LangGraph không giữ object trong configurable).
+
+### Review vs product-spec / test-plan
+
+- **Pass:** test-plan §3 partial — graph compile + invoke stub; nodes khớp chat flow.
+- **Missing (13b–13f):** scan graph, wire API, steps từ graph events, deprecate application.
+
+### Test
+
+```bash
+python -m pytest tests/test_graph_chat.py -q
+```
+
+## 2026-09-19 — Phase 12 complete (12a–12i) + review
+
+### Implement
+
+- Port 7 agents → `src/portfolio_watch/agents/<name>/` (nodes, state, schemas;
+  news/eval có `tools.py`).
+- Legacy `domain/agents/*.py` re-export; `tests/conftest.py` patch factory trên
+  `agents/*/nodes` + domain.
+- **12h:** giữ prompts tại `infra/llm/prompt_registry` + `prompts/` YAML (không
+  tách per-agent folder — tránh trùng).
+- **12i:** `guardrails` + `entities` giữ `domain/`; agents import qua domain
+  cho đến Phase 15 (không duplicate sang `shared/`).
+
+**Lưu ý:** `agy` chưa cài — implement trực tiếp.
+
+### Review vs product-spec / test-plan
+
+- **Pass:** test-plan §2 — mỗi agent folder + pytest tương ứng pass.
+- **Pass:** product-spec AC §2 partial — 7 agent folders; backend vẫn không import agents.
+- **Missing:** Phase 13+ (graph thật, Langfuse, Docker-only, xóa scripts).
+
+### Test
+
+```bash
+python -m pytest tests/ -q -k "price_agent or news_agent or event_classifier or eval_agent or synthesis_agent or supervisor or answer_composer or phase12"
+```
+
+## 2026-09-19 — Phase 12a price_agent + review (SDD Bước 5–6)
+
+### Implement
+
+- Port `domain/agents/price_agent.py` → `agents/price_agent/` (`nodes.py`, `state.py`,
+  `schemas.py`, `__init__.py`).
+- Legacy path re-export giữ import cũ.
+- `tests/test_phase12a_price_agent.py`.
+
+**Lưu ý:** `agy` chưa cài — implement trực tiếp thay vì `agy_run.py`.
+
+### Review vs product-spec / test-plan
+
+- **Pass:** test-plan §2 price_agent (fetch close + change_pct); không LLM; 12 tests pass.
+- **Pass:** pattern `agent_pr` (nodes + state + schemas).
+- **Missing (Phase 12+):** các agent còn lại, graph wire, Langfuse.
+
+### Test
+
+```bash
+python -m pytest tests/test_price_agent.py tests/test_phase12a_price_agent.py tests/test_price_evidence_before_pct.py -q
+```
+
+## 2026-09-19 — Review Phase 11 vs product-spec / test-plan (SDD Bước 6)
+
+### Pass (Phase 11 scope)
+
+- Skeleton 5 thư mục + `__init__.py` + README; import package OK.
+- Bảng migrate trong change-log + `src/portfolio_watch/README.md`.
+- `graph/` re-export `domain/graph/` — không đổi hành vi.
+- Functional smoke pass (agent, API, graph, backend-no-agent-imports).
+- Legacy `backend/`, `frontend/`, `scripts/` song song — đúng plan.
+
+### Fail / ngoài scope Phase 11 (chưa sửa)
+
+- `pytest tests/ -q` full: ~30 fail — doc-guard MVP (README Phase 6–10, plan cũ).
+  Không do skeleton; dọn Phase **16d**.
+- product-spec AC §5.2–5.3 (agent folders, xóa scripts): Phase **12–15**.
+- test-plan §2–§5 (agent refactor, LangGraph, Docker-only eval): Phase **12–15**.
+
+### Fix review
+
+- Thêm `src/portfolio_watch/README.md` (bảng migrate trung tâm).
+- Mở rộng `tests/test_phase11_v2_skeleton.py`: import từng package + verify
+  bảng migrate trong change-log và `src/portfolio_watch/README.md`.
+
+### Test Phase 11
+
+```bash
+python -m pytest tests/test_phase11_v2_skeleton.py -q
+```
+
+## 2026-09-19 — Phase 11 V2 monorepo skeleton
+
+### Thay đổi
+
+- Tạo skeleton V2 dưới `src/portfolio_watch/`:
+  `agents/`, `backend/`, `frontend/`, `eval/`, `graph/` — mỗi folder có
+  `__init__.py` + `README.md`.
+- `graph/__init__.py` re-export từ `domain/graph/` (logic giữ nguyên đến Phase 13).
+- `tests/test_phase11_v2_skeleton.py` — guard cấu trúc + re-export.
+- Code legacy **song song**, chưa xóa root `backend/` / `frontend/` / `scripts/`.
+
+### Bảng migrate (V2)
+
+| Cũ | Mới |
+|---|---|
+| `backend/main.py` | `src/portfolio_watch/backend/` |
+| `frontend/` (root) | `src/portfolio_watch/frontend/` |
+| `domain/agents/*.py` | `src/portfolio_watch/agents/<name>/` |
+| `domain/graph/` | `src/portfolio_watch/graph/` (Phase 13) |
+| `scripts/run_eval.py` | `src/portfolio_watch/eval/run.py` (Phase 15) |
+
+`pyproject.toml`: `include = ["src*", "backend*"]` đã cover package mới — không đổi.
+
+### Test
+
+```bash
+python -m pytest tests/test_phase11_v2_skeleton.py -q
+```
+
+## 2026-09-19 — Phase 1 V2 project setup (SDD Bước 5)
+
+### Thay đổi
+
+- Xác nhận MVP Docker: `docker compose up --build` — backend :8000, AI :8001,
+  frontend :5173; smoke `POST /chat` + `POST /scan` → 200.
+- Tạo `specs/eval/v2_baseline.json` — golden 30/30 (từ Phase 5 regression);
+  ghi `phase1_docker_smoke`.
+- Cập nhật `.env.example` — block V2 Langfuse (`host.docker.internal` trong Docker).
+- README: mục «V2 in progress», legacy paths sẽ deprecated Phase 15.
+- `tests/test_phase1_v2_setup.py` — guard baseline + checklist docs.
+- Đánh dấu Phase 1 `[x]` trong `specs/implementation-plan.md`.
+
+### Quyết định V2 (chốt Phase 1)
+
+- Giữ golden **30 case**; không nới scorer để pass.
+- Thứ tự implement: **1 → 11 → 12 → 13 → 14 → 15 → 16**.
+- Langfuse self-host `:3000` trên host; AI container dùng `host.docker.internal`.
+
+### Test
+
+```bash
+docker compose up --build -d
+python -m pytest tests/test_phase1_v2_setup.py -q
+# Re-run golden baseline (optional):
+python scripts/phase5_regression.py --case-delay 20
+```
+
+## 2026-09-19 — AGENTS.md (SDD Bước 4)
+
+### Thay đổi (docs only)
+
+- Viết lại `AGENTS.md` ngắn gọn: đọc spec trước, 1 phase/task, không thêm lib,
+  cập nhật change-log + hướng dẫn test sau mỗi implement; giữ quy tắc V2.
+
+### Review vs product-spec / test-plan
+
+- **Pass:** align SDD Guide Bước 4.
+- **Fail:** chưa implement Phase 1 checklist.
+
+## 2026-09-19 — Review implementation-plan (SDD Bước 3)
+
+### Thay đổi (spec only)
+
+- `specs/implementation-plan.md`: rewrite phase nhỏ — Phase 1 (V2 setup) +
+  Phase 11–16 với checklist con (12a–12g, 13a–13f, …); thứ tự phụ thuộc.
+
+### Review vs product-spec / test-plan
+
+- **Pass:** align product-spec acceptance; test-plan có thể cập nhật ở Phase 16d.
+- **Fail:** chưa implement.
+
+## 2026-09-19 — Review product-spec (SDD Bước 2)
+
+### Thay đổi (spec only)
+
+- `specs/product-spec.md`: cấu trúc lại 6 mục SDD (goal, users, flow, in/out
+  scope, acceptance) — ngắn gọn, flow chat/scan/eval cụ thể; gom kiến trúc/Langfuse
+  vào in-scope.
+
+### Review vs product-spec / test-plan
+
+- **Pass:** đủ checklist SDD Guide Bước 2.
+- **Fail:** chưa implement Phase 11+.
+
+## 2026-09-19 — Spec V2: clean agents + src monorepo + Docker product
+
+### Thay đổi (spec only — chưa implement)
+
+- Viết lại `specs/product-spec.md` — mục tiêu V2: cấu trúc `agent_pr`, FE/BE/AI
+  trong `src/`, xóa `scripts/`, Langfuse trace lồng nhau (1 trace / câu hỏi).
+- Viết lại `specs/implementation-plan.md` — Phase 11–16 (unchecked).
+- Viết lại `specs/test-plan.md` — test Docker-only + Langfuse checklist.
+- Cập nhật `README.md`, `AGENTS.md` cho vòng V2.
+
+### Quyết định kiến trúc (chốt trong spec)
+
+- Langfuse self-host `:3000` trên **host** — AI container dùng
+  `host.docker.internal:3000` (tham chiếu `llm-engineer-demo/docker-compose.yml`).
+- Không gói Langfuse stack vào compose repo này.
+- Eval / regression → `python -m src.portfolio_watch.eval.*` trong container AI.
+
+### Review vs product-spec / test-plan
+
+- **Pass:** acceptance criteria V2 ghi rõ; phase tách nhỏ.
+- **Fail:** chưa có code Phase 11+.
+- **Missing:** Phase 12c backlog placeholder.
+
+## 2026-09-19 — LangGraph thật + save_graph_visualization (hierarchical)
+
+### Thay đổi
+- `src/portfolio_watch/domain/graph/workflow.py`: `StateGraph` khớp luồng
+  `scan_symbol` + `answer_question`; `save_graph_visualization()` copy pattern
+  `llm-engineer-demo/.../hierarchical.py` (PNG trước, fallback `.mmd`).
+- Xóa `visualize.py`; CLI: `python -m ...workflow` hoặc `scripts/draw_agent_graph.py`.
+- Cập nhật tests graph + `specs/agents.md`.
+
+### Review vs product-spec / test-plan
+- **Pass:** Phase 10 visualization từ code thật; 13 node / 26 edge.
+- **Fail:** không.
+- **Missing:** graph chưa thay imperative orchestration (chỉ visualize).
+
 ## 2026-09-18 — SDD: README «Demo with local»
 
 ### Thay đổi
@@ -3339,3 +3864,7 @@ Không thêm business features mới trong lần sửa này.
 - Cách lấy tin từ cafef (API chính thức hay scraping) — chưa xác nhận.
 - Công thức cụ thể cho "độ tin cậy cao" ở Confidence Gate — sẽ chốt khi viết
   `synthesis_agent.py`.
+
+## 2026-09-19 - Phase 14a
+- scan trace = per-request (1 POST /v1/scan = 1 trace), not per-symbol in batch.
+

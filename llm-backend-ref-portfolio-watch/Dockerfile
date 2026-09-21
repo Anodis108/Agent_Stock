@@ -18,13 +18,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # Dependencies first (layer cache)
 COPY pyproject.toml README.md ./
 COPY src ./src
-COPY backend ./backend
 RUN pip install --no-cache-dir -U pip \
     && pip install --no-cache-dir -e .
 
-# Prompt Registry + static Frontend (FE served by compose `frontend` service)
+# Prompt Registry; static UI at src/portfolio_watch/frontend (compose `frontend` service)
 COPY prompts ./prompts
-COPY frontend ./frontend
 
 RUN mkdir -p /app/data
 

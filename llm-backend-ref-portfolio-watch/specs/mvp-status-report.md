@@ -135,9 +135,24 @@ Không cần tunnel backend riêng trừ khi tách process/port (không phải k
 
 ---
 
+## V2 complete (2026-09-19)
+
+| Hạng mục V2 | Trạng thái |
+|---|---|
+| Monorepo `src/portfolio_watch/` (agents, graph, backend, frontend, eval) | Done |
+| LangGraph chat + scan thật; `steps[]` từ graph | Done |
+| Langfuse trace 3 cấp (root → agent → step) | Done |
+| Docker product-only (`docker compose up --build`) | Done |
+| Eval `python -m src.portfolio_watch.eval.run` / `regression` | Done |
+| Xóa `scripts/`, root `backend/`, `frontend/` | Done |
+| Golden baseline `v2_baseline.json` 30/30; injection 3/3 pass | Done |
+| README demo + Langfuse + troubleshooting | Done |
+
+Chạy: `docker compose up --build` → http://localhost:5173
+
+---
+
 ## Kết luận
 
-MVP theo `product-spec.md` và toàn bộ Phase 1–10 trong `implementation-plan.md`
-đã **đạt checklist**. Có thể demo local (và ngrok một tunnel) theo README.
-Ưu tiên tiếp theo là vận hành (cron lifespan, baseline eval thật, CI nhẹ),
-không phải feature cốt lõi còn thiếu trong scope MVP.
+MVP Phase 1–10 **done**. **V2 Phase 1–16 done** — xem `specs/implementation-plan.md`.
+Product-spec §5 acceptance criteria đã tick qua Docker + eval + docs.

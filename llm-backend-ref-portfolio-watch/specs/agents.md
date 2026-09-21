@@ -145,14 +145,23 @@ Watchlist/threshold thay đổi luôn đi qua HITL Gate 2 (không có đường 
 - **Memory Store:** preferences, lịch sử cảnh báo, hội thoại — đọc/ghi bởi
   SynthesisAgent, AnswerComposer, và cả 2 HITL Gate khi reject.
 
-## Sơ đồ sinh từ code (LangGraph, Phase 10)
+## LangGraph orchestration (Phase 13)
 
-`scripts/draw_agent_graph.py` build 1 `StateGraph` (LangGraph) thuần để vẽ
-lại đúng sơ đồ ở trên — mỗi mục trong file này (Orchestrator, PriceAgent,
-NewsAgent, EventClassifier, EvalAgent, SynthesisAgent, Guardrail Output,
-Confidence Gate, HITL Gate 1, HITL Gate 2, Supervisor, RewriteQuestion,
-AnswerComposer) là 1 node; cạnh nối theo đúng "Sơ đồ quan hệ" ở đầu file.
-Node chỉ là placeholder (không chạy logic thật) — mục đích là giữ sơ đồ luôn
-khớp với spec khi kiến trúc đổi, thay vì vẽ tay như
-`../portfolio-watch-agent-v4.mmd` hiện tại. Output:
-`docs/agent_graph.png` / `.mmd`. Chi tiết: implementation-plan.md Phase 10.
+| Graph | File | Luồng |
+|---|---|---|
+| Chat | `src/portfolio_watch/graph/chat.py` | rewrite → supervisor → workers → answer |
+| Scan | `src/portfolio_watch/graph/scan.py` | price+news → classifier → eval → synthesis → gates |
+
+Mỗi agent có folder `src/portfolio_watch/agents/<name>/` (`nodes.py`, `state.py`, …).
+Graph nodes gọi `agent_span` + agents gọi `agent_step` (Langfuse 3 cấp).
+
+## Sơ đồ sinh từ code
+
+Export visualization:
+
+```bash
+docker compose run --rm ai python -m src.portfolio_watch.graph.workflow
+# hoặc local: python -m src.portfolio_watch.graph.workflow
+```
+
+Output: `docs/agent_graph.png` / `.mmd` (Mermaid sinh từ `get_graph().draw_mermaid()`).

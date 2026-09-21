@@ -171,6 +171,24 @@ def agent_span(
 
 
 @contextmanager
+def agent_step(
+    turn: str,
+    agent_name: str,
+    step_name: str,
+    input: Any = None,
+    metadata: dict[str, Any] | None = None,
+    *,
+    model: str | None = None,
+) -> Iterator[dict[str, Any]]:
+    """Step span dưới agent — bọc trace_step(step_parent(turn, agent_name), …)."""
+    parent = step_parent(turn, agent_name)
+    with trace_step(
+        parent, step_name, input=input, metadata=metadata, model=model
+    ) as box:
+        yield box
+
+
+@contextmanager
 def trace_step(
     parent_span: Any,
     name: str,

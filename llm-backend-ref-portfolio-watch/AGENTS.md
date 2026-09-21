@@ -1,59 +1,83 @@
 # AGENTS.md
+PHướng dẫn cho coding agent — **spec-driven development**, vòng **V2**.
 
-Project này tuân theo **simple spec-driven development**.
+## Trước khi code
 
-Vòng hiện tại: **Quality Loop (golden case-by-case) + tách Frontend /
-Backend / AI + Langfuse**. Đọc `specs/product-spec.md` và
-`specs/implementation-plan.md` trước mọi thay đổi.
+1. Đọc `specs/product-spec.md`, `specs/implementation-plan.md`, và file spec liên
+   quan (`agents.md`, `test-plan.md`).
+2. Chỉ làm **một** phase hoặc **một** task trong checklist phase đó (Phase 12: tối
+   đa **một** agent folder).
+3. Không đổi kiến trúc trừ khi đã cập nhật spec trước.
 
-Domain agents (PriceAgent, NewsAgent, …): `specs/agents.md`.
+## Quy tắc code
 
-Eval / golden: `specs/eval/golden_dataset.yaml`, `scripts/run_eval.py`.
-Ý tưởng chấm task_success + trajectory: tham khảo
-`../llm-engineer-demo/app/agent_pr/eval.py` (port ý tưởng, không copy nguyên
-file). Tracing: tham khảo `../llm-engineer-demo/app/monitoring/tracing.py`.
+- Giữ app **đơn giản** — không over-engineer, không abstraction thừa.
+- **Không** thêm thư viện mới trừ khi phase yêu cầu.
+- Cấu trúc agent tham chiếu `../llm-engineer-demo/app/agent_pr/` (`nodes.py`,
+  `state.py`, `tools.py`, `graph.py` nếu cần).
+- Backend **không** import agents / LangGraph — chỉ gọi AI qua HTTP.
+- Không nới scorer golden — sửa agent, prompt, hoặc tool.
+
+## V2 (mục tiêu hiện tại)
+
+- FE + BE + AI trong `src/portfolio_watch/`; chạy product bằng `docker compose`.
+- Langfuse self-host `:3000`; 1 chat = 1 trace; span lồng nhau (xem demo
+  `../llm-engineer-demo/app/monitoring/tracing.py`).
+- Không thêm file dưới `scripts/` (đã xóa Phase 15f).
+
+MVP Phase 1–10 đã xong — `specs/mvp-status-report.md`. V2 Phase 1 → 11 → … → 16.
+
+## Sau mỗi lần implement
+
+1. Cập nhật `specs/change-log.md` (ngắn: what / why).
+2. Tick checklist trong `specs/implementation-plan.md` cho task vừa xong.
+3. Giải thích **cách test** — lệnh cụ thể (ưu tiên Docker):
+
+```bash
+docker compose up --build
+docker compose run --rm ai pytest tests/ -q -k "<module>"
+```
+
+4. Ghi issue đã biết nếu có.
+
+## Tài liệu nhanh
+
+| File | Khi nào đọc |
+|---|---|
+| `specs/product-spec.md` | Scope, acceptance |
+| `specs/implementation-plan.md` | Phase đang làm |
+| `specs/test-plan.md` | Cách chấm / Langfuse checklist |
+| `specs/agents.md` | Hành vi từng agent |
+host `:3000`; 1 chat UI = 1 trace, span lồng nhau.
+
+
+
+Project này tuân theo simple spec-driven development.
 
 ## Nguyên tắc chính
+Luôn đọc các file trong `/specs` trước khi code.
 
-1. Luôn đọc spec liên quan trước khi code.
-2. Chỉ triển khai **một** task / phase (hoặc **một** golden case) tại một thời điểm.
-3. Giữ giải pháp đơn giản — không over-engineer.
-4. Không đổi architecture trừ khi cập nhật spec trước.
-5. Sau mỗi thay đổi có ý nghĩa: cập nhật `specs/change-log.md`.
-6. **Không** nới scorer / sửa expected chỉ để case “pass” — sửa multi-agent,
-   prompt (registry), hoặc tool.
-7. Khi case fail cần năng lực mới: thêm task vào Phase **3c** trong
-   `implementation-plan.md` rồi mới code.
+## Workflow
+Với mỗi task:
+1. Đọc các file spec liên quan.
+2. Chỉ triển khai một task hoặc một phase tại một thời điểm.
+3. Giữ giải pháp đơn giản.
+4. Tránh thêm thư viện không cần thiết.
+5. Không thay đổi architecture trừ khi spec được cập nhật.
+6. Sau khi triển khai, cập nhật `specs/change-log.md`.
+7. Giải thích cách test thay đổi.
 
-## Workflow — debug một golden case
+## Coding Style
+- Ưu tiên code đơn giản, dễ đọc.
+- Không over-engineer.
+- Không thêm feature không liên quan.
+- Giữ thay đổi nhỏ và dễ review.
 
-1. Chạy eval đúng `--case-id`.
-2. Đọc fail reason + trajectory / trace.
-3. Sửa hệ thống agent (ưu tiên) hoặc prompt version.
-4. Chạy lại cùng case đến khi pass.
-5. Ghi change-log ngắn; bổ sung backlog nếu còn gap.
-6. Sang case tiếp theo.
-
-## Workflow — feature tách FE/BE/AI
-
-1. Đọc phase tương ứng trong implementation-plan.
-2. Implement đúng ranh giới: Frontend → Backend → AI (HTTP).
-3. Backend không import `domain.agents`.
-4. Giải thích cách test (3 process + UI timeline + Langfuse nếu đụng).
-
-## Coding style
-
-- Code ngắn, dễ đọc; tránh abstraction thừa.
-- Không thêm thư viện trừ khi phase yêu cầu.
-- Không thêm feature ngoài scope phase/case đang làm.
-
-## Testing (trước khi claim xong)
-
-Cung cấp:
-
-- Lệnh chạy (AI / Backend / Frontend nếu liên quan).
-- Cách tái hiện case hoặc checklist thủ công.
-- Issue đã biết (nếu có).
+## Testing
+Trước khi nói task đã hoàn thành, hãy cung cấp:
+- command để chạy app
+- các bước test thủ công
+- các issue đã biết nếu có
 
 <!-- vnai-bootstrap | auto-generated -->
 # Vnstock Vibe Onboarding

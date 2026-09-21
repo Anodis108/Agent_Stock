@@ -1,7 +1,7 @@
 """AI service process — port mặc định 8001, không mount static UI.
 
     python -m src.portfolio_watch.ai_main
-    # hoặc: python scripts/serve_ai.py
+    # hoặc: docker compose up ai
 """
 
 from __future__ import annotations

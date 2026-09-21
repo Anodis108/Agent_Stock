@@ -1,0 +1,1 @@
+"""synthesis_agent schemas — see nodes.py dataclasses."""

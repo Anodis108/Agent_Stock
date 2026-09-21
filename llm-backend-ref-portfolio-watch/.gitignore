@@ -18,3 +18,5 @@ src/checkin/tests/chroma_db
 dist/
 build/
 *.pth
+
+.agy-runs/

@@ -15,7 +15,7 @@ from src.portfolio_watch.api.helpers.validation import (
 )
 from src.portfolio_watch.api.routers.chat import ChatStep
 from src.portfolio_watch.application.answer_question import answer_question
-from src.portfolio_watch.application.scan_symbol import ScanSymbolResult, scan_symbol
+from src.portfolio_watch.application.scan_symbol import scan_symbol
 
 router = APIRouter(prefix="/v1", tags=["ai-v1"])
 
@@ -68,48 +68,7 @@ class V1ScanResponse(BaseModel):
     pending_events: list[dict[str, Any]] = Field(default_factory=list)
 
 
-def build_scan_steps(result: ScanSymbolResult) -> list[dict]:
-    """Timeline tối thiểu cho luồng scan (id/name/status/detail)."""
-    steps: list[dict] = []
-    n = 1
 
-    def add(name: str, status: str, detail: str | None = None) -> None:
-        nonlocal n
-        steps.append(
-            {"id": str(n), "name": name, "status": status, "detail": detail}
-        )
-        n += 1
-
-    p = result.price
-    add(
-        "price_agent",
-        "error" if p.error else "done",
-        f"{p.symbol} close={p.latest_close} chg={p.change_pct}"
-        + (f" err={p.error}" if p.error else ""),
-    )
-    news = result.news
-    add(
-        "news_agent",
-        "error" if news.error else "done",
-        f"items={len(news.items or [])}"
-        + (f" err={news.error}" if news.error else ""),
-    )
-    route = str(getattr(result.routing.route, "value", result.routing.route))
-    add(
-        "event_classifier",
-        "done",
-        f"{route}"
-        + (f" — {result.routing.reason}" if result.routing.reason else ""),
-    )
-    if result.severity is not None:
-        add("eval_agent", "done", str(result.severity))
-    if result.alert is not None:
-        add("synthesis_agent", "done", "alert composed")
-    if result.gate1_action:
-        add("confidence_gate", "done", f"action={result.gate1_action}")
-    if result.error:
-        add("scan", "error", result.error)
-    return steps
 
 
 @router.post("/chat", response_model=V1ChatResponse)
@@ -192,7 +151,7 @@ def v1_scan(
     return V1ScanResponse(
         symbol=result.symbol,
         route=str(getattr(result.routing.route, "value", result.routing.route)),
-        steps=[ChatStep.model_validate(s) for s in build_scan_steps(result)],
+        steps=[ChatStep.model_validate(s) for s in result.steps],
         reason=result.routing.reason or "",
         threshold_pct=result.threshold_pct,
         gate1_action=result.gate1_action,

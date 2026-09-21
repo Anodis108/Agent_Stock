@@ -28,8 +28,23 @@ services:
       AI_API_HOST: "0.0.0.0"
       AI_API_PORT: "8001"
       SQLITE_PATH: /app/data/portfolio_watch.db
+      LANGFUSE_HOST: "http://host.docker.internal:3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - pw_data:/app/data
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health')",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     restart: unless-stopped
 
   backend:
@@ -40,7 +55,7 @@ services:
     depends_on:
       - ai
     command:
-      ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
+      ["uvicorn", "src.portfolio_watch.backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
     ports:
       - "${APP_HOST_PORT:-8000}:8000"
     environment:
@@ -52,6 +67,18 @@ services:
       FRONTEND_ORIGIN: "*"
     volumes:
       - pw_data:/app/data
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     restart: unless-stopped
 
   frontend:
@@ -68,7 +95,7 @@ services:
         "--bind",
         "0.0.0.0",
         "--directory",
-        "frontend",
+        "src/portfolio_watch/frontend",
       ]
     ports:
       - "5173:5173"
