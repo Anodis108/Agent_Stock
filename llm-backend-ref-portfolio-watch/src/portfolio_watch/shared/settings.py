@@ -46,6 +46,17 @@ class Settings(BaseSettings):
     # Cron (minutes)
     scan_interval_minutes: int = 60
 
+    # Memory short-term & freshness (Phase 7)
+    memory_short_term_window: int = 20
+    memory_short_term_ttl_minutes: int = 60
+
+    # Memory long-term & Qdrant (Phase 8)
+    qdrant_url: str | None = None
+    qdrant_api_key: str | None = None
+    qdrant_collection: str = "portfolio_watch_memory"
+    embedding_model: str = "text-embedding-3-small"
+    embedding_dim: int = 1536
+
     # Confidence gate (chốt công thức cụ thể ở phase sau)
     confidence_auto_send_min: float = 0.8
 

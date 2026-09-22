@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Portfolio Watch — Agent Graph</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" />
+  <style>
+    :root {
+      --bg: #F4F6F8;
+      --surface: #FFFFFF;
+      --surface-2: #EAEFF3;
+      --border: #D6DEE6;
+      --text: #16212C;
+      --muted: #55677A;
+      --scan: #0E8C82;
+      --scan-soft: #D3EEEA;
+      --chat: #B5720A;
+      --chat-soft: #F3E4C8;
+      --gate: #3D5A80;
+      --gate-soft: #D9E4F0;
+      --end: #2A3B4D;
+      --dash: #8FA3B8;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0F1720;
+        --surface: #172230;
+        --surface-2: #1E2C3C;
+        --border: #2A3B4D;
+        --text: #E6EDF3;
+        --muted: #8FA3B8;
+        --scan: #4FD1C5;
+        --scan-soft: rgba(79,209,197,0.14);
+        --chat: #F5A623;
+        --chat-soft: rgba(245,166,35,0.14);
+        --gate: #7BA3D4;
+        --gate-soft: rgba(123,163,212,0.14);
+        --end: #8FA3B8;
+        --dash: #55677A;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "IBM Plex Sans", system-ui, sans-serif;
+      font-size: 15px;
+      line-height: 1.55;
+    }
+    .page { max-width: 1180px; margin: 0 auto; padding: 48px 24px 80px; }
+    .eyebrow {
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--scan);
+      margin: 0 0 10px;
+    }
+    h1 { font-size: clamp(26px, 3.5vw, 36px); margin: 0 0 12px; letter-spacing: -0.02em; }
+    .lead { color: var(--muted); max-width: 720px; margin: 0 0 28px; }
+    .legend {
+      display: flex; flex-wrap: wrap; gap: 16px 24px;
+      padding: 14px 18px; background: var(--surface-2); border-radius: 8px;
+      font-size: 13px; color: var(--muted); margin-bottom: 32px;
+    }
+    .legend span { display: inline-flex; align-items: center; gap: 8px; }
+    .sw { width: 28px; height: 3px; border-radius: 2px; }
+    .sw.solid { background: var(--scan); }
+    .sw.dash { background: repeating-linear-gradient(90deg, var(--dash) 0 5px, transparent 5px 9px); }
+    .sw.box-scan { width: 14px; height: 14px; background: var(--scan-soft); border: 1.5px solid var(--scan); border-radius: 3px; }
+    .sw.box-chat { width: 14px; height: 14px; background: var(--chat-soft); border: 1.5px solid var(--chat); border-radius: 3px; }
+    .sw.box-gate { width: 14px; height: 14px; background: var(--gate-soft); border: 1.5px solid var(--gate); border-radius: 3px; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      align-items: start;
+    }
+    @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px 18px 24px;
+      box-shadow: 0 1px 2px rgba(22,33,44,0.06);
+    }
+    .panel.scan { border-top: 3px solid var(--scan); }
+    .panel.chat { border-top: 3px solid var(--chat); }
+    .panel h2 {
+      font-size: 15px; margin: 0 0 4px;
+      font-family: "IBM Plex Mono", monospace;
+    }
+    .panel .sub { font-size: 13px; color: var(--muted); margin: 0 0 18px; }
+
+    .flow { display: flex; flex-direction: column; align-items: center; gap: 0; }
+    .row {
+      display: flex; flex-wrap: wrap; justify-content: center; gap: 10px;
+      width: 100%; margin: 4px 0;
+    }
+    .node {
+      min-width: 132px; max-width: 200px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1.5px solid var(--border);
+      background: var(--surface-2);
+      text-align: center;
+    }
+    .node .name {
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 12.5px; font-weight: 600;
+      display: block;
+    }
+    .node .hint { font-size: 11.5px; color: var(--muted); display: block; margin-top: 3px; }
+    .node.start, .node.end {
+      border-radius: 999px; min-width: 96px;
+      background: var(--end); color: #fff; border-color: transparent;
+    }
+    .node.start .hint, .node.end .hint { color: rgba(255,255,255,0.75); }
+    .node.scan-n { background: var(--scan-soft); border-color: var(--scan); }
+    .node.scan-n .name { color: var(--scan); }
+    .node.chat-n { background: var(--chat-soft); border-color: var(--chat); }
+    .node.chat-n .name { color: var(--chat); }
+    .node.gate-n { background: var(--gate-soft); border-color: var(--gate); }
+    .node.gate-n .name { color: var(--gate); }
+    .node.shared { background: var(--surface); border-color: var(--border); border-style: dashed; }
+
+    .arrow {
+      width: 2px; height: 18px; background: var(--scan); margin: 2px 0;
+      position: relative;
+    }
+    .panel.chat .arrow { background: var(--chat); }
+    .arrow::after {
+      content: "";
+      position: absolute; bottom: -1px; left: 50%;
+      transform: translateX(-50%);
+      border-left: 5px solid transparent;
+      border-right: 5px solid transparent;
+      border-top: 6px solid var(--scan);
+    }
+    .panel.chat .arrow::after { border-top-color: var(--chat); }
+    .arrow.dash {
+      background: repeating-linear-gradient(180deg, var(--dash) 0 4px, transparent 4px 7px);
+      width: 2px;
+    }
+    .arrow.dash::after { border-top-color: var(--dash); }
+    .arrow.gate::after { border-top-color: var(--gate); }
+    .arrow.gate { background: var(--gate); }
+
+    .branch-label {
+      font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
+      text-transform: uppercase; color: var(--muted);
+      margin: 6px 0 2px; text-align: center;
+    }
+    .fork {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      width: 100%;
+      margin-top: 4px;
+    }
+    .fork-col {
+      display: flex; flex-direction: column; align-items: center;
+      padding: 10px 6px;
+      border: 1px dashed var(--border);
+      border-radius: 8px;
+      background: var(--bg);
+    }
+    .note {
+      margin-top: 28px;
+      padding: 16px 18px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 13.5px;
+      color: var(--muted);
+    }
+    .note code, .mono {
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 12.5px;
+    }
+    .note strong { color: var(--text); }
+    table {
+      width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px;
+    }
+    th, td {
+      text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <p class="eyebrow">Portfolio Watch · docs/agent_graph</p>
+    <h1>Sơ đồ agent — 2 nhánh rõ ràng</h1>
+    <p class="lead">
+      Bản Mermaid/PNG cũ do LangGraph gộp <strong>Scan</strong> và <strong>Chat</strong> chung một đồ thị
+      nên cạnh chéo khó đọc. HTML này tách đúng production:
+      <span class="mono">graph/scan.py</span> và <span class="mono">graph/chat.py</span>
+      (visualize tổng hợp: <span class="mono">domain/graph/workflow.py</span>).
+    </p>
+
+    <div class="legend">
+      <span><i class="sw box-scan"></i> Nhánh Scan / giám sát</span>
+      <span><i class="sw box-chat"></i> Nhánh Chat / hỏi–đáp</span>
+      <span><i class="sw box-gate"></i> Gate / HITL</span>
+      <span><i class="sw solid"></i> Luồng luôn đi</span>
+      <span><i class="sw dash"></i> Nhánh điều kiện</span>
+    </div>
+
+    <div class="grid">
+      <!-- SCAN -->
+      <section class="panel scan">
+        <h2>Nhánh SCAN</h2>
+        <p class="sub">Quét mã trên watchlist · <span class="mono">POST /v1/scan</span></p>
+        <div class="flow">
+          <div class="node start"><span class="name">START</span><span class="hint">symbol + threshold</span></div>
+          <div class="arrow"></div>
+          <div class="node scan-n"><span class="name">orchestrator</span><span class="hint">chia việc song song</span></div>
+          <div class="arrow"></div>
+          <div class="row">
+            <div class="node scan-n"><span class="name">price_agent</span><span class="hint">giá + % biến động</span></div>
+            <div class="node scan-n"><span class="name">news_agent</span><span class="hint">tin theo mã</span></div>
+          </div>
+          <div class="arrow"></div>
+          <div class="node scan-n"><span class="name">event_classifier</span><span class="hint">normal / abnormal</span></div>
+
+          <p class="branch-label">Sau classifier</p>
+          <div class="fork">
+            <div class="fork-col">
+              <div class="node end" style="background:#55677A"><span class="name">END</span><span class="hint">normal — dừng</span></div>
+            </div>
+            <div class="fork-col">
+              <div class="arrow dash"></div>
+              <div class="node scan-n"><span class="name">eval_agent</span><span class="hint">đánh giá bất thường</span></div>
+              <div class="arrow dash"></div>
+              <p class="branch-label" style="margin:0">Sau eval</p>
+              <div class="row" style="margin-top:6px">
+                <div class="node gate-n" style="min-width:110px"><span class="name">hitl_gate_2</span><span class="hint">đổi ngưỡng → END</span></div>
+                <div class="node scan-n" style="min-width:110px"><span class="name">synthesis_agent</span><span class="hint">soạn FinalAlert</span></div>
+              </div>
+              <div class="arrow"></div>
+              <div class="node scan-n"><span class="name">guardrail_output</span><span class="hint">chặn mua/bán chắc</span></div>
+              <div class="arrow dash gate"></div>
+              <div class="node gate-n"><span class="name">confidence_gate</span><span class="hint">auto vs chờ duyệt</span></div>
+              <div class="fork" style="margin-top:8px">
+                <div class="fork-col">
+                  <div class="node end" style="background:#55677A;min-width:80px"><span class="name">END</span><span class="hint">auto-send</span></div>
+                </div>
+                <div class="fork-col">
+                  <div class="node gate-n" style="min-width:100px"><span class="name">hitl_gate_1</span><span class="hint">duyệt cảnh báo</span></div>
+                  <div class="arrow gate"></div>
+                  <div class="node end" style="min-width:80px"><span class="name">END</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- CHAT -->
+      <section class="panel chat">
+        <h2>Nhánh CHAT</h2>
+        <p class="sub">Hỏi–đáp mã trong watchlist · <span class="mono">POST /v1/chat</span></p>
+        <div class="flow">
+          <div class="node start" style="background:#8B5A12"><span class="name">START</span><span class="hint">câu hỏi user</span></div>
+          <div class="arrow"></div>
+          <div class="node chat-n"><span class="name">rewrite_question</span><span class="hint">parse ticker + ngữ cảnh</span></div>
+          <div class="arrow"></div>
+          <div class="node chat-n"><span class="name">supervisor</span><span class="hint">chọn agent cần gọi</span></div>
+          <div class="arrow"></div>
+          <div class="row">
+            <div class="node shared"><span class="name">price_agent</span><span class="hint">nếu cần giá</span></div>
+            <div class="node shared"><span class="name">news_agent</span><span class="hint">nếu cần tin</span></div>
+            <div class="node shared"><span class="name">eval_agent</span><span class="hint">nếu cần đánh giá</span></div>
+          </div>
+          <div class="arrow"></div>
+          <div class="node chat-n"><span class="name">answer_composer</span><span class="hint">ghép câu trả lời</span></div>
+          <div class="arrow"></div>
+          <div class="node chat-n"><span class="name">guardrail_output</span><span class="hint">chặn lời khuyên chắc</span></div>
+          <div class="arrow dash"></div>
+          <div class="node end" style="background:#8B5A12"><span class="name">END</span><span class="hint">trả user + steps[]</span></div>
+        </div>
+        <p class="sub" style="margin-top:20px;margin-bottom:0">
+          Chat <strong>không</strong> đi confidence / HITL gate — chỉ Scan mới có duyệt cảnh báo.
+        </p>
+      </section>
+    </div>
+
+    <div class="note">
+      <strong>Ánh xạ node → vai trò</strong>
+      <table>
+        <thead>
+          <tr><th>Node</th><th>Vai trò</th><th>Nhánh</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="mono">orchestrator</td><td>Khởi động quét, fan-out price + news</td><td>Scan</td></tr>
+          <tr><td class="mono">rewrite_question</td><td>Làm rõ câu hỏi, tách mã</td><td>Chat</td></tr>
+          <tr><td class="mono">supervisor</td><td>Routing agent theo intent</td><td>Chat</td></tr>
+          <tr><td class="mono">price_agent</td><td>Giá / % biến động</td><td>Cả hai</td></tr>
+          <tr><td class="mono">news_agent</td><td>Tin theo mã</td><td>Cả hai</td></tr>
+          <tr><td class="mono">event_classifier</td><td>Normal → END · Abnormal → eval</td><td>Scan</td></tr>
+          <tr><td class="mono">eval_agent</td><td>Mức độ / bằng chứng bất thường</td><td>Cả hai</td></tr>
+          <tr><td class="mono">synthesis_agent</td><td>Soạn FinalAlert</td><td>Scan</td></tr>
+          <tr><td class="mono">answer_composer</td><td>Soạn câu trả lời chat</td><td>Chat</td></tr>
+          <tr><td class="mono">guardrail_output</td><td>Chặn mua/bán chắc chắn</td><td>Cả hai</td></tr>
+          <tr><td class="mono">confidence_gate</td><td>Auto-send hoặc chờ HITL 1</td><td>Scan</td></tr>
+          <tr><td class="mono">hitl_gate_1</td><td>Duyệt cảnh báo</td><td>Scan</td></tr>
+          <tr><td class="mono">hitl_gate_2</td><td>Duyệt đề xuất đổi ngưỡng / watchlist</td><td>Scan</td></tr>
+        </tbody>
+      </table>
+      <p style="margin:14px 0 0">
+        Nguồn: <span class="mono">docs/agent_graph.mmd</span> (xuất LangGraph) ·
+        chạy lại PNG/MMD: <span class="mono">python -m src.portfolio_watch.graph.workflow</span>
+      </p>
+    </div>
+  </div>
+</body>
+</html>

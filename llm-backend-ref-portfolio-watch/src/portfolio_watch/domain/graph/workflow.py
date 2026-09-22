@@ -16,7 +16,7 @@ from src.portfolio_watch.application.scan_symbol import (
     _is_abnormal,
     should_auto_send,
 )
-from src.portfolio_watch.domain.agents.price_agent import PriceAgentResult
+from src.portfolio_watch.agents.price_agent import PriceAgentResult
 from src.portfolio_watch.domain.entities import RoutingDecision, Severity
 
 # Tên node = bước thật trong code (agent_span / luồng application).

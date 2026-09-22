@@ -1,0 +1,38 @@
+You are implementing in the repo cwd (Portfolio Watch V3).
+
+## Task
+Implement ONLY Phase 4 from specs/implementation-plan.md — Clean dead code.
+
+Checklist (do all):
+- [ ] Chốt 1 nguồn agent (`agents/` *hoặc* `domain/agents/` — ghi change-log).
+- [ ] Xóa stub / `web/` cũ / import không dùng.
+- [ ] `pytest` smoke (Docker) không fail vì path cũ.
+
+Done when: không còn path chết trong README/compose.
+
+## Context already done
+- Phase 2: single FastAPI `src.portfolio_watch.backend.main:app` (UI + API + LangGraph in-process).
+- Phase 3: docker-compose one service `app` on :8000; optional qdrant profile.
+- Do NOT redo Phase 2–3. Do NOT start Phase 5+.
+
+## Constraints
+- Minimal diff; match existing style.
+- Prefer deleting unused paths over rewriting architecture.
+- Before deleting, grep imports/references so you do not break product path.
+- If both `agents/` and `domain/agents/` exist, pick ONE canonical source, update imports, remove or clearly deprecate the other — record decision in specs/change-log.md.
+- Remove dead `web/` (legacy static) if unused by compose/README (product UI is `src/portfolio_watch/frontend/`).
+- Update README/compose only if they still mention dead paths.
+- Mark Phase 4 checklist `[x]` in specs/implementation-plan.md.
+- Append specs/change-log.md (what deleted, which agent source chosen, how to test).
+
+## Verify
+```bash
+python -m pytest tests/ -q --tb=line -x
+# or at least a smoke subset that would fail on dead imports
+docker compose run --rm app pytest tests/test_docker.py tests/test_backend.py -q
+```
+If full suite is too heavy, run the tests that import product entry + agents.
+
+## Output
+What changed, files touched, exact manual test steps.
+Do the file edits yourself — do not only describe the change.

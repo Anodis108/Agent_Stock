@@ -1,50 +1,37 @@
----
-config:
-  flowchart:
-    curve: linear
----
-graph TD;
-	__start__([<p>__start__</p>]):::first
-	orchestrator(orchestrator)
-	price_agent(price_agent)
-	news_agent(news_agent)
-	event_classifier(event_classifier)
-	eval_agent(eval_agent)
-	synthesis_agent(synthesis_agent)
-	guardrail_output(guardrail_output)
-	confidence_gate(confidence_gate)
-	hitl_gate_1(hitl_gate_1)
-	hitl_gate_2(hitl_gate_2)
-	rewrite_question(rewrite_question)
-	supervisor(supervisor)
-	answer_composer(answer_composer)
-	__end__([<p>__end__</p>]):::last
-	__start__ --> orchestrator;
-	__start__ --> rewrite_question;
-	answer_composer --> guardrail_output;
-	confidence_gate -.-> __end__;
-	confidence_gate -.-> hitl_gate_1;
-	eval_agent --> answer_composer;
-	eval_agent -.-> hitl_gate_2;
-	eval_agent -.-> synthesis_agent;
-	event_classifier -.-> __end__;
-	event_classifier -.-> eval_agent;
-	guardrail_output -.-> __end__;
-	guardrail_output -.-> confidence_gate;
-	guardrail_output -.-> synthesis_agent;
-	news_agent --> answer_composer;
-	news_agent --> event_classifier;
-	orchestrator --> news_agent;
-	orchestrator --> price_agent;
-	price_agent --> answer_composer;
-	price_agent --> event_classifier;
-	rewrite_question --> supervisor;
-	supervisor --> eval_agent;
-	supervisor --> news_agent;
-	supervisor --> price_agent;
-	synthesis_agent --> guardrail_output;
-	hitl_gate_1 --> __end__;
-	hitl_gate_2 --> __end__;
-	classDef default fill:#f2f0ff,line-height:1.2
-	classDef first fill-opacity:0
-	classDef last fill:#bfb6fc
+%% Portfolio Watch — agent graph (dễ đọc)
+%% Hai nhánh tách riêng; khớp graph/scan.py + graph/chat.py
+%% Xem bản HTML: docs/agent_graph.html
+flowchart TB
+  subgraph SCAN["Nhánh SCAN — giám sát watchlist"]
+    direction TB
+    S0([START scan]) --> orch[orchestrator]
+    orch --> price_s[price_agent]
+    orch --> news_s[news_agent]
+    price_s --> clf[event_classifier]
+    news_s --> clf
+    clf -->|normal| END_N([END])
+    clf -->|abnormal| eval_s[eval_agent]
+    eval_s -->|gate2 proposal| H2[hitl_gate_2]
+    eval_s -->|alert| syn[synthesis_agent]
+    H2 --> END_H2([END])
+    syn --> grd_s[guardrail_output]
+    grd_s -->|retry| syn
+    grd_s --> conf[confidence_gate]
+    conf -->|auto-send| END_A([END])
+    conf -->|cần duyệt| H1[hitl_gate_1]
+    H1 --> END_H1([END])
+  end
+
+  subgraph CHAT["Nhánh CHAT — hỏi đáp"]
+    direction TB
+    C0([START chat]) --> rw[rewrite_question]
+    rw --> sup[supervisor]
+    sup --> price_c[price_agent]
+    sup --> news_c[news_agent]
+    sup --> eval_c[eval_agent]
+    price_c --> ans[answer_composer]
+    news_c --> ans
+    eval_c --> ans
+    ans --> grd_c[guardrail_output]
+    grd_c --> END_C([END — trả user + steps])
+  end

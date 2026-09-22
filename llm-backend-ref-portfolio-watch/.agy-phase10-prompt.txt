@@ -1,0 +1,39 @@
+You are implementing in the repo cwd (Portfolio Watch V3).
+
+## Task
+Implement ONLY Phase 10 from specs/implementation-plan.md — Core UI chat (Claude-like).
+
+Checklist (do all):
+- [ ] Layout: cột trái hội thoại; composer dưới.
+- [ ] Gửi câu hỏi → hiện câu trả lời (reuse API chat hiện có).
+- [ ] Trạng thái lỗi mạng / timeout hiện rõ trên UI.
+- [ ] Desktop demo dùng được (không cần mobile hoàn hảo).
+
+Done when: demo thủ công 1 câu hỏi–đáp trên Docker (document steps in change-log; smoke if compose cheap).
+
+## Context
+- Product UI: `src/portfolio_watch/frontend/` (`index.html`, `app.js`, `style.css`, `config.js`) served same-origin by `backend.main` StaticFiles.
+- Chat already calls Backend API (e.g. POST chat /v1/chat) via `app.js` — **reuse**, do not invent a new transport.
+- Current layout is stacked sections (header + chat + timeline + watchlist + approvals) — Phase 10 needs a **Claude-like** chat shell: conversation column on the left, composer fixed/at bottom of that column.
+- Phase 11 will add the right live-graph panel — for Phase 10 you may leave a simple empty/placeholder right column OR keep other panels below/aside without building live graph hover. Do **not** implement Phase 11 node animation/hover.
+- Do NOT start Phase 11+ (live graph, market page).
+
+## Constraints
+- Minimal diff; match existing vanilla JS style (no new heavy framework).
+- Desktop-first (~1280px): left chat column readable; composer always reachable under the message list.
+- Clear network/timeout error UI (app.js already has `formatApiError` — surface errors in the chat thread or a visible banner, not only console).
+- Keep watchlist / approvals accessible (tabs, secondary column, or below) — do not delete product features, but chat layout is the focus.
+- Mark Phase 10 checklist `[x]` in specs/implementation-plan.md.
+- Append specs/change-log.md: layout decision, files touched, manual Docker demo steps (compose up → open UI → send 1 question → see answer / error).
+
+## Verify
+```bash
+# Prefer cheap checks:
+# - open index.html structure / grep layout classes
+# - if docker available: docker compose up -d --build && curl -s http://127.0.0.1:8000/ | head
+# Manual: browser send 1 chat, see reply or clear error
+```
+
+## Output
+What changed, files touched, exact manual demo steps, any screenshots notes.
+Do the file edits yourself — do not only describe the change.

@@ -1,70 +1,42 @@
-# Portfolio Watch — Phase 7 compose: AI + Backend + Frontend (3 service)
+# Portfolio Watch V3 — Docker product 1 service (Phase 3)
 # Up:   cp .env.example .env   # điền OPENAI_API_KEYS nếu LLM_BACKEND=openai
 #       docker compose up --build
-# Logs: docker compose logs -f
-#       docker compose logs -f ai
+# Logs: docker compose logs -f app
 # Down: docker compose down
-# Data: volume `pw_data` → /app/data (AI SQLITE + Backend SQLite)
+# Data: volume `pw_data` → /app/data (SQLite: portfolio_watch.db + backend_store.db)
+# Optional: docker compose --profile qdrant up -d (Qdrant service)
 
 services:
-  ai:
+  app:
     build: .
     image: portfolio-watch:split
-    container_name: portfolio-watch-ai
+    container_name: portfolio-watch-app
     env_file:
       - .env
     command:
       [
         "uvicorn",
-        "src.portfolio_watch.ai_main:app",
+        "src.portfolio_watch.backend.main:app",
         "--host",
         "0.0.0.0",
         "--port",
-        "8001",
+        "8000",
       ]
-    ports:
-      - "8001:8001"
-    environment:
-      AI_API_HOST: "0.0.0.0"
-      AI_API_PORT: "8001"
-      SQLITE_PATH: /app/data/portfolio_watch.db
-      LANGFUSE_HOST: "http://host.docker.internal:3000"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    volumes:
-      - pw_data:/app/data
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "python",
-          "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health')",
-        ]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 15s
-    restart: unless-stopped
-
-  backend:
-    image: portfolio-watch:split
-    container_name: portfolio-watch-backend
-    env_file:
-      - .env
-    depends_on:
-      - ai
-    command:
-      ["uvicorn", "src.portfolio_watch.backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
     ports:
       - "${APP_HOST_PORT:-8000}:8000"
     environment:
       API_HOST: "0.0.0.0"
       API_PORT: "8000"
-      # Trong mạng compose: Backend gọi AI qua tên service
-      AI_BASE_URL: http://ai:8001
-      BACKEND_SQLITE_PATH: /app/data/backend_store.db
+      AI_TRANSPORT: "inprocess"
+      # Same-origin product — đè FRONTEND_ORIGIN=:5173 từ .env V2 nếu còn
       FRONTEND_ORIGIN: "*"
+      SQLITE_PATH: /app/data/portfolio_watch.db
+      BACKEND_SQLITE_PATH: /app/data/backend_store.db
+      # Khi bật --profile qdrant, app trong mạng compose gọi service `qdrant`
+      QDRANT_URL: http://qdrant:6333
+      LANGFUSE_HOST: "http://host.docker.internal:3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - pw_data:/app/data
     healthcheck:
@@ -81,26 +53,22 @@ services:
       start_period: 15s
     restart: unless-stopped
 
-  frontend:
-    image: portfolio-watch:split
-    container_name: portfolio-watch-frontend
-    depends_on:
-      - backend
-    command:
-      [
-        "python",
-        "-m",
-        "http.server",
-        "5173",
-        "--bind",
-        "0.0.0.0",
-        "--directory",
-        "src/portfolio_watch/frontend",
-      ]
+  # Optional service for long-term memory (Phase 8) — kích hoạt: docker compose --profile qdrant up -d
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: portfolio-watch-qdrant
+    profiles:
+      - qdrant
+      - optional
     ports:
-      - "5173:5173"
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
     restart: unless-stopped
 
 volumes:
   pw_data:
     name: portfolio-watch-data
+  qdrant_data:
+    name: portfolio-watch-qdrant-data

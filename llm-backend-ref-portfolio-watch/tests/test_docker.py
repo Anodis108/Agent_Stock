@@ -6,20 +6,26 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from src.portfolio_watch.main import app
+from src.portfolio_watch.backend.main import app as product_app
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_compose_three_services_and_volume():
+def test_compose_single_service_app_and_volume():
     text = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
-    assert "ai:" in text and "backend:" in text and "frontend:" in text
+    assert "\n  app:" in text or text.lstrip().startswith("services:\n  app:")
+    # Không còn 3 service V2 (khớp key service, tránh false-positive AI_TRANSPORT)
+    assert "\n  ai:" not in text
+    assert "\n  backend:" not in text
+    assert "\n  frontend:" not in text
+    assert "qdrant" in text
+    assert "profiles:" in text
     assert "pw_data:/app/data" in text
     assert "SQLITE_PATH: /app/data/portfolio_watch.db" in text
     assert "BACKEND_SQLITE_PATH: /app/data/backend_store.db" in text
     assert "src.portfolio_watch.backend.main" in text
-    assert "src/portfolio_watch/frontend" in text
     assert "healthcheck:" in text
+    assert "AI_TRANSPORT" in text
     assert "LANGFUSE_HOST" in text
     assert "sk-" not in text.lower()
 
@@ -29,7 +35,7 @@ def test_dockerfile_src_only():
     assert "COPY src" in df
     assert "COPY backend" not in df
     assert "COPY frontend" not in df
-    assert "ai_main" in df
+    assert "src.portfolio_watch.backend.main:app" in df
     assert "portfolio-watch:split" in (ROOT / "docker-compose.yml").read_text(
         encoding="utf-8"
     )
@@ -47,8 +53,8 @@ def test_env_example_has_langfuse_and_compose_vars():
         assert key in text
 
 
-def test_frontend_static_outside_api_container():
+def test_product_app_serves_health_and_ui():
     assert (ROOT / "src" / "portfolio_watch" / "frontend" / "index.html").is_file()
-    client = TestClient(app)
+    client = TestClient(product_app)
     assert client.get("/health").status_code == 200
-    assert client.get("/").status_code == 404
+    assert client.get("/").status_code == 200

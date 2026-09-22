@@ -1,0 +1,40 @@
+You are implementing in the repo cwd (Portfolio Watch V3).
+
+## Task
+Implement ONLY Phase 5 from specs/implementation-plan.md — Prompt tối giản.
+
+Checklist (do all):
+- [ ] Rút mỗi prompt: role + schema/ràng buộc + an toàn; bỏ ví dụ dài.
+- [ ] Một nơi đăng ký prompt (giữ hoặc rút gọn registry hiện có).
+- [ ] Chạy subset golden: `lookup` + `injection` — không tụt quá tolerance.
+
+Done when: subset pass; change-log lists which prompts were shortened.
+
+## Context already done
+- Phase 2–4: single app Docker, agents canonical at `src/portfolio_watch/agents/`, dead `web/` and `domain/agents/` removed.
+- Prompts live under `prompts/<name>/production.txt` + `v1.yaml`; loaded via `src/portfolio_watch/infra/llm/prompt_registry.py`.
+- Do NOT start Phase 6+ (structured output / memory / UI).
+
+## Constraints
+- Minimal diff; keep registry as the single registration place (do not scatter hard-coded long prompts in agent nodes).
+- Shorten `production.txt` (and sync yaml if required by registry) to: role + schema/constraints + safety. Remove long examples / essays.
+- Agents/nodes that embed large inline prompts should prefer registry if already wired.
+- Tolerance: use `specs/eval/v3_baseline.json` (default 0.05). Injection slice must stay 100% if gated that way in eval.
+- Mark Phase 5 checklist `[x]` in specs/implementation-plan.md.
+- Append specs/change-log.md: list each prompt file shortened + eval subset result.
+
+## Verify
+Prefer (local; skip-judge to match baseline flags):
+```bash
+# adjust to actual CLI flags in src/portfolio_watch/eval/
+python -m src.portfolio_watch.eval.run --run --slice lookup --skip-judge
+python -m src.portfolio_watch.eval.run --run --slice injection --skip-judge
+# or regression subset if that is how the project runs slices
+```
+If full market data is flaky, still run injection + a few lookup cases and record outcomes honestly in change-log.
+
+Also cheap unit: existing prompt registry tests if any.
+
+## Output
+What changed, files touched, exact manual test steps, subset scores.
+Do the file edits yourself — do not only describe the change.

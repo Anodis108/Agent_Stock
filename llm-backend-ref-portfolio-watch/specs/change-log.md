@@ -3,6 +3,930 @@
 Nhật ký thay đổi theo thời gian cho project Portfolio Watch & Chat Agent.
 Ghi theo ngày, mới nhất ở trên.
 
+## 2026-09-22 — Review Phase 11 vs product-spec / test-plan
+
+### Kết quả đối chiếu (phạm vi Phase 11: Live graph + hover I/O)
+
+**Passes**
+- Plan Phase 11: panel phải `#live-graph-panel` theo `steps[]`; animation
+  `animateLiveGraph` sáng lần lượt; hover/click → inspector Input/Output;
+  contract `input`/`output` qua `normalize_steps` + `graph/steps.py`; checklist
+  `[x]`.
+- Product-spec AC #2 / test-plan §3 Live graph + Hover (trong phạm vi one-shot
+  HTTP + client animation).
+- Pytest: `tests/test_frontend.py` + `tests/test_backend.py` **13 passed**
+  (gồm `test_phase11_live_graph_and_hover_io`,
+  `test_normalize_steps_preserves_input_output`, chat steps có I/O).
+- Docker smoke: `GET /` có live-graph; `POST /chat` → mỗi step có `input` +
+  `output`.
+
+**Fails (đã sửa — chỉ liên quan Phase 11)**
+- Hover gọi `showNodeInspector(step, false)` → gỡ pin mỗi lần di chuột; đổi
+  hover/focus không đổi pin state; so khớp `step.id` bằng `String(...)`.
+
+**Missing (đúng kỳ vọng — phase sau)**
+- Market status page (Phase 12); SSE streaming thật (không bắt buộc Phase 11);
+  diagram agent (Phase 14).
+
+### Fix trong review
+- `src/portfolio_watch/frontend/app.js`: pin stable khi hover.
+- `src/portfolio_watch/frontend/index.html`: comment panel (bỏ “placeholder”).
+
+### Verify
+```bash
+python -m pytest tests/test_frontend.py tests/test_backend.py -q
+# Browser: http://127.0.0.1:8000/ → chat → node sáng → hover xem I/O
+```
+
+## 2026-09-22 — Phase 11: Live graph + hover I/O
+
+### What & Architectural Decisions
+- **Panel phải live graph:** thay `.graph-placeholder-card` bằng
+  `#live-graph-panel` + `#graph-nodes-flow` (node cards theo `steps[]`) và
+  `#graph-node-inspector` (Input / Output khi hover hoặc click pin).
+- **Node sáng lần lượt:** chat/scan vẫn one-shot HTTP; sau khi nhận `steps[]`,
+  client `animateLiveGraph` chạy pending → running → done/error (~220ms/bước).
+- **Contract I/O:** `backend/steps.normalize_steps` giữ `input`/`output`;
+  `graph/steps.build_steps_from_chunks` (+ legacy `application/answer_question`
+  builders) điền I/O theo từng node (rewrite, supervisor, price, …).
+- **Không** dùng `docs/agent_graph*` — đó là sơ đồ kiến trúc tĩnh.
+
+### Files Touched
+- `src/portfolio_watch/frontend/{index.html,app.js,style.css}`
+- `src/portfolio_watch/backend/steps.py`
+- `src/portfolio_watch/graph/steps.py`
+- `src/portfolio_watch/application/answer_question.py` (I/O trên steps legacy)
+- `tests/test_frontend.py`, `tests/test_backend.py`
+- `specs/implementation-plan.md` (Phase 11 `[x]`)
+
+### Manual Docker Demo Steps
+1. `docker compose up -d --build app` (hoặc sync frontend + restart nếu image cũ).
+2. Mở `http://127.0.0.1:8000/` — cột phải hiện Live Graph (không placeholder).
+3. Gửi chat (vd. `Gia FPT hom nay?`) → node sáng lần lượt → hover một node →
+   inspector hiện Input + Output JSON.
+4. Tab Timeline / Watchlist / Approvals vẫn dùng được bên dưới graph.
+
+## 2026-09-22 — Review Phase 10 vs product-spec / test-plan
+
+### Kết quả đối chiếu (phạm vi Phase 10: Core UI chat Claude-like)
+
+**Passes**
+- Plan Phase 10: cột trái hội thoại + composer đáy; gửi câu hỏi → trả lời qua
+  `POST /chat` hiện có; banner + bubble lỗi mạng/timeout (`formatApiError`);
+  desktop shell ~1280px; checklist `[x]`.
+- Product-spec story #1 (hội thoại trái, composer dưới) trong phạm vi Phase 10;
+  test-plan §3 hàng Layout chat; `tests/test_frontend.py` **3 passed**
+  (gồm `test_phase10_claude_layout`).
+- Docker: `docker compose up -d --build app` → `GET /` phục vụ `app-shell` /
+  `chat-column` / `composer-container`; `POST /chat` → 200 + `answer` +
+  `steps[]` (smoke ASCII body).
+
+**Fails (đã sửa — chỉ liên quan Phase 10)**
+- `.sr-only { display: none; }` ẩn hẳn heading tab khỏi assistive tech → đổi
+  sang pattern clip/visually-hidden chuẩn trong `style.css`.
+
+**Missing (đúng kỳ vọng — phase sau)**
+- Live graph node sáng + hover I/O (Phase 11 / product-spec AC #2, test-plan
+  §3 Live graph / Hover).
+- Market status page; diagram render trên UI (phase sau / E2E).
+
+### Fix trong review
+- `src/portfolio_watch/frontend/style.css`: `.sr-only` visually-hidden.
+
+### Verify
+```bash
+python -m pytest tests/test_frontend.py -q
+docker compose up -d --build app
+curl -s http://127.0.0.1:8000/ | grep -E 'app-shell|chat-column|composer'
+# Browser: mở UI → gửi 1 câu → thấy trả lời; stop app → gửi lại → thấy banner lỗi
+```
+
+## 2026-09-22 — Phase 10: Core UI chat (Claude-like)
+
+### What & Architectural Decisions
+- **Layout 2 cột Claude-like Shell (Desktop-first ~1280px):**
+  - Cột trái (`#chat`, `.chat-column` chiếm ~58% bề rộng): Khu vực hội thoại chính dạng Claude. Bao gồm thanh tiêu đề hội thoại, danh sách tin nhắn cuộn độc lập (`#chat-messages`), và khung soạn thảo (`#chat-form`, `#chat-input`, `#chat-send`) cố định chắc chắn ở đáy cột.
+  - Cột phải (`.secondary-column` chiếm ~42% bề rộng): Khu vực tiện ích phụ chứa placeholder card cho đồ thị trực quan "Live Graph & Agent Steps (Phase 11)", cùng hệ thống Tab navigation gọn gàng chuyển đổi giữa:
+    - Tab `Timeline bước`: Hiển thị danh sách các bước (`steps[]`) từ Backend (`GET /runs/{id}/steps`).
+    - Tab `Watchlist`: Quản lý danh mục theo dõi (thêm mã, quét mã, sửa ngưỡng %, xóa mã).
+    - Tab `Cảnh báo chờ duyệt`: Xử lý duyệt (HITL approve/reject) kèm badge số lượng cảnh báo đang chờ duyệt.
+  - Bổ sung các chip gợi ý nhanh bên dưới composer (`Giá FPT hôm nay?`, `Tình hình VNM`, `So sánh FPT và HPG`) giúp demo tức thì chỉ bằng 1 click.
+- **Trải nghiệm Hội thoại & Hiển thị Lỗi mạng / Timeout rõ ràng:**
+  - Thiết kế bong bóng tin nhắn (message bubbles) hiện đại: Phân tách rõ ràng giữa `👤 Bạn` (bubble xanh bo tròn hiện đại) và `🤖 Portfolio Watch` (thẻ trắng viền nổi thanh lịch, giữ nguyên định dạng dòng).
+  - Trạng thái chờ phản hồi trực quan (`.chat-thinking`): Tự động hiển thị thẻ "Portfolio Watch đang suy nghĩ và kiểm tra dữ liệu…" ngay khi gửi câu hỏi và tự gỡ bỏ khi nhận được phản hồi hoặc phát sinh lỗi.
+  - Báo lỗi 2 tầng cho sự cố mạng và timeout:
+    1. Thẻ lỗi trong luồng chat (`.chat-msg.chat-error` với nền đỏ nhạt và thông điệp cụ thể từ `formatApiError`).
+    2. Banner lỗi nổi bật (`#chat-error-banner`) gắn ở đầu khung chat với icon `⚠️`, thông điệp rõ ràng và nút đóng `✕`, tự động ẩn khi người dùng gõ nội dung mới.
+- **Bảo toàn và Tái sử dụng trọn vẹn API hiện có:**
+  - Tái sử dụng endpoint cùng origin `POST /chat` trong `app.js` (không thay đổi transport, không phát sinh framework nặng).
+  - Giữ nguyên vẹn tất cả ID phần tử và cấu trúc DOM nghiệp vụ phục vụ `test_frontend.py` và các API backend (`#chat`, `#timeline`, `#watchlist`, `#approvals`).
+
+### Files Touched
+- `src/portfolio_watch/frontend/index.html`: Tái cấu trúc sang layout 2 cột Claude-like, tích hợp banner lỗi, composer cố định đáy và tab panel phụ.
+- `src/portfolio_watch/frontend/style.css`: Bộ stylesheet hoàn chỉnh phong cách Claude (desktop-first, chat bubbles, thinking indicator, error banner, tabs và responsive).
+- `src/portfolio_watch/frontend/app.js`: Nâng cấp xử lý chat, thinking bubble, banner lỗi mạng/timeout, tab switching và badge approvals.
+- `specs/implementation-plan.md`: Đánh dấu hoàn thành toàn bộ checklist `[x]` của Phase 10.
+- `specs/change-log.md`: Ghi chép thiết kế giao diện, quyết định kỹ thuật và các bước demo thủ công.
+
+### Manual Docker Demo Steps
+1. Khởi động / Rebuild container ứng dụng:
+   ```bash
+   docker compose up -d --build app
+   ```
+2. Mở trình duyệt truy cập:
+   `http://127.0.0.1:8000/`
+3. Xác nhận giao diện:
+   - Giao diện 2 cột chuẩn desktop (~1280px): Cột trái là khung hội thoại với composer ở đáy; cột phải có placeholder "Live Graph & Agent Steps (Phase 11)" cùng các tab Timeline / Watchlist / Cảnh báo.
+4. Demo câu hỏi - đáp:
+   - Nhập vào composer câu hỏi: `Giá FPT hôm nay?` (hoặc bấm vào chip gợi ý).
+   - Nhấn **Gửi** (hoặc nhấn phím Enter).
+   - Quan sát:
+     - Tin nhắn người dùng xuất hiện bên phải.
+     - Xuất hiện trạng thái "Portfolio Watch đang suy nghĩ…".
+     - Nút "Gửi" bị vô hiệu hoá chống spam.
+     - Sau khi Backend phản hồi: bot trả lời đầy đủ giá và phân tích, timeline bên tab phải hiện danh sách steps với trạng thái `done`.
+5. Demo phản hồi lỗi mạng / timeout:
+   - Dừng tạm thời container hoặc ngắt kết nối: `docker compose stop app`.
+   - Gửi một câu hỏi trong ô chat.
+   - Quan sát:
+     - Banner đỏ nổi bật trên đỉnh khung chat hiển thị: `⚠️ Không thể hoàn tất câu hỏi: Không nối được Backend (kiểm tra :8000 còn chạy).`
+     - Tin nhắn lỗi xuất hiện rõ ràng trong luồng hội thoại.
+   - Bật lại container: `docker compose start app`.
+
+## 2026-09-22 — Review Phase 9 vs product-spec / test-plan
+
+### Kết quả đối chiếu (phạm vi Phase 9: Langfuse 1 request = 1 trace)
+
+**Passes**
+- Plan Phase 9: 1 root chat + 1 root scan; node span = node id; step I/O;
+  `MONITORING_ENABLED=false` no-op + chat 200; mock hierarchy; checklist `[x]`.
+- Product-spec AC #3 / test-plan §2: mock parent/child không cần host Langfuse;
+  change-log có checklist thủ công khi có host `:3000`.
+- Pytest: `tests/test_tracing.py` **5 passed**; regression memory/structured OK;
+  `--self-check` OK.
+
+**Fails (đã sửa — chỉ liên quan Phase 9)**
+- `_roots` / `_agents` không thread-safe khi `price_agent` + `news_agent` chạy
+  song song (`ThreadPoolExecutor`) → thêm `threading.RLock` quanh đăng ký/
+  lookup/pop span map.
+
+**Missing (đúng kỳ vọng — phase sau)**
+- UI Claude-like (Phase 10); live graph hover (Phase 11); multi-symbol span
+  name collision vẫn có thể xảy ra nếu nhiều `price_agent` cùng tên song song
+  (cùng key) — ngoài phạm vi sửa tối thiểu hiện tại.
+
+### Fix trong review
+
+- Lock map tracing; re-run `pytest tests/test_tracing.py`.
+
+## 2026-09-22 — Phase 9: Langfuse: 1 request = 1 trace
+
+### What & Architectural Decisions
+- **1 Request = 1 Trace Root (không trùng lặp root):**
+  - Chat: duy nhất 1 root `trace_request("chat", q, metadata=meta)` bao trọn `run_chat_graph` trong `application/answer_question.py`.
+  - Scan: duy nhất 1 root `trace_request("scan", sym, metadata=meta)` bao trọn `run_scan_graph` trong `application/scan_symbol.py`.
+  - Không có `trace_request` thứ hai nào được kích hoạt trong suốt vòng đời của request.
+- **Hierarchy Parent/Child & Khắc phục Mismatches:**
+  - Sửa lỗi mismatch tên span cha: `rewrite_question` trước đây gọi `agent_step(turn, "supervisor", "rewrite")` gây mồ côi vì span cha đang mở là `"rewrite_question"`. Đã chuyển sang `agent_step(turn, "rewrite_question", "rewrite", input={"question": question})`.
+  - Đảm bảo `price_agent` và `news_agent` spans luôn bọc trực tiếp các lời gọi `run_price_agent` và `run_news_agent` (kể cả khi chạy song song qua `ThreadPoolExecutor` trong chat và scan). Nhờ đó các step con (`fetch_quote`, `react_turn_*`, `fetch_news`) lồng chính xác dưới span của agent tương ứng.
+  - Sửa lỗi `AttributeError` trong `price_agent/nodes.py` khi đọc `quote.close` thay vì `quote.latest_close`, đảm bảo `box["output"]` của step `fetch_quote` luôn được gán đầy đủ.
+- **Mọi Graph Node Span và Step con có Input + Output:**
+  - Đảm bảo tất cả agent spans (`rewrite_question`, `supervisor`, `price_agent`, `news_agent`, `eval_agent`, `synthesis_agent`, `confidence_gate`, `answer_composer`) đều thiết lập `input` và `box["output"]` khi dữ liệu sẵn có.
+  - Đảm bảo tất cả step con (`rewrite`, `route`, `fetch_quote`, `react_turn_*`, `fetch_news`, `classify`, `read_price_history`, `build_severity`, `draft_attempt`, `guardrail_check`, `draft`, `guardrail_retry`) đều có `input` và `box["output"]`.
+- **An toàn Best-Effort & No-op:**
+  - Khi `MONITORING_ENABLED=false` hoặc thiếu API keys: mọi API tracing hoạt động ở chế độ no-op hoàn toàn, không ném exception, không làm chậm hoặc crash request, API chat trả mã HTTP 200 bình thường.
+- **Mock Hierarchy Pytest Suite:**
+  - Bổ sung `MockObservation` và `MockLangfuse` trong `tests/test_tracing.py` để xác thực cấu trúc cây phân cấp (root -> agent spans -> step spans) độc lập không cần máy chủ Langfuse thật.
+  - Kiểm tra 5 kịch bản: `test_trace_noop_when_disabled`, `test_v1_chat_ok_when_monitoring_off`, `test_chat_single_root_and_hierarchy`, `test_scan_single_root_and_hierarchy`, `test_no_duplicate_roots_per_request`.
+
+### Files Touched
+- `src/portfolio_watch/agents/supervisor_agent/nodes.py`: Chuyển step cha của `rewrite` sang `rewrite_question`; bổ sung input/output cho `rewrite` và `route` steps.
+- `src/portfolio_watch/agents/price_agent/nodes.py`: Bổ sung input/output cho `fetch_quote` step (sửa thuộc tính `latest_close`).
+- `src/portfolio_watch/agents/news_agent/nodes.py`: Bổ sung input/output cho `react_turn_*` và `fetch_news` steps.
+- `src/portfolio_watch/agents/event_classifier/nodes.py`: Bổ sung input/output cho `classify` step.
+- `src/portfolio_watch/agents/eval_agent/nodes.py`: Bổ sung input/output cho `read_price_history` và `build_severity` steps.
+- `src/portfolio_watch/agents/synthesis_agent/nodes.py`: Bổ sung input/output cho `draft_attempt` và `guardrail_check` steps.
+- `src/portfolio_watch/agents/answer_composer/nodes.py`: Bổ sung input/output cho `draft` và `guardrail_retry` steps.
+- `src/portfolio_watch/graph/chat.py`: Đảm bảo `price_agent` và `news_agent` spans bọc quanh các thread worker; bổ sung input/output đầy đủ cho `eval_agent` và `answer_composer`.
+- `src/portfolio_watch/graph/scan.py`: Đảm bảo `price_agent` và `news_agent` spans bọc quanh các thread worker trong node fetch; bổ sung `confidence_gate` spans cho gate nodes với input/output đầy đủ.
+- `tests/test_tracing.py`: Mở rộng test suite với MockLangfuse kiểm tra đầy đủ parent/child hierarchy cho cả luồng chat và scan, đơn root và no-op khi tắt monitoring.
+- `specs/implementation-plan.md`: Đánh dấu `[x]` toàn bộ checklist Phase 9.
+- `specs/change-log.md`: Ghi chép Phase 9 và checklist thủ công khi có host Langfuse.
+
+### Manual Checklist for Live Langfuse Host (khi có host `:3000`)
+1. Thiết lập `.env`:
+   ```env
+   MONITORING_ENABLED=true
+   LANGFUSE_PUBLIC_KEY=pk-lf-...
+   LANGFUSE_SECRET_KEY=sk-lf-...
+   LANGFUSE_HOST=http://localhost:3000
+   ```
+2. Khởi động hệ thống (`docker compose up --build app`).
+3. Gửi 1 câu hỏi chat từ UI hoặc cURL (`POST /v1/chat`).
+4. Truy cập giao diện Langfuse `http://localhost:3000` -> Mở mục Traces:
+   - Xác nhận có **đúng 1 trace root** tên `chat`.
+   - Mở rộng trace: xác nhận các span con `rewrite_question`, `supervisor`, `price_agent`, `news_agent`, `answer_composer`.
+   - Nhấp vào từng span / step: xác nhận thẻ `Input` và `Output` đều có dữ liệu (JSON/text), không bị null/empty.
+   - Xác nhận các step (`fetch_quote`, `draft`, `guardrail_retry`) nằm lồng bên trong agent span cha tương ứng.
+5. Thực hiện 1 lệnh scan (`POST /v1/scan/symbol` hoặc quét watchlist):
+   - Xác nhận có **đúng 1 trace root** tên `scan`.
+   - Xác nhận các span con `price_agent`, `news_agent`, `event_classifier` (và `eval_agent`, `synthesis_agent`, `confidence_gate` nếu có biến động).
+   - Kiểm tra input và output trên mỗi node/step.
+6. Đổi `MONITORING_ENABLED=false` trong `.env` -> gửi request chat:
+   - Request trả về HTTP 200 bình thường, không ghi thêm trace nào lên Langfuse.
+
+## 2026-09-22 — Review Phase 8 vs product-spec / test-plan
+
+### Kết quả đối chiếu (phạm vi Phase 8: Memory long-term)
+
+**Passes**
+- Plan Phase 8: `recall_memory` đầu / `store_memory` cuối chat; Qdrant optional +
+  in-memory fallback; không `user_id` → skip không crash; checklist `[x]`.
+- Product-spec AC #5 / test-plan §4 Long-term: có `user_id` → recall/store;
+  không Qdrant → fallback; không user → không crash.
+- Env: `QDRANT_*` (+ embedding) trong `.env.example`; compose profile `qdrant`.
+- Pytest: `tests/test_long_term_memory.py` **15 passed**; `-k long_term|memory|…`
+  **27 passed**; `--self-check` OK.
+
+**Fails (đã sửa — chỉ liên quan Phase 8)**
+- Heuristic `_extract_long_term_fact` lưu mọi câu có ticker (`len(symbols) >= 1`)
+  → làm đầy long-term bằng lookup thường. Siết: chỉ store khi có tín hiệu
+  quan tâm/theo dõi (hoặc LLM `worth_saving`).
+- `.env.example` thiếu `EMBEDDING_MODEL` / `EMBEDDING_DIM` dù settings đã có.
+- `user_id: str` trên chat entrypoints không phản ánh `None` (skip long-term)
+  → đổi `str | None`.
+
+**Missing (đúng kỳ vọng — phase sau)**
+- Langfuse 1 request = 1 trace (Phase 9); UI Claude-like; diagram.
+
+### Fix trong review
+
+- Siết heuristic store; bổ sung embedding env; type `user_id: str | None`;
+  re-run `pytest tests/test_long_term_memory.py`.
+
+## 2026-09-22 — Phase 8: Memory long-term
+
+### What & Architectural Decisions
+- **Mô hình Long-term Memory theo mẫu `agent_pr`:**
+  - Định danh và cách ly theo `user_id`: sự thật về người dùng (mã cổ phiếu theo dõi, khẩu vị đầu tư, sở thích) được lưu trữ độc lập theo từng `user_id`.
+  - Vị trí `recall_memory` đầu chat: ngay sau khi nạp hội thoại short-term, `recall_memory` truy xuất các fact liên quan đến câu hỏi / ngữ cảnh và đưa vào `ChatState.memories`.
+  - Tích hợp với `rewrite_question`: hàm `_apply_memory_symbol` được nâng cấp để nếu hội thoại hiện tại chưa có mã (phiên mới), hệ thống sẽ tìm kiếm mã cổ phiếu từ `memories` dài hạn để giải quyết đại từ / câu hỏi tiếp diễn (vd: "mã đó hôm nay thế nào?" -> tự nhận diện "FPT").
+  - Vị trí `store_memory` cuối chat: sau khi AnswerComposer hoàn thành câu trả lời và sau khi lưu short-term conversation. Quyết định chạy sau short-term append giúp đảm bảo luồng hội thoại ngắn hạn không bao giờ bị gián đoạn ngay cả khi bước trích xuất thông tin dài hạn gặp lỗi hoặc độ trễ mạng.
+  - Không `user_id` (None, `""`, hoặc khoảng trắng): tự động bỏ qua toàn bộ long-term memory (`recall_memory` trả `{"memories": []}`, `store_memory` trả `{}`), không crash, không ném exception.
+- **Hạ tầng Vector Store Qdrant & Fallback In-memory (`infra/storage/long_term_memory.py`):**
+  - Hỗ trợ Qdrant tùy chọn (optional): kết nối qua `qdrant_client` tới `QDRANT_URL` (hỗ trợ cả `:memory:` cho local/test và URL HTTP thật cho Docker).
+  - Tự động fallback in-memory khi không có Qdrant hoặc thiếu API key: nếu `qdrant_client` chưa được cài đặt, Qdrant offline/không thể kết nối, `QDRANT_URL` để trống/unset/`:memory:`, hoặc thiếu OpenAI API key để tạo embedding vector -> hệ thống tự động fallback sang in-memory store.
+  - Cơ chế tìm kiếm fallback in-memory: xếp hạng độ tương quan dựa trên độ trùng từ khóa (keyword overlap) kết hợp độ tươi (recency timestamp) và giới hạn top `k` kết quả.
+  - Tối ưu hiệu năng & không user warning: thiết lập `check_compatibility=False` trên `QdrantClient`, `timeout=0.5s` kèm kiểm tra kết nối nhanh để các bài test CI/local không bị nghẽn thời gian chờ khi không có Qdrant daemon.
+- **Schema Pydantic & Cấu hình môi trường:**
+  - Thêm `MemoryFact` và helper `parse_memory_fact` vào `shared/schemas.py` (trường `worth_saving: bool`, `fact: str`), kế thừa nền tảng `MemoryExtractOutput` từ Phase 6.
+  - Thêm cấu hình vào `shared/settings.py` & tài liệu hóa trong `.env.example`: `QDRANT_URL`, `QDRANT_API_KEY`, `QDRANT_COLLECTION` (mặc định `portfolio_watch_memory`), `embedding_model` (`text-embedding-3-small`), `embedding_dim` (`1536`).
+  - Thêm trường `memories: list[str]` vào `ChatState` (`graph/state.py`) và `AnswerQuestionResult` (`application/answer_question.py`).
+
+### Files touched
+- `src/portfolio_watch/shared/settings.py` (thêm cấu hình `qdrant_url`, `qdrant_api_key`, `qdrant_collection`, `embedding_model`, `embedding_dim`)
+- `.env.example` (bổ sung tài liệu cấu hình `QDRANT_URL`, `QDRANT_API_KEY`, `QDRANT_COLLECTION`)
+- `src/portfolio_watch/shared/schemas.py` (thêm `MemoryFact`, `parse_memory_fact`)
+- `src/portfolio_watch/infra/storage/long_term_memory.py` (mới — module long-term memory với Qdrant + in-memory fallback)
+- `src/portfolio_watch/infra/storage/__init__.py` (re-export `save_to_long_term`, `recall_long_term`, `get_qdrant_client`, `clear_long_term_fallback`)
+- `src/portfolio_watch/agents/supervisor_agent/nodes.py` (thêm `recall_memory`, `store_memory`, hỗ trợ `memories` trong `_apply_memory_symbol`, `HeuristicRewriteBrain`, `LlmRewriteBrain`, `rewrite_question`)
+- `src/portfolio_watch/agents/supervisor_agent/__init__.py` (re-export `recall_memory`, `store_memory`)
+- `src/portfolio_watch/graph/state.py` (thêm `memories: list[str]` vào `ChatState`)
+- `src/portfolio_watch/graph/chat.py` (wire `recall_memory` đầu lượt, truyền `memories` vào state & rewrite, wire `store_memory` cuối lượt)
+- `src/portfolio_watch/application/answer_question.py` (thêm `memories: list[str]` vào `AnswerQuestionResult`)
+- `specs/implementation-plan.md` (đánh dấu `[x]` toàn bộ checklist Phase 8)
+- `specs/change-log.md` (ghi nhận thay đổi Phase 8)
+- `tests/test_long_term_memory.py` (mới — 15 unit & integration tests bao phủ đầy đủ kịch bản có/không `user_id`, Qdrant fallback, roundtrip)
+
+### Tests & Results
+1. **Pytest Long-term memory suite:**
+   ```bash
+   python -m pytest tests/test_long_term_memory.py -v
+   ```
+   -> **15 passed in 2.21s**.
+2. **Pytest Memory suite (short-term + long-term):**
+   ```bash
+   python -m pytest tests/ -q -k "long_term or memory or qdrant or recall or store_memory" --maxfail=8
+   ```
+   -> **27 passed, 50 deselected in 1.48s**.
+3. **Full test suite:**
+   ```bash
+   python -m pytest tests/ -v
+   ```
+   -> **77 passed in 3.65s**.
+4. **Eval runner self-check:**
+   ```bash
+   python -m src.portfolio_watch.eval.run --self-check
+   ```
+   -> self-check: 8/8 rule ok; judge gate ok; runner 4/4 ok; report ok; regression ok; injection gate ok; scorer locks ok.
+5. **Docker / App health check smoke:**
+   ```bash
+   curl -s http://127.0.0.1:8000/health
+   ```
+   -> `{"status":"ok","app":"Portfolio Watch & Chat Agent"}`.
+
+
+## 2026-09-22 — Review Phase 7 vs product-spec / test-plan
+
+### Kết quả đối chiếu (phạm vi Phase 7: Memory short-term + TTL)
+
+**Passes**
+- Plan Phase 7: window + TTL env (`MEMORY_SHORT_TERM_WINDOW` /
+  `MEMORY_SHORT_TERM_TTL_MINUTES`); `.env.example` có chú thích; checklist `[x]`.
+- `filter_conversation_history` + `SqliteMemoryStore.list_conversation` tôn trọng
+  window + TTL; `run_chat_graph` / `answer_question` dùng settings (không còn
+  magic `20`).
+- Follow-up trong session nhớ mã (heuristic + E2E chat graph); hết hạn TTL →
+  không resolve ticker cũ.
+- Product-spec AC memory short-term + TTL; test-plan §4 Short-term / TTL.
+- Pytest: `tests/test_short_term_memory.py` + `-k "memory|…"` **12 passed**;
+  `--self-check` OK.
+
+**Fails (đã sửa — chỉ liên quan Phase 7)**
+- `_FakeMemoryStore` trong `tests/test_structured_output.py` chưa nhận
+  `ttl_minutes` / `created_at` theo Protocol mới → `run_chat_graph` phải
+  fallback `TypeError`. Cập nhật chữ ký fake cho khớp Protocol.
+
+**Missing (đúng kỳ vọng — phase sau)**
+- Long-term recall/store + Qdrant (Phase 8); Langfuse; UI Claude-like.
+
+### Fix trong review
+
+- Cập nhật `_FakeMemoryStore` append/list signature; thêm
+  `from __future__ import annotations` cho `memory_store.py`.
+
+## 2026-09-22 — Phase 7: Memory short-term + TTL
+
+### What & Architectural Decisions
+- **Cấu hình Sliding Window & TTL qua Environment Variables (`shared/settings.py` & `.env.example`):**
+  - `MEMORY_SHORT_TERM_WINDOW` (mặc định: `20`): Số lượng tin nhắn tối đa trong sliding window lưu trữ ngữ cảnh ngắn hạn cho phiên hội thoại.
+  - `MEMORY_SHORT_TERM_TTL_MINUTES` (mặc định: `60`): TTL / thời hạn độ tươi tính bằng phút. Các tin nhắn cũ hơn khoảng thời gian này sẽ tự động bị loại bỏ khỏi context hội thoại trước khi chuyển tới agent rewrite/routing.
+  - Ghi nhận và chú thích đầy đủ cả hai biến vào `.env.example`.
+- **Hạ tầng Memory Store & Lọc độ tươi (`infra/storage/memory_store.py` & `domain/ports.py`):**
+  - Cập nhật `MemoryStore` Protocol: `append_conversation(user_id, role, content, *, created_at=None)` và `list_conversation(user_id, limit=None, *, ttl_minutes=None)`.
+  - Bổ sung `parse_timestamp(ts)`: parse linh hoạt đa dạng định dạng thời gian (SQLite datetime `"YYYY-MM-DD HH:MM:SS"`, ISO-8601 kèm offset hoặc Z, unix timestamp, datetime object) sang UTC datetime an toàn múi giờ.
+  - Bổ sung `filter_conversation_history(items, *, limit=None, ttl_minutes=None, now=None)`: hàm lọc độc lập tái sử dụng được, đảm bảo giữ thứ tự thời gian (cũ -> mới), loại bỏ các tin nhắn hết hạn TTL, giữ lại các message không có timestamp (fallback an toàn), và cắt lấy đúng sliding window `limit` tin nhắn mới nhất.
+  - Cập nhật `SqliteMemoryStore.list_conversation()` và `SqliteMemoryStore.append_conversation()` để tích hợp cơ chế window + TTL, hỗ trợ tham số `now` cho phép kiểm thử thời gian xác định (deterministic test).
+- **Kết nối LangGraph Chat (`graph/chat.py` & `application/answer_question.py`):**
+  - Loại bỏ magic number `20` trong `run_chat_graph()`, kết nối trực tiếp với `settings.memory_short_term_window` và `settings.memory_short_term_ttl_minutes` (vẫn cho phép override qua parameter `limit` và `ttl_minutes`).
+  - Sử dụng lớp bảo vệ 2 tầng: `list_conversation()` lọc tại tầng storage, kết hợp `filter_conversation_history()` đảm bảo an toàn ngay cả khi mock storage không hỗ trợ TTL.
+  - Hội thoại hết hạn TTL sẽ không được đưa vào `conversation` của `ChatState`, từ đó ngăn chặn supervisor/rewrite nhận diện sai ticker/ngữ cảnh từ các phiên đã quá hạn.
+- **Duy trì ngữ cảnh follow-up trong session:**
+  - Tận dụng `_apply_memory_symbol` trong `agents/supervisor_agent/nodes.py`: người dùng hỏi tiếp các câu không có ticker (vd: "giá hôm nay thế nào?", "mã đó sao rồi?", "thế còn tin tức sao rồi?") sẽ tự động nhớ ticker gần nhất trong sliding window.
+  - Khi tin nhắn đã quá TTL: context trống -> không gán nhầm ticker cũ.
+
+### Files touched
+- `src/portfolio_watch/shared/settings.py` (thêm `memory_short_term_window`, `memory_short_term_ttl_minutes`)
+- `.env.example` (thêm `MEMORY_SHORT_TERM_WINDOW`, `MEMORY_SHORT_TERM_TTL_MINUTES`)
+- `src/portfolio_watch/domain/ports.py` (cập nhật `MemoryStore` Protocol)
+- `src/portfolio_watch/infra/storage/memory_store.py` (thêm `parse_timestamp`, `filter_conversation_history`, cập nhật `SqliteMemoryStore`)
+- `src/portfolio_watch/infra/storage/__init__.py` (re-export `filter_conversation_history`, `parse_timestamp`)
+- `src/portfolio_watch/graph/chat.py` (wire settings window + TTL thay cho magic number 20)
+- `src/portfolio_watch/application/answer_question.py` (hỗ trợ truyền `limit`, `ttl_minutes`)
+- `specs/implementation-plan.md` (đánh dấu `[x]` toàn bộ Phase 7)
+- `specs/change-log.md` (ghi nhận thay đổi Phase 7)
+- `tests/test_short_term_memory.py` (mới — 11 test cases unit & integration)
+
+### Tests & Results
+1. **Pytest Short-term memory suite:**
+   ```bash
+   python -m pytest tests/test_short_term_memory.py -v
+   ```
+   -> **11 passed in 0.56s**.
+2. **Pytest theo yêu cầu kiểm tra:**
+   ```bash
+   python -m pytest tests/ -q -k "memory or short_term or conversation or ttl or freshness" --maxfail=8
+   ```
+   -> **12 passed, 50 deselected in 0.63s**.
+3. **Eval self-check:**
+   ```bash
+   python -m src.portfolio_watch.eval.run --self-check
+   ```
+   -> self-check: 8/8 rule ok; judge gate ok; runner 4/4 ok; report ok; regression ok; injection gate ok; scorer locks ok.
+
+## 2026-09-22 — Review Phase 6 vs product-spec / test-plan
+
+### Kết quả đối chiếu (phạm vi Phase 6: Structured output)
+
+**Passes**
+- Plan Phase 6: Pydantic schemas cho rewrite, supervisor, classifier, eval,
+  synthesis draft, memory extract; checklist `[x]`.
+- LLM path qua `infra/llm/structured.py` (`call_llm_structured` /
+  `parse_structured` / `chat_parsed` + fallback) — không còn free-text thuần
+  trên production brain paths.
+- Schema lỗi → retry + inner guard → không crash graph (test
+  `test_chat_graph_schema_error_does_not_crash`).
+- Pytest: `tests/test_structured_output.py` **24 passed**; rewrite + supervisor
+  paths có coverage; `--self-check` OK.
+- Product-spec AC #4 / test-plan §4 Structured output: parse được; fail không
+  đổ process.
+
+**Fails (đã sửa — chỉ liên quan Phase 6)**
+- Còn helper free-text cũ (`_parse_json_obj`, `_parse_llm_route`,
+  `_parse_eval_payload`, `_parse_alert_json`, `_parse_react_action`) không còn
+  caller → xóa + bỏ import `chat`/`json`/`re` thừa trên các nodes đã chuyển
+  structured; `shared/schemas` không còn re-export `call_llm_structured`.
+
+**Missing (đúng kỳ vọng — phase sau)**
+- Memory short/long + TTL (Phase 7–8); Langfuse; diagram UI; full golden E2E.
+
+### Fix trong review
+
+- Dọn dead free-text parsers trên agent nodes; re-run
+  `pytest tests/test_structured_output.py`.
+
+## 2026-09-22 — Phase 6: Structured output
+
+### What & Architectural Decisions
+- **Thêm Pydantic schemas cho toàn bộ các luồng quyết định LLM:**
+  - `RewriteOutput` (`agents/supervisor_agent/schemas.py`, `shared/schemas.py`): chuẩn hóa câu hỏi, trích xuất ticker chính (`symbol`) và mọi ticker (`symbols`), phân loại `intent` (`price_lookup`, `news_lookup`, `explain`).
+  - `SupervisorOutput` (`agents/supervisor_agent/schemas.py`, `shared/schemas.py`): danh sách `agents_to_call` (`price`, `news`, `eval`) kèm `reason`, tự động làm sạch và mặc định `["price"]` nếu rỗng.
+  - `ClassifierOutput` (`agents/event_classifier/schemas.py`, `shared/schemas.py`): trường `route` ("bình thường" / "bất thường") và `reason`, kèm `to_routing_decision()` ánh xạ chuẩn xác sang `EventRoute`.
+  - `EvalSeverityOutput` (`agents/eval_agent/schemas.py`, `shared/schemas.py`): `needs_history`, `level` (`low`, `medium`, `high`), `confidence` (0.0–1.0), `reasoning`, `evidence`, `proposed_threshold_pct`, `proposed_related_symbols`, kèm `to_severity()`.
+  - `SynthesisAlertOutput` (`agents/synthesis_agent/schemas.py`, `shared/schemas.py`): `title` và `body` cho bản nháp cảnh báo.
+  - `NewsReactOutput` (`agents/news_agent/schemas.py`, `shared/schemas.py`): `kind` (`search`, `finish`) và `query` cho ReAct search loop.
+  - `MemoryExtractOutput` (`shared/schemas.py`): `symbols`, `preferences`, `summary`, `topics`, kèm helper `parse_memory_extract()` sẵn sàng cho Phase 7–8.
+- **Hạ tầng Structured Output (`infra/llm/structured.py` & `completion.py`):**
+  - `parse_structured(raw_or_obj, schema)`: parse đa dạng input (instance Pydantic, dict, chuỗi JSON thuần hoặc chuỗi markdown code block ```json ... ```) thành instance schema hợp lệ.
+  - `call_llm_structured(...)`: hỗ trợ cả `chat_parsed_fn` (mock test), `chat_fn` (test chuỗi JSON), và production mặc định (`chat_parsed` qua OpenAI với fallback sang `chat()` + `parse_structured`).
+- **Cơ chế Retry & Inner Guard không làm sập Graph:**
+  - Khi gặp `ValidationError`, `ValueError`, hoặc JSON hỏng: `call_llm_structured` tự động retry `max_retries` lần (mặc định 1 lần retry).
+  - Nếu vẫn thất bại: inner try/except trong từng brain (`LlmRewriteBrain`, `LlmSupervisorBrain`, `LlmEventClassifier`, `LlmEvalBrain`, `LlmAlertComposer`, `LlmNewsBrain`) kích hoạt inner guard, trả về fallback an toàn (dựa trên heuristic/regex/default) thay vì ném exception làm crash LangGraph workflow.
+  - Các hàm node bên ngoài (`rewrite_question`, `route_question`, `classify_event`...) vẫn giữ nguyên try/except và tracing span làm lớp bảo vệ thứ hai.
+
+### Files touched
+- `src/portfolio_watch/shared/schemas.py` (mới — central schemas & helpers)
+- `src/portfolio_watch/infra/llm/structured.py` (mới — parse & call structured output)
+- `src/portfolio_watch/infra/llm/completion.py` (re-export structured helpers)
+- `src/portfolio_watch/agents/supervisor_agent/schemas.py`
+- `src/portfolio_watch/agents/supervisor_agent/nodes.py`
+- `src/portfolio_watch/agents/event_classifier/schemas.py`
+- `src/portfolio_watch/agents/event_classifier/nodes.py`
+- `src/portfolio_watch/agents/eval_agent/schemas.py`
+- `src/portfolio_watch/agents/eval_agent/nodes.py`
+- `src/portfolio_watch/agents/synthesis_agent/schemas.py`
+- `src/portfolio_watch/agents/synthesis_agent/nodes.py`
+- `src/portfolio_watch/agents/news_agent/schemas.py`
+- `src/portfolio_watch/agents/news_agent/nodes.py`
+- `specs/implementation-plan.md` (đánh dấu `[x]` Phase 6)
+- `specs/change-log.md`
+- `tests/test_structured_output.py` (mới — 24 unit & integration tests)
+
+### Tests & Results
+1. **Unit tests schemas, retry, guard & paths:**
+   ```bash
+   python -m pytest tests/test_structured_output.py -v
+   ```
+   -> **24 passed in 5.43s** (bao gồm cả test end-to-end chat graph khi schema hỏng vẫn hoàn thành an toàn).
+2. **Kiểm tra theo yêu cầu prompt:**
+   ```bash
+   python -m pytest tests/ -q -k "structured or rewrite or supervisor" --maxfail=5
+   ```
+   -> **24 passed, 27 deselected in 4.16s**.
+3. **Eval self-check:**
+   ```bash
+   python -m src.portfolio_watch.eval.run --self-check
+   ```
+   -> 8/8 rule ok; judge gate ok; runner 4/4 ok; report ok; regression ok; injection gate ok; scorer locks ok.
+
+
+## 2026-09-22 — Review Phase 5 vs product-spec / test-plan
+
+### Kết quả đối chiếu (phạm vi Phase 5: Prompt tối giản)
+
+**Passes**
+- Plan Phase 5: 7/7 `production.txt` rút gọn (role + schema/ràng buộc + an toàn);
+  checklist `[x]`; change-log liệt kê đủ prompt đã rút.
+- Single registry: `infra/llm/prompt_registry.py` — agents gọi `registry().render(...)`;
+  `production.txt` chứa template trực tiếp (alias không còn chỉ là số version).
+- Product-spec AC docs/prompt: prompt ngắn hơn; regression subset trong tolerance.
+- Test-plan / eval: `--self-check` OK; `--slice injection` **3/3 (100%)** gate;
+  `--slice lookup --limit 3` **3/3**, regression drop=0 ≤ 0.05.
+
+**Fails (đã sửa — chỉ liên quan Phase 5)**
+- Ba prompt routing/classifier thiếu dòng an toàn tường minh
+  (`supervisor_routing`, `news_agent_react`, `event_classification`) dù checklist
+  yêu cầu role + schema + an toàn → thêm 1 dòng bỏ qua injection / cấm mua-bán
+  (đồng bộ `production.txt` + `v1.yaml`).
+
+**Missing (đúng kỳ vọng — phase sau)**
+- Structured output / schema Pydantic (Phase 6); memory; Langfuse; diagram UI;
+  full golden (không thuộc Phase 5 — chỉ subset lookup + injection).
+
+### Fix trong review
+
+- Bổ sung dòng an toàn tối thiểu cho 3 prompt trên; re-verify registry load +
+  `--self-check`.
+
+## 2026-09-22 — Phase 5: Prompt tối giản
+
+### What & Architectural Decisions
+- **Rút gọn toàn bộ 7 prompt production:**
+  Mỗi prompt rút gọn về 3 thành phần cốt lõi:
+  1. Role (định danh agent & nhiệm vụ)
+  2. Input + schema output / ràng buộc (nguồn evidence, format, tiêu chí)
+  3. An toàn (cấm lời khuyên mua/bán chắc chắn, không bịa đặt số liệu, bỏ qua injection)
+  Loại bỏ toàn bộ các ví dụ dài dòng / văn mẫu / essay không cần thiết.
+- **Đồng bộ song song `production.txt` và `v1.yaml`:**
+  - `prompts/answer_compose/production.txt` & `v1.yaml`: Rút gọn AnswerComposer prompt.
+  - `prompts/eval_severity/production.txt` & `v1.yaml`: Rút gọn EvalAgent severity prompt.
+  - `prompts/event_classification/production.txt` & `v1.yaml`: Rút gọn Event Classifier prompt.
+  - `prompts/news_agent_react/production.txt` & `v1.yaml`: Rút gọn NewsAgent ReAct prompt.
+  - `prompts/rewrite_question/production.txt` & `v1.yaml`: Rút gọn RewriteQuestion prompt (bỏ ví dụ mẫu hội thoại dài).
+  - `prompts/supervisor_routing/production.txt` & `v1.yaml`: Rút gọn Supervisor routing prompt.
+  - `prompts/synthesis_alert/production.txt` & `v1.yaml`: Rút gọn SynthesisAgent alert prompt.
+- **Giữ duy nhất một nơi đăng ký prompt:**
+  `src/portfolio_watch/infra/llm/prompt_registry.py` tiếp tục là single registration place duy nhất trong toàn bộ repo. Cập nhật `PromptRegistry.get()` để hỗ trợ cả text template trực tiếp từ `production.txt` lẫn YAML metadata. Toàn bộ các agent trong `src/portfolio_watch/agents/` tiếp tục gọi prompt qua `registry().render(...)`.
+- **Hỗ trợ chạy eval theo slice:**
+  Bổ sung CLI `--slice <slice_name>` trong `src/portfolio_watch/eval/run.py` và so sánh regression theo slice tương ứng với `specs/eval/v3_baseline.json`.
+
+### Prompt Files Shortened
+1. `prompts/answer_compose/production.txt` (693 chars) + `prompts/answer_compose/v1.yaml`
+2. `prompts/eval_severity/production.txt` (685 chars) + `prompts/eval_severity/v1.yaml`
+3. `prompts/event_classification/production.txt` (489 chars) + `prompts/event_classification/v1.yaml`
+4. `prompts/news_agent_react/production.txt` (485 chars) + `prompts/news_agent_react/v1.yaml`
+5. `prompts/rewrite_question/production.txt` (699 chars) + `prompts/rewrite_question/v1.yaml`
+6. `prompts/supervisor_routing/production.txt` (471 chars) + `prompts/supervisor_routing/v1.yaml`
+7. `prompts/synthesis_alert/production.txt` (565 chars) + `prompts/synthesis_alert/v1.yaml`
+
+### Files touched
+- `prompts/answer_compose/production.txt`
+- `prompts/answer_compose/v1.yaml`
+- `prompts/eval_severity/production.txt`
+- `prompts/eval_severity/v1.yaml`
+- `prompts/event_classification/production.txt`
+- `prompts/event_classification/v1.yaml`
+- `prompts/news_agent_react/production.txt`
+- `prompts/news_agent_react/v1.yaml`
+- `prompts/rewrite_question/production.txt`
+- `prompts/rewrite_question/v1.yaml`
+- `prompts/supervisor_routing/production.txt`
+- `prompts/supervisor_routing/v1.yaml`
+- `prompts/synthesis_alert/production.txt`
+- `prompts/synthesis_alert/v1.yaml`
+- `src/portfolio_watch/infra/llm/prompt_registry.py`
+- `src/portfolio_watch/eval/run.py`
+- `specs/implementation-plan.md`
+- `specs/change-log.md`
+
+### Test & Golden Eval Subset Results
+- **Prompt registry verification:**
+  ```bash
+  python -c "from src.portfolio_watch.infra.llm.prompt_registry import registry; [print(n, len(registry().get(n).template)) for n in ['answer_compose', 'eval_severity', 'event_classification', 'news_agent_react', 'rewrite_question', 'supervisor_routing', 'synthesis_alert']]"
+  ```
+  -> 7/7 prompts load successfully.
+- **Eval self-check:**
+  ```bash
+  python -m src.portfolio_watch.eval.run --self-check
+  ```
+  -> 8/8 rule ok; runner 4/4 ok; regression ok; injection gate ok; exit code 0.
+- **Eval injection slice (full 3 cases):**
+  ```bash
+  python -m src.portfolio_watch.eval.run --run --slice injection --skip-judge --skip-agent-eval
+  ```
+  -> **3/3 passed (100%)**, Injection gate OK (100%, no tolerance), Regression OK (rate 100% vs baseline 100%, drop=0.0000 <= tolerance=0.05).
+- **Eval lookup slice (subset 3 cases):**
+  ```bash
+  python -m src.portfolio_watch.eval.run --run --slice lookup --limit 3 --skip-judge --skip-agent-eval
+  ```
+  -> **3/3 passed (100%)**, Regression OK (rate 100% vs baseline 100%, drop=0.0000 <= tolerance=0.05).
+  *(Lưu ý trung thực: upstream Vietcap/vnstock guest thi thoảng timeout 30s khi lấy giá, hệ thống fallback chuẩn xác không crash, kết quả vẫn đáp ứng đầy đủ rule-based scorer và không vi phạm guardrail).*
+
+
+## 2026-09-22 — Review Phase 4 vs product-spec / test-plan
+
+### Kết quả đối chiếu (phạm vi Phase 4: clean dead code)
+
+**Passes**
+- Plan Phase 4: canonical `src/portfolio_watch/agents/`; xóa `domain/agents/`
+  shim; xóa `web/`; graph/application import thẳng `agents/`; checklist `[x]`.
+- Product path: UI = `frontend/` (không còn `web/`); README/compose không còn
+  path chết `web/` hay `domain/agents`.
+- `specs/agents.md` đã trỏ `agents/<name>/`.
+- Local smoke: `pytest tests/test_docker.py tests/test_backend.py tests/test_agents.py`
+  → **15 passed**.
+- Docker rebuild: `/health` 200; `from src.portfolio_watch.agents…` /
+  `graph.chat` import OK; `domain.agents` **không còn** (ModuleNotFoundError đúng kỳ vọng).
+
+**Fails (đã sửa — chỉ liên quan Phase 4)**
+- Change-log Phase 4 ghi `docker compose run … pytest` nhưng image product
+  **không** có `pytest` (chỉ optional `[dev]`) → lệnh fail `executable not found`.
+  Đổi hướng dẫn smoke Docker sang import check (không bắt buộc pytest trong image).
+
+**Missing (đúng kỳ vọng — phase sau)**
+- AC Claude UI / Langfuse / memory / golden / diagram — không thuộc Phase 4.
+
+### Fix trong review
+
+- Cập nhật mục Test của entry Phase 4 + ghi review này (lệnh smoke Docker không dùng pytest trong image).
+
+## 2026-09-22 — Phase 4: Clean code chết
+
+### What & Architectural Decisions
+- **Chốt 1 nguồn agent canonical:** Chọn `src.portfolio_watch.agents` (`agents/`) làm nguồn duy nhất cho agent logic (các package `answer_composer/`, `eval_agent/`, `event_classifier/`, `news_agent/`, `price_agent/`, `supervisor_agent/`, `synthesis_agent/` theo cấu trúc chuẩn `nodes.py`, `state.py`, `tools.py`).
+- **Xóa `src/portfolio_watch/domain/agents/`:** Toàn bộ 8 file re-export wrapper (`answer_composer.py`, `eval_agent.py`, `event_classifier.py`, `news_agent.py`, `price_agent.py`, `supervisor.py`, `synthesis_agent.py`, `__init__.py`) là legacy shim từ Phase 12 đã được xóa bỏ hoàn toàn.
+- **Cập nhật import trực tiếp từ `agents/`:**
+  - `src/portfolio_watch/graph/chat.py`
+  - `src/portfolio_watch/graph/scan.py`
+  - `src/portfolio_watch/graph/state.py`
+  - `src/portfolio_watch/application/answer_question.py`
+  - `src/portfolio_watch/application/scan_symbol.py`
+  - `src/portfolio_watch/application/scan_watchlist.py`
+  - `src/portfolio_watch/domain/graph/workflow.py`
+  - `tests/test_agents.py`
+- **Cập nhật boundary check backend:** `tests/test_backend.py` cập nhật `_FORBIDDEN_EVERYWHERE = ("portfolio_watch.agents", "domain.agents")` để đảm bảo backend không import agent trực tiếp.
+- **Xóa dead `web/`:** Xóa bỏ thư mục `web/` (gồm `web/app.js`, `web/index.html`, `web/style.css`) - là giao diện static cũ không còn sử dụng. Product UI chuẩn hiện tại được phục vụ từ `src/portfolio_watch/frontend/`.
+- **Đánh dấu checklist:** Đánh dấu `[x]` toàn bộ checklist Phase 4 trong `specs/implementation-plan.md`.
+
+### Files touched / deleted
+- **Deleted:**
+  - `src/portfolio_watch/domain/agents/__init__.py`
+  - `src/portfolio_watch/domain/agents/answer_composer.py`
+  - `src/portfolio_watch/domain/agents/eval_agent.py`
+  - `src/portfolio_watch/domain/agents/event_classifier.py`
+  - `src/portfolio_watch/domain/agents/news_agent.py`
+  - `src/portfolio_watch/domain/agents/price_agent.py`
+  - `src/portfolio_watch/domain/agents/supervisor.py`
+  - `src/portfolio_watch/domain/agents/synthesis_agent.py`
+  - `web/app.js`
+  - `web/index.html`
+  - `web/style.css`
+- **Modified:**
+  - `src/portfolio_watch/agents/README.md`
+  - `src/portfolio_watch/graph/chat.py`
+  - `src/portfolio_watch/graph/scan.py`
+  - `src/portfolio_watch/graph/state.py`
+  - `src/portfolio_watch/application/answer_question.py`
+  - `src/portfolio_watch/application/scan_symbol.py`
+  - `src/portfolio_watch/application/scan_watchlist.py`
+  - `src/portfolio_watch/domain/graph/workflow.py`
+  - `tests/test_agents.py`
+  - `tests/test_backend.py`
+  - `specs/implementation-plan.md`
+  - `specs/change-log.md`
+
+### How to test
+```bash
+# Smoke local (có pytest trong venv)
+python -m pytest tests/test_docker.py tests/test_backend.py tests/test_agents.py -q
+
+# Smoke Docker — image product không ship pytest; check import path canonical
+docker compose up -d --build
+curl -s http://127.0.0.1:8000/health
+docker compose run --rm app python -c "from src.portfolio_watch.agents.price_agent import run_price_agent; from src.portfolio_watch.graph.chat import run_chat_graph; print('IMPORT_OK')"
+```
+
+## 2026-09-22 — Review Phase 3 vs product-spec / test-plan
+
+### Kết quả đối chiếu (phạm vi Phase 3: Docker 1 service)
+
+**Passes**
+- Plan Phase 3: service `app` :8000; qdrant optional (profile); không còn bắt buộc
+  `frontend`/`backend`/`ai`; volume SQLite ghi change-log; healthcheck `app`.
+- Product-spec **AC6**: không còn service backend tách trong compose product;
+  API + UI cùng container (`backend.main` + StaticFiles).
+- Test-plan §5: 1 URL product chính `http://localhost:8000`; volume
+  `pw_data` → `/app/data`; README lệnh `docker compose run --rm app …`.
+- Smoke: `docker compose up --build -d` → `portfolio-watch-app` **healthy**;
+  `/health` `/` `/watchlist` = 200. `tests/test_docker.py` 4 passed.
+
+**Fails (đã sửa — chỉ liên quan Phase 3)**
+- `.env` còn `FRONTEND_ORIGIN=http://127.0.0.1:5173` (V2) đè vào container —
+  compose chưa override → CORS lệch product same-origin.
+- Test compose dùng `"ai:" not in text` dễ false-positive với `AI_*`; chưa
+  assert không còn service `backend:`.
+
+**Missing (đúng kỳ vọng — phase sau)**
+- AC1 đầy đủ E2E chat/market/HITL demo UI Claude; AC2–5, 7–9 (graph hover,
+  Langfuse 1-trace, memory, golden_v3, diagram, README Docker-only tuyệt đối).
+- Image tag vẫn `portfolio-watch:split` (nit đặt tên — không chặn AC).
+
+### Fix trong review
+
+- `docker-compose.yml`: `FRONTEND_ORIGIN=*`, `QDRANT_URL=http://qdrant:6333`.
+- `tests/test_docker.py`: assert service keys `\n  ai|backend|frontend:` vắng.
+
+## 2026-09-22 — Phase 3: Docker product 1 service
+
+### What
+
+- `docker-compose.yml`: Thay thế 3 services rời (`frontend` + `backend` + `ai`) bằng 1 service chính duy nhất `app` chạy port 8000 (`uvicorn src.portfolio_watch.backend.main:app`).
+- Thêm optional service `qdrant` kích hoạt qua `--profile qdrant` hoặc `--profile optional` (image `qdrant/qdrant:latest`, port 6333/6334, volume `qdrant_data`), sẵn sàng cho Phase 8 memory.
+- Healthcheck compose cho `app`: kiểm tra `http://127.0.0.1:8000/health` qua `urllib.request`.
+- `Dockerfile`: Cập nhật `CMD` mặc định chạy `src.portfolio_watch.backend.main:app` trên port 8000 và `EXPOSE 8000`.
+- `README.md`: Cập nhật mục chạy Docker 1 product URL (http://localhost:8000/) và lệnh eval trong container `app`.
+- `specs/implementation-plan.md`: Đánh dấu `[x]` toàn bộ checklist Phase 3.
+- `tests/test_docker.py`: Cập nhật assertions kiểm tra compose layout 1 service `app`, optional `qdrant`, Dockerfile CMD, và TestClient test `backend.main:app` phục vụ cả `/health` lẫn UI `/`.
+
+### SQLite Volume Path
+
+- Docker named volume: `pw_data` (`name: portfolio-watch-data`) mount tới `/app/data` trong container.
+- SQLite path lưu trữ bên trong volume:
+  - Agent / LangGraph: `/app/data/portfolio_watch.db` (biến môi trường `SQLITE_PATH`)
+  - Backend store (watchlist + approvals): `/app/data/backend_store.db` (biến môi trường `BACKEND_SQLITE_PATH`)
+- Dữ liệu SQLite tồn tại bền vững qua các lần container start/stop/rebuild.
+
+### Test
+
+```bash
+cd llm-backend-ref-portfolio-watch
+docker compose config
+python -m pytest tests/test_docker.py -q
+
+# Khởi động Docker container
+docker compose up -d --build
+# Kiểm tra healthcheck & single product URL
+curl -s http://127.0.0.1:8000/health
+curl -s http://127.0.0.1:8000/
+# Smoke test chat & scan
+curl -s -X POST http://127.0.0.1:8000/chat -H "Content-Type: application/json" -d '{"question":"Giá FPT hôm nay?"}'
+curl -s -X POST http://127.0.0.1:8000/scan -H "Content-Type: application/json" -d '{"symbol":"FPT"}'
+```
+
+### Known issues
+
+- `docker compose up --build` full rebuild từ đầu có thể chậm trên môi trường Windows do mạng và tải các gói dependency; nếu đã có image `portfolio-watch:split`, có thể khởi động nhanh bằng `docker compose up -d`.
+
+
+## 2026-09-21 — Review Phase 2 vs product-spec / test-plan
+
+### Kết quả đối chiếu (phạm vi Phase 2: gộp entry app)
+
+**Passes**
+- Plan Phase 2: 1 FastAPI = UI static + `/watchlist` `/chat` `/scan`
+  `/approvals`; `/health` 200; LangGraph in-process; reuse `backend/`.
+- Product-spec hướng AC6 (một phần): API + UI cùng process, reuse store/routes
+  — đạt trên **uvicorn local** (done-when Phase 2).
+- Test-plan § UI tối thiểu cho entry: mở `/`, assets `/app.js` `/config.js`
+  `/style.css`, API cùng origin.
+- `tests/test_backend.py` (sau fix): UI copy + same-origin config + assets.
+
+**Fails (đã sửa — chỉ liên quan Phase 2)**
+- UI vẫn ghi «Frontend tách riêng»; boot hiện `BACKEND_BASE_URL=` rỗng.
+- `backend/README.md` / `frontend/README.md` còn mô tả proxy/tách FE V2.
+
+**Missing (đúng kỳ vọng — phase sau, không sửa ở đây)**
+- Product AC6 đầy đủ / test-plan §5: `docker compose` 1 service `app` — **Phase 3**.
+- AC1–5, 7–9 (Claude graph hover, Langfuse 1-trace, memory, golden_v3,
+  diagram, README Docker-only) — phase 4+.
+
+### Fix trong review
+
+- `frontend/index.html`, `app.js`: copy cùng origin; label `(same-origin)`.
+- README `backend/` + `frontend/`; test assets + config `BACKEND_BASE_URL: ""`.
+
+## 2026-09-21 — Phase 2: Gộp entry app (reuse backend)
+
+### What
+
+- `backend/ai_client.py`: mặc định **in-process** (`answer_question` /
+  `scan_symbol` → LangGraph). HTTP cũ qua `AI_TRANSPORT=http`.
+- `backend/main.py`: mount `frontend/` StaticFiles (`html=True`) sau API routes.
+- `frontend/config.js`: `BACKEND_BASE_URL=""` (same-origin).
+- `.env.example`: `AI_TRANSPORT=inprocess`.
+- Tests: UI `/`, chat in-process; HTTP proxy tests chỉ khi `AI_TRANSPORT=http`.
+
+Không viết service mới — reuse store/routes backend.
+
+### Test
+
+```bash
+cd llm-backend-ref-portfolio-watch
+python -m pytest tests/test_backend.py -q
+
+# Một process
+python -m uvicorn src.portfolio_watch.backend.main:app --host 127.0.0.1 --port 8000
+# Mở http://127.0.0.1:8000/
+curl -s http://127.0.0.1:8000/health
+curl -s http://127.0.0.1:8000/watchlist
+curl -s http://127.0.0.1:8000/approvals
+printf '%s' '{"question":"Gia FPT?"}' > /tmp/pw_chat.json
+curl -s -X POST http://127.0.0.1:8000/chat -H "Content-Type: application/json" --data-binary @/tmp/pw_chat.json
+printf '%s' '{"symbol":"FPT"}' > /tmp/pw_scan.json
+curl -s -X POST http://127.0.0.1:8000/scan -H "Content-Type: application/json" --data-binary @/tmp/pw_scan.json
+```
+
+Kết quả: `tests/test_backend.py` 6 passed; smoke `/` `/health` `/chat` `/scan`
+`/watchlist` `/approvals` = 200 trên một uvicorn.
+
+### Known issues
+
+- Docker compose vẫn 3 service (Phase 3 mới gộp). Dev path chính Phase 2 =
+  một uvicorn như trên.
+
+## 2026-09-21 — Phase 1: Project setup (baseline V3)
+
+### What
+
+- `specs/eval/v3_baseline.json` — điểm hiện tại (carry-forward V2 **30/30**,
+  dataset `golden_dataset.yaml` v1.0, scorer rule-based skip-judge/agent-eval,
+  injection gate 100%; slice `diagram` trống đến Phase 15).
+- README: mục **V3 in progress** trỏ product-spec + implementation-plan + baseline.
+- AGENTS.md: **1 phase / lần**; không code ngoài checklist.
+- Tick checklist Phase 1 trong `specs/implementation-plan.md`.
+- Dockerfile: cài `setuptools`/`wheel` trước `pip install -e .` (tránh fail
+  build isolation khi PyPI không trả setuptools).
+
+### Quyết định V3 (chốt docs)
+
+| Quyết định | Ghi chú |
+|---|---|
+| **1 app Docker** | UI+API+LangGraph cùng product — gộp Phase 2–3; bỏ bắt buộc 3 service |
+| **Memory + TTL** | short-term window + long-term recall/store — Phase 7–8 |
+| **UI Claude + graph** | chat trái, panel node live + hover I/O — Phase 10–11 |
+| **Eval Class 18** | golden slice + `by_slice`; injection 100%; regression vs `v3_baseline` — Phase 15 |
+
+### Không đổi hành vi
+
+Không implement business feature; V2 3-service vẫn chạy.
+
+### Test
+
+```bash
+cd llm-backend-ref-portfolio-watch
+docker compose up -d
+curl -s http://127.0.0.1:8000/health
+curl -s http://127.0.0.1:8001/health
+# chat
+printf '%s' '{"question":"Gia FPT hom nay?"}' > /tmp/pw_chat.json
+curl -s -X POST http://127.0.0.1:8000/chat -H "Content-Type: application/json" --data-binary @/tmp/pw_chat.json
+# scan
+printf '%s' '{"symbol":"FPT"}' > /tmp/pw_scan.json
+curl -s -X POST http://127.0.0.1:8000/scan -H "Content-Type: application/json" --data-binary @/tmp/pw_scan.json
+```
+
+Kết quả 2026-09-21: BE/AI health 200; FE 200; **POST /chat 200**; **POST /scan 200**.
+
+### Known issues
+
+- `docker compose up --build` full rebuild rất chậm / dễ đứt PyPI trên máy này;
+  smoke Phase 1 dùng image `portfolio-watch:split` sẵn + `up -d`.
+
+## 2026-09-21 — Rewrite implementation-plan V3 (SDD Bước 3)
+
+### What
+
+- Viết lại `specs/implementation-plan.md` thành **16 phase nhỏ**, mỗi phase
+  checklist cụ thể + điều kiện xong + bảng phụ thuộc.
+- Không viết code.
+
+### Test
+
+Đọc plan — mỗi phase làm được độc lập theo thứ tự 1→16.
+
+## 2026-09-21 — Review product-spec V3 (SDD Bước 2)
+
+### What
+
+- Làm rõ 6 mục bắt buộc: app goal, target users, core user flow, in/out of
+  scope, acceptance criteria — ngắn hơn, flow từng bước, AC kiểm thử được.
+- Không viết code.
+
+### Test
+
+Đọc `specs/product-spec.md` — đủ 6 heading, dễ triển khai MVP.
+
+## 2026-09-21 — V3 specs only (chưa implement)
+
+### What
+
+Viết lại vòng **V3** theo yêu cầu product (SDD — docs trước, chưa code):
+
+- `specs/product-spec.md` — Claude-like UI + live graph I/O; 1 Langfuse
+  trace/request; structured output; memory short+long + TTL; gộp app (reuse
+  backend, bỏ tách service); golden Class 18; diagram agent; market status;
+  prompt tối giản; Docker-only.
+- `specs/implementation-plan.md` — Phase **20–29** (unchecked).
+- `specs/test-plan.md` — slice / by_slice / injection gate; UI + Langfuse checklist.
+- `AGENTS.md` — quy tắc V3 gọn.
+- `README.md` — V3 in progress; giữ lệnh Docker V2 làm baseline.
+
+### Why
+
+User yêu cầu update multi-agent bằng spec-driven development và **không
+implement app** ở bước này.
+
+### Test
+
+Đọc 6 file trên; xác nhận không có diff code runtime ngoài docs.
+
+### Missing (đúng kỳ vọng)
+
+- Toàn bộ Phase 20–29 chưa tick.
+- Chưa gộp container; chưa UI Claude; chưa golden_v3.yaml.
+
+## 2026-09-21 — Agent graph HTML (dễ đọc)
+
+### What
+
+- Thêm `docs/agent_graph.html` — tách nhánh Scan / Chat, legend, bảng node.
+- Viết lại `docs/agent_graph.mmd` theo 2 subgraph (không còn đồ thị LangGraph gộp rối).
+- PNG cũ (`agent_graph.png`) giữ làm ảnh tham chiếu; ưu tiên mở HTML.
+
+### Test
+
+Mở `docs/agent_graph.html` trong trình duyệt.
+
 ## 2026-09-21 — README local development instructions
 
 ### What

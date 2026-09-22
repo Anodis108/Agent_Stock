@@ -33,7 +33,11 @@ from pydantic import BaseModel, Field
 
 ROOT = Path(__file__).resolve().parents[3]
 GOLDEN_PATH = ROOT / "specs" / "eval" / "golden_dataset.yaml"
-BASELINE_PATH = ROOT / "specs" / "eval" / "baseline.json"
+BASELINE_PATH = (
+    ROOT / "specs" / "eval" / "v3_baseline.json"
+    if (ROOT / "specs" / "eval" / "v3_baseline.json").is_file()
+    else ROOT / "specs" / "eval" / "baseline.json"
+)
 BLOCKED_PATH = ROOT / "specs" / "eval" / "blocked_cases.yaml"
 # Điểm tổng (rate) giảm quá mức này so với baseline → regression fail (test-plan).
 REGRESSION_TOLERANCE = 0.05
@@ -616,13 +620,22 @@ def filter_golden_cases(
     *,
     case_id: str | None = None,
     limit: int | None = None,
+    slice_type: str | None = None,
 ) -> list[dict]:
-    """Lọc theo --case-id và/hoặc --limit."""
+    """Lọc theo --case-id, --slice và/hoặc --limit."""
     out = list(cases)
     if case_id:
         out = [c for c in out if str(c.get("id") or "") == case_id]
         if not out:
             raise ValueError(f"unknown case-id: {case_id!r}")
+    if slice_type:
+        out = [
+            c
+            for c in out
+            if str((c.get("slice") or {}).get("type") or "") == slice_type
+        ]
+        if not out:
+            raise ValueError(f"unknown slice: {slice_type!r}")
     if limit is not None:
         out = out[: max(0, limit)]
     return out
@@ -638,6 +651,7 @@ def run_eval(
     skip_agent_eval: bool = False,
     limit: int | None = None,
     case_id: str | None = None,
+    slice_type: str | None = None,
     dataset_path: Path | None = None,
     case_delay_sec: float | None = None,
 ) -> list[CaseEvalResult]:
@@ -648,7 +662,9 @@ def run_eval(
     """
     if cases is None:
         cases = list(load_golden_dataset(dataset_path)["cases"])
-    cases = filter_golden_cases(cases, case_id=case_id, limit=limit)
+    cases = filter_golden_cases(
+        cases, case_id=case_id, limit=limit, slice_type=slice_type
+    )
     if case_delay_sec is None:
         case_delay_sec = float(os.environ.get("EVAL_CASE_DELAY_SEC", "0") or "0")
     results: list[CaseEvalResult] = []
@@ -911,6 +927,7 @@ def check_regression(
     baseline: dict | None,
     *,
     tolerance: float = REGRESSION_TOLERANCE,
+    slice_type: str | None = None,
 ) -> RegressionResult:
     """Gate: rate tổng giảm > tolerance so với baseline → fail.
 
@@ -927,7 +944,19 @@ def check_regression(
             tolerance=tolerance,
             message="Chưa có baseline — bỏ qua so sánh (dùng --save-baseline lần đầu).",
         )
-    base_rate = float(baseline["rate"])
+    if (
+        slice_type
+        and isinstance(baseline.get("by_slice"), dict)
+        and slice_type in baseline["by_slice"]
+    ):
+        base_item = baseline["by_slice"][slice_type]
+        base_rate = (
+            float(base_item["rate"])
+            if isinstance(base_item, dict) and "rate" in base_item
+            else float(baseline["rate"])
+        )
+    else:
+        base_rate = float(baseline["rate"])
     drop = base_rate - current
     tol = float(baseline.get("tolerance", tolerance))
     ok = drop <= tol + 1e-12
@@ -1210,6 +1239,12 @@ def main(argv: list[str] | None = None) -> int:
         help="Chỉ chạy một case theo id (vd lookup_01). Tự bật chế độ run.",
     )
     parser.add_argument(
+        "--slice",
+        type=str,
+        default=None,
+        help="Chỉ chạy các case thuộc slice (vd lookup, injection). Tự bật chế độ run.",
+    )
+    parser.add_argument(
         "--limit",
         type=int,
         default=None,
@@ -1257,7 +1292,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.self_check:
         return _self_check()
-    if args.run or args.case_id:
+    if args.run or args.case_id or args.slice:
         if hasattr(sys.stdout, "reconfigure"):
             try:
                 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -1267,6 +1302,7 @@ def main(argv: list[str] | None = None) -> int:
         results = run_eval(
             limit=args.limit,
             case_id=args.case_id,
+            slice_type=args.slice,
             skip_judge=args.skip_judge,
             skip_agent_eval=args.skip_agent_eval,
             case_delay_sec=args.case_delay,
@@ -1288,7 +1324,7 @@ def main(argv: list[str] | None = None) -> int:
             saved = save_baseline(report, baseline_path, tolerance=args.tolerance)
             print(f"Baseline saved: {saved}")
         baseline = load_baseline(baseline_path)
-        reg = check_regression(report, baseline, tolerance=args.tolerance)
+        reg = check_regression(report, baseline, tolerance=args.tolerance, slice_type=args.slice)
         print(format_regression(reg))
         inj = check_injection_gate(results)
         print(format_injection_gate(inj))

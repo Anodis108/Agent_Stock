@@ -1,4 +1,4 @@
-"""I/O news_agent — ReAct search/finish."""
+"""I/O news_agent — ReAct search/finish + Pydantic schemas."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Literal, Protocol
 
 from src.portfolio_watch.domain.ports import NewsItem
+from src.portfolio_watch.shared.schemas import NewsReactOutput
 
 
 @dataclass(slots=True)
@@ -32,3 +33,11 @@ class NewsAgentResult:
     items: list[NewsItem]
     tool_calls: int = 0
     error: str | None = None
+
+
+__all__ = [
+    "NewsAgentBrain",
+    "NewsAgentResult",
+    "NewsReactAction",
+    "NewsReactOutput",
+]

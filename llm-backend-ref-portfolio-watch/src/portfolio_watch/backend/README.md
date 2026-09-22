@@ -1,5 +1,10 @@
 # backend/
 
-API Backend — watchlist, scan, chat, approvals. **Không** import agents — chỉ HTTP proxy tới AI (`AI_BASE_URL`).
+Product entry (Phase 2): FastAPI phục vụ **API + static UI**.
 
-Entry: `src.portfolio_watch.backend.main:app` (port 8000).
+- Routes: `/health`, `/watchlist`, `/chat`, `/scan`, `/approvals`, `/runs/…`
+- UI: mount `../frontend/` tại `/`
+- AI: mặc định **in-process** LangGraph (`ai_client.py`). HTTP proxy chỉ khi
+  `AI_TRANSPORT=http`.
+
+Entry: `uvicorn src.portfolio_watch.backend.main:app --port 8000`

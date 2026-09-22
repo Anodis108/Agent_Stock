@@ -2,24 +2,23 @@
 
 from __future__ import annotations
 
-import json
-import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import Any
 
 from src.portfolio_watch.agents.news_agent.schemas import (
     NewsAgentBrain,
     NewsAgentResult,
     NewsReactAction,
+    NewsReactOutput,
 )
 from src.portfolio_watch.agents.news_agent.tools import fetch_cafef_news
 from src.portfolio_watch.domain.ports import NewsItem, NewsSource
-from src.portfolio_watch.infra.llm.completion import chat
 from src.portfolio_watch.infra.llm.params import DETERMINISTIC
 from src.portfolio_watch.infra.llm.prompt_registry import registry
+from src.portfolio_watch.infra.llm.structured import call_llm_structured
 
 MAX_STEPS = 5
-_JSON_OBJ_RE = re.compile(r"\{.*\}", re.DOTALL)
 
 
 def _filter_by_symbol(symbol: str, items: list[NewsItem]) -> list[NewsItem]:
@@ -41,23 +40,6 @@ def _gathered_summary(gathered: list[NewsItem], limit: int = 8) -> str:
         if title:
             parts.append(title)
     return "; ".join(parts) if parts else "(chưa có tin)"
-
-
-def _parse_react_action(raw: str, *, symbol: str) -> NewsReactAction:
-    text = (raw or "").strip()
-    match = _JSON_OBJ_RE.search(text)
-    payload = match.group(0) if match else text
-    data = json.loads(payload)
-    if not isinstance(data, dict):
-        raise ValueError("NewsAgent LLM không trả JSON object")
-    kind = str(data.get("kind", "")).strip().lower()
-    query = data.get("query")
-    query_s = None if query is None else str(query).strip() or None
-    if kind == "finish":
-        return NewsReactAction(kind="finish", query=None)
-    if kind == "search":
-        return NewsReactAction(kind="search", query=query_s or symbol)
-    raise ValueError(f"kind không hợp lệ từ LLM: {kind!r}")
 
 
 @dataclass
@@ -86,16 +68,18 @@ class HeuristicNewsBrain:
 
 
 class LlmNewsBrain:
-    """LLM ReAct decide qua registry `news_agent_react`; filter = heuristic."""
+    """LLM ReAct decide qua registry `news_agent_react` + structured output; filter = heuristic."""
 
     def __init__(
         self,
         *,
         chat_fn: Callable[..., str] | None = None,
+        chat_parsed_fn: Callable[..., Any] | None = None,
         prompt_version: str | int = "production",
         days: int = 7,
     ) -> None:
-        self._chat_fn = chat_fn or chat
+        self._chat_fn = chat_fn
+        self._chat_parsed_fn = chat_parsed_fn
         self._prompt_version = prompt_version
         self.days = days
 
@@ -110,11 +94,23 @@ class LlmNewsBrain:
             step=str(step),
             gathered_summary=_gathered_summary(gathered),
         )
-        raw = self._chat_fn(
-            [{"role": "user", "content": prompt_text}],
-            DETERMINISTIC,
-        )
-        return _parse_react_action(raw, symbol=symbol)
+        messages = [{"role": "user", "content": prompt_text}]
+        try:
+            output = call_llm_structured(
+                messages,
+                NewsReactOutput,
+                chat_fn=self._chat_fn,
+                chat_parsed_fn=self._chat_parsed_fn,
+                params=DETERMINISTIC,
+                max_retries=1,
+            )
+            return NewsReactAction(
+                kind=output.kind,
+                query=output.query or (symbol if output.kind == "search" else None),
+            )
+        except Exception:
+            # inner schema fallback: finish ReAct safely
+            return NewsReactAction(kind="finish", query=None)
 
     def filter_relevant(self, symbol: str, items: list[NewsItem]) -> list[NewsItem]:
         return _filter_by_symbol(symbol, items)
@@ -156,8 +152,14 @@ def run_news_agent(
 
     try:
         for step in range(max_steps):
-            with agent_step(turn, "news_agent", f"react_turn_{step}"):
+            with agent_step(
+                turn,
+                "news_agent",
+                f"react_turn_{step}",
+                input={"step": step, "symbol": symbol, "gathered": len(gathered)},
+            ) as box:
                 action = agent.decide(symbol, gathered, step)
+                box["output"] = {"kind": action.kind, "query": action.query}
             if action.kind == "finish":
                 break
             if action.kind != "search":
@@ -166,10 +168,13 @@ def run_news_agent(
             query = action.query or symbol
             tool_calls += 1
             try:
-                with agent_step(turn, "news_agent", "fetch_news", input={"query": query}):
+                with agent_step(
+                    turn, "news_agent", "fetch_news", input={"query": query}
+                ) as box:
                     batch = fetch_cafef_news(
                         news_source, symbol, query, days=days
                     )
+                    box["output"] = {"items": len(batch)}
             except Exception as exc:  # noqa: BLE001
                 msg = str(exc)
                 last_error = (

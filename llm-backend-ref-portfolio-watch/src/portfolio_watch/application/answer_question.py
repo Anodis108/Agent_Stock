@@ -6,14 +6,14 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
-from src.portfolio_watch.domain.agents.answer_composer import (
+from src.portfolio_watch.agents.answer_composer import (
     AnswerComposeResult,
     AnswerDraftBrain,
 )
-from src.portfolio_watch.domain.agents.eval_agent import EvalAgentBrain, EvalAgentResult
-from src.portfolio_watch.domain.agents.news_agent import NewsAgentBrain, NewsAgentResult
-from src.portfolio_watch.domain.agents.price_agent import PriceAgentResult
-from src.portfolio_watch.domain.agents.supervisor import (
+from src.portfolio_watch.agents.eval_agent import EvalAgentBrain, EvalAgentResult
+from src.portfolio_watch.agents.news_agent import NewsAgentBrain, NewsAgentResult
+from src.portfolio_watch.agents.price_agent import PriceAgentResult
+from src.portfolio_watch.agents.supervisor_agent import (
     RewriteBrain,
     RewrittenQuestion,
     SupervisorBrain,
@@ -42,6 +42,7 @@ class AnswerQuestionResult:
     pending_approvals_created: int = 0
     error: str | None = None
     steps: list[dict] = field(default_factory=list)
+    memories: list[str] = field(default_factory=list)
 
 
 def build_chat_steps(
@@ -59,24 +60,52 @@ def build_chat_steps(
     steps: list[dict] = []
     n = 1
 
-    def add(name: str, status: str, detail: str | None = None) -> None:
+    def add(
+        name: str,
+        status: str,
+        detail: str | None = None,
+        input_data: Any = None,
+        output_data: Any = None,
+    ) -> None:
         nonlocal n
-        steps.append(
-            {"id": str(n), "name": name, "status": status, "detail": detail}
-        )
+        s: dict[str, Any] = {
+            "id": str(n),
+            "name": name,
+            "status": status,
+        }
+        if detail is not None:
+            s["detail"] = detail
+        if input_data is not None:
+            s["input"] = input_data
+        if output_data is not None:
+            s["output"] = output_data
+        steps.append(s)
         n += 1
 
     add(
         "rewrite_question",
         "done",
         rewritten.rewritten or rewritten.original or None,
+        input_data={"question": rewritten.original or ""},
+        output_data={
+            "rewritten": rewritten.rewritten or "",
+            "symbol": rewritten.symbol,
+            "symbols": list(rewritten.symbols or []),
+        },
     )
+    route_str = str(getattr(routing.route, "value", routing.route))
+    agents_list = list(routing.agents_to_call or [])
     add(
         "supervisor",
         "done",
-        f"{getattr(routing.route, 'value', routing.route)}: "
-        f"{list(routing.agents_to_call or [])}"
+        f"{route_str}: {agents_list}"
         + (f" — {routing.reason}" if routing.reason else ""),
+        input_data={"question": rewritten.rewritten or rewritten.original or ""},
+        output_data={
+            "route": route_str,
+            "agents": agents_list,
+            "reason": routing.reason or "",
+        },
     )
     if price is not None:
         add(
@@ -87,6 +116,13 @@ def build_chat_steps(
                 f"chg={price.change_pct}"
                 + (f" err={price.error}" if price.error else "")
             ),
+            input_data={"symbol": price.symbol},
+            output_data={
+                "symbol": price.symbol,
+                "latest_close": price.latest_close,
+                "change_pct": price.change_pct,
+                "error": price.error,
+            },
         )
     if news is not None:
         add(
@@ -94,19 +130,51 @@ def build_chat_steps(
             "error" if news.error else "done",
             f"items={len(news.items or [])}"
             + (f" err={news.error}" if news.error else ""),
+            input_data={"symbol": getattr(news, "symbol", "") or (price.symbol if price else "")},
+            output_data={
+                "symbol": getattr(news, "symbol", "") or (price.symbol if price else ""),
+                "items_count": len(news.items or []),
+                "error": news.error,
+            },
         )
     if eval_result is not None:
-        add("eval_agent", "done", str(eval_result.severity))
+        add(
+            "eval_agent",
+            "done",
+            str(eval_result.severity),
+            input_data={"symbol": price.symbol if price else ""},
+            output_data={
+                "severity": str(eval_result.severity),
+                "confidence": getattr(eval_result.severity, "confidence", None),
+            },
+        )
     compose_status = "error" if error else "done"
+    in_syms = [price.symbol] if price else ([rewritten.symbol] if rewritten.symbol else [])
+    out_compose = {
+        "answer": (answer or error or "")[:300],
+        "guardrail_violations": getattr(compose, "guardrail_violations", None) if compose else None,
+    }
     if compose is not None and getattr(compose, "guardrail_violations", None):
         detail = answer[:200] if answer else None
         if compose.guardrail_violations:
             detail = (
                 f"guardrail={compose.guardrail_violations!r}; {detail or ''}"
             ).strip()
-        add("answer_composer", compose_status, detail)
+        add(
+            "answer_composer",
+            compose_status,
+            detail,
+            input_data={"symbols": in_syms},
+            output_data=out_compose,
+        )
     else:
-        add("answer_composer", compose_status, (answer or error or "")[:200] or None)
+        add(
+            "answer_composer",
+            compose_status,
+            (answer or error or "")[:200] or None,
+            input_data={"symbols": in_syms},
+            output_data=out_compose,
+        )
     return steps
 
 
@@ -117,7 +185,7 @@ def answer_question(
     news_source: NewsSource,
     history_store: PriceHistoryStore,
     memory_store: MemoryStore,
-    user_id: str = "default",
+    user_id: str | None = "default",
     request_id: str | None = None,
     rewrite_brain: RewriteBrain | None = None,
     supervisor_brain: SupervisorBrain | None = None,
@@ -125,6 +193,8 @@ def answer_question(
     eval_brain: EvalAgentBrain | None = None,
     answer_brain: AnswerDraftBrain | None = None,
     news_days: int | None = 7,
+    limit: int | None = None,
+    ttl_minutes: int | float | None = None,
 ) -> AnswerQuestionResult:
     q = (question or "").strip()
     rid = (request_id or "").strip() or None
@@ -153,6 +223,8 @@ def answer_question(
             eval_brain=eval_brain,
             answer_brain=answer_brain,
             news_days=news_days,
+            limit=limit,
+            ttl_minutes=ttl_minutes,
         )
 
         events = memory_store.list_alert_events(user_id, limit=1000)

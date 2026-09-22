@@ -19,19 +19,19 @@ from src.portfolio_watch.application.scan_symbol import (
     _resolve_threshold,
     should_auto_send,
 )
-from src.portfolio_watch.domain.agents.event_classifier import (
+from src.portfolio_watch.agents.event_classifier import (
     EventClassifierBrain,
     classify_event,
 )
-from src.portfolio_watch.domain.agents.eval_agent import EvalAgentBrain, run_eval_agent
-from src.portfolio_watch.domain.agents.news_agent import (
+from src.portfolio_watch.agents.eval_agent import EvalAgentBrain, run_eval_agent
+from src.portfolio_watch.agents.news_agent import (
     NewsAgentBrain,
     NewsAgentResult,
     default_news_brain,
     run_news_agent,
 )
-from src.portfolio_watch.domain.agents.price_agent import PriceAgentResult, run_price_agent
-from src.portfolio_watch.domain.agents.synthesis_agent import AlertComposer, run_synthesis_agent
+from src.portfolio_watch.agents.price_agent import PriceAgentResult, run_price_agent
+from src.portfolio_watch.agents.synthesis_agent import AlertComposer, run_synthesis_agent
 from src.portfolio_watch.domain.entities import (
     AlertStatus,
     EventRoute,
@@ -70,27 +70,38 @@ def _node_fetch(state: ScanState, config: RunnableConfig) -> dict:
     news_brain: NewsAgentBrain | None = cfg.get("news_brain")
     news_days: int | None = cfg.get("news_days", 7)
 
+    def _fetch_price() -> PriceAgentResult:
+        with agent_span(turn, "price_agent", input=sym) as box:
+            res = run_price_agent(sym, price_source, turn)
+            box["output"] = {
+                "symbol": sym,
+                "close": res.latest_close,
+                "change_pct": res.change_pct,
+                "error": res.error,
+            }
+            return res
+
+    def _fetch_news() -> NewsAgentResult:
+        with agent_span(turn, "news_agent", input=sym) as box:
+            res = run_news_agent(
+                sym,
+                news_source,
+                news_brain or default_news_brain(),
+                days=news_days,
+                turn=turn,
+            )
+            box["output"] = {
+                "symbol": sym,
+                "items": len(res.items or []),
+                "error": res.error,
+            }
+            return res
+
     with ThreadPoolExecutor(max_workers=2) as pool:
-        fut_price = pool.submit(run_price_agent, sym, price_source, turn)
-        fut_news = pool.submit(
-            run_news_agent,
-            sym,
-            news_source,
-            news_brain or default_news_brain(),
-            days=news_days,
-            turn=turn,
-        )
+        fut_price = pool.submit(_fetch_price)
+        fut_news = pool.submit(_fetch_news)
         price = fut_price.result()
         news = fut_news.result()
-
-    with agent_span(turn, "price_agent", input=sym) as box:
-        box["output"] = {
-            "close": price.latest_close,
-            "change_pct": price.change_pct,
-            "error": price.error,
-        }
-    with agent_span(turn, "news_agent", input=sym) as box:
-        box["output"] = {"items": len(news.items or []), "error": news.error}
 
     return {"price": price, "news": news}
 
@@ -137,7 +148,11 @@ def _node_eval(state: ScanState, config: RunnableConfig) -> dict:
                 brain=cfg.get("eval_brain"),
                 turn=turn,
             )
-            box["output"] = str(eval_result.severity)
+            box["output"] = {
+                "symbol": sym,
+                "severity": str(eval_result.severity),
+                "confidence": eval_result.severity.confidence,
+            }
         return {"severity": eval_result.severity, "eval_result": eval_result}
     except Exception as exc:  # noqa: BLE001
         _logger.exception("scan %s eval failed: %s", sym, exc)
@@ -158,22 +173,25 @@ def _route_after_eval(
 def _node_gate2(state: ScanState, config: RunnableConfig) -> dict:
     cfg = _cfg(config)
     sym = state["symbol"]
+    turn = state.get("turn") or ""
     user_id = state.get("user_id") or "default"
     severity = state["severity"]
     memory_store: MemoryStore = cfg["memory_store"]
-    gate2_event = {
-        "kind": "pending_approval",
-        "gate": "gate2",
-        "proposal_id": str(uuid.uuid4()),
-        "symbol": sym,
-        "status": AlertStatus.PENDING_APPROVAL.value,
-        "proposed_threshold_pct": severity.proposed_threshold_pct,
-        "proposed_related_symbols": list(severity.proposed_related_symbols),
-        "severity": severity.model_dump(mode="json"),
-    }
-    memory_store.append_alert_event(user_id, gate2_event)
-    pending = list(state.get("pending_events") or [])
-    pending.append(gate2_event)
+    with agent_span(turn, "confidence_gate", input={"symbol": sym, "gate": "gate2"}) as box:
+        gate2_event = {
+            "kind": "pending_approval",
+            "gate": "gate2",
+            "proposal_id": str(uuid.uuid4()),
+            "symbol": sym,
+            "status": AlertStatus.PENDING_APPROVAL.value,
+            "proposed_threshold_pct": severity.proposed_threshold_pct,
+            "proposed_related_symbols": list(severity.proposed_related_symbols),
+            "severity": severity.model_dump(mode="json"),
+        }
+        memory_store.append_alert_event(user_id, gate2_event)
+        pending = list(state.get("pending_events") or [])
+        pending.append(gate2_event)
+        box["output"] = {"gate2_pending": True, "proposal_id": gate2_event["proposal_id"]}
     return {"gate2_pending": True, "pending_events": pending}
 
 
@@ -200,7 +218,11 @@ def _node_synthesis(state: ScanState, config: RunnableConfig) -> dict:
             if not alert.id:
                 alert.id = str(uuid.uuid4())
             alert.metadata = {**alert.metadata, "user_id": user_id}
-            box["output"] = {"alert_id": alert.id, "title": alert.title}
+            box["output"] = {
+                "alert_id": alert.id,
+                "title": alert.title,
+                "status": alert.status.value,
+            }
         return {"alert": alert}
     except Exception as exc:  # noqa: BLE001
         _logger.exception("scan %s synthesis failed: %s", sym, exc)
@@ -225,35 +247,46 @@ def _node_gate1_auto(state: ScanState, config: RunnableConfig) -> dict:
     alert = state["alert"]
     notifier: Notifier = cfg["notifier"]
     sym = state["symbol"]
-    try:
-        notifier.send(alert)
-        if alert.status != AlertStatus.SENT:
-            alert.status = AlertStatus.SENT
-        return {"gate1_action": "sent", "alert": alert}
-    except Exception as exc:  # noqa: BLE001
-        _logger.warning("scan %s auto-send failed → Gate1 pending: %s", sym, exc)
-        gate1_event = _append_gate1_pending(
-            cfg["memory_store"], state.get("user_id") or "default", alert, sym
-        )
-        pending = list(state.get("pending_events") or [])
-        pending.append(gate1_event)
-        return {
-            "gate1_action": "pending_approval",
-            "pending_events": pending,
-            "error": f"gửi cảnh báo lỗi, chuyển chờ duyệt: {exc}",
-            "alert": alert,
-        }
+    turn = state.get("turn") or ""
+    with agent_span(turn, "confidence_gate", input={"symbol": sym, "gate": "gate1_auto"}) as box:
+        try:
+            notifier.send(alert)
+            if alert.status != AlertStatus.SENT:
+                alert.status = AlertStatus.SENT
+            box["output"] = {"gate1_action": "sent", "alert_id": alert.id}
+            return {"gate1_action": "sent", "alert": alert}
+        except Exception as exc:  # noqa: BLE001
+            _logger.warning("scan %s auto-send failed → Gate1 pending: %s", sym, exc)
+            gate1_event = _append_gate1_pending(
+                cfg["memory_store"], state.get("user_id") or "default", alert, sym
+            )
+            pending = list(state.get("pending_events") or [])
+            pending.append(gate1_event)
+            box["output"] = {
+                "gate1_action": "pending_approval",
+                "alert_id": alert.id,
+                "error": str(exc),
+            }
+            return {
+                "gate1_action": "pending_approval",
+                "pending_events": pending,
+                "error": f"gửi cảnh báo lỗi, chuyển chờ duyệt: {exc}",
+                "alert": alert,
+            }
 
 
 def _node_gate1_pending(state: ScanState, config: RunnableConfig) -> dict:
     cfg = _cfg(config)
     sym = state["symbol"]
+    turn = state.get("turn") or ""
     alert = state["alert"]
-    gate1_event = _append_gate1_pending(
-        cfg["memory_store"], state.get("user_id") or "default", alert, sym
-    )
-    pending = list(state.get("pending_events") or [])
-    pending.append(gate1_event)
+    with agent_span(turn, "confidence_gate", input={"symbol": sym, "gate": "gate1_pending"}) as box:
+        gate1_event = _append_gate1_pending(
+            cfg["memory_store"], state.get("user_id") or "default", alert, sym
+        )
+        pending = list(state.get("pending_events") or [])
+        pending.append(gate1_event)
+        box["output"] = {"gate1_action": "pending_approval", "alert_id": alert.id}
     return {"gate1_action": "pending_approval", "pending_events": pending, "alert": alert}
 
 

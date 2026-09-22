@@ -1,15 +1,17 @@
-"""Backend product API — port 8000, proxy AI qua HTTP (không import domain.agents)."""
+"""Product entry (Phase 2) — một FastAPI: API + static UI; LangGraph qua ai_client."""
 
 from __future__ import annotations
 
 import os
 import re
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 from dotenv import find_dotenv, load_dotenv
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from src.portfolio_watch.backend.ai_client import AiClientError, ai_chat, ai_scan
@@ -18,6 +20,8 @@ from src.portfolio_watch.backend.steps import ensure_steps_reflect_error, normal
 from src.portfolio_watch.backend.store import ApprovalRecord, RunRecord, Store, WatchlistItem
 
 load_dotenv(find_dotenv(".env"), override=False)
+
+_FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
 DEFAULT_THRESHOLD = float(os.environ.get("DEFAULT_ALERT_THRESHOLD_PCT", "3.0"))
 DEFAULT_WATCHLIST = [
@@ -386,6 +390,15 @@ def post_scan(body: ScanRequest) -> dict[str, Any]:
     data = dict(data or {})
     data["request_id"] = request_id
     return _attach_run(kind="scan", user_id=user_id, data=data)
+
+
+# Mount UI sau cùng — không che /health, /chat, …
+if _FRONTEND_DIR.is_dir():
+    app.mount(
+        "/",
+        StaticFiles(directory=str(_FRONTEND_DIR), html=True),
+        name="ui",
+    )
 
 
 if __name__ == "__main__":

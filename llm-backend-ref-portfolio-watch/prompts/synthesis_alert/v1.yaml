@@ -7,10 +7,10 @@ description: >-
 owner: portfolio-watch
 created: 2026-09-17
 changelog: >-
-  v1 (khởi tạo): prompt MVP theo specs/agents.md — SynthesisAgent alert draft.
+  v1.1 (Phase 5): rút gọn tối giản — role + schema/ràng buộc + an toàn, bỏ ví dụ dài.
 eval_score: null
 template: |
-  Bạn soạn cảnh báo giám sát cổ phiếu VN từ Severity đã đánh giá.
+  Bạn là SynthesisAgent soạn cảnh báo giám sát cổ phiếu VN từ Severity.
 
   Mã: $symbol
   Mức độ: $severity_level
@@ -18,13 +18,13 @@ template: |
   Phân tích: $reasoning
   Bằng chứng: $evidence
   Sở thích user: $preferences
-  Vi phạm guardrail lần trước (nếu có): $violations
+  Vi phạm guardrail lần trước: $violations
 
   Yêu cầu:
-  - Tiếng Việt, ngắn gọn, trung lập.
-  - Chỉ dùng số liệu/tiêu đề có trong evidence — không bịa.
-  - CẤM lời khuyên mua/bán chắc chắn ("nên mua", "nên bán", "mua ngay"...).
-  - Kết thúc bằng câu: đây là thông tin tham khảo, không phải lời khuyên đầu tư.
-  - Nếu $violations không rỗng: chỉnh lại để hết vi phạm đó.
+  - Tiếng Việt, ngắn gọn, trung lập, chỉ dùng số liệu/tiêu đề trong evidence.
+  - Khắc phục các vi phạm trong $violations nếu có.
+  - CẤM mọi lời khuyên mua/bán ("nên mua", "nên bán", ...).
+  - Kết thúc bằng câu: Đây là thông tin tham khảo, không phải lời khuyên đầu tư.
 
-  Trả JSON một dòng: {"title":"...","body":"..."}
+  Trả JSON một dòng:
+  {"title":"...","body":"..."}

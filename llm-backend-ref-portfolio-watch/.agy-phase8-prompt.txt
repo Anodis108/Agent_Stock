@@ -1,0 +1,48 @@
+You are implementing in the repo cwd (Portfolio Watch V3).
+
+## Task
+Implement ONLY Phase 8 from specs/implementation-plan.md — Memory long-term.
+
+Checklist (do all):
+- [ ] `recall_memory` đầu chat; `store_memory` cuối chat (pattern agent_pr).
+- [ ] Qdrant optional + fallback in-memory khi không có Qdrant/key.
+- [ ] Không `user_id` → bỏ qua long-term, không crash.
+- [ ] Pytest có/không `user_id`; fallback.
+
+Done when: test long-term pass; chat Docker ổn (smoke if cheap — `/health` or import; do not require live Qdrant for CI tests).
+
+## Reference pattern (read-only inspiration)
+`../llm-engineer-demo/app/agent_pr/memory.py` and `supervisor_agent/nodes.py` (`recall_memory` / `store_memory`):
+- Long-term keyed by `user_id`; empty/missing user_id → skip, no crash.
+- Qdrant optional; `:memory:` or missing URL/client → in-memory fallback.
+- Recall early in chat turn; store late after answer (extract fact / MemoryExtractOutput if useful).
+- Phase 6 already has `MemoryExtractOutput` + `parse_memory_extract` in `shared/schemas.py`.
+
+## Context already done
+- Phase 7: short-term window + TTL via `MEMORY_SHORT_TERM_*` and `SqliteMemoryStore`.
+- Chat graph: `src/portfolio_watch/graph/chat.py` (`run_chat_graph`); compose → append short-term conversation.
+- Docker already has optional `qdrant` profile; `QDRANT_URL=http://qdrant:6333` in compose.
+- Do NOT start Phase 9+ (Langfuse, UI).
+
+## Constraints
+- Minimal diff; match existing style; prefer adapting agent_pr ideas into `src/portfolio_watch/` (e.g. `infra/storage/long_term_memory.py` or similar) rather than copying the whole demo.
+- Wire recall near start of chat path (after/with short-term load; can inject recalled facts into rewrite context / state) and store near end (after answer, before/after short-term append — document choice in change-log).
+- Empty / None / blank `user_id` → skip long-term entirely.
+- No Qdrant reachable / no dependency / `QDRANT_URL` unset or `:memory:` → in-memory fallback that still works in pytest.
+- Document env in `.env.example` (e.g. `QDRANT_URL`, optional API key / collection name if needed).
+- Pytest without live Docker Qdrant: with user_id recall/store roundtrip (in-memory fallback); without user_id no crash; Qdrant path can be mocked if needed.
+- Mark Phase 8 checklist `[x]` in specs/implementation-plan.md.
+- Append specs/change-log.md with design, env vars, pytest + any Docker smoke notes.
+
+## Verify
+```bash
+python -m pytest tests/ -q -k "long_term or memory or qdrant or recall or store_memory" --maxfail=8
+# or tests/test_long_term_memory.py
+python -m src.portfolio_watch.eval.run --self-check
+# Optional cheap Docker smoke if compose already up:
+# curl -s http://127.0.0.1:8000/health
+```
+
+## Output
+What changed, files touched, exact manual test steps, pytest results.
+Do the file edits yourself — do not only describe the change.

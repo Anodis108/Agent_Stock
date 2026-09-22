@@ -79,7 +79,11 @@ class PromptRegistry:
         if text == "production":
             alias_file = self._root / name / "production.txt"
             try:
-                return int(alias_file.read_text(encoding="utf-8").strip())
+                content = alias_file.read_text(encoding="utf-8").strip()
+                if content.isdigit():
+                    return int(content)
+                # production.txt chứa template trực tiếp -> dùng v1 cho metadata
+                return 1
             except (FileNotFoundError, ValueError) as exc:
                 raise ValueError(
                     f"Không đọc được alias 'production' cho prompt '{name}' "
@@ -120,7 +124,24 @@ class PromptRegistry:
     def get(self, name: str, version: int | str = "production") -> Prompt:
         """`version`: số cụ thể hoặc alias `"production"` / `"latest"`."""
         resolved = self._resolve_version(name, version)
-        return self._load(name, resolved)
+        prompt = self._load(name, resolved)
+        if str(version).strip() == "production":
+            alias_file = self._root / name / "production.txt"
+            if alias_file.is_file():
+                raw = alias_file.read_text(encoding="utf-8").strip()
+                if not raw.isdigit() and raw:
+                    return Prompt(
+                        name=prompt.name,
+                        version=prompt.version,
+                        model=prompt.model,
+                        description=prompt.description,
+                        owner=prompt.owner,
+                        created=prompt.created,
+                        changelog=prompt.changelog,
+                        template=raw,
+                        eval_score=prompt.eval_score,
+                    )
+        return prompt
 
     def render(
         self, name: str, version: int | str = "production", **variables: object

@@ -1,17 +1,16 @@
 """SynthesisAgent — model routing + soạn FinalAlert + vòng guardrail rewrite.
 
-Phase 8: mặc định dùng LLM qua Prompt Registry (`synthesis_alert`) +
-`infra/llm.completion.chat`. `HeuristicAlertComposer` giữ cho unit test / inject.
+Phase 6+: mặc định dùng LLM qua Prompt Registry (`synthesis_alert`) +
+structured output. `HeuristicAlertComposer` giữ cho unit test / inject.
 """
 
 from __future__ import annotations
 
-import json
-import re
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
+from src.portfolio_watch.agents.synthesis_agent.schemas import SynthesisAlertOutput
 from src.portfolio_watch.domain.entities import (
     AlertStatus,
     FinalAlert,
@@ -26,14 +25,13 @@ from src.portfolio_watch.domain.guardrails.output_checks import (
     strip_buy_sell,
 )
 from src.portfolio_watch.domain.ports import MemoryStore
-from src.portfolio_watch.infra.llm.completion import chat
 from src.portfolio_watch.infra.llm.params import DETERMINISTIC
 from src.portfolio_watch.infra.llm.prompt_registry import registry
+from src.portfolio_watch.infra.llm.structured import call_llm_structured
 
 MODEL_LIGHT = "gpt-4o-mini"
 MODEL_HEAVY = "gpt-4o"
 MAX_DRAFT_ATTEMPTS = 3
-_JSON_OBJ_RE = re.compile(r"\{.*\}", re.DOTALL)
 
 
 def select_model(severity: Severity) -> str:
@@ -87,30 +85,18 @@ class HeuristicAlertComposer:
         return title, body
 
 
-def _parse_alert_json(raw: str) -> tuple[str, str]:
-    text = (raw or "").strip()
-    match = _JSON_OBJ_RE.search(text)
-    payload = match.group(0) if match else text
-    data = json.loads(payload)
-    if not isinstance(data, dict):
-        raise ValueError("SynthesisAgent LLM không trả JSON object")
-    title = str(data.get("title", "")).strip()
-    body = str(data.get("body", "")).strip()
-    if not title or not body:
-        raise ValueError("SynthesisAgent LLM thiếu title/body")
-    return title, body
-
-
 class LlmAlertComposer:
-    """LLM composer: Prompt Registry `synthesis_alert` + chat completion."""
+    """LLM composer: Prompt Registry `synthesis_alert` + structured output."""
 
     def __init__(
         self,
         *,
         chat_fn: Callable[..., str] | None = None,
+        chat_parsed_fn: Callable[..., Any] | None = None,
         prompt_version: str | int = "production",
     ) -> None:
-        self._chat_fn = chat_fn or chat
+        self._chat_fn = chat_fn
+        self._chat_parsed_fn = chat_parsed_fn
         self._prompt_version = prompt_version
 
     def compose(
@@ -137,17 +123,32 @@ class LlmAlertComposer:
             preferences=prefs,
             violations=viol,
         )
-        # model routing đã chọn ở run_synthesis_agent; ghi vào prompt context nhẹ
-        raw = self._chat_fn(
-            [
-                {
-                    "role": "user",
-                    "content": f"{prompt_text}\n\n(model gợi ý: {model}, attempt={attempt})",
-                }
-            ],
-            DETERMINISTIC,
-        )
-        return _parse_alert_json(raw)
+        messages = [
+            {
+                "role": "user",
+                "content": f"{prompt_text}\n\n(model gợi ý: {model}, attempt={attempt})",
+            }
+        ]
+        try:
+            output = call_llm_structured(
+                messages,
+                SynthesisAlertOutput,
+                chat_fn=self._chat_fn,
+                chat_parsed_fn=self._chat_parsed_fn,
+                params=DETERMINISTIC,
+                max_retries=1,
+            )
+            return output.title, output.body
+        except Exception:
+            # inner schema fallback: heuristic composer
+            return HeuristicAlertComposer().compose(
+                symbol,
+                severity,
+                preferences,
+                model=model,
+                attempt=attempt,
+                previous_violations=previous_violations,
+            )
 
 
 # Production mặc định = LLM; pytest monkeypatch → Heuristic (conftest).
@@ -205,7 +206,7 @@ def run_synthesis_agent(
 
     for attempt in range(max_attempts):
         attempts += 1
-        with agent_step(turn, "synthesis_agent", "draft_attempt", input={"attempt": attempt}):
+        with agent_step(turn, "synthesis_agent", "draft_attempt", input={"attempt": attempt}) as box:
             try:
                 title, body = writer.compose(
                     symbol,
@@ -215,18 +216,29 @@ def run_synthesis_agent(
                     attempt=attempt,
                     previous_violations=violations,
                 )
+                box["output"] = {"title": title, "body": body[:200]}
             except Exception as exc:  # noqa: BLE001
                 violations = [f"composer lỗi: {exc}"]
                 title, body = f"Cảnh báo {symbol}", "; ".join(severity.evidence)
+                box["output"] = {"title": title, "error": str(exc)}
                 continue
 
-        with agent_step(turn, "synthesis_agent", "guardrail_check"):
+        with agent_step(
+            turn,
+            "synthesis_agent",
+            "guardrail_check",
+            input={"title": title, "body": body[:200]},
+        ) as box:
             if has_evidence_grounding(body, severity.evidence):
                 last_grounded_body = body
             result = check_output(title, body, severity.evidence)
             ground = check_rewrite_grounding(
                 body, severity.evidence, require=attempt > 0
             )
+            box["output"] = {
+                "ok": result.ok and ground.ok,
+                "violations": list(result.violations) + list(ground.violations),
+            }
         if result.ok and ground.ok:
             alert = FinalAlert(
                 symbol=symbol,

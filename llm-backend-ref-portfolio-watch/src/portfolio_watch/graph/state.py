@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from typing import Any, TypedDict
 
-from src.portfolio_watch.domain.agents.answer_composer import AnswerComposeResult
-from src.portfolio_watch.domain.agents.eval_agent import EvalAgentResult
-from src.portfolio_watch.domain.agents.news_agent import NewsAgentResult
-from src.portfolio_watch.domain.agents.price_agent import PriceAgentResult
-from src.portfolio_watch.domain.agents.supervisor import RewrittenQuestion
+from src.portfolio_watch.agents.answer_composer import AnswerComposeResult
+from src.portfolio_watch.agents.eval_agent import EvalAgentResult
+from src.portfolio_watch.agents.news_agent import NewsAgentResult
+from src.portfolio_watch.agents.price_agent import PriceAgentResult
+from src.portfolio_watch.agents.supervisor_agent import RewrittenQuestion
 from src.portfolio_watch.domain.entities import FinalAlert, RoutingDecision, Severity
 
 
@@ -17,6 +17,7 @@ class ChatState(TypedDict, total=False):
     user_id: str
     turn: str
     conversation: list[dict[str, Any]]
+    memories: list[str]
     rewritten: RewrittenQuestion
     routing: RoutingDecision
     symbol: str | None

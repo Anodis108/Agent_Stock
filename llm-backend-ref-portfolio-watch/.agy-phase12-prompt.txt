@@ -1,0 +1,37 @@
+You are implementing in the repo cwd (Portfolio Watch V3).
+
+## Task
+Implement ONLY Phase 12 from specs/implementation-plan.md — Market status page.
+
+Checklist (do all):
+- [ ] Trang/tab **Market status**.
+- [ ] Liệt kê mã đang watchlist / vừa quét: giá, % đổi, trạng thái, thời gian.
+- [ ] Nối dữ liệu thật từ store/API (không mock cứng trên UI).
+- [ ] Lỗi tải dữ liệu hiện message rõ.
+
+Done when: mở tab thấy mã đang check (document manual steps in change-log).
+
+## Recommended design
+1. Add thin API `GET /market?user_id=…` returning:
+   ```json
+   { "items": [{ "symbol", "price", "change_pct", "status", "updated_at", "threshold_pct?" }], "count": N }
+   ```
+   - `status`: `normal` | `abnormal` | `pending` | `unknown` (map from last scan `route` + open approvals).
+   - `price` ← last scan `price.latest_close` (null if never scanned).
+   - Compose from watchlist + latest scan/quote cache + pending approvals — **no hardcoded UI rows**.
+   - If store lacks last-quote persistence, add minimal persistence on successful scan (last quote cache) so Market status works after the request — document in change-log.
+2. Frontend: new secondary tab **Market status** (`data-tab="market"`) with table: Mã | Giá | % | Trạng thái | Cập nhật. Load via existing `api()` helper. Clear error if load fails (`formatApiError`). Keep Watchlist tab for CRUD.
+3. Do NOT start Phase 13+.
+
+## Constraints
+- Minimal diff; vanilla JS/CSS.
+- Mark Phase 12 `[x]` in specs/implementation-plan.md.
+- Append specs/change-log.md with contract + demo steps.
+- Cheap pytest; do NOT idle on docker/background tests — finish files then reply.
+
+## Verify
+```bash
+python -m pytest tests/test_frontend.py tests/test_backend.py -q --tb=line
+```
+
+Do the file edits yourself.

@@ -8,6 +8,7 @@ Không dùng ContextVar; span cha tra theo `turn` (uuid mỗi request).
 
 from __future__ import annotations
 
+import threading
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -20,6 +21,7 @@ _logger = get_logger(__name__)
 
 _roots: dict[str, Any] = {}
 _agents: dict[tuple[str, str], Any] = {}
+_lock = threading.RLock()
 _client: Any = None
 _warned_missing_keys = False
 _warned_init_fail = False
@@ -76,20 +78,22 @@ def _get_langfuse() -> Any | None:
 def reset_client_for_tests() -> None:
     """Chỉ dùng trong pytest — xoá client cache + cờ cảnh báo."""
     global _client, _warned_missing_keys, _warned_init_fail
-    _client = None
-    _warned_missing_keys = False
-    _warned_init_fail = False
-    _roots.clear()
-    _agents.clear()
+    with _lock:
+        _client = None
+        _warned_missing_keys = False
+        _warned_init_fail = False
+        _roots.clear()
+        _agents.clear()
 
 
 def step_parent(turn: str, agent_name: str | None = None) -> Any:
     """Span cha cho trace_step: root (agent_name=None) hoặc agent span."""
     if not turn:
         return None
-    if agent_name:
-        return _agents.get((turn, agent_name))
-    return _roots.get(turn)
+    with _lock:
+        if agent_name:
+            return _agents.get((turn, agent_name))
+        return _roots.get(turn)
 
 
 @contextmanager
@@ -114,7 +118,8 @@ def trace_request(
         name=name, as_type="agent", input=input, metadata=meta
     )
     if turn:
-        _roots[turn] = span
+        with _lock:
+            _roots[turn] = span
     box: dict[str, Any] = {"_span": span}
     start = time.perf_counter()
     try:
@@ -133,7 +138,8 @@ def trace_request(
         except Exception as exc:  # noqa: BLE001
             _logger.warning("Langfuse flush thất bại (best-effort): %s", exc)
         if turn:
-            _roots.pop(turn, None)
+            with _lock:
+                _roots.pop(turn, None)
 
 
 @contextmanager
@@ -144,7 +150,7 @@ def agent_span(
     metadata: dict[str, Any] | None = None,
 ) -> Iterator[dict[str, Any]]:
     """Span AGENT con của root — bọc quanh 1 bước (price/news/eval/…)."""
-    root = _roots.get(turn)
+    root = step_parent(turn)
     if not _enabled() or root is None:
         yield {}
         return
@@ -153,7 +159,8 @@ def agent_span(
         name=name, as_type="agent", input=input, metadata=metadata or {}
     )
     key = (turn, name)
-    _agents[key] = span
+    with _lock:
+        _agents[key] = span
     box: dict[str, Any] = {}
     start = time.perf_counter()
     try:
@@ -162,7 +169,8 @@ def agent_span(
         span.update(level="ERROR", status_message=str(exc))
         raise
     finally:
-        _agents.pop(key, None)
+        with _lock:
+            _agents.pop(key, None)
         span.update(
             output=box.get("output"),
             metadata={"latency_s": time.perf_counter() - start},

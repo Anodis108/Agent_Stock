@@ -9,10 +9,10 @@ from src.portfolio_watch.application.scan_symbol import (
     ScanSymbolResult,
     scan_symbol,
 )
-from src.portfolio_watch.domain.agents.event_classifier import EventClassifierBrain
-from src.portfolio_watch.domain.agents.eval_agent import EvalAgentBrain
-from src.portfolio_watch.domain.agents.news_agent import NewsAgentBrain
-from src.portfolio_watch.domain.agents.synthesis_agent import AlertComposer
+from src.portfolio_watch.agents.event_classifier import EventClassifierBrain
+from src.portfolio_watch.agents.eval_agent import EvalAgentBrain
+from src.portfolio_watch.agents.news_agent import NewsAgentBrain
+from src.portfolio_watch.agents.synthesis_agent import AlertComposer
 from src.portfolio_watch.domain.ports import (
     MemoryStore,
     NewsSource,

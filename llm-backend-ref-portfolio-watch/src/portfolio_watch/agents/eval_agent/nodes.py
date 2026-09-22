@@ -1,27 +1,24 @@
 """EvalAgent — sinh Severity; ReAct có thể gọi read_price_history khi dữ liệu mập mờ.
 
-Phase 8: mặc định dùng LLM qua Prompt Registry (`eval_severity`) +
-`infra/llm.completion.chat`. `HeuristicEvalBrain` giữ cho unit test / inject.
+Phase 6+: mặc định dùng LLM qua Prompt Registry (`eval_severity`) +
+structured output. `HeuristicEvalBrain` giữ cho unit test / inject.
 """
 
 from __future__ import annotations
 
-import json
-import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from src.portfolio_watch.agents.eval_agent.schemas import EvalSeverityOutput
+from src.portfolio_watch.agents.eval_agent.tools import read_price_history
 from src.portfolio_watch.agents.news_agent import NewsAgentResult
 from src.portfolio_watch.agents.price_agent import PriceAgentResult
 from src.portfolio_watch.domain.entities import Severity, SeverityLevel
-from src.portfolio_watch.agents.eval_agent.tools import read_price_history
 from src.portfolio_watch.domain.ports import PriceBar, PriceHistoryStore
-from src.portfolio_watch.infra.llm.completion import chat
 from src.portfolio_watch.infra.llm.params import DETERMINISTIC
 from src.portfolio_watch.infra.llm.prompt_registry import registry
-
-_JSON_OBJ_RE = re.compile(r"\{.*\}", re.DOTALL)
+from src.portfolio_watch.infra.llm.structured import call_llm_structured
 
 
 @dataclass(slots=True)
@@ -185,79 +182,28 @@ def _history_summary(history: list[PriceBar]) -> str:
     return "; ".join(parts) + more
 
 
-def _parse_eval_payload(raw: str) -> dict[str, Any]:
-    text = (raw or "").strip()
-    match = _JSON_OBJ_RE.search(text)
-    payload = match.group(0) if match else text
-    data = json.loads(payload)
-    if not isinstance(data, dict):
-        raise ValueError("EvalAgent LLM không trả JSON object")
-    return data
-
-
-def _severity_from_payload(data: dict[str, Any]) -> Severity:
-    level_raw = str(data.get("level", "low")).strip().lower()
-    level_map = {
-        "low": SeverityLevel.LOW,
-        "medium": SeverityLevel.MEDIUM,
-        "med": SeverityLevel.MEDIUM,
-        "high": SeverityLevel.HIGH,
-    }
-    level = level_map.get(level_raw, SeverityLevel.LOW)
-    try:
-        confidence = float(data.get("confidence", 0.5))
-    except (TypeError, ValueError):
-        confidence = 0.5
-    confidence = max(0.0, min(1.0, confidence))
-    reasoning = str(data.get("reasoning", "")).strip() or "llm eval"
-    evidence_raw = data.get("evidence") or []
-    if isinstance(evidence_raw, list):
-        evidence = [str(x) for x in evidence_raw]
-    else:
-        evidence = [str(evidence_raw)]
-
-    proposed_thr = data.get("proposed_threshold_pct")
-    if proposed_thr is not None:
-        try:
-            proposed_thr = float(proposed_thr)
-        except (TypeError, ValueError):
-            proposed_thr = None
-
-    related = data.get("proposed_related_symbols") or []
-    if not isinstance(related, list):
-        related = []
-    related_syms = [str(s).strip().upper() for s in related if str(s).strip()]
-
-    return Severity(
-        level=level,
-        confidence=confidence,
-        reasoning=reasoning,
-        evidence=evidence,
-        proposed_threshold_pct=proposed_thr,
-        proposed_related_symbols=related_syms,
-    )
-
-
 class LlmEvalBrain:
-    """LLM brain: Prompt Registry `eval_severity` + chat completion."""
+    """LLM brain: Prompt Registry `eval_severity` + structured output."""
 
     def __init__(
         self,
         *,
         chat_fn: Callable[..., str] | None = None,
+        chat_parsed_fn: Callable[..., Any] | None = None,
         prompt_version: str | int = "production",
     ) -> None:
-        self._chat_fn = chat_fn or chat
+        self._chat_fn = chat_fn
+        self._chat_parsed_fn = chat_parsed_fn
         self._prompt_version = prompt_version
         # Cache kết quả lần gọi khi chưa có history (tránh double-call nếu đủ data)
-        self._cached_empty_history: dict[str, Any] | None = None
+        self._cached_empty_history: EvalSeverityOutput | None = None
 
     def _call_llm(
         self,
         price: PriceAgentResult,
         news: NewsAgentResult,
         history: list[PriceBar],
-    ) -> dict[str, Any]:
+    ) -> EvalSeverityOutput:
         change = price.change_pct
         prompt_text = registry().render(
             "eval_severity",
@@ -267,11 +213,29 @@ class LlmEvalBrain:
             news_summary=_news_summary(news),
             history_summary=_history_summary(history),
         )
-        raw = self._chat_fn(
-            [{"role": "user", "content": prompt_text}],
-            DETERMINISTIC,
-        )
-        return _parse_eval_payload(raw)
+        messages = [{"role": "user", "content": prompt_text}]
+        try:
+            return call_llm_structured(
+                messages,
+                EvalSeverityOutput,
+                chat_fn=self._chat_fn,
+                chat_parsed_fn=self._chat_parsed_fn,
+                params=DETERMINISTIC,
+                max_retries=1,
+            )
+        except Exception:
+            # inner schema fallback: heuristic
+            heur = HeuristicEvalBrain()
+            sev = heur.build_severity(price, news, history)
+            return EvalSeverityOutput(
+                needs_history=heur.needs_history(price, news, history),
+                level=sev.level.value,
+                confidence=sev.confidence,
+                reasoning=sev.reasoning,
+                evidence=sev.evidence,
+                proposed_threshold_pct=sev.proposed_threshold_pct,
+                proposed_related_symbols=sev.proposed_related_symbols,
+            )
 
     def needs_history(
         self,
@@ -283,7 +247,7 @@ class LlmEvalBrain:
             return False
         data = self._call_llm(price, news, history)
         self._cached_empty_history = data
-        return bool(data.get("needs_history"))
+        return bool(data.needs_history)
 
     def build_severity(
         self,
@@ -293,13 +257,11 @@ class LlmEvalBrain:
     ) -> Severity:
         if history:
             data = self._call_llm(price, news, history)
-        elif self._cached_empty_history is not None and not self._cached_empty_history.get(
-            "needs_history"
-        ):
+        elif self._cached_empty_history is not None and not self._cached_empty_history.needs_history:
             data = self._cached_empty_history
         else:
             data = self._call_llm(price, news, history)
-        return _severity_from_payload(data)
+        return data.to_severity()
 
 
 # Production mặc định = LLM; pytest monkeypatch → Heuristic (conftest).
@@ -338,8 +300,14 @@ def run_eval_agent(
         if requested:
             history_calls += 1
             try:
-                with agent_step(turn, "eval_agent", "read_price_history", input={"symbol": symbol, "days": history_days}):
+                with agent_step(
+                    turn,
+                    "eval_agent",
+                    "read_price_history",
+                    input={"symbol": symbol, "days": history_days},
+                ) as box:
                     history = read_price_history(history_store, symbol, days=history_days)
+                    box["output"] = {"records": len(history)}
             except Exception as exc:  # noqa: BLE001
                 severity = evaluator.build_severity(price, news, [])
                 return EvalAgentResult(
@@ -358,7 +326,17 @@ def run_eval_agent(
                     history_calls=history_calls,
                 )
 
-        severity = evaluator.build_severity(price, news, history)
+        with agent_step(
+            turn,
+            "eval_agent",
+            "build_severity",
+            input={"symbol": symbol, "has_history": bool(history)},
+        ) as box:
+            severity = evaluator.build_severity(price, news, history)
+            box["output"] = {
+                "level": str(getattr(severity.level, "value", severity.level)),
+                "confidence": severity.confidence,
+            }
         if requested and not history:
             severity = severity.model_copy(
                 update={

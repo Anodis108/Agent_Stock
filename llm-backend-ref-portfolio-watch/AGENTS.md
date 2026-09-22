@@ -1,64 +1,20 @@
 # AGENTS.md
-PHướng dẫn cho coding agent — **spec-driven development**, vòng **V2**.
-
-## Trước khi code
-
-1. Đọc `specs/product-spec.md`, `specs/implementation-plan.md`, và file spec liên
-   quan (`agents.md`, `test-plan.md`).
-2. Chỉ làm **một** phase hoặc **một** task trong checklist phase đó (Phase 12: tối
-   đa **một** agent folder).
-3. Không đổi kiến trúc trừ khi đã cập nhật spec trước.
-
-## Quy tắc code
-
-- Giữ app **đơn giản** — không over-engineer, không abstraction thừa.
-- **Không** thêm thư viện mới trừ khi phase yêu cầu.
-- Cấu trúc agent tham chiếu `../llm-engineer-demo/app/agent_pr/` (`nodes.py`,
-  `state.py`, `tools.py`, `graph.py` nếu cần).
-- Backend **không** import agents / LangGraph — chỉ gọi AI qua HTTP.
-- Không nới scorer golden — sửa agent, prompt, hoặc tool.
-
-## V2 (mục tiêu hiện tại)
-
-- FE + BE + AI trong `src/portfolio_watch/`; chạy product bằng `docker compose`.
-- Langfuse self-host `:3000`; 1 chat = 1 trace; span lồng nhau (xem demo
-  `../llm-engineer-demo/app/monitoring/tracing.py`).
-- Không thêm file dưới `scripts/` (đã xóa Phase 15f).
-
-MVP Phase 1–10 đã xong — `specs/mvp-status-report.md`. V2 Phase 1 → 11 → … → 16.
-
-## Sau mỗi lần implement
-
-1. Cập nhật `specs/change-log.md` (ngắn: what / why).
-2. Tick checklist trong `specs/implementation-plan.md` cho task vừa xong.
-3. Giải thích **cách test** — lệnh cụ thể (ưu tiên Docker):
-
-```bash
-docker compose up --build
-docker compose run --rm ai pytest tests/ -q -k "<module>"
-```
-
-4. Ghi issue đã biết nếu có.
-
-## Tài liệu nhanh
-
-| File | Khi nào đọc |
-|---|---|
-| `specs/product-spec.md` | Scope, acceptance |
-| `specs/implementation-plan.md` | Phase đang làm |
-| `specs/test-plan.md` | Cách chấm / Langfuse checklist |
-| `specs/agents.md` | Hành vi từng agent |
-host `:3000`; 1 chat UI = 1 trace, span lồng nhau.
-
-
 
 Project này tuân theo simple spec-driven development.
 
+Domain agents (PriceAgent, NewsAgent, …): xem `specs/agents.md`.
+
 ## Nguyên tắc chính
-Luôn đọc các file trong `/specs` trước khi code.
+
+Luôn đọc các file trong `specs/` trước khi code.
+
+**Một lần chỉ mở một phase** trong `specs/implementation-plan.md`.
+Không viết code / feature ngoài checklist phase đang mở.
 
 ## Workflow
+
 Với mỗi task:
+
 1. Đọc các file spec liên quan.
 2. Chỉ triển khai một task hoặc một phase tại một thời điểm.
 3. Giữ giải pháp đơn giản.
@@ -68,13 +24,16 @@ Với mỗi task:
 7. Giải thích cách test thay đổi.
 
 ## Coding Style
+
 - Ưu tiên code đơn giản, dễ đọc.
 - Không over-engineer.
 - Không thêm feature không liên quan.
 - Giữ thay đổi nhỏ và dễ review.
 
 ## Testing
+
 Trước khi nói task đã hoàn thành, hãy cung cấp:
+
 - command để chạy app
 - các bước test thủ công
 - các issue đã biết nếu có

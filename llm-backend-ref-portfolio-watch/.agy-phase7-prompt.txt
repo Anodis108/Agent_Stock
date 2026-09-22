@@ -1,0 +1,41 @@
+You are implementing in the repo cwd (Portfolio Watch V3).
+
+## Task
+Implement ONLY Phase 7 from specs/implementation-plan.md — Memory short-term + TTL.
+
+Checklist (do all):
+- [ ] Short-term history/messages + sliding window (env cấu hình được).
+- [ ] TTL / freshness phút (env); ghi `.env.example`.
+- [ ] Follow-up trong session nhớ mã/ngữ cảnh trong window.
+- [ ] Pytest short-term + expiry/freshness.
+
+Done when: test short-term pass.
+
+## Context already done
+- Phase 6: structured LLM outputs.
+- Short-term conversation already exists via `SqliteMemoryStore.append_conversation` / `list_conversation` (`infra/storage/memory_store.py`) and `MemoryStore` Protocol (`domain/ports.py`).
+- Chat loads history with hardcoded `limit=20` in `graph/chat.py` (`run_chat_graph`).
+- Supervisor rewrite already resolves follow-up pronouns/tickers from `conversation` (`_apply_memory_symbol` in `agents/supervisor_agent/nodes.py`).
+- Settings live in `shared/settings.py`; `.env.example` has no MEMORY_* / TTL vars yet.
+- Do NOT start Phase 8+ (long-term Qdrant recall/store, Langfuse, UI).
+
+## Constraints
+- Minimal diff; match existing style.
+- Add env-configurable sliding window size (e.g. `MEMORY_SHORT_TERM_WINDOW` or similar) and TTL/freshness minutes (e.g. `MEMORY_SHORT_TERM_TTL_MINUTES`). Document both in `.env.example` with short comments.
+- `list_conversation` (or a thin wrapper used by chat) must: respect window size AND drop messages older than TTL/freshness when timestamps exist; expired → not fed to rewrite/routing.
+- Wire `run_chat_graph` (and any other chat entry that loads conversation) to use settings instead of magic `20`.
+- Follow-up: ensure a pytest proves that after user asks about a ticker, a follow-up without ticker (e.g. "giá hôm nay thế nào?") still resolves symbol from short-term window — can use heuristic rewrite brain / existing helpers without live LLM.
+- Expiry: pytest that messages past TTL are excluded from the window returned to the graph.
+- Mark Phase 7 checklist `[x]` in specs/implementation-plan.md.
+- Append specs/change-log.md with env vars, behavior, pytest commands + results.
+
+## Verify
+```bash
+python -m pytest tests/ -q -k "memory or short_term or conversation or ttl or freshness" --maxfail=8
+# or tests/test_short_term_memory.py if you create it
+python -m src.portfolio_watch.eval.run --self-check
+```
+
+## Output
+What changed, files touched, exact manual test steps, pytest results.
+Do the file edits yourself — do not only describe the change.

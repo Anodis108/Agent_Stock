@@ -87,12 +87,21 @@ class MemoryStore(Protocol):
         ...
 
     def append_conversation(
-        self, user_id: str, role: str, content: str
+        self,
+        user_id: str,
+        role: str,
+        content: str,
+        *,
+        created_at: str | None = None,
     ) -> None:
         ...
 
     def list_conversation(
-        self, user_id: str, limit: int = 20
+        self,
+        user_id: str,
+        limit: int | None = None,
+        *,
+        ttl_minutes: int | float | None = None,
     ) -> list[dict[str, Any]]:
         ...
 

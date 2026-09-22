@@ -6,11 +6,11 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
-from src.portfolio_watch.domain.agents.event_classifier import EventClassifierBrain
-from src.portfolio_watch.domain.agents.eval_agent import EvalAgentBrain
-from src.portfolio_watch.domain.agents.news_agent import NewsAgentBrain, NewsAgentResult
-from src.portfolio_watch.domain.agents.price_agent import PriceAgentResult
-from src.portfolio_watch.domain.agents.synthesis_agent import AlertComposer
+from src.portfolio_watch.agents.event_classifier import EventClassifierBrain
+from src.portfolio_watch.agents.eval_agent import EvalAgentBrain
+from src.portfolio_watch.agents.news_agent import NewsAgentBrain, NewsAgentResult
+from src.portfolio_watch.agents.price_agent import PriceAgentResult
+from src.portfolio_watch.agents.synthesis_agent import AlertComposer
 from src.portfolio_watch.domain.entities import (
     AlertStatus,
     EventRoute,

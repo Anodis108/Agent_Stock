@@ -1,4 +1,4 @@
-/* Portfolio Watch frontend — Phase 4: gọi Backend (bỏ mock). */
+/* Portfolio Watch frontend — Phase 10: Claude-like Chat UI + Backend API */
 (function () {
   const STATUSES = ["pending", "running", "done", "error"];
   const USER_ID = "default";
@@ -7,10 +7,15 @@
     if (typeof window.PW_getBackendBaseUrl === "function") {
       return window.PW_getBackendBaseUrl();
     }
-    return (
-      (window.PW_CONFIG && window.PW_CONFIG.BACKEND_BASE_URL) ||
-      "http://127.0.0.1:8000"
-    );
+    if (window.PW_CONFIG && window.PW_CONFIG.BACKEND_BASE_URL !== undefined) {
+      return String(window.PW_CONFIG.BACKEND_BASE_URL || "").replace(/\/+$/, "");
+    }
+    return "";
+  }
+
+  function backendBaseLabel() {
+    var b = backendBase();
+    return b ? b : "(same-origin)";
   }
 
   function apiUrl(path) {
@@ -91,7 +96,20 @@
     boot.classList.toggle("boot-error", !!isError);
   }
 
-  /** Chuẩn hoá steps[] theo contract Backend: {id,name,status,detail?} */
+  function showChatErrorBanner(msg) {
+    var banner = document.getElementById("chat-error-banner");
+    var textEl = document.getElementById("chat-error-text");
+    if (!banner) return;
+    if (textEl) textEl.textContent = msg;
+    banner.style.display = "flex";
+  }
+
+  function hideChatErrorBanner() {
+    var banner = document.getElementById("chat-error-banner");
+    if (banner) banner.style.display = "none";
+  }
+
+  /** Chuẩn hoá steps[] theo contract Backend: {id,name,status,detail?,input?,output?} */
   function normalizeSteps(raw) {
     if (!raw || !raw.length) return [];
     var out = [];
@@ -108,12 +126,247 @@
       if (item.detail != null && item.detail !== "") {
         step.detail = String(item.detail);
       }
+      if (item.input !== undefined && item.input !== null) {
+        step.input = item.input;
+      }
+      if (item.output !== undefined && item.output !== null) {
+        step.output = item.output;
+      }
       out.push(step);
     }
     return out;
   }
 
+  /* Phase 11: Live Graph & Hover I/O Inspector State & Helpers */
   var lastTimelineSteps = [];
+  var lastLiveGraphSteps = [];
+  var currentAnimTimer = null;
+  var pinnedInspectorStepId = null;
+
+  function getNodeIcon(name) {
+    var lower = String(name || "").toLowerCase();
+    if (lower.indexOf("rewrite") >= 0) return "🔄";
+    if (lower.indexOf("supervisor") >= 0) return "🧭";
+    if (lower.indexOf("price") >= 0) return "📈";
+    if (lower.indexOf("news") >= 0) return "📰";
+    if (lower.indexOf("classifier") >= 0) return "🏷️";
+    if (lower.indexOf("eval") >= 0) return "⚖️";
+    if (lower.indexOf("synthesis") >= 0) return "🔔";
+    if (lower.indexOf("gate") >= 0) return "🛡️";
+    if (lower.indexOf("compose") >= 0) return "✍️";
+    if (lower.indexOf("chat") >= 0 || lower.indexOf("scan") >= 0 || lower.indexOf("request") >= 0) return "⚡";
+    return "⚙️";
+  }
+
+  function setGraphStatus(text, statusClass) {
+    var tag = document.getElementById("graph-status-tag");
+    if (!tag) return;
+    tag.textContent = text || "Sẵn sàng";
+    tag.className = "graph-status-tag status-" + (statusClass || "idle");
+  }
+
+  function formatIO(val) {
+    if (val === undefined || val === null) {
+      return "(không có dữ liệu)";
+    }
+    if (typeof val === "object") {
+      try {
+        return JSON.stringify(val, null, 2);
+      } catch (_e) {
+        return String(val);
+      }
+    }
+    return String(val);
+  }
+
+  function showNodeInspector(step, isPinned) {
+    var inspector = document.getElementById("graph-node-inspector");
+    if (!inspector || !step) return;
+    // Chỉ cập nhật pin khi click (true/false tường minh). Hover/focus không gỡ pin.
+    if (isPinned === true) {
+      pinnedInspectorStepId = step.id;
+    } else if (isPinned === false) {
+      pinnedInspectorStepId = null;
+    }
+
+    var nameEl = document.getElementById("inspector-node-name");
+    var badgeEl = document.getElementById("inspector-node-badge");
+    var detailEl = document.getElementById("inspector-node-detail");
+    var inPre = document.getElementById("inspector-input-content");
+    var outPre = document.getElementById("inspector-output-content");
+
+    if (nameEl) nameEl.textContent = step.name || "?";
+    if (badgeEl) {
+      badgeEl.textContent = step.status || "done";
+      badgeEl.className = "status-badge status-" + (step.status || "done");
+    }
+    if (detailEl) {
+      detailEl.textContent = step.detail ? "Chi tiết: " + step.detail : "";
+    }
+    if (inPre) inPre.textContent = formatIO(step.input);
+    if (outPre) outPre.textContent = formatIO(step.output);
+
+    inspector.style.display = "block";
+
+    // Highlight corresponding node card
+    var allCards = document.querySelectorAll(".graph-node-card");
+    allCards.forEach(function (c) {
+      if (c.dataset.stepId === String(step.id)) {
+        c.classList.add("active");
+      } else {
+        c.classList.remove("active");
+      }
+    });
+  }
+
+  function hideNodeInspector(force) {
+    if (!force && pinnedInspectorStepId) return;
+    var inspector = document.getElementById("graph-node-inspector");
+    if (inspector) inspector.style.display = "none";
+    pinnedInspectorStepId = null;
+    var allCards = document.querySelectorAll(".graph-node-card");
+    allCards.forEach(function (c) {
+      c.classList.remove("active");
+    });
+  }
+
+  function showGraphStart(kind) {
+    if (currentAnimTimer) {
+      clearTimeout(currentAnimTimer);
+      currentAnimTimer = null;
+    }
+    setGraphStatus("Đang chạy…", "running");
+    var flow = document.getElementById("graph-nodes-flow");
+    if (!flow) return;
+    flow.innerHTML = "";
+
+    var card = document.createElement("div");
+    card.className = "graph-node-card status-running";
+    card.tabIndex = 0;
+    card.dataset.stepId = "start";
+    card.innerHTML =
+      '<span class="node-icon">⚡</span>' +
+      '<span class="node-label">' + (kind || "request") + '</span>' +
+      '<span class="node-status-dot"></span>';
+
+    flow.appendChild(card);
+  }
+
+  function renderLiveGraphNodes(steps) {
+    var flow = document.getElementById("graph-nodes-flow");
+    if (!flow) return;
+    flow.innerHTML = "";
+
+    if (!steps || !steps.length) {
+      flow.innerHTML =
+        '<div class="graph-empty-state"><span class="empty-icon">📊</span><p class="muted tiny"><em>Chờ câu hỏi hoặc lượt quét để kích hoạt đồ thị</em></p></div>';
+      return;
+    }
+
+    steps.forEach(function (step, idx) {
+      if (idx > 0) {
+        var arrow = document.createElement("span");
+        arrow.className = "graph-connector" + (step.status === "done" ? " passed" : "");
+        arrow.textContent = "→";
+        flow.appendChild(arrow);
+      }
+
+      var card = document.createElement("div");
+      var status = STATUSES.indexOf(step.status) >= 0 ? step.status : "pending";
+      card.className = "graph-node-card status-" + status;
+      if (pinnedInspectorStepId && String(step.id) === String(pinnedInspectorStepId)) {
+        card.classList.add("active");
+      }
+      card.tabIndex = 0;
+      card.dataset.stepId = String(step.id);
+      card.dataset.stepIndex = String(idx);
+
+      var icon = getNodeIcon(step.name);
+      card.innerHTML =
+        '<span class="node-icon">' + icon + '</span>' +
+        '<span class="node-label">' + (step.name || "?") + '</span>' +
+        '<span class="node-status-dot"></span>';
+
+      card.addEventListener("mouseenter", function () {
+        showNodeInspector(step);
+      });
+      card.addEventListener("focus", function () {
+        showNodeInspector(step);
+      });
+      card.addEventListener("click", function () {
+        if (String(pinnedInspectorStepId) === String(step.id)) {
+          hideNodeInspector(true);
+        } else {
+          showNodeInspector(step, true);
+        }
+      });
+      flow.appendChild(card);
+    });
+  }
+
+  function animateLiveGraph(finalSteps) {
+    return new Promise(function (resolve) {
+      if (currentAnimTimer) {
+        clearTimeout(currentAnimTimer);
+        currentAnimTimer = null;
+      }
+      var list = normalizeSteps(finalSteps);
+      lastLiveGraphSteps = list.slice();
+      if (!list.length) {
+        renderLiveGraphNodes([]);
+        setGraphStatus("Sẵn sàng", "idle");
+        resolve();
+        return;
+      }
+
+      setGraphStatus("Đang thực thi…", "running");
+
+      // Initial state: all pending except first running
+      var animState = list.map(function (s, idx) {
+        return {
+          id: s.id,
+          name: s.name,
+          status: idx === 0 ? "running" : "pending",
+          detail: s.detail,
+          input: s.input,
+          output: s.output,
+        };
+      });
+      renderLiveGraphNodes(animState);
+
+      var currentIdx = 0;
+      var stepDuration = 220; // ms per step highlight
+
+      function nextStep() {
+        if (currentIdx < list.length) {
+          // Transition currentIdx to final status (done or error)
+          animState[currentIdx].status = list[currentIdx].status || "done";
+
+          currentIdx++;
+          if (currentIdx < list.length) {
+            // Next node becomes running
+            animState[currentIdx].status = "running";
+            renderLiveGraphNodes(animState);
+            currentAnimTimer = setTimeout(nextStep, stepDuration);
+          } else {
+            // All completed
+            renderLiveGraphNodes(animState);
+            var hasErr = animState.some(function (s) { return s.status === "error"; });
+            setGraphStatus(hasErr ? "Có lỗi" : "Hoàn tất", hasErr ? "error" : "done");
+            // Show inspector for last step if user hasn't pinned one
+            if (animState.length > 0 && !pinnedInspectorStepId) {
+              showNodeInspector(animState[animState.length - 1], false);
+            }
+            resolve();
+          }
+        } else {
+          resolve();
+        }
+      }
+
+      currentAnimTimer = setTimeout(nextStep, stepDuration);
+    });
+  }
 
   function renderTimeline(steps) {
     var ol = document.getElementById("timeline-steps");
@@ -132,6 +385,8 @@
       li.className = "timeline-item status-" + status;
       li.dataset.status = status;
       li.dataset.stepId = s.id || "";
+      li.style.cursor = "pointer";
+      li.title = "Xem I/O bước này";
 
       var badge = document.createElement("span");
       badge.className = "status-badge status-" + status;
@@ -149,12 +404,25 @@
       li.appendChild(document.createTextNode(" "));
       li.appendChild(name);
       li.appendChild(detail);
+
+      li.addEventListener("mouseenter", function () {
+        showNodeInspector(s, false);
+      });
+      li.addEventListener("click", function () {
+        showNodeInspector(s, true);
+      });
+
       ol.appendChild(li);
     });
   }
 
   /** Đánh error lên bước running/pending (lỗi giữa chừng); giữ bước done trước. */
   function markTimelineMidError(kind, detail) {
+    if (currentAnimTimer) {
+      clearTimeout(currentAnimTimer);
+      currentAnimTimer = null;
+    }
+    setGraphStatus("Lỗi", "error");
     var msg = detail || "lỗi giữa chừng";
     var next = lastTimelineSteps.map(function (s) {
       return {
@@ -162,6 +430,8 @@
         name: s.name,
         status: s.status,
         detail: s.detail,
+        input: s.input,
+        output: s.output,
       };
     });
     var marked = false;
@@ -179,9 +449,12 @@
         name: kind || "request",
         status: "error",
         detail: msg,
+        input: null,
+        output: { error: msg },
       });
     }
     renderTimeline(next);
+    renderLiveGraphNodes(next);
     return next;
   }
 
@@ -194,6 +467,7 @@
 
   /** test-plan: ít nhất start (running) rồi done — trước khi có steps từ Backend. */
   function showTimelineStart(kind) {
+    showGraphStart(kind);
     renderTimeline([
       {
         id: "start",
@@ -227,6 +501,7 @@
       }
     }
     renderTimeline(finalSteps);
+    animateLiveGraph(finalSteps);
     var errStep = null;
     for (var i = 0; i < finalSteps.length; i++) {
       if (finalSteps[i].status === "error") {
@@ -245,18 +520,67 @@
     return finalSteps;
   }
 
+  function removeThinking() {
+    var box = document.getElementById("chat-messages");
+    if (!box) return;
+    var th = box.querySelectorAll(".chat-thinking");
+    th.forEach(function (el) {
+      el.remove();
+    });
+  }
+
+  function appendThinking(text) {
+    var box = document.getElementById("chat-messages");
+    if (!box) return;
+    removeThinking();
+    var ph = box.querySelector(".placeholder");
+    if (ph) ph.remove();
+
+    var div = document.createElement("div");
+    div.className = "chat-msg chat-thinking";
+
+    var header = document.createElement("div");
+    header.className = "msg-header";
+    header.textContent = "⏳ Đang xử lý…";
+
+    var body = document.createElement("div");
+    body.className = "msg-body";
+    body.textContent = text || "Portfolio Watch đang suy nghĩ…";
+
+    div.appendChild(header);
+    div.appendChild(body);
+    box.appendChild(div);
+    box.scrollTop = box.scrollHeight;
+  }
+
   function appendChat(role, text) {
     var box = document.getElementById("chat-messages");
     if (!box) return;
+    removeThinking();
     var ph = box.querySelector(".placeholder");
     if (ph) ph.remove();
-    var p = document.createElement("p");
-    p.className = "chat-msg chat-" + role;
-    var label = document.createElement("strong");
-    label.textContent = role === "user" ? "Bạn: " : "Bot: ";
-    p.appendChild(label);
-    p.appendChild(document.createTextNode(text || ""));
-    box.appendChild(p);
+
+    var div = document.createElement("div");
+    div.className = "chat-msg chat-" + role;
+
+    var header = document.createElement("div");
+    header.className = "msg-header";
+
+    if (role === "user") {
+      header.textContent = "👤 Bạn";
+    } else if (role === "error") {
+      header.textContent = "⚠️ Lỗi hệ thống / Mạng";
+    } else {
+      header.textContent = "🤖 Portfolio Watch";
+    }
+
+    var body = document.createElement("div");
+    body.className = "msg-body";
+    body.textContent = text || "";
+
+    div.appendChild(header);
+    div.appendChild(body);
+    box.appendChild(div);
     box.scrollTop = box.scrollHeight;
   }
 
@@ -272,10 +596,10 @@
     items.forEach(function (it) {
       var tr = document.createElement("tr");
       tr.innerHTML =
-        "<td>" +
+        "<td><strong>" +
         (it.symbol || "") +
-        "</td><td>" +
-        (it.threshold_pct != null ? it.threshold_pct : "") +
+        "</strong></td><td>" +
+        (it.threshold_pct != null ? it.threshold_pct + "%" : "") +
         '</td><td class="actions"></td>';
       var actions = tr.querySelector(".actions");
       var scanBtn = document.createElement("button");
@@ -318,6 +642,16 @@
 
   function renderApprovals(items) {
     var ul = document.getElementById("approvals-list");
+    var badge = document.getElementById("approvals-badge");
+    var count = (items && items.length) || 0;
+    if (badge) {
+      if (count > 0) {
+        badge.textContent = count;
+        badge.style.display = "inline-block";
+      } else {
+        badge.style.display = "none";
+      }
+    }
     if (!ul) return;
     ul.innerHTML = "";
     if (!items || !items.length) {
@@ -394,7 +728,9 @@
   async function doChat(question) {
     var sendBtn = document.getElementById("chat-send");
     if (sendBtn) sendBtn.disabled = true;
+    hideChatErrorBanner();
     appendChat("user", question);
+    appendThinking("Portfolio Watch đang suy nghĩ và kiểm tra dữ liệu…");
     showTimelineStart("chat");
     setBoot("Đang chờ câu trả lời cuối từ Backend…");
     try {
@@ -413,8 +749,10 @@
           (data && data.run_id ? " · run_id=" + data.run_id : "")
       );
     } catch (err) {
+      removeThinking();
       var msg = showOpError("chat", err);
-      appendChat("assistant", "Lỗi: " + msg);
+      appendChat("error", "Lỗi: " + msg);
+      showChatErrorBanner("Không thể hoàn tất câu hỏi: " + msg);
       throw err;
     } finally {
       if (sendBtn) sendBtn.disabled = false;
@@ -487,17 +825,64 @@
     setBoot("Đã từ chối " + id);
   }
 
+  function initTabs() {
+    var tabBtns = document.querySelectorAll(".tab-btn");
+    var tabPanes = document.querySelectorAll(".tab-pane");
+    tabBtns.forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var targetId = btn.getAttribute("data-tab");
+        tabBtns.forEach(function (b) {
+          b.classList.remove("active");
+          b.setAttribute("aria-selected", "false");
+        });
+        tabPanes.forEach(function (p) {
+          p.classList.remove("active");
+        });
+        btn.classList.add("active");
+        btn.setAttribute("aria-selected", "true");
+        var targetPane = document.getElementById(targetId);
+        if (targetPane) targetPane.classList.add("active");
+      });
+    });
+  }
+
+  function initHints() {
+    var chips = document.querySelectorAll(".hint-chip");
+    var input = document.getElementById("chat-input");
+    chips.forEach(function (chip) {
+      chip.addEventListener("click", function () {
+        if (!input) return;
+        input.value = chip.textContent.trim();
+        input.focus();
+      });
+    });
+  }
+
   window.PW_renderTimeline = renderTimeline;
   window.PW_normalizeSteps = normalizeSteps;
   window.PW_applyTimelineFromBackend = applyTimelineFromBackend;
   window.PW_markTimelineMidError = markTimelineMidError;
   window.PW_api = api;
+  window.PW_appendChat = appendChat;
+  window.PW_showChatErrorBanner = showChatErrorBanner;
+  window.PW_hideChatErrorBanner = hideChatErrorBanner;
+  window.PW_renderLiveGraph = renderLiveGraphNodes;
+  window.PW_animateLiveGraph = animateLiveGraph;
+  window.PW_showNodeInspector = showNodeInspector;
+  window.PW_hideNodeInspector = hideNodeInspector;
 
-  var base = backendBase();
+  var baseLabel = backendBaseLabel();
   var cfgEl = document.getElementById("backend-url-display");
-  if (cfgEl) cfgEl.textContent = base;
+  if (cfgEl) cfgEl.textContent = baseLabel;
 
   var chatForm = document.getElementById("chat-form");
+  var chatInput = document.getElementById("chat-input");
+  if (chatInput) {
+    chatInput.addEventListener("input", function () {
+      hideChatErrorBanner();
+    });
+  }
+
   if (chatForm) {
     chatForm.addEventListener("submit", function (e) {
       e.preventDefault();
@@ -506,8 +891,20 @@
       if (!q) return;
       if (input) input.value = "";
       doChat(q).catch(function () {
-        /* lỗi đã hiện trong doChat (boot + timeline + chat) */
+        /* lỗi đã hiện trong doChat (banner + timeline + chat thread) */
       });
+    });
+  }
+
+  var errDismiss = document.getElementById("chat-error-dismiss");
+  if (errDismiss) {
+    errDismiss.addEventListener("click", hideChatErrorBanner);
+  }
+
+  var inspectorCloseBtn = document.getElementById("inspector-close-btn");
+  if (inspectorCloseBtn) {
+    inspectorCloseBtn.addEventListener("click", function () {
+      hideNodeInspector(true);
     });
   }
 
@@ -544,15 +941,19 @@
     });
   }
 
+  initTabs();
+  initHints();
   renderTimeline([]);
-  setBoot("BACKEND_BASE_URL=" + base + " · đang tải watchlist/approvals…");
+  renderLiveGraphNodes([]);
+  setGraphStatus("Sẵn sàng", "idle");
+  setBoot("API=" + baseLabel + " · đang tải watchlist/approvals…");
   Promise.all([loadWatchlist(), loadApprovals()])
     .then(function () {
-      setBoot("BACKEND_BASE_URL=" + base + " · đã nối Backend");
+      setBoot("API=" + baseLabel + " · đã nối Backend");
     })
     .catch(function (err) {
       setBoot(
-        "Không nối được Backend (" + base + "): " + (err.message || err),
+        "Không nối được API (" + baseLabel + "): " + (err.message || err),
         true
       );
     });

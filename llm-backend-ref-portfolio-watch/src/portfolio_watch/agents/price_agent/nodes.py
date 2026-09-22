@@ -33,8 +33,17 @@ from src.portfolio_watch.infra.monitoring.tracing import agent_step
 
 def run_price_agent(symbol: str, price_source: PriceSource, turn: str = "") -> PriceAgentResult:
     try:
-        with agent_step(turn, "price_agent", "fetch_quote", input={"symbol": symbol}):
-            quote = price_source.fetch_latest_close(symbol)
+        with agent_step(turn, "price_agent", "fetch_quote", input={"symbol": symbol}) as box:
+            try:
+                quote = price_source.fetch_latest_close(symbol)
+                box["output"] = {
+                    "latest_close": quote.latest_close if quote else None,
+                    "prev_close": quote.prev_close if quote else None,
+                    "error": quote.error if quote else None,
+                }
+            except Exception as exc:
+                box["output"] = {"error": str(exc)}
+                raise
     except Exception as exc:  # noqa: BLE001
         return PriceAgentResult(
             symbol=symbol,

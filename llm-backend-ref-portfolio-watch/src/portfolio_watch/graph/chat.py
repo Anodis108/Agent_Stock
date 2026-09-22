@@ -15,28 +15,30 @@ from src.portfolio_watch.application.answer_question import (
     AnswerQuestionResult,
     build_chat_steps,
 )
-from src.portfolio_watch.domain.agents.answer_composer import (
+from src.portfolio_watch.agents.answer_composer import (
     AnswerDraftBrain,
     run_answer_composer,
 )
-from src.portfolio_watch.domain.agents.eval_agent import EvalAgentBrain, run_eval_agent
-from src.portfolio_watch.domain.agents.news_agent import (
+from src.portfolio_watch.agents.eval_agent import EvalAgentBrain, run_eval_agent
+from src.portfolio_watch.agents.news_agent import (
     NewsAgentBrain,
     NewsAgentResult,
     default_news_brain,
     run_news_agent,
 )
-from src.portfolio_watch.domain.agents.price_agent import (
+from src.portfolio_watch.agents.price_agent import (
     PriceAgentResult,
     has_change_pct_evidence,
     prices_have_change_pct_evidence,
     run_price_agent,
 )
-from src.portfolio_watch.domain.agents.supervisor import (
+from src.portfolio_watch.agents.supervisor_agent import (
     RewriteBrain,
     SupervisorBrain,
+    recall_memory,
     rewrite_question,
     route_question,
+    store_memory,
 )
 from src.portfolio_watch.domain.entities import RoutingDecision
 from src.portfolio_watch.domain.ports import (
@@ -47,7 +49,9 @@ from src.portfolio_watch.domain.ports import (
 )
 from src.portfolio_watch.graph.state import ChatState
 from src.portfolio_watch.infra.monitoring.tracing import agent_span
+from src.portfolio_watch.infra.storage.memory_store import filter_conversation_history
 from src.portfolio_watch.shared.logging import get_logger
+from src.portfolio_watch.shared.settings import settings
 
 _logger = get_logger(__name__)
 _chat_deps: contextvars.ContextVar[dict[str, Any]] = contextvars.ContextVar(
@@ -68,6 +72,7 @@ def _node_rewrite(state: ChatState, config: RunnableConfig) -> dict:
             state.get("conversation") or [],
             brain=cfg.get("rewrite_brain"),
             turn=turn,
+            memories=state.get("memories") or [],
         )
         box["output"] = {
             "rewritten": rewritten.rewritten,
@@ -123,70 +128,74 @@ def _node_workers(state: ChatState, config: RunnableConfig) -> dict:
     prices: list[PriceAgentResult] = []
     news_list: list[NewsAgentResult] = []
 
+    def _fetch_price_one(sym: str) -> PriceAgentResult:
+        with agent_span(turn, "price_agent", input=sym) as box:
+            p = run_price_agent(sym, price_source, turn)
+            box["output"] = {
+                "symbol": sym,
+                "latest_close": p.latest_close,
+                "change_pct": p.change_pct,
+                "error": p.error,
+            }
+            return p
+
+    def _fetch_news_one(sym: str) -> NewsAgentResult:
+        with agent_span(turn, "news_agent", input=sym) as box:
+            n = run_news_agent(
+                sym,
+                news_source,
+                news_brain or default_news_brain(),
+                days=news_days,
+                turn=turn,
+            )
+            box["output"] = {
+                "symbol": sym,
+                "items": len(n.items or []),
+                "error": n.error,
+            }
+            return n
+
     def _fetch_one(sym: str) -> tuple[PriceAgentResult | None, NewsAgentResult | None]:
         p_res: PriceAgentResult | None = None
         n_res: NewsAgentResult | None = None
-        if need_price and need_news and len(symbols) == 1:
+        if need_price and need_news:
             with ThreadPoolExecutor(max_workers=2) as pool:
-                fut_p = pool.submit(run_price_agent, sym, price_source, turn)
-                fut_n = pool.submit(
-                    run_news_agent,
-                    sym,
-                    news_source,
-                    news_brain or default_news_brain(),
-                    days=news_days,
-                    turn=turn,
-                )
+                fut_p = pool.submit(_fetch_price_one, sym)
+                fut_n = pool.submit(_fetch_news_one, sym)
                 p_res = fut_p.result()
                 n_res = fut_n.result()
         else:
             if need_price:
-                with agent_span(turn, "price_agent", input=sym) as box:
-                    p_res = run_price_agent(sym, price_source, turn)
-                    box["output"] = {"change_pct": p_res.change_pct, "error": p_res.error}
+                p_res = _fetch_price_one(sym)
             if need_news:
-                with agent_span(turn, "news_agent", input=sym) as box:
-                    n_res = run_news_agent(
-                        sym,
-                        news_source,
-                        news_brain or default_news_brain(),
-                        days=news_days,
-                        turn=turn,
-                    )
-                    box["output"] = {"items": len(n_res.items or []), "error": n_res.error}
+                n_res = _fetch_news_one(sym)
         return p_res, n_res
 
     if symbols and (need_price or need_news):
-        with agent_span(
-            turn,
-            "price_news_fetch",
-            input={"symbols": symbols, "need_price": need_price, "need_news": need_news},
-        ) as box:
-            if len(symbols) == 1:
-                price, news = _fetch_one(symbols[0])
-                if price is not None:
-                    prices = [price]
-                if news is not None:
-                    news_list = [news]
-            else:
-                with ThreadPoolExecutor(max_workers=min(4, len(symbols))) as pool:
-                    futs = {pool.submit(_fetch_one, sym): sym for sym in symbols}
-                    by_sym = {futs[fut]: fut.result() for fut in futs}
-                for sym in symbols:
-                    p_res, n_res = by_sym[sym]
-                    if p_res is not None:
-                        prices.append(p_res)
-                    if n_res is not None:
-                        news_list.append(n_res)
-                price = prices[0] if prices else None
-                news = news_list[0] if news_list else None
-            box["output"] = {"prices": len(prices), "news": len(news_list)}
+        if len(symbols) == 1:
+            price, news = _fetch_one(symbols[0])
+            if price is not None:
+                prices = [price]
+            if news is not None:
+                news_list = [news]
+        else:
+            with ThreadPoolExecutor(max_workers=min(4, len(symbols))) as pool:
+                futs = {pool.submit(_fetch_one, sym): sym for sym in symbols}
+                by_sym = {futs[fut]: fut.result() for fut in futs}
+            for sym in symbols:
+                p_res, n_res = by_sym[sym]
+                if p_res is not None:
+                    prices.append(p_res)
+                if n_res is not None:
+                    news_list.append(n_res)
+            price = prices[0] if prices else None
+            news = news_list[0] if news_list else None
 
     if need_eval and symbol:
         have = {p.symbol.upper() for p in prices if p.symbol}
         for sym in symbols:
             if sym.upper() not in have:
-                p_res = run_price_agent(sym, price_source, turn)
+                p_res = _fetch_price_one(sym)
                 prices.append(p_res)
                 if sym.upper() == (symbol or "").upper():
                     price = p_res
@@ -196,13 +205,7 @@ def _node_workers(state: ChatState, config: RunnableConfig) -> dict:
                 prices[0],
             )
         if news is None:
-            news = run_news_agent(
-                symbol,
-                news_source,
-                news_brain or default_news_brain(),
-                days=news_days,
-                turn=turn,
-            )
+            news = _fetch_news_one(symbol)
             if news is not None and not news_list:
                 news_list = [news]
         if news is None:
@@ -215,7 +218,11 @@ def _node_workers(state: ChatState, config: RunnableConfig) -> dict:
                 eval_result = run_eval_agent(
                     price, news, history_store, brain=eval_brain, turn=turn
                 )
-                box["output"] = str(eval_result.severity)
+                box["output"] = {
+                    "symbol": symbol,
+                    "severity": str(eval_result.severity),
+                    "confidence": eval_result.severity.confidence,
+                }
 
     return {
         "price": price,
@@ -230,7 +237,8 @@ def _node_answer_composer(state: ChatState, config: RunnableConfig) -> dict:
     cfg = _cfg(config)
     turn = state.get("turn") or ""
     symbol = state.get("symbol")
-    with agent_span(turn, "answer_composer", input=symbol) as box:
+    input_sym = symbol or state.get("question", "")
+    with agent_span(turn, "answer_composer", input=input_sym) as box:
         compose = run_answer_composer(
             question=state["rewritten"].rewritten or state["question"],
             symbol=symbol,
@@ -274,7 +282,7 @@ def run_chat_graph(
     news_source: NewsSource,
     history_store: PriceHistoryStore,
     memory_store: MemoryStore,
-    user_id: str = "default",
+    user_id: str | None = "default",
     request_id: str | None = None,
     turn: str = "",
     rewrite_brain: RewriteBrain | None = None,
@@ -283,12 +291,52 @@ def run_chat_graph(
     eval_brain: EvalAgentBrain | None = None,
     answer_brain: AnswerDraftBrain | None = None,
     news_days: int | None = 7,
+    limit: int | None = None,
+    ttl_minutes: int | float | None = None,
+    extract_fn: Any | None = None,
 ) -> AnswerQuestionResult:
     """Invoke compiled chat graph — trả cùng contract `answer_question`."""
     q = (question or "").strip()
-    conversation = memory_store.list_conversation(user_id, limit=20)
+    effective_limit = (
+        limit if limit is not None else settings.memory_short_term_window
+    )
+    effective_ttl = (
+        ttl_minutes
+        if ttl_minutes is not None
+        else settings.memory_short_term_ttl_minutes
+    )
+    effective_user_id = str(user_id or "").strip() if user_id is not None else ""
+    short_term_user_id = user_id if user_id is not None else "default"
+
+    try:
+        conversation = memory_store.list_conversation(
+            short_term_user_id, limit=effective_limit, ttl_minutes=effective_ttl
+        )
+    except TypeError:
+        conversation = memory_store.list_conversation(
+            short_term_user_id, limit=effective_limit
+        )
+    conversation = filter_conversation_history(
+        conversation,
+        limit=effective_limit,
+        ttl_minutes=effective_ttl,
+    )
+
+    turn_id = (turn or "").strip() or (request_id or "").strip() or str(uuid.uuid4())
+
+    # Long-term recall (pattern agent_pr: early in chat turn)
+    # Empty / None / blank user_id -> skip long-term entirely
+    recalled_memories: list[str] = []
+    if effective_user_id:
+        recall_res = recall_memory(
+            {"user_id": effective_user_id, "question": q, "turn": turn_id}
+        )
+        recalled_memories = recall_res.get("memories") or []
+
     if not q:
-        empty_rw = rewrite_question("", conversation, brain=rewrite_brain)
+        empty_rw = rewrite_question(
+            "", conversation, brain=rewrite_brain, memories=recalled_memories
+        )
         routing = RoutingDecision(
             route="price_lookup", reason="câu hỏi rỗng", agents_to_call=[]
         )
@@ -303,9 +351,9 @@ def run_chat_graph(
                 routing=routing,
                 error="câu hỏi rỗng",
             ),
+            memories=recalled_memories,
         )
 
-    turn_id = (turn or "").strip() or (request_id or "").strip() or str(uuid.uuid4())
     deps = {
         "price_source": price_source,
         "news_source": news_source,
@@ -325,6 +373,7 @@ def run_chat_graph(
             "user_id": user_id,
             "turn": turn_id,
             "conversation": conversation,
+            "memories": recalled_memories,
         }
         chunks = []
         for chunk in compile_chat_graph().stream(
@@ -339,21 +388,40 @@ def run_chat_graph(
         _chat_deps.reset(token)
 
     compose = final.get("compose")
-    memory_store.append_conversation(user_id, "user", q)
-    memory_store.append_conversation(user_id, "assistant", final.get("answer") or "")
-    
+    answer_text = final.get("answer") or ""
+
+    # Short-term append
+    memory_store.append_conversation(short_term_user_id, "user", q)
+    memory_store.append_conversation(short_term_user_id, "assistant", answer_text)
+
+    # Long-term store (pattern agent_pr: late in chat turn, after answer)
+    # Empty / None / blank user_id -> skip long-term entirely
+    if effective_user_id:
+        store_memory(
+            {
+                "user_id": effective_user_id,
+                "question": q,
+                "answer": answer_text,
+                "symbols": final.get("symbols") or [],
+                "rewritten_question": getattr(final.get("rewritten"), "rewritten", ""),
+                "turn": turn_id,
+            },
+            extract_fn=extract_fn,
+        )
+
     result = AnswerQuestionResult(
         question=q,
         rewritten=final["rewritten"],
         routing=final["routing"],
-        answer=final.get("answer") or "",
+        answer=answer_text,
         price=final.get("price"),
         news=final.get("news"),
         eval_result=final.get("eval_result"),
         compose=compose,
         error=final.get("error"),
+        memories=recalled_memories,
     )
-    
+
     from src.portfolio_watch.graph.steps import build_steps_from_chunks
     result.steps = build_steps_from_chunks(chunks, final_error=result.error)
 

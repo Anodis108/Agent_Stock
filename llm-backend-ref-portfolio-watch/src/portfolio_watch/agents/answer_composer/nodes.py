@@ -302,7 +302,7 @@ def run_answer_composer(
 
     for attempt in range(max(max_attempts, 1)):
         attempts = attempt + 1
-        with agent_step(turn, "answer_composer", "draft", input={"attempt": attempt}):
+        with agent_step(turn, "answer_composer", "draft", input={"attempt": attempt}) as box:
             try:
                 answer = draft_brain.compose(
                     question=question,
@@ -317,12 +317,19 @@ def run_answer_composer(
                     prices=prices,
                     news_list=news_list,
                 )
+                box["output"] = (answer or "")[:500]
             except Exception as exc:  # noqa: BLE001
                 answer = (
                     f"Không soạn được câu trả lời ({exc}). "
                     f"Evidence: {'; '.join(evidence) if evidence else 'không có'}."
                 )
-        with agent_step(turn, "answer_composer", "guardrail_retry"):
+                box["output"] = {"error": str(exc)}
+        with agent_step(
+            turn,
+            "answer_composer",
+            "guardrail_retry",
+            input={"answer": (answer or "")[:200]},
+        ) as box:
             if has_evidence_grounding(answer, evidence):
                 last_grounded = answer
             check = check_output("", answer, evidence)
@@ -330,6 +337,10 @@ def run_answer_composer(
             ground = check_rewrite_grounding(
                 answer, evidence, require=attempt > 0
             )
+            box["output"] = {
+                "ok": check.ok and ground.ok,
+                "violations": list(check.violations) + list(ground.violations),
+            }
         if check.ok and ground.ok:
             return AnswerComposeResult(
                 answer=answer,

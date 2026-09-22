@@ -8,7 +8,7 @@ _ALLOWED_STATUS = frozenset({"pending", "running", "done", "error"})
 
 
 def normalize_steps(raw: Any) -> list[dict[str, Any]]:
-    """Trả list `{id, name, status, detail?}` — thiếu field thì điền mặc định."""
+    """Trả list `{id, name, status, detail?, input?, output?}` — thiếu field thì điền mặc định."""
     if not isinstance(raw, list):
         return []
     out: list[dict[str, Any]] = []
@@ -26,6 +26,10 @@ def normalize_steps(raw: Any) -> list[dict[str, Any]]:
         step: dict[str, Any] = {"id": sid, "name": name, "status": status}
         if detail is not None:
             step["detail"] = detail
+        if "input" in item and item["input"] is not None:
+            step["input"] = item["input"]
+        if "output" in item and item["output"] is not None:
+            step["output"] = item["output"]
         out.append(step)
     return out
 

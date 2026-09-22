@@ -1,23 +1,25 @@
 """Event classifier nodes — phân loại bình thường / bất thường từ giá + tin.
 
-Theo agents.md đây là bước lọc rẻ. Phase 8: mặc định dùng LLM qua
-Prompt Registry (`event_classification`) + `infra/llm.completion.chat`.
+Theo agents.md đây là bước lọc rẻ. Phase 6+: mặc định dùng LLM qua
+Prompt Registry (`event_classification`) + structured output.
 `HeuristicEventClassifier` giữ cho unit test / fallback inject.
 """
 
 from __future__ import annotations
 
-import json
-import re
 from collections.abc import Callable
+from typing import Any
 
-from src.portfolio_watch.agents.event_classifier.schemas import EventClassifierBrain
+from src.portfolio_watch.agents.event_classifier.schemas import (
+    ClassifierOutput,
+    EventClassifierBrain,
+)
 from src.portfolio_watch.agents.news_agent import NewsAgentResult
 from src.portfolio_watch.agents.price_agent import PriceAgentResult
 from src.portfolio_watch.domain.entities import EventRoute, RoutingDecision
-from src.portfolio_watch.infra.llm.completion import chat
 from src.portfolio_watch.infra.llm.params import DETERMINISTIC
 from src.portfolio_watch.infra.llm.prompt_registry import registry
+from src.portfolio_watch.infra.llm.structured import call_llm_structured
 
 # Tránh hint quá ngắn/mơ hồ (vd. "âm" khớp trong "đảm bảo")
 _NEGATIVE_HINTS = (
@@ -47,7 +49,6 @@ _NEGATIVE_HINTS = (
 )
 
 _NEGATION_PREFIXES = ("không ", "chưa ", "chẳng ")
-_JSON_OBJ_RE = re.compile(r"\{.*\}", re.DOTALL)
 
 
 def _blob_has_negative(blob: str, hints: tuple[str, ...]) -> bool:
@@ -120,32 +121,18 @@ def _news_titles_blob(news: NewsAgentResult) -> str:
     return "; ".join(p for p in parts if p) or "(không có tin)"
 
 
-def _parse_llm_route(raw: str) -> RoutingDecision:
-    text = (raw or "").strip()
-    match = _JSON_OBJ_RE.search(text)
-    payload = match.group(0) if match else text
-    data = json.loads(payload)
-    if not isinstance(data, dict):
-        raise ValueError("LLM classifier không trả JSON object")
-    route_raw = str(data.get("route", "")).strip().lower()
-    reason = str(data.get("reason", "")).strip() or "llm classify"
-    if "bất thường" in route_raw or route_raw in {"abnormal", "anomaly"}:
-        return RoutingDecision(route=EventRoute.ABNORMAL, reason=reason)
-    if "bình thường" in route_raw or route_raw in {"normal", "ok"}:
-        return RoutingDecision(route=EventRoute.NORMAL, reason=reason)
-    raise ValueError(f"route không hợp lệ từ LLM: {route_raw!r}")
-
-
 class LlmEventClassifier:
-    """LLM brain: Prompt Registry `event_classification` + chat completion."""
+    """LLM brain: Prompt Registry `event_classification` + structured output."""
 
     def __init__(
         self,
         *,
         chat_fn: Callable[..., str] | None = None,
+        chat_parsed_fn: Callable[..., Any] | None = None,
         prompt_version: str | int = "production",
     ) -> None:
-        self._chat_fn = chat_fn or chat
+        self._chat_fn = chat_fn
+        self._chat_parsed_fn = chat_parsed_fn
         self._prompt_version = prompt_version
 
     def classify(
@@ -167,11 +154,20 @@ class LlmEventClassifier:
             threshold_pct=f"{thr}",
             news_titles=_news_titles_blob(news),
         )
-        raw = self._chat_fn(
-            [{"role": "user", "content": prompt_text}],
-            DETERMINISTIC,
-        )
-        return _parse_llm_route(raw)
+        messages = [{"role": "user", "content": prompt_text}]
+        try:
+            output = call_llm_structured(
+                messages,
+                ClassifierOutput,
+                chat_fn=self._chat_fn,
+                chat_parsed_fn=self._chat_parsed_fn,
+                params=DETERMINISTIC,
+                max_retries=1,
+            )
+            return output.to_routing_decision()
+        except Exception:
+            # inner schema guard: fallback to heuristic classifier safely
+            return HeuristicEventClassifier().classify(price, news, threshold_pct)
 
 
 # Production mặc định = LLM; unit/integration test có thể monkeypatch factory này
@@ -191,8 +187,22 @@ def classify_event(
 ) -> RoutingDecision:
     classifier = brain or _DEFAULT_BRAIN_FACTORY()
     try:
-        with agent_step(turn, "event_classifier", "classify"):
-            return classifier.classify(price, news, threshold_pct)
+        with agent_step(
+            turn,
+            "event_classifier",
+            "classify",
+            input={
+                "symbol": price.symbol,
+                "change_pct": price.change_pct,
+                "threshold_pct": threshold_pct,
+            },
+        ) as box:
+            decision = classifier.classify(price, news, threshold_pct)
+            box["output"] = {
+                "route": str(getattr(decision.route, "value", decision.route)),
+                "reason": decision.reason,
+            }
+            return decision
     except Exception as exc:  # noqa: BLE001 — lọc rẻ: lỗi → không escalate Eval
         return RoutingDecision(
             route=EventRoute.NORMAL,

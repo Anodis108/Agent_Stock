@@ -1,95 +1,109 @@
-# Product Spec — Portfolio Watch V2
+# Product Spec — Portfolio Watch V3
 
 ## App goal
 
-Xây dựng web app **theo dõi cổ phiếu VN + chat hỏi–đáp** bằng multi-agent,
-dễ demo và dễ bảo trì:
+Web app **theo dõi cổ phiếu VN + chat multi-agent**, chạy product bằng Docker:
 
-- Người dùng: watchlist, quét biến động, duyệt cảnh báo, chat thấy từng bước agent.
-- Developer: code sạch (1 agent = 1 folder, tham chiếu `agent_pr`), chạy product
-  **chỉ bằng Docker**, trace **1 câu hỏi = 1 trace** trên Langfuse self-host `:3000`.
+- User chat kiểu Claude, bên phải thấy **từng node đang chạy**; hover xem input/output.
+- Mỗi câu hỏi tạo **đúng 1 Langfuse trace** (đủ bước đến khi xong).
+- Quét watchlist, cảnh báo + HITL; trang trạng thái các mã đang theo dõi.
+- Có thể trả lời yêu cầu **vẽ sơ đồ**; chất lượng giữ bằng golden dataset (Class 18).
 
-V2 **không viết lại nghiệp vụ** — refactor MVP đã có; golden 30 case vẫn là chuẩn
-chất lượng.
+V3 dựa trên V2 đã xong — tinh gọn UI, observability, memory, eval; không viết lại
+toàn bộ nghiệp vụ từ đầu.
 
 ## Target users
 
-| Vai trò | Làm gì với app |
+| Vai trò | Mục tiêu |
 |---|---|
-| **Người demo** | `docker compose up` → chat, xem timeline bước, thêm mã, quét, duyệt cảnh báo |
-| **Developer** | Đọc/sửa từng agent trong `src/`; debug 1 golden case; mở Langfuse xem trace |
+| **Người demo** | `docker compose up --build` → chat, xem graph live, xem trạng thái mã, duyệt cảnh báo |
+| **Developer** | Sửa từng agent theo phase; chạy 1 golden case; mở Langfuse kiểm tra 1 trace |
 
 Không có đăng nhập hay multi-tenant ở vòng này.
 
 ## Core user flow
 
-### 1) Chat
+### A. Chat hỏi–đáp
 
-1. Mở Frontend → nhập câu hỏi (vd. "Giá FPT hôm nay?").
-2. Frontend gọi Backend → Backend gọi AI (`POST /v1/chat`).
-3. UI hiện timeline: chuẩn hoá câu hỏi → chọn agent → lấy giá/tin → soạn trả lời
-   → kiểm tra an toàn.
-4. Hiện câu trả lời cuối.
-5. Nếu bật Langfuse: **đúng 1 trace** cho lần hỏi đó; mở trace thấy cây bước
-   lồng nhau (graph node → bước con trong agent).
+1. Mở UI → thấy hội thoại (trái) và panel graph (phải), composer phía dưới.
+2. Gõ câu hỏi (vd. “Giá FPT hôm nay?” hoặc “Vẽ sơ đồ luồng scan”).
+3. Gửi → các node trên panel phải **sáng lần lượt** theo bước thật.
+4. Hover một node → hiện **input** và **output** của bước đó.
+5. Nhận câu trả lời cuối; nếu là yêu cầu vẽ sơ đồ → sơ đồ hiện trên UI.
+6. (Tuỳ chọn) Mở Langfuse → **1 root trace** cho lần gửi đó, expand thấy đủ node + I/O.
 
-### 2) Giám sát & duyệt
+### B. Trạng thái mã đang check
+
+1. Mở trang / tab **Market status**.
+2. Xem danh sách mã watchlist / vừa quét: giá, % đổi, trạng thái
+   (normal / abnormal / chờ duyệt), thời gian cập nhật.
+
+### C. Giám sát & duyệt cảnh báo
 
 1. Thêm mã + ngưỡng vào watchlist.
-2. Bấm quét (hoặc cron) → AI lấy giá + tin → phân loại bình thường / bất thường.
+2. Bấm quét → hệ thống lấy giá + tin → phân loại bình thường / bất thường.
 3. Bất thường → đánh giá → soạn cảnh báo → tự gửi **hoặc** chờ duyệt (HITL).
-4. User approve / reject trên UI (qua Backend).
+4. User approve / reject trên UI.
 
-### 3) Siết chất lượng (developer)
+### D. Siết chất lượng (developer)
 
-1. Chọn **một** case trong golden dataset.
-2. Chạy eval trong container AI → pass/fail.
-3. Fail → sửa agent/prompt (không nới điểm) → chạy lại cùng case → pass mới
-   sang case tiếp.
+1. Chọn **một** case trong golden dataset (có nhãn slice).
+2. Chạy eval trong Docker → xem pass/fail **tổng** và **theo slice**.
+3. Fail → sửa agent/prompt (không nới scorer) → chạy lại cùng case.
 
 ## Features in scope
 
-**Sản phẩm (giữ MVP):**
-
-- Watchlist + ngưỡng cảnh báo.
-- Quét 1 mã / watchlist; HITL Gate 1 (gửi cảnh báo) và Gate 2 (đổi cấu hình).
-- Chat với timeline bước trên UI.
-
-**Kiến trúc & code (V2):**
-
-- Mỗi agent một folder dưới `src/portfolio_watch/agents/<name>/` (nodes, state,
-  tools, graph nếu cần) — pattern `llm-engineer-demo/app/agent_pr`.
-- Frontend + Backend + AI **đều trong `src/portfolio_watch/`**.
-- LangGraph chạy orchestration thật (chat + scan).
-- Ba container Docker: `frontend` `:5173`, `backend` `:8000`, `ai` `:8001`.
-- Xóa `scripts/`; eval/regression qua `python -m` trong container.
-- Langfuse: trace lồng nhau, tên bước rõ, mỗi span có input/output; AI kết nối
-  Langfuse self-host qua `LANGFUSE_HOST=http://host.docker.internal:3000`.
+- Chat UI gần Claude + panel graph live (hover = input/output từng node).
+- Trang Market status cho mã đang theo dõi / vừa quét.
+- Agent/node vẽ sơ đồ khi user yêu cầu; UI render sơ đồ.
+- Watchlist, quét, HITL Gate 1 & 2 (giữ từ V2).
+- **Một** app Docker: UI + API + LangGraph cùng product (reuse code `backend/`,
+  không tách service backend như V2).
+- Structured output cho vòng LLM/agent cần quyết định có cấu trúc.
+- Memory short-term (window + TTL/freshness) + long-term (recall/store; Qdrant
+  hoặc fallback) — pattern `llm-engineer-demo`.
+- Prompt tối giản, một nơi đăng ký.
+- Langfuse: 1 request = 1 trace; tên node rõ; mọi span có input + output;
+  tắt monitoring vẫn chat được.
+- Golden dataset version hoá + slice (lookup, comparison, out_of_scope,
+  injection, diagram); report có `by_slice`; injection pass 100%.
+- README chỉ hướng dẫn Docker + eval trong container.
 
 ## Features out of scope
 
 - Đăng nhập, phân quyền, multi-tenant.
 - Email / push notification thật.
-- RAG tài liệu dài, fine-tune model, đổi hàng loạt nguồn giá/tin.
-- Gói stack Langfuse (Postgres, ClickHouse, …) vào `docker-compose` — user tự
-  chạy UI tại port `3000`.
-- Graph editor trên UI, CI bắt buộc full golden mọi PR.
-- Chạy product bằng `python scripts/serve_*.py` (sẽ bỏ hẳn sau V2).
+- Đóng gói full stack Langfuse (Postgres, ClickHouse, …) vào `docker-compose`
+  product — Langfuse UI vẫn chạy riêng tại `:3000`.
+- Fine-tune model, RAG tài liệu dài, thêm nhiều nguồn giá/tin.
+- Graph editor kéo-thả trên UI.
+- Bắt buộc CI chạy full golden mọi PR.
+- Chạy product bằng nhiều process uvicorn local làm đường chính
+  (**product = Docker**).
 
 ## Acceptance criteria
 
-1. **`docker compose up --build`** mở được 3 URL; chat, watchlist, quét, duyệt
-   hoạt động end-to-end.
-2. **Cấu trúc code:** mỗi agent có folder riêng trong `src/portfolio_watch/agents/`;
-   Backend **không** import agents.
-3. **Không còn `scripts/`**; README chỉ hướng dẫn Docker + `python -m` trong
-   container cho eval.
-4. **Langfuse:** 1 câu chat từ UI → 1 trace; expand thấy span graph node và span
-   con bên trong agent; tắt `MONITORING_ENABLED` vẫn chat bình thường.
-5. **Chất lượng:** golden regression không tụt quá tolerance; slice injection
-   pass 100%.
+1. **`docker compose up --build`** mở được UI; chat, market status, quét và duyệt
+   HITL chạy end-to-end.
+2. **Chat UI:** panel phải hiện node lần lượt; hover một node thấy input/output
+   khớp bước vừa chạy.
+3. **Langfuse:** 1 request chat (và scan) → đúng 1 root trace; tên node đọc được;
+   mỗi node chính có input + output; `MONITORING_ENABLED=false` vẫn chat OK.
+4. **Structured output:** các quyết định LLM có schema; có test chứng minh parse /
+   validate được.
+5. **Memory:** short-term + long-term + TTL/freshness hoạt động; không `user_id`
+   thì bỏ qua long-term không crash; không Qdrant thì fallback.
+6. **Kiến trúc:** không còn container/service `backend` tách; API + UI cùng app
+   product (reuse store/routes cũ).
+7. **Golden / eval:** dataset có version + slice; report có `by_slice`; injection
+   **100%**; regression không tụt quá tolerance so với baseline V3.
+8. **Diagram:** câu yêu cầu vẽ sơ đồ hiện sơ đồ trên UI.
+9. **Docs:** README chỉ Docker product + lệnh eval trong container; prompt ngắn
+   hơn V2 mà regression vẫn trong tolerance.
 
 ---
 
-Chi tiết triển khai: `specs/implementation-plan.md` (Phase 11–16).  
-Mô tả agent: `specs/agents.md`. MVP đã xong: `specs/mvp-status-report.md`.
+Chi tiết triển khai: `specs/implementation-plan.md`.  
+Cách chấm: `specs/test-plan.md`.  
+Tham chiếu: `Lesson17/Class 18 - LLM Evaluation Pipelines.pdf`,
+`../llm-engineer-demo/app/agent_pr/`.

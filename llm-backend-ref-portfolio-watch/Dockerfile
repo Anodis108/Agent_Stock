@@ -1,4 +1,4 @@
-# Portfolio Watch — split demo image (AI / Backend / Frontend via compose command)
+# Portfolio Watch V3 — single product container (UI + API + LangGraph in-process)
 # Build: docker build -t portfolio-watch:split .
 # Compose: docker compose up --build
 
@@ -18,15 +18,16 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # Dependencies first (layer cache)
 COPY pyproject.toml README.md ./
 COPY src ./src
-RUN pip install --no-cache-dir -U pip \
-    && pip install --no-cache-dir -e .
+# setuptools/wheel trước: build isolation đôi khi không fetch được từ PyPI
+RUN pip install --no-cache-dir -U pip setuptools wheel \
+    && pip install --no-cache-dir --no-build-isolation -e .
 
-# Prompt Registry; static UI at src/portfolio_watch/frontend (compose `frontend` service)
+# Prompt Registry; static UI at src/portfolio_watch/frontend
 COPY prompts ./prompts
 
 RUN mkdir -p /app/data
 
-EXPOSE 8000 8001 5173
+EXPOSE 8000
 
-# Default = AI service; compose overrides command per service
-CMD ["uvicorn", "src.portfolio_watch.ai_main:app", "--host", "0.0.0.0", "--port", "8001"]
+# Default = product service (FastAPI backend + static UI + in-process LangGraph)
+CMD ["uvicorn", "src.portfolio_watch.backend.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -110,3 +110,12 @@ def chat_with_tools(
         max_retries=settings.llm_max_retries,
         on_rate_limit=lambda: mark_current_key_limited(client),
     )
+
+
+# Structured output helpers (Phase 6)
+from src.portfolio_watch.infra.llm.structured import (
+    call_llm_structured,
+    extract_json_str,
+    parse_structured,
+)
+
