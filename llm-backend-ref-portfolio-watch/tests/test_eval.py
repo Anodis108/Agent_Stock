@@ -71,3 +71,87 @@ def test_injection_gate_requires_100_percent():
 
 def test_eval_self_check():
     assert eval_mod.main(["--self-check"]) == 0
+
+def test_build_report_by_slice_all_five_slices():
+    report = eval_mod.build_report([])
+    assert len(report.by_slice) == 5
+    types = [s.slice_type for s in report.by_slice]
+    assert types == ["lookup", "comparison", "out_of_scope", "injection", "diagram"]
+    assert report.by_slice[4].slice_type == "diagram"
+    assert report.by_slice[4].total == 0
+    assert report.by_slice[4].passed == 0
+    assert report.by_slice[4].rate is None
+
+def test_build_report_by_slice_with_diagram_cases():
+    cases = [
+        eval_mod.CaseEvalResult(
+            case_id="diagram_01",
+            slice_type="diagram",
+            question="q",
+            output="out",
+            rule=eval_mod.RuleBasedScore(passed=True),
+            judge=eval_mod.LlmJudgeResult(skipped=True),
+            passed=True,
+        )
+    ]
+    report = eval_mod.build_report(cases)
+    assert len(report.by_slice) == 5
+    diag = next(s for s in report.by_slice if s.slice_type == "diagram")
+    assert diag.total == 1
+    assert diag.passed == 1
+    assert diag.rate == 1.0
+
+def test_format_report_includes_diagram_line():
+    report = eval_mod.build_report([])
+    out = eval_mod.format_report(report)
+    assert "  - diagram: 0/0 passed (n/a)" in out
+
+def test_regression_by_slice_catches_comparison_drop():
+    baseline = {
+        "rate": 1.0,
+        "by_slice": {
+            "comparison": {"rate": 1.0, "total": 6}
+        }
+    }
+    report = eval_mod.EvalReport(
+        total=6, passed=3,
+        by_slice=[eval_mod.SliceScore("comparison", 6, 3)],
+        failures=[]
+    )
+    reg = eval_mod.check_regression_by_slice(report, baseline, tolerance=0.05)
+    assert reg.passed is False
+    assert len(reg.failures) == 1
+    assert reg.failures[0][0] == "comparison"
+    assert reg.failures[0][1] == 0.5
+    assert reg.failures[0][2] == 1.0
+    assert reg.failures[0][3] == 0.5
+
+def test_regression_by_slice_skips_diagram_zero_baseline():
+    baseline = {
+        "rate": 1.0,
+        "by_slice": {
+            "diagram": {"rate": None, "total": 0}
+        }
+    }
+    report = eval_mod.EvalReport(
+        total=1, passed=0,
+        by_slice=[eval_mod.SliceScore("diagram", 1, 0)],
+        failures=[]
+    )
+    reg = eval_mod.check_regression_by_slice(report, baseline, tolerance=0.05)
+    assert reg.passed is True
+    assert len(reg.failures) == 0
+
+def test_eval_gates_passed_fails_on_injection_or_by_slice_regression():
+    report_ok = eval_mod.EvalReport(total=1, passed=1, by_slice=[], failures=[])
+    reg_ok = eval_mod.RegressionResult(True, True, 1.0, 1.0, 0.0, 0.05, "")
+    reg_slice_ok = eval_mod.RegressionBySliceResult(True, [])
+    
+    # Injection fail
+    bad_inj_cases = [eval_mod.CaseEvalResult("inj1", "injection", "q", "", eval_mod.RuleBasedScore(False), eval_mod.LlmJudgeResult(True), False)]
+    assert eval_mod.eval_gates_passed(report_ok, bad_inj_cases, reg_ok, reg_slice_ok) is False
+    
+    # By slice fail
+    reg_slice_fail = eval_mod.RegressionBySliceResult(False, [("comparison", 0.0, 1.0, 1.0)])
+    ok_inj_cases = [eval_mod.CaseEvalResult("inj1", "injection", "q", "", eval_mod.RuleBasedScore(True), eval_mod.LlmJudgeResult(True), True)]
+    assert eval_mod.eval_gates_passed(report_ok, ok_inj_cases, reg_ok, reg_slice_fail) is False

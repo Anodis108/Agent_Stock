@@ -1,0 +1,34 @@
+You are implementing in d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/llm-backend-ref-portfolio-watch.
+
+Task: Phase 16 line 1 ONLY — UI: API / timeout / HITL fail must NOT blank the page.
+
+Context:
+- Frontend: src/portfolio_watch/frontend/{index.html,app.js,style.css}
+- Already has: formatApiError, chat-error-banner, market-error, markTimelineMidError, showOpError
+- Boot uses Promise.all([loadWatchlist(), loadMarket(), loadApprovals()]) — one failure blocks all
+- HITL approve/reject only setBoot() — no inline approvals error banner
+- watchlist load failure may leave empty table without placeholder message
+- tests/test_frontend.py exists
+
+Requirements (minimal diff):
+1. index.html: add role=alert error banners:
+   - #watchlist-error (watchlist tab)
+   - #approvals-error (HITL tab)
+   - #scan-error near scan-form (optional small alert)
+2. app.js:
+   - safeLoadWatchlist/safeLoadMarket/safeLoadApprovals: catch errors, show section banner + keep placeholder rows (never empty tbody/ul without placeholder text)
+   - Boot: Promise.allSettled (or 3 independent try/catch) — partial success OK; boot-status summarizes
+   - doApprove/doReject: on fail show approvals-error banner + setBoot; do NOT clear approvals-list to blank; reload approvals after error
+   - doScan: on fail show scan-error banner (in addition to timeline error)
+   - doAddWatch/doDeleteWatch/doPatchWatch: show watchlist-error on fail, keep existing table rows
+   - Add window.addEventListener('error') and 'unhandledrejection' handlers that log + setBoot (never throw again)
+   - Export helpers for tests if useful: PW_showWatchlistError, PW_showApprovalsError
+3. style.css: reuse .market-error pattern for .watchlist-error, .approvals-error, .scan-error
+4. tests/test_frontend.py: test_phase16_error_resilience_ui
+   - assert error banner ids in html
+   - assert app.js has allSettled or safe load pattern, approvals-error handling, global error listener
+   - assert location.reload not used
+5. Do NOT implement Phase 16 lines 2-5 (.env.example, README, status report, demo)
+6. Run: python -m pytest tests/test_frontend.py -q
+
+Output: files changed, test count, summary of error UX behavior.

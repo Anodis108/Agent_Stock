@@ -98,12 +98,20 @@ _NEWS_PHRASES = (
     "cafef",
     "news",
 )
+_DIAGRAM_PHRASES = (
+    "vẽ sơ đồ",
+    "ve so do",
+    "diagram",
+    "flowchart",
+    "sơ đồ",
+    "so do",
+)
 _FOLLOWUP_RE = re.compile(
     r"(giá|gia|giảm|giam|tăng|tang|thế nào|the nao|ra sao|sao rồi|sao roi)",
     re.IGNORECASE,
 )
-_ALLOWED_AGENTS = frozenset({"price", "news", "eval"})
-_ALLOWED_INTENTS = frozenset({"price_lookup", "news_lookup", "explain"})
+_ALLOWED_AGENTS = frozenset({"price", "news", "eval", "diagram"})
+_ALLOWED_INTENTS = frozenset({"price_lookup", "news_lookup", "explain", "diagram"})
 
 
 @dataclass(slots=True)
@@ -227,6 +235,10 @@ def _has_news_intent(lower: str) -> bool:
     return re.search(r"\btin\b", cleaned) is not None
 
 
+def _has_diagram_intent(lower: str) -> bool:
+    return any(h in lower for h in _DIAGRAM_PHRASES)
+
+
 def _needs_memory_symbol(question: str, symbol: str | None) -> bool:
     # Đại từ luôn resolve từ hội thoại (kể cả khi extract nhầm ticker).
     if _REF_PREV_RE.search(question):
@@ -260,7 +272,9 @@ class HeuristicRewriteBrain:
 
         intent = "price_lookup"
         lower = q.lower()
-        if any(h in lower for h in _EXPLAIN_HINTS):
+        if _has_diagram_intent(lower):
+            intent = "diagram"
+        elif any(h in lower for h in _EXPLAIN_HINTS):
             intent = "explain"
         elif _has_news_intent(lower):
             intent = "news_lookup"
@@ -281,7 +295,10 @@ class HeuristicSupervisorBrain:
 
     def route(self, rewritten: RewrittenQuestion) -> RoutingDecision:
         intent = rewritten.intent or "price_lookup"
-        if intent == "explain":
+        if intent == "diagram":
+            agents = ["diagram"]
+            reason = "yêu cầu vẽ sơ đồ → diagram_agent"
+        elif intent == "explain":
             agents = ["price", "news", "eval"]
             reason = "câu hỏi cần giải thích/so sánh → price+news+eval"
         elif intent == "news_lookup":
@@ -371,7 +388,9 @@ class LlmRewriteBrain:
         rewritten = _ground_rewritten(q, symbols, rewritten)
         # Đa mã / từ khóa so sánh → explain (price+news+eval).
         blob = f"{q} {rewritten}".lower()
-        if len(symbols) > 1 or any(h in blob for h in _EXPLAIN_HINTS):
+        if _has_diagram_intent(blob):
+            intent = "diagram"
+        elif len(symbols) > 1 or any(h in blob for h in _EXPLAIN_HINTS):
             if intent == "price_lookup":
                 intent = "explain"
         return RewrittenQuestion(
@@ -418,7 +437,9 @@ class LlmSupervisorBrain:
             )
         except Exception as exc:  # inner schema-fail guard: do not crash
             intent = rewritten.intent or "price_lookup"
-            if intent == "explain":
+            if intent == "diagram":
+                fallback_agents = ["diagram"]
+            elif intent == "explain":
                 fallback_agents = ["price", "news", "eval"]
             elif intent == "news_lookup":
                 fallback_agents = ["price", "news"]

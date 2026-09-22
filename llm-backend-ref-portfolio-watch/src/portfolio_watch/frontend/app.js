@@ -553,36 +553,7 @@
     box.scrollTop = box.scrollHeight;
   }
 
-  function appendChat(role, text) {
-    var box = document.getElementById("chat-messages");
-    if (!box) return;
-    removeThinking();
-    var ph = box.querySelector(".placeholder");
-    if (ph) ph.remove();
 
-    var div = document.createElement("div");
-    div.className = "chat-msg chat-" + role;
-
-    var header = document.createElement("div");
-    header.className = "msg-header";
-
-    if (role === "user") {
-      header.textContent = "👤 Bạn";
-    } else if (role === "error") {
-      header.textContent = "⚠️ Lỗi hệ thống / Mạng";
-    } else {
-      header.textContent = "🤖 Portfolio Watch";
-    }
-
-    var body = document.createElement("div");
-    body.className = "msg-body";
-    body.textContent = text || "";
-
-    div.appendChild(header);
-    div.appendChild(body);
-    box.appendChild(div);
-    box.scrollTop = box.scrollHeight;
-  }
 
   function renderWatchlist(items) {
     var tbody = document.getElementById("watchlist-body");
@@ -677,9 +648,8 @@
       ok.className = "btn-small";
       ok.textContent = "Duyệt";
       ok.addEventListener("click", function () {
-        doApprove(it.id).catch(function (err) {
-          setBoot("Duyệt lỗi: " + (err.message || err), true);
-          loadApprovals().catch(function () {});
+        doApprove(it.id).catch(function () {
+          /* lỗi đã hiện trong doApprove (banner + boot) */
         });
       });
       var no = document.createElement("button");
@@ -689,9 +659,8 @@
       no.addEventListener("click", function () {
         var reason = window.prompt("Lý do từ chối:", "tin nhiễu");
         if (reason == null || !String(reason).trim()) return;
-        doReject(it.id, String(reason).trim()).catch(function (err) {
-          setBoot("Từ chối lỗi: " + (err.message || err), true);
-          loadApprovals().catch(function () {});
+        doReject(it.id, String(reason).trim()).catch(function () {
+          /* lỗi đã hiện trong doReject (banner + boot) */
         });
       });
       row.appendChild(ok);
@@ -701,18 +670,162 @@
     });
   }
 
-  async function loadWatchlist() {
-    var data = await api("GET", "/watchlist?user_id=" + encodeURIComponent(USER_ID));
-    renderWatchlist((data && data.items) || []);
+  async function safeLoadWatchlist() {
+    hideWatchlistError();
+    try {
+      var data = await api("GET", "/watchlist?user_id=" + encodeURIComponent(USER_ID));
+      renderWatchlist((data && data.items) || []);
+    } catch (err) {
+      var tbody = document.getElementById("watchlist-body");
+      if (!tbody || tbody.children.length === 0) renderWatchlist([]);
+      showWatchlistError("Lỗi tải Watchlist: " + formatApiError(err));
+      throw err;
+    }
   }
 
-  async function loadApprovals() {
-    var data = await api(
-      "GET",
-      "/approvals?user_id=" + encodeURIComponent(USER_ID)
-    );
-    renderApprovals((data && data.items) || []);
+  async function safeLoadApprovals() {
+    hideApprovalsError();
+    try {
+      var data = await api("GET", "/approvals?user_id=" + encodeURIComponent(USER_ID));
+      renderApprovals((data && data.items) || []);
+    } catch (err) {
+      var ul = document.getElementById("approvals-list");
+      if (!ul || ul.children.length === 0) renderApprovals([]);
+      showApprovalsError("Lỗi tải Approvals: " + formatApiError(err));
+      throw err;
+    }
   }
+  
+  // Backwards compatibility aliases if any other code calls them by old names
+  var loadWatchlist = safeLoadWatchlist;
+  var loadApprovals = safeLoadApprovals;
+
+  function formatMarketStatus(status) {
+    var map = {
+      normal: "Bình thường",
+      abnormal: "Bất thường",
+      pending: "Chờ duyệt",
+      unknown: "Chưa quét",
+    };
+    return map[status] || status || "—";
+  }
+
+  function showMarketError(msg) {
+    var el = document.getElementById("market-error");
+    if (!el) return;
+    el.textContent = msg;
+    el.style.display = "block";
+  }
+
+  function hideMarketError() {
+    var el = document.getElementById("market-error");
+    if (el) el.style.display = "none";
+  }
+
+  function showWatchlistError(msg) {
+    var el = document.getElementById("watchlist-error");
+    if (!el) return;
+    el.textContent = msg;
+    el.style.display = "block";
+  }
+
+  function hideWatchlistError() {
+    var el = document.getElementById("watchlist-error");
+    if (el) el.style.display = "none";
+  }
+
+  function showApprovalsError(msg) {
+    var el = document.getElementById("approvals-error");
+    if (!el) return;
+    el.textContent = msg;
+    el.style.display = "block";
+  }
+
+  function hideApprovalsError() {
+    var el = document.getElementById("approvals-error");
+    if (el) el.style.display = "none";
+  }
+
+  function showScanError(msg) {
+    var el = document.getElementById("scan-error");
+    if (!el) return;
+    el.textContent = msg;
+    el.style.display = "block";
+  }
+
+  function hideScanError() {
+    var el = document.getElementById("scan-error");
+    if (el) el.style.display = "none";
+  }
+
+  function formatMarketTime(iso) {
+    if (!iso) return "—";
+    try {
+      var d = new Date(iso);
+      if (isNaN(d.getTime())) return iso;
+      return d.toLocaleString("vi-VN");
+    } catch (_e) {
+      return iso;
+    }
+  }
+
+  function renderMarket(items) {
+    var tbody = document.getElementById("market-body");
+    if (!tbody) return;
+    tbody.innerHTML = "";
+    if (!items || !items.length) {
+      tbody.innerHTML =
+        '<tr><td colspan="5" class="placeholder"><em>(Chưa có mã trong watchlist)</em></td></tr>';
+      return;
+    }
+    items.forEach(function (it) {
+      var tr = document.createElement("tr");
+      var price =
+        it.price != null && !isNaN(Number(it.price))
+          ? Number(it.price).toLocaleString("vi-VN")
+          : "—";
+      var pct =
+        it.change_pct != null && !isNaN(Number(it.change_pct))
+          ? Number(it.change_pct).toFixed(2) + "%"
+          : "—";
+      var statusClass = "market-status market-status-" + (it.status || "unknown");
+      tr.innerHTML =
+        "<td><strong>" +
+        (it.symbol || "") +
+        "</strong></td><td>" +
+        price +
+        "</td><td>" +
+        pct +
+        '</td><td><span class="' +
+        statusClass +
+        '">' +
+        formatMarketStatus(it.status) +
+        "</span></td><td>" +
+        formatMarketTime(it.updated_at) +
+        "</td>";
+      tbody.appendChild(tr);
+    });
+  }
+
+  async function safeLoadMarket() {
+    hideMarketError();
+    try {
+      var data = await api(
+        "GET",
+        "/market?user_id=" + encodeURIComponent(USER_ID)
+      );
+      renderMarket((data && data.items) || []);
+    } catch (err) {
+      var tbody = document.getElementById("market-body");
+      if (!tbody || tbody.children.length === 0) renderMarket([]);
+      showMarketError(
+        "Không tải được Market status: " + formatApiError(err)
+      );
+      throw err;
+    }
+  }
+
+  var loadMarket = safeLoadMarket;
 
   function extractFinalAnswer(data) {
     if (!data) return "";
@@ -723,6 +836,91 @@
       return data.result.answer;
     }
     return "";
+  }
+
+  function initMermaid() {
+    if (!window.mermaid || window.PW_mermaidReady) return;
+    try {
+      mermaid.initialize({ startOnLoad: false, theme: "default", securityLevel: "loose" });
+      window.PW_mermaidReady = true;
+    } catch (err) {
+      console.error("Mermaid initialize error", err);
+    }
+  }
+
+  function renderMermaidInElement(el, code) {
+    if (!el || !code) return;
+    initMermaid();
+    el.classList.add("mermaid");
+    el.textContent = code;
+    if (window.mermaid) {
+      try {
+        if (mermaid.run) {
+          mermaid.run({ nodes: [el] }).catch(function (err) {
+            console.error("Mermaid run error", err);
+          });
+        } else if (mermaid.init) {
+          mermaid.init(undefined, el);
+        }
+      } catch (err) {
+        console.error("Mermaid render error", err);
+      }
+    }
+  }
+
+  function appendChat(role, text, diagram) {
+    var box = document.getElementById("chat-messages");
+    if (!box) return;
+    removeThinking();
+    var ph = box.querySelector(".placeholder");
+    if (ph) ph.remove();
+
+    var div = document.createElement("div");
+    div.className = "chat-msg chat-" + role;
+
+    var header = document.createElement("div");
+    header.className = "msg-header";
+
+    if (role === "user") {
+      header.textContent = "👤 Bạn";
+    } else if (role === "error") {
+      header.textContent = "⚠️ Lỗi hệ thống / Mạng";
+    } else {
+      header.textContent = "🤖 Portfolio Watch";
+    }
+
+    var body = document.createElement("div");
+    body.className = "msg-body";
+    
+    var cleanText = text || "";
+    var diagramCode = diagram && diagram.mermaid ? diagram.mermaid : null;
+    
+    var mermaidMatch = cleanText.match(/```mermaid\n([\s\S]*?)```/);
+    if (mermaidMatch) {
+      if (!diagramCode) {
+        diagramCode = mermaidMatch[1];
+      }
+      cleanText = cleanText.replace(/```mermaid\n[\s\S]*?```/, "").trim();
+    }
+    
+    if (cleanText) {
+      var textNode = document.createElement("div");
+      textNode.className = "msg-text";
+      textNode.textContent = cleanText;
+      body.appendChild(textNode);
+    }
+
+    if (diagramCode && role === "assistant") {
+      var diagramPanel = document.createElement("div");
+      diagramPanel.className = "diagram-panel mermaid-diagram";
+      body.appendChild(diagramPanel);
+      renderMermaidInElement(diagramPanel, diagramCode);
+    }
+
+    div.appendChild(header);
+    div.appendChild(body);
+    box.appendChild(div);
+    box.scrollTop = box.scrollHeight;
   }
 
   async function doChat(question) {
@@ -739,9 +937,11 @@
         user_id: USER_ID,
       });
       var answer = extractFinalAnswer(data);
+      var diagram = data.diagram || (data.result && data.result.diagram);
       appendChat(
         "assistant",
-        answer || "(không có câu trả lời cuối từ Backend)"
+        answer || "(không có câu trả lời cuối từ Backend)",
+        diagram
       );
       await applyTimelineFromBackend(data);
       setBoot(
@@ -760,6 +960,7 @@
   }
 
   async function doScan(symbol, thresholdPct) {
+    hideScanError();
     setBoot("Đang quét " + symbol + "…");
     showTimelineStart("scan");
     var body = { symbol: symbol, user_id: USER_ID };
@@ -770,59 +971,100 @@
       var data = await api("POST", "/scan", body);
       await applyTimelineFromBackend(data);
       await loadApprovals();
+      await loadMarket().catch(function () {});
       setBoot(
         "Quét " + symbol + " xong · run_id=" + ((data && data.run_id) || "")
       );
     } catch (err) {
       showOpError("scan", err);
+      showScanError("Quét lỗi: " + formatApiError(err));
       throw err;
     }
   }
 
   async function doAddWatch(symbol, thresholdPct) {
-    await api("POST", "/watchlist", {
-      symbol: symbol,
-      threshold_pct: thresholdPct,
-      user_id: USER_ID,
-    });
-    await loadWatchlist();
+    hideWatchlistError();
+    try {
+      await api("POST", "/watchlist", {
+        symbol: symbol,
+        threshold_pct: thresholdPct,
+        user_id: USER_ID,
+      });
+      await loadWatchlist();
+      await loadMarket().catch(function () {});
+    } catch (err) {
+      showWatchlistError("Thêm mã lỗi: " + formatApiError(err));
+      throw err;
+    }
   }
 
   async function doPatchWatch(symbol, thresholdPct) {
-    await api("PATCH", "/watchlist/" + encodeURIComponent(symbol), {
-      threshold_pct: thresholdPct,
-      user_id: USER_ID,
-    });
-    await loadWatchlist();
-    setBoot("Đã cập nhật ngưỡng " + symbol + " = " + thresholdPct + "%");
+    hideWatchlistError();
+    try {
+      await api("PATCH", "/watchlist/" + encodeURIComponent(symbol), {
+        threshold_pct: thresholdPct,
+        user_id: USER_ID,
+      });
+      await loadWatchlist();
+      await loadMarket().catch(function () {});
+      setBoot("Đã cập nhật ngưỡng " + symbol + " = " + thresholdPct + "%");
+    } catch (err) {
+      showWatchlistError("Sửa ngưỡng lỗi: " + formatApiError(err));
+      throw err;
+    }
   }
 
   async function doDeleteWatch(symbol) {
-    await api(
-      "DELETE",
-      "/watchlist/" +
-        encodeURIComponent(symbol) +
-        "?user_id=" +
-        encodeURIComponent(USER_ID)
-    );
-    await loadWatchlist();
+    hideWatchlistError();
+    try {
+      await api(
+        "DELETE",
+        "/watchlist/" +
+          encodeURIComponent(symbol) +
+          "?user_id=" +
+          encodeURIComponent(USER_ID)
+      );
+      await loadWatchlist();
+      await loadMarket().catch(function () {});
+    } catch (err) {
+      showWatchlistError("Xóa mã lỗi: " + formatApiError(err));
+      throw err;
+    }
   }
 
   async function doApprove(id) {
-    await api("POST", "/approvals/" + encodeURIComponent(id) + "/approve", {
-      user_id: USER_ID,
-    });
-    await loadApprovals();
-    setBoot("Đã duyệt " + id);
+    hideApprovalsError();
+    try {
+      await api("POST", "/approvals/" + encodeURIComponent(id) + "/approve", {
+        user_id: USER_ID,
+      });
+      await loadApprovals();
+      await loadMarket().catch(function () {});
+      setBoot("Đã duyệt " + id);
+    } catch (err) {
+      showApprovalsError("Duyệt lỗi: " + formatApiError(err));
+      setBoot("Duyệt lỗi: " + formatApiError(err), true);
+      await loadApprovals().catch(function () {});
+      throw err;
+    }
   }
 
   async function doReject(id, reason) {
-    await api("POST", "/approvals/" + encodeURIComponent(id) + "/reject", {
-      reason: reason,
-      user_id: USER_ID,
-    });
-    await loadApprovals();
-    setBoot("Đã từ chối " + id);
+    hideApprovalsError();
+    try {
+      await api("POST", "/approvals/" + encodeURIComponent(id) + "/reject", {
+        reason: reason,
+        user_id: USER_ID,
+      });
+      await loadApprovals();
+      await loadMarket().catch(function () {});
+      setBoot("Đã từ chối " + id);
+    } catch (err) {
+      showApprovalsError("Từ chối lỗi: " + formatApiError(err));
+      setBoot("Từ chối lỗi: " + formatApiError(err), true);
+      await loadApprovals().catch(function () {});
+      throw err;
+    }
   }
 
   function initTabs() {
@@ -842,6 +1084,9 @@
         btn.setAttribute("aria-selected", "true");
         var targetPane = document.getElementById(targetId);
         if (targetPane) targetPane.classList.add("active");
+        if (targetId === "market") {
+          loadMarket().catch(function () {});
+        }
       });
     });
   }
@@ -870,6 +1115,7 @@
   window.PW_animateLiveGraph = animateLiveGraph;
   window.PW_showNodeInspector = showNodeInspector;
   window.PW_hideNodeInspector = hideNodeInspector;
+  window.PW_renderMermaidInElement = renderMermaidInElement;
 
   var baseLabel = backendBaseLabel();
   var cfgEl = document.getElementById("backend-url-display");
@@ -946,15 +1192,47 @@
   renderTimeline([]);
   renderLiveGraphNodes([]);
   setGraphStatus("Sẵn sàng", "idle");
-  setBoot("API=" + baseLabel + " · đang tải watchlist/approvals…");
-  Promise.all([loadWatchlist(), loadApprovals()])
-    .then(function () {
-      setBoot("API=" + baseLabel + " · đã nối Backend");
-    })
-    .catch(function (err) {
-      setBoot(
-        "Không nối được API (" + baseLabel + "): " + (err.message || err),
-        true
-      );
+  setBoot("API=" + baseLabel + " · đang tải watchlist/market/approvals…");
+  
+  if (typeof Promise.allSettled === 'function') {
+    Promise.allSettled([loadWatchlist(), loadMarket(), loadApprovals()])
+      .then(function (results) {
+        var fails = 0;
+        for (var i = 0; i < results.length; i++) {
+          if (results[i].status === "rejected") fails++;
+        }
+        if (fails > 0) {
+          setBoot("API=" + baseLabel + " · đã nối Backend (tải lỗi " + fails + "/3)", true);
+        } else {
+          setBoot("API=" + baseLabel + " · đã nối Backend");
+        }
+      });
+  } else {
+    // Fallback for older browsers
+    var ps = [
+      loadWatchlist().catch(function(e) { return e; }), 
+      loadMarket().catch(function(e) { return e; }), 
+      loadApprovals().catch(function(e) { return e; })
+    ];
+    Promise.all(ps).then(function(results) {
+      var fails = results.filter(function(r) { return r instanceof Error; }).length;
+      if (fails > 0) {
+        setBoot("API=" + baseLabel + " · đã nối Backend (tải lỗi " + fails + "/3)", true);
+      } else {
+        setBoot("API=" + baseLabel + " · đã nối Backend");
+      }
     });
+  }
+
+  window.addEventListener("error", function (e) {
+    console.error("Global error:", e.error || e.message);
+    setBoot("Lỗi giao diện: " + (e.message || "Không rõ"), true);
+  });
+  window.addEventListener("unhandledrejection", function (e) {
+    console.error("Unhandled rejection:", e.reason);
+    setBoot("Lỗi hệ thống: " + (e.reason && e.reason.message ? e.reason.message : e.reason || "Không rõ"), true);
+  });
+
+  window.PW_showWatchlistError = showWatchlistError;
+  window.PW_showApprovalsError = showApprovalsError;
 })();

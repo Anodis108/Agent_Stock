@@ -1,0 +1,28 @@
+You are implementing in d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/llm-backend-ref-portfolio-watch.
+
+Task: Phase 15 line 4 ONLY — Runner aggregate overall + by_slice (5 slices including diagram).
+
+Context:
+- RULE_SLICES already exists in src/portfolio_watch/eval/run.py:
+  frozenset({"lookup", "comparison", "out_of_scope", "injection", "diagram"})
+- SLICE_ORDER is still 4 slices (missing diagram) at line ~708
+- build_report() only adds slices with total>0; test-plan requires by_slice[type] for all slice types
+- golden_v3.yaml has 33 cases including diagram_01..03
+- v3_baseline.json by_slice uses dict keys; diagram has total=0, rate=null
+
+Constraints (minimal diff):
+1. Set SLICE_ORDER = ("lookup", "comparison", "out_of_scope", "injection", "diagram") OR derive stable order from RULE_SLICES
+2. build_report(): always emit SliceScore for every SLICE_ORDER entry (0/0 ok)
+3. format_report(): print all slices; for total=0 show "0/0 (n/a)" instead of 0%
+4. SliceScore.as_dict(): when total==0, set rate to None (matches baseline)
+5. EvalReport.as_dict(): change by_slice to dict keyed by slice_type (like baseline_payload), OR keep list but ensure all 5 present — prefer dict for Class 18 test-plan "by_slice[type]"
+6. baseline_payload already maps by_slice as dict — keep compatible
+7. Add tests in tests/test_eval.py:
+   - test_build_report_by_slice_all_five_slices (empty results → 5 entries, diagram 0/0)
+   - test_build_report_by_slice_with_diagram_cases
+   - test_format_report_includes_diagram_line
+8. Do NOT implement line 5 (injection gate changes, regression gate, v3_baseline update)
+9. Do NOT change default GOLDEN_PATH to golden_v3 (that's optional; --dataset already works)
+10. Run: python -m pytest tests/test_eval.py tests/test_golden_v3_rules.py -q
+
+Output: list files changed, test results, example format_report output with diagram slice.

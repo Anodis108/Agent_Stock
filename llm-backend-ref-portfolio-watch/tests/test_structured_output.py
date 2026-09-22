@@ -503,3 +503,21 @@ def test_chat_graph_schema_error_does_not_crash():
     assert res.rewritten.symbol == "FPT"
     assert "price" in res.routing.agents_to_call
 
+
+
+def test_diagram_plan_schema():
+    from src.portfolio_watch.shared.schemas import DiagramPlanOutput
+    out = DiagramPlanOutput(
+        title="Luồng xử lý FPT",
+        nodes=["nodeA", "nodeB"],
+        edges=[{"from": "nodeA", "to": "nodeB"}],
+        mermaid="graph TD\nnodeA --> nodeB",
+        format="mermaid"
+    )
+    assert out.title == "Luồng xử lý FPT"
+    assert out.nodes == ["nodeA", "nodeB"]
+    
+    js = out.to_graph_json()
+    assert js["title"] == "Luồng xử lý FPT"
+    assert js["nodes"] == ["nodeA", "nodeB"]
+    assert js["edges"] == [{"from": "nodeA", "to": "nodeB"}]

@@ -24,8 +24,16 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parents[3]
-GOLDEN = ROOT / "specs" / "eval" / "golden_dataset.yaml"
-BASELINE = ROOT / "specs" / "eval" / "baseline_debug.json"
+GOLDEN = (
+    ROOT / "specs" / "eval" / "golden_v3.yaml"
+    if (ROOT / "specs" / "eval" / "golden_v3.yaml").is_file()
+    else ROOT / "specs" / "eval" / "golden_dataset.yaml"
+)
+BASELINE = (
+    ROOT / "specs" / "eval" / "v3_baseline.json"
+    if (ROOT / "specs" / "eval" / "v3_baseline.json").is_file()
+    else ROOT / "specs" / "eval" / "baseline_debug.json"
+)
 OUT_JSON = ROOT / "specs" / "eval" / "baseline_phase5.json"
 OUT_REPORT = ROOT / "specs" / "eval" / "phase5_regression_report.md"
 OUT_LOG = ROOT / "specs" / "eval" / "phase5_regression_run.log"
@@ -81,6 +89,8 @@ def run_one_case(
         "--skip-agent-eval",
         "--baseline",
         str(BASELINE),
+        "--dataset",
+        str(GOLDEN),
     ]
     last_text = ""
     for attempt in range(1, retries + 1):
@@ -166,7 +176,7 @@ def write_report(
         "# Phase 5 Regression Report — Full golden sau FE/BE",
         "",
         f"**Ngày:** {datetime.now(timezone.utc).strftime('%Y-%m-%d')}",
-        f"**Baseline:** `specs/eval/baseline_debug.json` (rate={baseline_rate:.0%})",
+        f"**Baseline:** `{BASELINE.relative_to(ROOT).as_posix()}` (rate={baseline_rate:.0%})",
         f"**Scorer:** rule-based (`--skip-judge --skip-agent-eval`)",
         f"**Runner:** `python -m src.portfolio_watch.eval.regression`",
         "",
@@ -175,7 +185,7 @@ def write_report(
         "| Slice | Passed | Total | Rate |",
         "|---|---:|---:|---:|",
     ]
-    order = ("lookup", "comparison", "out_of_scope", "injection")
+    order = ("lookup", "comparison", "out_of_scope", "injection", "diagram")
     for s in order:
         rows = by.get(s, [])
         p = sum(1 for r in rows if r["passed"])

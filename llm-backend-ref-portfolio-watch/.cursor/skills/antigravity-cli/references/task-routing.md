@@ -48,6 +48,21 @@ Ví dụ đổi model implement sang Claude:
 export AGY_MODEL_IMPLEMENT=claude-sonnet-4-6
 ```
 
+### Model fallback (tự động)
+
+Khi **không** truyền `--model`, wrapper thử model chính rồi lần lượt `model_fallbacks` nếu gặp 503 / 429 / eligibility / model slug invalid. Log: stderr `AGY_MODEL_FALLBACK`, file `.agy-runs/*.meta.json`.
+
+| Task | Chính | Fallback |
+| --- | --- | --- |
+| `implement`, `refactor` | pro-high | pro-low → flash-medium → flash-high |
+| `review` | claude-sonnet-4-6 | pro-high → pro-low → flash-medium |
+| `debug` | claude-opus-4-6-thinking | sonnet → pro-high → flash-medium |
+| `eval` | pro-low | flash-medium → flash-high |
+| `ask`, `explore`, `test` | flash-medium | flash-high |
+
+- `--model <slug>` hoặc `--no-model-fallback` → **không** fallback, chỉ 1 model.
+- `AGY_MODEL_*` / `AGY_MODEL` → model chính, vẫn fallback trừ khi `--no-model-fallback`.
+
 ## Agent selection
 
 List agents: `agy agents`

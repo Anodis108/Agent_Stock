@@ -1,0 +1,29 @@
+You are implementing in the repo cwd (Portfolio Watch V3).
+
+## Task — ONE checklist item only
+Implement ONLY this single unchecked line from specs/implementation-plan.md Phase 13:
+
+- [ ] Chat / graph / market / watchlist / HITL cùng origin app (Phase 2–3).
+
+Do NOT implement the other Phase 13 lines (scan/approve wiring, no separate AI service).
+Do NOT start Phase 14+.
+
+## Acceptance for this line
+- Browser UI (`src/portfolio_watch/frontend/`) calls Backend routes on **same origin** only:
+  `/chat`, `/scan`, `/market`, `/watchlist`, `/approvals`, `/runs/{id}/steps` — NOT :8001, NOT `/v1/*`.
+- Live graph uses `steps[]` from chat/scan response (already in app.js) — no direct AI fetch.
+- Product entry remains `src/portfolio_watch/backend/main.py` (StaticFiles + API).
+- Add focused pytest e.g. `test_phase13_same_origin_routes` in `tests/test_frontend.py` and/or `tests/test_backend.py` proving the above.
+- Mark ONLY this one line `[x]` in specs/implementation-plan.md (leave other Phase 13 lines unchecked).
+- Append specs/change-log.md section for this line only + manual test steps.
+
+## Constraints
+- Minimal diff; no unrelated refactors.
+- Cheap pytest only.
+
+## Verify
+```bash
+python -m pytest tests/test_frontend.py tests/test_backend.py -q --tb=line -k "phase13_same_origin or same_origin"
+```
+
+Do the file edits yourself.

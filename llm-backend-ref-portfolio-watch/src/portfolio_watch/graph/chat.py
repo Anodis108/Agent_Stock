@@ -19,6 +19,7 @@ from src.portfolio_watch.agents.answer_composer import (
     AnswerDraftBrain,
     run_answer_composer,
 )
+from src.portfolio_watch.agents.diagram_agent import run_diagram_agent
 from src.portfolio_watch.agents.eval_agent import EvalAgentBrain, run_eval_agent
 from src.portfolio_watch.agents.news_agent import (
     NewsAgentBrain,
@@ -256,15 +257,39 @@ def _node_answer_composer(state: ChatState, config: RunnableConfig) -> dict:
     return {"compose": compose, "answer": compose.answer}
 
 
+def _node_diagram_agent(state: ChatState, config: RunnableConfig) -> dict:
+    cfg = _cfg(config)
+    turn = state.get("turn") or ""
+    symbol = state.get("symbol")
+    with agent_span(turn, "diagram_agent", input=symbol or state.get("question", "")) as box:
+        result = run_diagram_agent(
+            symbol,
+            turn=turn,
+            question=state.get("question") or "",
+            brain=cfg.get("diagram_brain")
+        )
+        box["output"] = result.placeholder
+    from src.portfolio_watch.agents.answer_composer import AnswerComposeResult
+    compose = AnswerComposeResult(answer=result.placeholder, model="stub", draft_attempts=1, guardrail_violations=[], evidence=[], hitl_used=False)
+    return {"diagram_result": result, "answer": result.placeholder, "compose": compose}
+
+def route_from_supervisor(state: ChatState) -> str:
+    route = getattr(state["routing"].route, "value", state["routing"].route)
+    if str(route) == "diagram" or "diagram" in (state["routing"].agents_to_call or []):
+        return "diagram_agent"
+    return "workers"
+
 def build_chat_graph() -> StateGraph:
     graph = StateGraph(ChatState)
     graph.add_node("rewrite_question", _node_rewrite)
     graph.add_node("supervisor", _node_supervisor)
+    graph.add_node("diagram_agent", _node_diagram_agent)
     graph.add_node("workers", _node_workers)
     graph.add_node("answer_composer", _node_answer_composer)
     graph.add_edge(START, "rewrite_question")
     graph.add_edge("rewrite_question", "supervisor")
-    graph.add_edge("supervisor", "workers")
+    graph.add_conditional_edges("supervisor", route_from_supervisor, {"diagram_agent": "diagram_agent", "workers": "workers"})
+    graph.add_edge("diagram_agent", END)
     graph.add_edge("workers", "answer_composer")
     graph.add_edge("answer_composer", END)
     return graph
@@ -290,6 +315,7 @@ def run_chat_graph(
     news_brain: NewsAgentBrain | None = None,
     eval_brain: EvalAgentBrain | None = None,
     answer_brain: AnswerDraftBrain | None = None,
+    diagram_brain: Any | None = None,
     news_days: int | None = 7,
     limit: int | None = None,
     ttl_minutes: int | float | None = None,
@@ -364,6 +390,7 @@ def run_chat_graph(
         "news_brain": news_brain,
         "eval_brain": eval_brain,
         "answer_brain": answer_brain,
+        "diagram_brain": diagram_brain,
         "news_days": news_days,
     }
     token = _chat_deps.set(deps)
@@ -418,6 +445,7 @@ def run_chat_graph(
         news=final.get("news"),
         eval_result=final.get("eval_result"),
         compose=compose,
+        diagram_result=final.get("diagram_result"),
         error=final.get("error"),
         memories=recalled_memories,
     )

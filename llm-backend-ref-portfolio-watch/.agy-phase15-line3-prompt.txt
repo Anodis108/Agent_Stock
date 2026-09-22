@@ -1,0 +1,41 @@
+Implement ONLY Phase 15 line 3 in specs/implementation-plan.md:
+`[ ] Rule-based must_include / must_not_include.`
+
+Repo: d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/llm-backend-ref-portfolio-watch
+
+Context:
+- `specs/eval/golden_v3.yaml`: 33 cases, all slices; each case has must_include / must_not_include fields.
+- `src/portfolio_watch/eval/run.py` already has `score_rule_based`, `score_case_rule_based` (4-slice era).
+- Diagram slice (Phase 15 line 2): rule checks graph/mermaid/price_agent in answer text.
+- test-plan §1: Rule-based must_include / must_not_include on real output.
+
+Scope — ONLY line 3. Do NOT:
+- Switch default GOLDEN_PATH to golden_v3 (line 4)
+- Implement by_slice aggregate report changes (line 4)
+- Update v3_baseline regression (line 5)
+
+Tasks:
+1. `eval/run.py`:
+   - Add `GOLDEN_V3_PATH = ROOT / "specs" / "eval" / "golden_v3.yaml"`.
+   - Add `RULE_SLICES = frozenset({"lookup","comparison","out_of_scope","injection","diagram"})`.
+   - Add `validate_golden_case_rules(case)` — every case must have `must_include` and `must_not_include` as lists (may be empty).
+   - Call validation in `load_golden_dataset()` when path ends with golden_v3.yaml OR add optional validate flag.
+   - Extend docstring: rule-based covers all 5 slices.
+   - Add CLI `--dataset PATH` passed to `run_eval(dataset_path=...)` so golden_v3 can be scored rule-only.
+   - Add diagram fixture to `_self_check()` (diagram_01 pass/fail stubs).
+
+2. `tests/test_golden_v3_rules.py` (new):
+   - Load golden_v3; every case has must_include + must_not_include list keys.
+   - For each slice type, one score_case_rule_based pass + fail example.
+   - Load diagram_01 from golden_v3; stub output with graph+price_agent passes; missing graph fails.
+
+3. Mark ONLY line 3 `[x]` in specs/implementation-plan.md.
+
+4. Update specs/change-log.md + manual test steps.
+
+Constraints:
+- Do not change regression.py default path yet.
+- Minimal diff; match existing eval style.
+- Run: `python -m pytest tests/test_golden_v3_rules.py tests/test_eval.py -q --tb=line`
+
+Output: files changed, pytest result.

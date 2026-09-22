@@ -142,10 +142,10 @@ Chốt docs + baseline — **không** đổi hành vi.
 
 ## Phase 12 — Market status page
 
-- [ ] Trang/tab **Market status**.
-- [ ] Liệt kê mã đang watchlist / vừa quét: giá, % đổi, trạng thái, thời gian.
-- [ ] Nối dữ liệu thật từ store/API (không mock cứng trên UI).
-- [ ] Lỗi tải dữ liệu hiện message rõ.
+- [x] Trang/tab **Market status**.
+- [x] Liệt kê mã đang watchlist / vừa quét: giá, % đổi, trạng thái, thời gian.
+- [x] Nối dữ liệu thật từ store/API (không mock cứng trên UI).
+- [x] Lỗi tải dữ liệu hiện message rõ.
 
 **Xong khi:** mở trang thấy mã đang check.
 
@@ -153,9 +153,9 @@ Chốt docs + baseline — **không** đổi hành vi.
 
 ## Phase 13 — Connect UI ↔ product data
 
-- [ ] Chat / graph / market / watchlist / HITL cùng origin app (Phase 2–3).
-- [ ] Quét + approve/reject hoạt động từ UI mới.
-- [ ] Không gọi AI service tách (nếu đã gộp).
+- [x] Chat / graph / market / watchlist / HITL cùng origin app (Phase 2–3).
+- [x] Quét + approve/reject hoạt động từ UI mới.
+- [x] Không gọi AI service tách (nếu đã gộp).
 
 **Xong khi:** flow A–C trong product-spec chạy trên một URL.
 
@@ -163,10 +163,10 @@ Chốt docs + baseline — **không** đổi hành vi.
 
 ## Phase 14 — Diagram agent
 
-- [ ] Intent “vẽ sơ đồ” → node/agent `diagram_agent` (hoặc nhánh supervisor).
-- [ ] Output Mermaid hoặc graph JSON.
-- [ ] UI render sơ đồ trong bubble hoặc panel.
-- [ ] Structured output cho plan sơ đồ (nếu dùng LLM).
+- [x] Intent “vẽ sơ đồ” → node/agent `diagram_agent` (hoặc nhánh supervisor).
+- [x] Output Mermaid hoặc graph JSON.
+- [x] UI render sơ đồ trong bubble hoặc panel.
+- [x] Structured output cho plan sơ đồ (nếu dùng LLM).
 
 **Xong khi:** câu “vẽ sơ đồ luồng scan …” hiện sơ đồ trên UI.
 
@@ -174,11 +174,11 @@ Chốt docs + baseline — **không** đổi hành vi.
 
 ## Phase 15 — Golden dataset Class 18
 
-- [ ] `specs/eval/golden_v3.yaml`: `version`, mỗi case có `id` + `slice`.
-- [ ] Slice: `lookup`, `comparison`, `out_of_scope`, `injection`, `diagram` (≥3 case).
-- [ ] Rule-based `must_include` / `must_not_include`.
-- [ ] Runner aggregate **overall + by_slice**.
-- [ ] Gate: injection **100%**; regression vs `v3_baseline` + tolerance.
+- [x] `specs/eval/golden_v3.yaml`: `version`, mỗi case có `id` + `slice`.
+- [x] Slice: `lookup`, `comparison`, `out_of_scope`, `injection`, `diagram` (≥3 case).
+- [x] Rule-based `must_include` / `must_not_include`.
+- [x] Runner aggregate **overall + by_slice**.
+- [x] Gate: injection **100%**; regression vs `v3_baseline` + tolerance.
 
 **Xong khi:** `docker compose run --rm app python -m …eval…` in được by_slice.
 
@@ -186,13 +186,25 @@ Chốt docs + baseline — **không** đổi hành vi.
 
 ## Phase 16 — Validation, errors, docs close
 
-- [ ] UI: lỗi API / timeout / HITL fail không làm trắng trang.
-- [ ] `.env.example`: memory, Langfuse, freshness, Qdrant (optional).
-- [ ] README **chỉ** Docker product + eval trong container.
-- [ ] Status report: section «V3 complete» khi AC product-spec 1–9 tick.
-- [ ] Demo ngắn trong README: chat → graph hover → market → (tuỳ chọn) Langfuse.
+- [x] UI: lỗi API / timeout / HITL fail không làm trắng trang.
+- [x] `.env.example`: memory, Langfuse, freshness, Qdrant (optional).
+- [x] README **chỉ** Docker product + eval trong container.
+- [x] Status report: section «V3 complete» khi AC product-spec 1–9 tick.
+- [x] Demo ngắn trong README: chat → graph hover → market → (tuỳ chọn) Langfuse.
 
 **Xong khi:** acceptance criteria product-spec đều đạt.
+
+---
+
+## Phase 17 — Post-V3 docs (Spec Guide Bước 9–11)
+
+Docs bổ sung; **không** đổi app logic. Docker-first vẫn là đường chính (AC9).
+
+- [x] README appendix «Optional local development»: prerequisites, venv/pip, `.env`, uvicorn `:8000`, pytest, troubleshooting — không thay Quick Start Docker.
+- [ ] README section «Demo with ngrok»: expose `:8000` (một app), không tách frontend/backend.
+- [ ] `specs/mvp-status-report.md`: how to run locally + demo ngrok + next improvements.
+
+**Xong khi:** contributor có thể dev local hoặc demo ngrok mà không mơ hồ port/service.
 
 ---
 

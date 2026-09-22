@@ -1,0 +1,25 @@
+You are implementing in d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/llm-backend-ref-portfolio-watch.
+
+Task: Phase 16 line 5 ONLY — Demo ngắn trong README: chat → graph hover → market → (tuỳ chọn) Langfuse.
+
+Context:
+- README.md is Docker-only (Quick Start, Eval, Troubleshooting) — NO demo walkthrough yet
+- test-plan §6 Demo E2E: compose up, chat lookup + graph hover, market tab, optional Langfuse
+- UI: http://localhost:8000 — chat column left, live graph panel right, tabs include Market status
+- implementation-plan line 5 scope ONLY (not full test-plan §6 diagram/injection unless 1 line mention)
+
+Requirements (minimal diff):
+1. Add section `## Demo walkthrough (5 phút)` to README.md AFTER Quick Start, BEFORE Eval:
+   - Prerequisite: docker compose up, open http://localhost:8000
+   - Step 1 Chat: gửi "Giá FPT hôm nay?" — thấy câu trả lời assistant
+   - Step 2 Live graph: panel phải node sáng lần lượt; hover node → inspector hiện input/output
+   - Step 3 Market: tab Market status → danh sách mã watchlist (giá/%/trạng thái)
+   - Step 4 (optional) Langfuse: bật MONITORING_ENABLED + keys trong .env, restart; 1 chat → 1 trace trên Langfuse UI
+   - Keep concise numbered list (5-8 bullets max)
+2. Update specs/mvp-status-report.md top summary: remove "except demo line 5" — note Phase 16 complete
+3. Add tests/test_readme_phase16_demo.py:
+   - test_readme_has_demo_walkthrough(): assert "## Demo" section, mentions chat, graph/hover, market, langfuse optional
+4. Do NOT add local uvicorn instructions
+5. Run: python -m pytest tests/test_readme_phase16.py tests/test_readme_phase16_demo.py tests/test_mvp_status_report_phase16.py -q
+
+Output: demo section outline, test results.

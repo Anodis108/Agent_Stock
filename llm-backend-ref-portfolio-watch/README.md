@@ -14,134 +14,75 @@ Quy tắc agent: [AGENTS.md](AGENTS.md).
 
 | Yêu cầu | Ghi chú |
 |---|---|
-| **Python** ≥ 3.10 | Khuyến nghị 3.11–3.13 |
-| **pip** / venv | Cài package từ `pyproject.toml` |
-| **Docker Desktop** (tuỳ chọn) | Product demo 1 container `app` |
-| **OpenAI API key** | Khi `LLM_BACKEND=openai` (chat/scan cần LLM) |
+| **Docker Desktop** | Bắt buộc để chạy product demo |
 | Git | Clone repo |
-
-Không bắt buộc: Node.js (frontend là static HTML/JS, không build).  
-Không bắt buộc: Qdrant / Langfuse (tắt mặc định; bật khi cần Phase 8–9).
+| **OpenAI API key** | Nếu cấu hình LLM_BACKEND=openai |
 
 ---
 
-## Install (local)
+## Quick Start (Docker-first)
 
-Từ thư mục repo `llm-backend-ref-portfolio-watch`:
+Product được đóng gói để chạy hoàn toàn qua Docker.
 
-```bash
-python -m venv .venv
+1. Clone repo:
+   ```bash
+   git clone <repo_url>
+   cd llm-backend-ref-portfolio-watch
+   ```
+2. Cấu hình môi trường:
+   ```bash
+   cp .env.example .env
+   # Sửa .env — cấu hình ít nhất OPENAI_API_KEYS
+   ```
+3. Build và chạy:
+   ```bash
+   docker compose up --build -d
+   docker compose logs -f app
+   ```
 
-# Windows (Git Bash / bash)
-source .venv/Scripts/activate
-# Windows CMD: .venv\Scripts\activate.bat
-# macOS / Linux: source .venv/bin/activate
+Biến môi trường: copy từ [`.env.example`](.env.example) — memory, Langfuse, Qdrant (optional).
 
-pip install -e ".[dev]"
-cp .env.example .env
-# Sửa .env — ít nhất OPENAI_API_KEYS nếu LLM_BACKEND=openai
-mkdir -p data
-```
+Volume `pw_data` → `/app/data` (SQLite bền sau restart). Qdrant optional:
+`docker compose --profile qdrant up -d`.
 
----
-
-## Environment variables
-
-Nguồn chuẩn: [`.env.example`](.env.example). Copy thành `.env` (không commit key thật).
-
-| Biến | Vai trò |
-|---|---|
-| `LLM_BACKEND` | `openai` \| `ollama` \| `vllm` |
-| `OPENAI_API_KEYS` | Key OpenAI (có thể nhiều key, cách nhau bằng `,`) |
-| `LLM_MODEL` | Ví dụ `gpt-4o-mini` |
-| `LLM_BASE_URL` | Override base URL (Ollama/vLLM); để trống = mặc định |
-| `API_HOST` / `API_PORT` | Local mặc định `127.0.0.1` / `8000` |
-| `AI_TRANSPORT` | **`inprocess`** (khuyến nghị V3) — UI+API+graph cùng process |
-| `FRONTEND_ORIGIN` | CORS; local gộp app dùng `*` |
-| `SQLITE_PATH` | DB AI/domain — local `./data/portfolio_watch.db` |
-| `BACKEND_SQLITE_PATH` | Watchlist + approvals — `./data/backend_store.db` |
-| `MEMORY_SHORT_TERM_WINDOW` / `MEMORY_SHORT_TERM_TTL_MINUTES` | Short-term memory |
-| `QDRANT_URL` | Long-term memory; trống = in-memory fallback |
-| `MONITORING_ENABLED` | `false` mặc định; `true` + Langfuse keys để bật trace |
-| `LANGFUSE_HOST` / `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` | Observability |
-| `APP_HOST_PORT` | Port publish Docker (mặc định `8000`) |
-
-Docker Compose ghi đè một số biến (`API_HOST=0.0.0.0`, đường dẫn DB trong
-`/app/data`, …) — xem `docker-compose.yml`.
-
----
-
-## Chạy local (dev)
-
-### Backend + frontend (cùng origin — khuyến nghị)
-
-Frontend static nằm ở `src/portfolio_watch/frontend/` và được **mount cùng
-origin** bởi FastAPI (`StaticFiles`). Một lệnh:
-
-```bash
-python -m uvicorn src.portfolio_watch.backend.main:app --host 127.0.0.1 --port 8000
-```
-
-| URL | Nội dung |
-|---|---|
-| http://127.0.0.1:8000/ | UI (chat, live graph, watchlist, approvals) |
-| http://127.0.0.1:8000/health | Health check |
-| http://127.0.0.1:8000/docs | OpenAPI (Swagger) |
-
-### Frontend tách port (tuỳ chọn, chỉ khi debug static)
-
-Không cần cho flow V3 thường ngày. Nếu mở file bằng `http.server`:
-
-```bash
-python -m http.server 5173 --directory src/portfolio_watch/frontend
-```
-
-Khi đó đặt trong `config.js` / query: Backend
-`http://127.0.0.1:8000` và CORS `FRONTEND_ORIGIN` phù hợp. Khuyến nghị vẫn dùng
-cùng origin `:8000`.
-
-### Smoke nhanh
-
-```bash
-curl -s http://127.0.0.1:8000/health
-curl -s -X POST http://127.0.0.1:8000/chat -H "Content-Type: application/json" \
-  -d "{\"question\":\"Gia FPT hom nay?\",\"user_id\":\"default\"}"
-```
-
-(Tránh ký tự Unicode trong curl trên một số shell Windows — dùng body ASCII
-hoặc file JSON.)
-
-### Tests
-
-```bash
-python -m pytest tests/ -q
-# hoặc hẹp hơn:
-python -m pytest tests/test_frontend.py tests/test_backend.py -q
-```
-
----
-
-## Docker deploy (product — 1 URL)
-
-```bash
-cp .env.example .env   # điền OPENAI_API_KEYS nếu cần
-docker compose up --build -d
-docker compose logs -f app
-```
-
+Truy cập:
 | Service | URL | Mô tả |
 |---|---|---|
-| **app** | http://localhost:8000 | UI + API + LangGraph in-process |
-| Langfuse (tự host) | http://localhost:3000 | Ngoài compose — optional |
-| Qdrant (optional) | http://localhost:6333 | `docker compose --profile qdrant up -d` |
+| **app** | http://localhost:8000 | UI (chat, live graph, watchlist) + API |
+| Langfuse (tự host) | http://localhost:3000 | Tùy chọn (ngoài compose) |
+| Qdrant | http://localhost:6333 | Tùy chọn |
 
-Volume `pw_data` → `/app/data` (SQLite bền sau restart).
+*Contributors dev local — xem [Optional local development](#optional-local-development).*
 
-```bash
-docker compose down
-# Eval trong container:
-docker compose run --rm app python -m src.portfolio_watch.eval.run --self-check
-```
+---
+
+## Demo walkthrough (5 phút)
+
+Prerequisite: Chạy `docker compose up -d`, mở http://localhost:8000.
+
+1. **Chat**: Gửi "Giá FPT hôm nay?" ở cột trái — thấy câu trả lời assistant.
+2. **Live graph**: Panel bên phải node sẽ sáng lần lượt; hover node → inspector hiện input/output chi tiết.
+3. **Market**: Chuyển sang tab Market status → xem danh sách mã watchlist (giá/%/trạng thái).
+4. **Langfuse (optional)**: Bật `MONITORING_ENABLED=true` + keys trong `.env`, restart; thực hiện 1 chat → 1 trace trên Langfuse UI.
+
+---
+
+## Eval (in container)
+
+Chạy test/đánh giá hoàn toàn thông qua container (không cần cài local):
+
+- **Self-check**:
+  ```bash
+  docker compose run --rm app python -m src.portfolio_watch.eval.run --self-check
+  ```
+- **Chạy 1 case cụ thể (skip judge)**:
+  ```bash
+  docker compose run --rm app python -m src.portfolio_watch.eval.run --run --case-id lookup_01 --skip-judge
+  ```
+- **Full regression**:
+  ```bash
+  docker compose run --rm app python -m src.portfolio_watch.eval.regression
+  ```
 
 ---
 
@@ -149,14 +90,48 @@ docker compose run --rm app python -m src.portfolio_watch.eval.run --self-check
 
 | Triệu chứng | Gợi ý |
 |---|---|
-| `POST /chat` → 502 / timeout | Kiểm tra `OPENAI_API_KEYS`, `LLM_BACKEND`, mạng; tăng timeout nếu cần |
-| UI cũ sau khi sửa frontend | Rebuild/restart container (`docker compose up -d --build app`) — image không mount source |
-| curl `There was an error parsing the body` | Body JSON encoding (Windows shell) — dùng file `--data-binary @file.json` |
-| Port 8000 đã chiếm | Đổi `API_PORT` / `APP_HOST_PORT` hoặc tắt process cũ |
-| Qdrant / Langfuse lỗi | Để trống / `MONITORING_ENABLED=false` — app vẫn chat được |
-| `vnstock` cảnh báo / rate limit | Thử lại; không chặn boot UI |
-| Import / package thiếu | `pip install -e ".[dev]"` từ root repo |
-| DB path | Local: `./data/…`; Docker: `/app/data/…` (compose override) |
+| `POST /chat` → 502 / timeout | Kiểm tra `OPENAI_API_KEYS` trong `.env`, restart container |
+| UI cũ sau khi update | Rebuild lại image: `docker compose up --build app` |
+| Port 8000 đã chiếm | Đổi `APP_HOST_PORT` trong `.env` |
+| Dừng stack | `docker compose down` |
+
+---
+
+## Optional local development
+
+> **Product path = Docker** (xem Quick Start). Phần này dành cho **contributors** dev/test local — không thay đường chính AC9.
+
+| Yêu cầu | Ghi chú |
+|---|---|
+| Python 3.10+ | Khớp `pyproject.toml` |
+| venv | Khuyến nghị |
+
+1. Tạo và kích hoạt venv:
+   ```bash
+   python -m venv .venv
+   # Windows: .venv\Scripts\activate
+   # macOS/Linux: source .venv/bin/activate
+   ```
+2. Cài dependencies + dev tools:
+   ```bash
+   pip install -e ".[dev]"
+   ```
+3. Cấu hình môi trường:
+   ```bash
+   cp .env.example .env
+   # Sửa .env — ít nhất OPENAI_API_KEYS
+   ```
+4. Chạy app (UI + API + LangGraph, một process):
+   ```bash
+   uvicorn src.portfolio_watch.backend.main:app --reload --port 8000
+   ```
+5. Mở http://localhost:8000
+6. Chạy test:
+   ```bash
+   python -m pytest tests/ -q
+   ```
+
+**Troubleshooting (local):** port 8000 bận → đổi `--port`; lỗi x509/SSL với conda → `unset SSL_CERT_FILE REQUESTS_CA_BUNDLE CURL_CA_BUNDLE`.
 
 ---
 
@@ -170,8 +145,3 @@ docker compose run --rm app python -m src.portfolio_watch.eval.run --self-check
 | [specs/change-log.md](specs/change-log.md) | Nhật ký |
 | [specs/agents.md](specs/agents.md) | Domain agents |
 | [docs/agent_graph.html](docs/agent_graph.html) | Sơ đồ kiến trúc (tĩnh) |
-
----
-
-*Spec-Driven Development — specs trước, code sau. Không đổi logic app trong
-bước cập nhật README này.*

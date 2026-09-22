@@ -14,20 +14,28 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 # Default model per task (slugs from `agy models`). Override: --model, AGY_MODEL, AGY_MODEL_<TASK>.
+# model_fallbacks: thử lần lượt khi model chính 503/429/eligibility (xem should_retry_model).
+FLASH = "gemini-3.8-flash-medium"
+FLASH_HIGH = "gemini-3.8-flash-high"
+PRO_HIGH = "gemini-3.1-pro-high"
+PRO_LOW = "gemini-3.1-pro-low"
+
 TASKS = {
     "ask": {
         "skip_permissions": False,
         "effort": None,
         "timeout": "5m",
         "stream": False,
-        "model": "gemini-3.8-flash-medium",
+        "model": FLASH,
+        "model_fallbacks": [FLASH_HIGH],
     },
     "explore": {
         "skip_permissions": False,
         "effort": "medium",
         "timeout": "5m",
         "stream": False,
-        "model": "gemini-3.8-flash-medium",
+        "model": FLASH,
+        "model_fallbacks": [FLASH_HIGH],
     },
     "review": {
         "skip_permissions": False,
@@ -35,27 +43,31 @@ TASKS = {
         "timeout": "10m",
         "stream": False,
         "model": "claude-sonnet-4-6",
+        "model_fallbacks": [PRO_HIGH, PRO_LOW, FLASH],
     },
     "implement": {
         "skip_permissions": True,
         "effort": None,
         "timeout": "15m",
         "stream": False,
-        "model": "gemini-3.1-pro-high",
+        "model": PRO_HIGH,
+        "model_fallbacks": [PRO_LOW, FLASH, FLASH_HIGH],
     },
     "refactor": {
         "skip_permissions": True,
         "effort": None,
         "timeout": "15m",
         "stream": False,
-        "model": "gemini-3.1-pro-high",
+        "model": PRO_HIGH,
+        "model_fallbacks": [PRO_LOW, FLASH, FLASH_HIGH],
     },
     "test": {
         "skip_permissions": True,
         "effort": "low",
         "timeout": "20m",
         "stream": False,
-        "model": "gemini-3.8-flash-medium",
+        "model": FLASH,
+        "model_fallbacks": [FLASH_HIGH],
     },
     "debug": {
         "skip_permissions": True,
@@ -63,15 +75,30 @@ TASKS = {
         "timeout": "20m",
         "stream": True,
         "model": "claude-opus-4-6-thinking",
+        "model_fallbacks": ["claude-sonnet-4-6", PRO_HIGH, FLASH],
     },
     "eval": {
         "skip_permissions": False,
         "effort": None,
         "timeout": "15m",
         "stream": False,
-        "model": "gemini-3.1-pro-low",
+        "model": PRO_LOW,
+        "model_fallbacks": [FLASH, FLASH_HIGH],
     },
 }
+
+# Lỗi có thể thử model khác (eligibility / quota / model slug).
+_MODEL_RETRY_MARKERS = (
+    "eligibility",
+    "503",
+    "unavailable",
+    "resource_exhausted",
+    "429",
+    "quota",
+    "not recognized",
+    "invalid model",
+    "model selection",
+)
 
 
 def resolve_effort(model: str | None, effort: str | None) -> str | None:
@@ -95,6 +122,33 @@ def resolve_model(task: str, cfg: dict, explicit: str | None, no_auto: bool) -> 
     if env_default:
         return env_default
     return cfg.get("model")
+
+
+def build_model_chain(
+    task: str,
+    cfg: dict,
+    explicit: str | None,
+    no_auto: bool,
+    *,
+    allow_fallback: bool,
+) -> list[str | None]:
+    primary = resolve_model(task, cfg, explicit, no_auto)
+    if no_auto and not explicit:
+        return [None]
+    if explicit or not allow_fallback:
+        return [primary] if primary else [None]
+    chain: list[str | None] = []
+    for m in [primary, *cfg.get("model_fallbacks", [])]:
+        if m and m not in chain:
+            chain.append(m)
+    return chain or [None]
+
+
+def should_retry_model(error: str | None, status: str | None) -> bool:
+    if status == "SUCCESS":
+        return False
+    text = (error or "").lower()
+    return any(marker in text for marker in _MODEL_RETRY_MARKERS)
 
 
 def find_agy() -> str:
@@ -160,6 +214,11 @@ def main() -> int:
     parser.add_argument("--no-skip-permissions", action="store_true")
     parser.add_argument("--timeout", help="Override print timeout e.g. 10m")
     parser.add_argument("--effort", choices=["low", "medium", "high"])
+    parser.add_argument(
+        "--no-model-fallback",
+        action="store_true",
+        help="Chỉ dùng model đã chọn; không thử model_fallbacks khi 503/429",
+    )
     args = parser.parse_args()
 
     cfg = TASKS[args.task]
@@ -173,32 +232,13 @@ def main() -> int:
     if args.no_skip_permissions:
         skip = False
 
-    cmd: list[str] = [
-        agy,
-        "-p",
-        args.prompt,
-        "--output-format",
-        output_format,
-        "--print-timeout",
-        args.timeout or cfg["timeout"],
-    ]
-    model = resolve_model(args.task, cfg, args.model, args.no_auto_model)
-    effort = resolve_effort(model, args.effort or cfg["effort"])
-    if effort:
-        cmd.extend(["--effort", effort])
-    if model:
-        cmd.extend(["--model", model])
-    if args.agent:
-        cmd.extend(["--agent", args.agent])
-    if args.conversation:
-        cmd.extend(["--conversation", args.conversation])
-    if args.schema:
-        schema = args.schema
-        if Path(schema).is_file():
-            schema = Path(schema).read_text(encoding="utf-8")
-        cmd.extend(["--json-schema", schema])
-    if skip:
-        cmd.append("--dangerously-skip-permissions")
+    model_chain = build_model_chain(
+        args.task,
+        cfg,
+        args.model,
+        args.no_auto_model,
+        allow_fallback=not args.no_model_fallback,
+    )
 
     cwd = Path(args.cwd).resolve()
     if not cwd.is_dir():
@@ -211,31 +251,95 @@ def main() -> int:
     out_file = Path(args.output) if args.output else out_dir / f"{ts}-{args.task}.json"
     meta_file = out_file.with_suffix(".meta.json")
 
-    print(f"running: {' '.join(cmd[:6])} ...", file=sys.stderr)
-    print(f"task: {args.task}, model: {model or '(agy default)'}", file=sys.stderr)
-    print(f"cwd: {cwd}", file=sys.stderr)
-    print(f"output: {out_file}", file=sys.stderr)
-
     # Conda sets SSL_CERT_FILE → Go (agy) skips Windows cert store → TLS fail.
     env = os.environ.copy()
     env.pop("SSL_CERT_FILE", None)
     env.pop("SSL_CERT_DIR", None)
+    env.pop("REQUESTS_CA_BUNDLE", None)
+    env.pop("CURL_CA_BUNDLE", None)
 
-    proc = subprocess.run(
-        cmd,
-        cwd=str(cwd),
-        env=env,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
+    schema_arg: str | None = None
+    if args.schema:
+        schema_arg = args.schema
+        if Path(schema_arg).is_file():
+            schema_arg = Path(schema_arg).read_text(encoding="utf-8")
 
-    stdout = proc.stdout or ""
-    stderr = proc.stderr or ""
+    proc = None
+    stdout = ""
+    stderr = ""
+    parsed = None
+    model_used: str | None = None
+    models_tried: list[str | None] = []
+    fallback_notes: list[str] = []
+
+    for idx, model in enumerate(model_chain):
+        models_tried.append(model)
+        cmd: list[str] = [
+            agy,
+            "-p",
+            args.prompt,
+            "--output-format",
+            output_format,
+            "--print-timeout",
+            args.timeout or cfg["timeout"],
+        ]
+        effort = resolve_effort(model, args.effort or cfg["effort"])
+        if effort:
+            cmd.extend(["--effort", effort])
+        if model:
+            cmd.extend(["--model", model])
+        if args.agent:
+            cmd.extend(["--agent", args.agent])
+        # Chỉ resume conversation trên lần thử model đầu (tránh ID gắn model cũ).
+        if args.conversation and idx == 0:
+            cmd.extend(["--conversation", args.conversation])
+        if schema_arg:
+            cmd.extend(["--json-schema", schema_arg])
+        if skip:
+            cmd.append("--dangerously-skip-permissions")
+
+        print(f"running: {' '.join(cmd[:6])} ...", file=sys.stderr)
+        print(
+            f"task: {args.task}, model: {model or '(agy default)'}"
+            + (f" (fallback {idx + 1}/{len(model_chain)})" if idx else ""),
+            file=sys.stderr,
+        )
+        print(f"cwd: {cwd}", file=sys.stderr)
+        print(f"output: {out_file}", file=sys.stderr)
+
+        proc = subprocess.run(
+            cmd,
+            cwd=str(cwd),
+            env=env,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+
+        stdout = proc.stdout or ""
+        stderr = proc.stderr or ""
+        parsed = parse_json_stdout(stdout)
+        status = parsed.get("status") if parsed else None
+        error = parsed.get("error") if parsed else None
+
+        if proc.returncode == 0 and status == "SUCCESS":
+            model_used = model
+            break
+
+        err_text = error or stderr or f"exit {proc.returncode}"
+        if idx < len(model_chain) - 1 and should_retry_model(err_text, status):
+            note = f"{model or 'default'} failed: {err_text[:200]}"
+            fallback_notes.append(note)
+            print(f"AGY_MODEL_FALLBACK: {note}", file=sys.stderr)
+            continue
+
+        model_used = model
+        break
+
+    assert proc is not None
     out_file.write_text(stdout, encoding="utf-8")
 
-    parsed = parse_json_stdout(stdout)
     status = parsed.get("status") if parsed else None
     response = (parsed.get("response") or "") if parsed else ""
     conversation_id = parsed.get("conversation_id") if parsed else None
@@ -244,7 +348,9 @@ def main() -> int:
 
     meta = {
         "task": args.task,
-        "model": model,
+        "model": model_used,
+        "models_tried": models_tried,
+        "model_fallback_notes": fallback_notes,
         "cmd": cmd,
         "cwd": str(cwd),
         "exit_code": proc.returncode,

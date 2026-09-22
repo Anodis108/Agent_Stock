@@ -307,7 +307,7 @@ Tiếp tục từng task một.
 ### Prompt cho Cursor
 
 ```txt
-Continue with the next unchecked item in specs/implementation-plan.md.
+Continue with one next unchecked item in specs/implementation-plan.md.
 
 Implement only that item.
 Do not modify unrelated files unless necessary.

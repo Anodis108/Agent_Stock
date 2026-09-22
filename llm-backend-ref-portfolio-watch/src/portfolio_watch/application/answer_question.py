@@ -38,6 +38,7 @@ class AnswerQuestionResult:
     news: NewsAgentResult | None = None
     eval_result: EvalAgentResult | None = None
     compose: AnswerComposeResult | None = None
+    diagram_result: Any | None = None
     hitl_used: bool = False
     pending_approvals_created: int = 0
     error: str | None = None

@@ -1,10 +1,9 @@
 # MVP Status Report — Portfolio Watch & Chat Agent
 
-**Ngày báo cáo:** 2026-09-17  
+**Ngày báo cáo:** 2026-09-22  
 **Đối chiếu:** `specs/product-spec.md`, `specs/implementation-plan.md`,  
 `specs/test-plan.md`  
-**Trạng thái tổng:** MVP **hoàn thành** theo checklist Phase 1–10 (không còn
-`- [ ]` trong `implementation-plan.md`).
+**Trạng thái tổng:** V3 (Phase 16) hoàn thành.
 
 ---
 
@@ -51,9 +50,10 @@ Không còn mục unchecked trong `implementation-plan.md`.
 - Email / push thật (chỉ console/DB notifier)
 - Nhiều nguồn giá/tin
 - Fine-tune / RAG dài hạn
-- Observability dashboard (LangFuse tuỳ chọn, không bắt buộc)
+- Observability dashboard (LangFuse tuỳ chọn, không bắt buộc - V3 có cơ chế fallback tắt vẫn chạy)
 - CI chạy eval mọi PR
 - A/B testing / hosted prompt registry
+- Qdrant long-term memory (tuỳ chọn - V3 fallback bỏ qua nếu không có)
 
 ### Khoảng trống vận hành (không chặn AC checklist, nên biết)
 
@@ -77,46 +77,26 @@ Không còn mục unchecked trong `implementation-plan.md`.
 
 ---
 
-## How to run locally
+## How to run (Docker-first)
 
-Chi tiết: [README.md](../README.md) mục **Chạy local**.
+Chi tiết: [README.md](../README.md) mục **Quick Start (Docker-first)**.
+Ứng dụng ưu tiên chạy bằng Docker Compose cho môi trường product.
+Việc chạy `uvicorn` local không còn là đường chính.
 
 ```bash
-cd llm-backend-ref-portfolio-watch
-python -m pip install -U pip
-pip install -e .
-cp .env.example .env          # điền OPENAI_API_KEYS nếu dùng LLM OpenAI
-python -m src.portfolio_watch.main
+docker compose up --build -d
+docker compose run --rm app python -m src.portfolio_watch.eval.run --self-check
 ```
 
-- UI + API: **http://127.0.0.1:8000/** (port **8000**)
-- Health: http://127.0.0.1:8000/health
-- Frontend = static `web/` mount bởi FastAPI — **không** cần `npm`
+- UI + API: **http://localhost:8000/** (port **8000**)
+- Health: http://localhost:8000/health
+- Frontend = static `src/portfolio_watch/frontend/` mount bởi FastAPI
 
 Seed watchlist nếu trống:
 
 ```bash
-curl -X POST http://127.0.0.1:8000/watchlist -H "Content-Type: application/json" -d "{\"symbol\":\"FPT\",\"threshold_pct\":3.0}"
+curl -X POST http://localhost:8000/watchlist -H "Content-Type: application/json" -d "{\"symbol\":\"FPT\",\"threshold_pct\":3.0}"
 ```
-
----
-
-## How to demo with ngrok
-
-Chi tiết: [README.md](../README.md) mục **Demo with local** (§ ngrok).
-
-Vì UI và API **cùng origin** trên cổng 8000, chỉ cần **một** tunnel:
-
-```bash
-# Terminal 1
-python -m src.portfolio_watch.main
-
-# Terminal 2
-ngrok http 8000
-```
-
-Mở URL HTTPS ngrok in ra. Giữ `API_BASE = ""` trong `web/app.js` (cùng host).
-Không cần tunnel backend riêng trừ khi tách process/port (không phải kiến trúc MVP hiện tại).
 
 ---
 
@@ -152,7 +132,25 @@ Chạy: `docker compose up --build` → http://localhost:5173
 
 ---
 
+## V3 complete (2026-09-22)
+
+| Hạng mục V3 (AC 1-9) | Trạng thái | Evidence |
+|---|---|---|
+| 1. Docker E2E (UI, chat, market status, HITL) | Done | `docker-compose.yml`, README Docker quick start |
+| 2. Chat UI: live graph panel + hover I/O | Done | `frontend/app.js` live graph; `tests/test_frontend.py` |
+| 3. Langfuse: 1 root trace + node info (tắt vẫn chạy) | Done | `infra/monitoring/`; `MONITORING_ENABLED=false` smoke |
+| 4. Structured output parse/validate | Done | Pydantic schemas; `tests/test_structured_output.py` |
+| 5. Memory: short-term + long-term (TTL, fallback) | Done | `memory_store.py`; `tests/test_short_term_memory.py`, `test_long_term_memory.py` |
+| 6. Single app kiến trúc (API + UI cùng product) | Done | `backend/main.py`; compose 1 service `app`; `tests/test_docker.py` |
+| 7. Golden eval version/slice, `by_slice`, injection 100% | Done | `golden_v3.yaml`, `eval/run.py`, `v3_baseline.json`; Phase 15 gates |
+| 8. Yêu cầu vẽ sơ đồ hiện sơ đồ trên UI | Done | `diagram_agent/`; Mermaid trong `frontend/app.js` |
+| 9. Docs (README) chỉ Docker product + lệnh eval trong container | Done | `README.md`; `tests/test_readme_phase16.py` |
+
+- **V3 notes:** Qdrant và Langfuse là các thành phần tuỳ chọn, có thể chạy dự phòng không crash.
+
+---
+
 ## Kết luận
 
 MVP Phase 1–10 **done**. **V2 Phase 1–16 done** — xem `specs/implementation-plan.md`.
-Product-spec §5 acceptance criteria đã tick qua Docker + eval + docs.
+**V3 hoàn thành** (Phase 16 done): AC 1–9, README demo walkthrough, eval in container.

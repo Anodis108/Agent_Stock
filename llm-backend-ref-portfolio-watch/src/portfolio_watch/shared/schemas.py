@@ -28,9 +28,9 @@ class RewriteOutput(BaseModel):
         default_factory=list,
         description="Danh sách mọi mã cổ phiếu xuất hiện trong câu hỏi / ngữ cảnh",
     )
-    intent: Literal["price_lookup", "news_lookup", "explain"] = Field(
+    intent: Literal["price_lookup", "news_lookup", "explain", "diagram"] = Field(
         default="price_lookup",
-        description="Ý định tra cứu: price_lookup | news_lookup | explain",
+        description="Ý định tra cứu: price_lookup | news_lookup | explain | diagram",
     )
 
     @field_validator("symbol", mode="before")
@@ -70,9 +70,9 @@ class RewriteOutput(BaseModel):
 class SupervisorOutput(BaseModel):
     """Schema điều phối các worker agents cho nhánh hỏi-đáp."""
 
-    agents_to_call: list[Literal["price", "news", "eval"]] = Field(
+    agents_to_call: list[Literal["price", "news", "eval", "diagram"]] = Field(
         default_factory=lambda: ["price"],
-        description="Danh sách agents cần gọi (price, news, eval)",
+        description="Danh sách agents cần gọi (price, news, eval, diagram)",
     )
     reason: str = Field(
         default="",
@@ -84,7 +84,7 @@ class SupervisorOutput(BaseModel):
     def _clean_agents(cls, v: Any) -> list[str]:
         if not isinstance(v, list):
             return ["price"]
-        allowed = {"price", "news", "eval"}
+        allowed = {"price", "news", "eval", "diagram"}
         valid: list[str] = []
         for a in v:
             name = str(a).strip().lower()
@@ -338,8 +338,46 @@ def parse_memory_fact(raw_or_obj: Any) -> MemoryFact:
         return MemoryFact(worth_saving=False, fact="")
 
 
+# ==============================================================================
+# 9. Diagram Plan Schema (Phase 14)
+# ==============================================================================
+
+class DiagramPlanOutput(BaseModel):
+    """Schema cấu trúc cho plan vẽ sơ đồ Mermaid."""
+
+    title: str = Field(
+        default="Diagram",
+        description="Tiêu đề của sơ đồ"
+    )
+    nodes: list[str] = Field(
+        default_factory=list,
+        description="Danh sách các node (agent/step ids, vd: price_agent, news_agent)"
+    )
+    edges: list[dict[str, str]] = Field(
+        default_factory=list,
+        description="Danh sách các cạnh kết nối, chứa key 'from' và 'to'"
+    )
+    mermaid: str = Field(
+        default="",
+        description="Nội dung mã Mermaid hợp lệ (không chứa block markdown ```)"
+    )
+    format: Literal["mermaid", "json"] = Field(
+        default="mermaid",
+        description="Định dạng trả về"
+    )
+
+    def to_graph_json(self) -> dict:
+        """Chuyển đổi thành cấu trúc dict/json."""
+        return {
+            "title": self.title,
+            "nodes": self.nodes,
+            "edges": self.edges,
+        }
+
+
 __all__ = [
     "ClassifierOutput",
+    "DiagramPlanOutput",
     "EvalSeverityOutput",
     "MemoryExtractOutput",
     "MemoryFact",

@@ -81,10 +81,23 @@ Full flag matrix: [references/task-routing.md](references/task-routing.md).
 
 Override (ưu tiên cao → thấp): `--model` → `AGY_MODEL_<TASK>` → `AGY_MODEL` → `--no-auto-model` (để agy tự chọn).
 
+### Model fallback (tự động)
+
+Wrapper **ưu tiên model phù hợp task**, nếu lỗi eligibility / 503 / 429 / model không nhận → thử `model_fallbacks` trong `agy_run.py` (ghi `AGY_MODEL_FALLBACK` trên stderr + `.meta.json`).
+
+| Task | Model chính | Fallback |
+| --- | --- | --- |
+| `implement` / `refactor` | `gemini-3.1-pro-high` | pro-low → flash-medium → flash-high |
+| `review` | `claude-sonnet-4-6` | pro-high → pro-low → flash |
+| `debug` | `claude-opus-4-6-thinking` | sonnet → pro-high → flash |
+| `eval` | `gemini-3.1-pro-low` | flash-medium → flash-high |
+
+Tắt fallback: `--no-model-fallback`. Ép 1 model cố định: `--model <slug>` (không fallback).
+
 ```bash
-# Ép model cho 1 lần chạy
+# Ép model cho 1 lần chạy (không fallback)
 python .cursor/skills/antigravity-cli/scripts/agy_run.py \
-  --task implement --model claude-sonnet-4-6 --prompt "..." --cwd .
+  --task implement --model claude-sonnet-4-6 --no-model-fallback --prompt "..." --cwd .
 
 # Override mặc định implement cho cả project (bash)
 export AGY_MODEL_IMPLEMENT=gemini-3.1-pro-high
@@ -163,6 +176,7 @@ For production, prefer scoped rules in `~/.gemini/antigravity-cli/settings.json`
 | --- | --- |
 | `agy: command not found` | Install CLI; on Windows ensure `%LOCALAPPDATA%\agy\bin` is on PATH |
 | `x509: certificate signed by unknown authority` | Unset `SSL_CERT_FILE` (conda sets it) — wrapper does this; or `env -u SSL_CERT_FILE agy ...` |
+| `503` / Eligibility / quota trên Pro | Wrapper tự fallback Flash (xem stderr `AGY_MODEL_FALLBACK`) |
 | `authentication required` | Run interactive `agy` once, or configure Gemini API key path |
 | Empty stdout, exit 0 | Upgrade agy; always use `--output-format json` (wrapper does this) |
 | Tool soft-denied in stderr | Add `permissions.allow` rule or use `--skip-permissions` |

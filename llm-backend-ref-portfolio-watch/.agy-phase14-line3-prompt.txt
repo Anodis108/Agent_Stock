@@ -1,0 +1,40 @@
+Implement ONLY Phase 14 line 3 in specs/implementation-plan.md:
+`[ ] UI render sơ đồ trong bubble hoặc panel.`
+
+Repo: d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/llm-backend-ref-portfolio-watch
+
+Context (already done in line 1–2):
+- `/chat` response includes top-level `diagram: { mermaid, format, graph_json }` via backend/ai_client.py and main.py forwarding.
+- `answer` text may contain fenced ```mermaid block.
+- diagram_agent returns static Mermaid scan flow.
+
+Scope — ONLY line 3 (UI render). Do NOT implement line 4 (structured LLM output).
+
+Tasks:
+1. `frontend/index.html`: load mermaid.js CDN (e.g. https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js) before app.js; optional init script or defer to app.js.
+
+2. `frontend/app.js`:
+   - Add `renderMermaidInElement(el, code)` using `mermaid.run({ nodes: [el] })` or legacy `mermaid.render`.
+   - Extend chat rendering: when assistant message has `diagram.mermaid` OR fenced mermaid in answer text, render SVG inside bubble (`.diagram-panel` or `.mermaid-diagram`) instead of showing raw code block.
+   - Update `doChat` to pass `data.diagram` (or nested in data.result) to assistant append function.
+   - Keep plain text for non-diagram answers unchanged.
+   - Export/test hook: `window.PW_renderMermaidInElement` if useful for tests.
+
+3. `frontend/style.css`: styles for `.mermaid-diagram` / `.diagram-panel` (max-width, overflow-x auto, margin in chat bubble).
+
+4. `tests/test_frontend.py`: add `test_phase14_diagram_ui_render`:
+   - index.html includes mermaid script
+   - app.js has render helper + doChat uses diagram payload
+   - css has diagram class
+
+5. `specs/implementation-plan.md`: mark line 3 `[x]` only.
+
+6. `specs/change-log.md`: entry for Phase 14 line 3 + manual demo steps.
+
+Constraints:
+- Minimal diff; match existing vanilla JS IIFE style in app.js.
+- No separate AI calls from frontend.
+- Do not change backend unless diagram field is dropped in main.py forwarding (fix only if broken).
+- Run: `python -m pytest tests/test_frontend.py tests/test_phase14.py -q --tb=line`
+
+Output: list files changed and pytest result.

@@ -1,0 +1,37 @@
+You are implementing in the repo cwd (Portfolio Watch V3).
+
+## Task — ONE checklist item only
+Implement ONLY this single unchecked line from specs/implementation-plan.md Phase 14:
+
+- [ ] Intent "vẽ sơ đồ" → node/agent `diagram_agent` (hoặc nhánh supervisor).
+
+Do NOT implement other Phase 14 lines (Mermaid output, UI render, structured diagram plan).
+Do NOT start Phase 15+.
+
+## Acceptance (line 1 only)
+1. Detect diagram intent when user asks to draw/diagram (e.g. "vẽ sơ đồ", "ve so do", "diagram", "flowchart") in rewrite and/or supervisor routing.
+2. Add `agents/diagram_agent/` (minimal) + LangGraph node `diagram_agent` in `graph/chat.py`.
+3. Supervisor branch: if intent is `diagram` (or route=diagram), graph goes to `diagram_agent` instead of `workers` → then `answer_composer` (or END with stub answer). Workers path unchanged for price/news.
+4. `diagram_agent` stub OK for this line: set state with `diagram_pending=True` or placeholder answer mentioning diagram route — full Mermaid is Phase 14 line 2.
+5. Steps[] must include a step named `diagram_agent` when diagram intent fires (for live graph panel).
+6. Pytest: `test_phase14_diagram_intent_routes_to_diagram_agent` — heuristic brain or mock, question "Vẽ sơ đồ luồng scan FPT" → routing includes diagram / step list contains diagram_agent. Cheap, no LLM if possible.
+7. Mark ONLY this line `[x]` in specs/implementation-plan.md.
+8. Append specs/change-log.md for this line + manual test steps.
+
+## Key files (read first)
+- `src/portfolio_watch/agents/supervisor_agent/nodes.py` — intent + route_question
+- `src/portfolio_watch/graph/chat.py` — LangGraph nodes/edges
+- `src/portfolio_watch/shared/schemas.py` — extend intent/agents literals if needed
+- `src/portfolio_watch/application/answer_question.py` — steps if needed
+
+## Constraints
+- Minimal diff; match existing agent folder pattern (nodes.py, __init__.py).
+- Extend `_ALLOWED_INTENTS` / routing schema carefully.
+- Cheap pytest; edit repo cwd directly NOT scratch.
+
+## Verify
+```bash
+python -m pytest tests/ -q --tb=line -k "phase14_diagram"
+```
+
+Do the file edits yourself.

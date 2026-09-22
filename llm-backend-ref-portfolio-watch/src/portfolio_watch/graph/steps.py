@@ -79,6 +79,21 @@ def build_steps_from_chunks(
                         output_data=out_val,
                     )
 
+            elif node_name == "diagram_agent":
+                diagram_res = output.get("diagram_result")
+                if diagram_res:
+                    add(
+                        "diagram_agent",
+                        "done",
+                        "diagram rendered",
+                        input_data={"symbol": last_symbol or ""},
+                        output_data={
+                            "diagram_pending": getattr(diagram_res, "diagram_pending", True),
+                            "mermaid": getattr(diagram_res, "mermaid", None),
+                            "graph_json": getattr(diagram_res, "graph_json", None),
+                        }
+                    )
+
             elif node_name == "workers":
                 price = output.get("price")
                 news = output.get("news")

@@ -129,6 +129,14 @@ def _chat_inprocess(
     if result.eval_result is not None:
         severity = result.eval_result.severity.model_dump(mode="json")
 
+    diag = None
+    if getattr(result, "diagram_result", None) is not None:
+        diag = {
+            "mermaid": getattr(result.diagram_result, "mermaid", None),
+            "graph_json": getattr(result.diagram_result, "graph_json", None),
+            "format": getattr(result.diagram_result, "format", "mermaid"),
+        }
+
     return {
         "answer": result.answer,
         "steps": list(result.steps or []),
@@ -142,6 +150,7 @@ def _chat_inprocess(
         "price": price_payload,
         "news_count": len(result.news.items) if result.news else 0,
         "severity": severity,
+        "diagram": diag,
     }
 
 

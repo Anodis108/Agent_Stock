@@ -1,0 +1,32 @@
+You are implementing in the repo cwd (Portfolio Watch V3).
+
+## Task
+Implement ONLY Phase 13 from specs/implementation-plan.md — Connect UI ↔ product data.
+
+Checklist (do all):
+- [ ] Chat / graph / market / watchlist / HITL cùng origin app (Phase 2–3).
+- [ ] Quét + approve/reject hoạt động từ UI mới.
+- [ ] Không gọi AI service tách (nếu đã gộp).
+
+Done when: flow A–C trong specs/product-spec.md chạy trên một URL (document manual steps in change-log).
+
+## Recommended work (minimal glue — most UI exists)
+1. **Frontend wiring:** ensure after scan / approve / reject / watchlist CRUD the relevant panels refresh (market, approvals, watchlist) without page reload. No fetch to :8001 or /v1/* from browser — only Backend routes on same origin.
+2. **Backend:** confirm `backend/main.py` is single entry; no new services. Optional: small helper if market not refreshed after HITL — wire in existing handlers only if missing.
+3. **Tests:** add `test_phase13_*` in `tests/test_frontend.py` and/or `tests/test_backend.py`:
+   - assert UI JS uses `/chat`, `/scan`, `/market`, `/watchlist`, `/approvals` (not AI port)
+   - assert product TestClient can hit all endpoints on one app
+   - optional: scan → market quote updated (mock or store upsert path)
+4. Mark Phase 13 `[x]` in specs/implementation-plan.md.
+5. Append specs/change-log.md with integration demo steps (flows A–C on http://127.0.0.1:8000/).
+
+## Constraints
+- Minimal diff; vanilla JS/CSS; do NOT start Phase 14+.
+- Cheap pytest only — do NOT idle on docker compose.
+
+## Verify
+```bash
+python -m pytest tests/test_frontend.py tests/test_backend.py tests/test_docker.py -q --tb=line
+```
+
+Do the file edits yourself.

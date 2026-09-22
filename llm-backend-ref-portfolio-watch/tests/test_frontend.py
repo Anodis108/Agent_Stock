@@ -78,3 +78,70 @@ def test_phase11_live_graph_and_hover_io():
     assert "PW_showNodeInspector" in js
     assert "showNodeInspector" in js
     assert "step.input" in js and "step.output" in js
+
+def test_phase13_single_origin_wiring():
+    js = (FE / "app.js").read_text(encoding="utf-8")
+    for ep in ("/chat", "/scan", "/market", "/watchlist", "/approvals"):
+        assert ep in js
+    assert "8001" not in js
+    assert "/v1/" not in js
+
+
+def test_phase13_no_separate_ai_from_frontend():
+    """Product gộp: browser không gọi AI service :8001 / /v1/*."""
+    js = (FE / "app.js").read_text(encoding="utf-8")
+    cfg = (FE / "config.js").read_text(encoding="utf-8")
+    assert "8001" not in js
+    assert "/v1/" not in js
+    assert "AI_BASE_URL" not in js
+    assert "AI_TRANSPORT" not in js
+    assert "BACKEND_BASE_URL" in cfg
+    assert 'BACKEND_BASE_URL: ""' in cfg or "BACKEND_BASE_URL: ''" in cfg
+
+
+def test_phase13_scan_approve_ui_wiring():
+    """Flow C: quét + approve/reject từ UI mới (app.js)."""
+    js = (FE / "app.js").read_text(encoding="utf-8")
+    html = (FE / "index.html").read_text(encoding="utf-8")
+
+    for fn in ("doScan", "doApprove", "doReject", "loadApprovals", "loadMarket"):
+        assert fn in js
+    assert 'api("POST", "/scan"' in js
+    assert '"/approvals/"' in js and "/approve" in js and "/reject" in js
+    # Refresh panels sau hành động (không reload trang)
+    assert "loadApprovals()" in js
+    assert "loadMarket()" in js
+    assert "location.reload" not in js
+    assert "scan-form" in html
+    assert "approvals-list" in html
+
+
+def test_phase14_diagram_ui_render():
+    """Phase 14: UI render sơ đồ trong bubble hoặc panel."""
+    html = (FE / "index.html").read_text(encoding="utf-8")
+    css = (FE / "style.css").read_text(encoding="utf-8")
+    js = (FE / "app.js").read_text(encoding="utf-8")
+
+    assert "mermaid.min.js" in html
+    assert "renderMermaidInElement" in js
+    assert "initMermaid" in js
+    assert "data.diagram" in js
+    assert "PW_renderMermaidInElement" in js
+    assert ".mermaid-diagram" in css
+    assert ".diagram-panel" in css
+
+
+def test_phase16_error_resilience_ui():
+    """Phase 16 line 1: UI error resilience (no blank page on failure)."""
+    html = (FE / "index.html").read_text(encoding="utf-8")
+    js = (FE / "app.js").read_text(encoding="utf-8")
+
+    assert 'id="watchlist-error"' in html
+    assert 'id="approvals-error"' in html
+    assert 'id="scan-error"' in html
+
+    assert "allSettled" in js or "safeLoadWatchlist" in js
+    assert "showApprovalsError" in js
+    assert 'addEventListener("error"' in js
+    assert 'addEventListener("unhandledrejection"' in js
+    assert "location.reload" not in js

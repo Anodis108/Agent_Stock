@@ -161,3 +161,38 @@ def test_build_steps_from_chunks_populates_io():
     assert steps[0]["name"] == "rewrite_question"
     assert steps[0]["input"] == {"question": "fpt?"}
     assert steps[0]["output"]["symbol"] == "FPT"
+
+def test_phase13_single_app_endpoints():
+    client = TestClient(app)
+    assert client.get("/health").status_code == 200
+    assert client.get("/watchlist").status_code == 200
+    assert client.get("/market").status_code == 200
+    assert client.get("/approvals").status_code == 200
+
+
+def test_phase13_scan_and_approve_api():
+    """Flow C: approve/reject API + market phản ánh pending (store-only, nhanh)."""
+    client = TestClient(app)
+    store.add_pending(
+        ApprovalRecord(id="ap-p13", user_id="default", symbol="FPT", gate="gate1")
+    )
+    assert client.get("/approvals").json()["count"] == 1
+    market_before = client.get("/market").json()
+    assert any(i["symbol"] == "FPT" and i["status"] == "pending" for i in market_before["items"])
+
+    ok = client.post("/approvals/ap-p13/approve", json={"user_id": "default"})
+    assert ok.status_code == 200
+    assert ok.json()["ok"] is True
+    assert client.get("/approvals").json()["count"] == 0
+
+    store.add_pending(
+        ApprovalRecord(id="ap-p13b", user_id="default", symbol="VNM", gate="gate1")
+    )
+    store.upsert_watchlist(WatchlistItem(symbol="VNM", threshold_pct=3.0))
+    rej = client.post(
+        "/approvals/ap-p13b/reject",
+        json={"user_id": "default", "reason": "tin nhiễu"},
+    )
+    assert rej.status_code == 200
+    assert rej.json()["ok"] is True
+    assert client.get("/approvals").json()["count"] == 0

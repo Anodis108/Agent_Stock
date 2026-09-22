@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import os
 import re
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 from dotenv import find_dotenv, load_dotenv
@@ -17,7 +18,13 @@ from pydantic import BaseModel, Field
 from src.portfolio_watch.backend.ai_client import AiClientError, ai_chat, ai_scan
 from src.portfolio_watch.backend.cors_util import resolve_cors_origins
 from src.portfolio_watch.backend.steps import ensure_steps_reflect_error, normalize_steps
-from src.portfolio_watch.backend.store import ApprovalRecord, RunRecord, Store, WatchlistItem
+from src.portfolio_watch.backend.store import (
+    ApprovalRecord,
+    LastQuoteRecord,
+    RunRecord,
+    Store,
+    WatchlistItem,
+)
 
 load_dotenv(find_dotenv(".env"), override=False)
 
@@ -90,6 +97,23 @@ class ApproveRequest(BaseModel):
 class RejectRequest(BaseModel):
     reason: str
     user_id: str = "default"
+
+
+MarketStatus = Literal["normal", "abnormal", "pending", "unknown"]
+
+
+class MarketItemOut(BaseModel):
+    symbol: str
+    price: float | None = None
+    change_pct: float | None = None
+    status: MarketStatus
+    updated_at: str | None = None
+    threshold_pct: float | None = None
+
+
+class MarketListResponse(BaseModel):
+    items: list[MarketItemOut] = Field(default_factory=list)
+    count: int = 0
 
 
 def _norm_symbol(raw: str) -> str:
@@ -195,6 +219,58 @@ def delete_watchlist(
 def get_approvals(user_id: str = Query(default="default")) -> dict[str, Any]:
     items = [a.as_dict() for a in store.list_pending(user_id)]
     return {"items": items, "count": len(items)}
+
+
+def _market_status(
+    symbol: str, route: str | None, pending_symbols: set[str]
+) -> MarketStatus:
+    if symbol.upper() in pending_symbols:
+        return "pending"
+    if not route:
+        return "unknown"
+    r = route.lower()
+    if "bất thường" in r or "abnormal" in r:
+        return "abnormal"
+    if "bình thường" in r or "normal" in r:
+        return "normal"
+    return "unknown"
+
+
+def _save_quote_from_scan(data: dict[str, Any], user_id: str) -> None:
+    symbol = str(data.get("symbol") or "").strip().upper()
+    if not symbol:
+        return
+    price_obj = data.get("price") if isinstance(data.get("price"), dict) else {}
+    store.upsert_last_quote(
+        LastQuoteRecord(
+            symbol=symbol,
+            user_id=user_id,
+            price=price_obj.get("latest_close"),
+            change_pct=price_obj.get("change_pct"),
+            route=str(data.get("route") or ""),
+            updated_at=datetime.now(timezone.utc).isoformat(),
+        )
+    )
+
+
+@app.get("/market", response_model=MarketListResponse)
+def get_market(user_id: str = Query(default="default")) -> MarketListResponse:
+    pending_symbols = {a.symbol.upper() for a in store.list_pending(user_id)}
+    items: list[MarketItemOut] = []
+    for wl in store.list_watchlist(user_id):
+        quote = store.get_last_quote(user_id, wl.symbol)
+        route = quote.route if quote else None
+        items.append(
+            MarketItemOut(
+                symbol=wl.symbol,
+                price=quote.price if quote else None,
+                change_pct=quote.change_pct if quote else None,
+                status=_market_status(wl.symbol, route, pending_symbols),
+                updated_at=quote.updated_at if quote else None,
+                threshold_pct=wl.threshold_pct,
+            )
+        )
+    return MarketListResponse(items=items, count=len(items))
 
 
 @app.post("/approvals/{approval_id}/approve")
@@ -387,6 +463,7 @@ def post_scan(body: ScanRequest) -> dict[str, Any]:
     except AiClientError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     _ingest_pending_from_scan(data, user_id)
+    _save_quote_from_scan(data, user_id)
     data = dict(data or {})
     data["request_id"] = request_id
     return _attach_run(kind="scan", user_id=user_id, data=data)

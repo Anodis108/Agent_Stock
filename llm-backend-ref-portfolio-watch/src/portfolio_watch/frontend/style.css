@@ -317,6 +317,22 @@ body {
   font-size: 0.85rem;
 }
 
+/* Diagram styles */
+.diagram-panel {
+  max-width: 100%;
+  overflow-x: auto;
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  background-color: #fff;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+.mermaid-diagram {
+  display: flex;
+  justify-content: center;
+}
+
 /* Composer cố định ở đáy */
 .composer-container {
   padding: 0.75rem 1rem;
@@ -1006,4 +1022,43 @@ body {
   .header-desc {
     display: none;
   }
+}
+
+/* Phase 12 — Market status tab */
+.market-error, .watchlist-error, .approvals-error, .scan-error {
+  background: var(--error-bg);
+  border: 1px solid var(--error-border);
+  color: var(--error-text);
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  margin-bottom: 0.75rem;
+}
+
+.market-status {
+  display: inline-block;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+}
+
+.market-status-normal {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.market-status-abnormal {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.market-status-pending {
+  background: #fffbeb;
+  color: #b45309;
+}
+
+.market-status-unknown {
+  background: var(--border-subtle);
+  color: var(--muted);
 }

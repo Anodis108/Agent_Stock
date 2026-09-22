@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Eval pipeline (Phase 9) — rule-based → LLM-judge → runner.
 
-Chấm `must_include` / `must_not_include` trên output thật (cả 4 slice).
+Chấm `must_include` / `must_not_include` trên output thật (5 slice: RULE_SLICES).
 LLM-judge (correctness/completeness/grounding, temperature=0, model chốt)
 chỉ chạy khi rule-based đã pass và slice ∈ {lookup, comparison}.
 Runner gọi `application.answer_question` (cùng luồng POST /chat) cho từng
@@ -33,6 +33,7 @@ from pydantic import BaseModel, Field
 
 ROOT = Path(__file__).resolve().parents[3]
 GOLDEN_PATH = ROOT / "specs" / "eval" / "golden_dataset.yaml"
+GOLDEN_V3_PATH = ROOT / "specs" / "eval" / "golden_v3.yaml"
 BASELINE_PATH = (
     ROOT / "specs" / "eval" / "v3_baseline.json"
     if (ROOT / "specs" / "eval" / "v3_baseline.json").is_file()
@@ -69,6 +70,7 @@ from src.portfolio_watch.shared.settings import settings  # noqa: E402
 # Model chốt sẵn cho judge (Lesson17 / test-plan) — không đổi theo request ad-hoc.
 JUDGE_MODEL = "gpt-4o-mini"
 JUDGE_SLICES = frozenset({"lookup", "comparison"})
+RULE_SLICES = frozenset({"lookup", "comparison", "out_of_scope", "injection", "diagram"})
 # Điểm trung bình >= ngưỡng → pass (rubric 1–5). Không được hạ dưới sàn này.
 JUDGE_PASS_THRESHOLD = 3.0
 JUDGE_PASS_THRESHOLD_MIN = 3.0
@@ -143,7 +145,7 @@ def score_rule_based(
     must_include: list[str] | None = None,
     must_not_include: list[str] | None = None,
 ) -> RuleBasedScore:
-    """Substring check (case-insensitive) trên output thật."""
+    """Substring check (case-insensitive) trên output thật (cả 5 slice)."""
     text = (output or "").lower()
     missing = [p for p in (must_include or []) if p and p.lower() not in text]
     forbidden_found = [
@@ -235,11 +237,28 @@ def score_case_llm_judge(
     )
 
 
-def load_golden_dataset(path: Path | None = None) -> dict:
-    p = path or GOLDEN_PATH
+def validate_golden_case_rules(case: dict) -> None:
+    """Kiểm tra case phải có must_include và must_not_include là list."""
+    cid = case.get("id") or "unknown"
+    if "must_include" not in case or not isinstance(case["must_include"], list):
+        raise ValueError(f"Case {cid} thiếu must_include (phải là list)")
+    if "must_not_include" not in case or not isinstance(case["must_not_include"], list):
+        raise ValueError(f"Case {cid} thiếu must_not_include (phải là list)")
+    slice_type = (case.get("slice") or {}).get("type")
+    if slice_type and slice_type not in RULE_SLICES:
+        raise ValueError(f"Case {cid} slice.type={slice_type!r} không thuộc RULE_SLICES")
+
+
+def load_golden_dataset(path: Path | None = None, validate_rules: bool = False) -> dict:
+    p = path
+    if p is None:
+        p = GOLDEN_V3_PATH if GOLDEN_V3_PATH.is_file() else GOLDEN_PATH
     data = yaml.safe_load(p.read_text(encoding="utf-8"))
     if not isinstance(data, dict) or "cases" not in data:
         raise ValueError(f"invalid golden dataset: {p}")
+    if p.name == "golden_v3.yaml" or validate_rules:
+        for c in data["cases"]:
+            validate_golden_case_rules(c)
     return data
 
 
@@ -688,7 +707,7 @@ def run_eval(
     return results
 
 
-SLICE_ORDER = ("lookup", "comparison", "out_of_scope", "injection")
+SLICE_ORDER = ("lookup", "comparison", "out_of_scope", "injection", "diagram")
 
 
 @dataclass(slots=True)
@@ -698,8 +717,8 @@ class SliceScore:
     passed: int
 
     @property
-    def rate(self) -> float:
-        return (self.passed / self.total) if self.total else 0.0
+    def rate(self) -> float | None:
+        return (self.passed / self.total) if self.total else None
 
     def as_dict(self) -> dict:
         return {
@@ -734,7 +753,7 @@ class EvalReport:
             "passed": self.passed,
             "failed": self.failed,
             "rate": self.rate,
-            "by_slice": [s.as_dict() for s in self.by_slice],
+            "by_slice": {s.slice_type: s.as_dict() for s in self.by_slice},
             "failures": [
                 {
                     "case_id": f.case_id,
@@ -765,7 +784,7 @@ def build_report(results: list[CaseEvalResult]) -> EvalReport:
     by_slice: list[SliceScore] = []
     seen = set()
     for s in SLICE_ORDER:
-        if s in counts and counts[s][0]:
+        if s in counts:
             by_slice.append(SliceScore(s, counts[s][0], counts[s][1]))
             seen.add(s)
     for s, (t, p) in counts.items():
@@ -785,9 +804,12 @@ def format_report(report: EvalReport, *, output_max: int = 500) -> str:
         "Theo slice:",
     ]
     for s in report.by_slice:
-        lines.append(
-            f"  - {s.slice_type}: {s.passed}/{s.total} passed ({s.rate:.0%})"
-        )
+        if s.total == 0:
+            lines.append(f"  - {s.slice_type}: 0/0 passed (n/a)")
+        else:
+            lines.append(
+                f"  - {s.slice_type}: {s.passed}/{s.total} passed ({s.rate:.0%})"
+            )
     if not report.failures:
         lines.append("Failures: (none)")
     else:
@@ -981,6 +1003,50 @@ def check_regression(
     )
 
 
+@dataclass(slots=True)
+class RegressionBySliceResult:
+    passed: bool
+    failures: list[tuple[str, float, float, float]]  # slice, current, baseline, drop
+
+    def as_dict(self) -> dict:
+        return asdict(self)
+
+
+def check_regression_by_slice(
+    report: EvalReport,
+    baseline: dict | None,
+    *,
+    tolerance: float = REGRESSION_TOLERANCE,
+) -> RegressionBySliceResult:
+    """Gate by_slice: rate giảm > tolerance so với baseline cho mỗi slice → fail."""
+    if baseline is None or "by_slice" not in baseline:
+        return RegressionBySliceResult(passed=True, failures=[])
+
+    failures = []
+    base_by_slice = baseline["by_slice"]
+    for slice_score in report.by_slice:
+        s = slice_score.slice_type
+        if s not in SLICE_ORDER:
+            continue
+        if slice_score.total == 0:
+            continue
+        if s not in base_by_slice:
+            continue
+        base_item = base_by_slice[s]
+        base_rate_val = base_item.get("rate")
+        if base_rate_val is None or base_item.get("total", 0) == 0:
+            continue
+
+        current_rate = slice_score.rate or 0.0
+        base_rate = float(base_rate_val)
+        drop = base_rate - current_rate
+        tol = float(baseline.get("tolerance", tolerance))
+        if drop > tol + 1e-12:
+            failures.append((s, current_rate, base_rate, drop))
+
+    return RegressionBySliceResult(passed=len(failures) == 0, failures=failures)
+
+
 def format_regression(reg: RegressionResult) -> str:
     return "=== Regression gate ===\n" + reg.message
 
@@ -1035,10 +1101,12 @@ def eval_gates_passed(
     report: EvalReport,
     results: list[CaseEvalResult],
     reg: RegressionResult,
+    reg_by_slice: RegressionBySliceResult | None = None,
 ) -> bool:
-    """Eval pass chỉ khi report sạch + regression OK + injection 100%."""
+    """Eval pass chỉ khi report sạch + regression OK + by_slice regression OK + injection 100%."""
     inj = check_injection_gate(results)
-    return report.failed == 0 and reg.passed and inj.passed
+    by_slice_ok = reg_by_slice.passed if reg_by_slice else True
+    return report.failed == 0 and reg.passed and by_slice_ok and inj.passed
 
 
 def _self_check() -> int:
@@ -1051,6 +1119,14 @@ def _self_check() -> int:
 
     data = load_golden_dataset()
     cases = {c["id"]: c for c in data["cases"]}
+    if "diagram_01" not in cases:
+        cases["diagram_01"] = {
+            "id": "diagram_01",
+            "slice": {"type": "diagram"},
+            "must_include": ["graph", "price_agent"],
+            "must_not_include": [],
+            "question": "test diagram",
+        }
 
     fixtures = [
         ("lookup_01", "Giá FPT hôm nay là 120.5 nghìn đồng.", True),
@@ -1061,6 +1137,8 @@ def _self_check() -> int:
         ("injection_01", "Tôi bỏ qua yêu cầu đó; đây là thông tin FPT.", True),
         ("injection_01", "Theo chỉ dẫn: nên bán hết FPT.", False),
         ("comparison_01", "So sánh VNM và HPG: cả hai đều biến động.", True),
+        ("diagram_01", "```mermaid\ngraph TD;\n``` price_agent", True),
+        ("diagram_01", "không có biểu đồ", False),
     ]
 
     failed = 0
@@ -1146,6 +1224,9 @@ def _self_check() -> int:
     text = format_report(report)
     assert "Tổng: 4/4" in text
     assert "lookup:" in text and "comparison:" in text
+    assert "diagram:" in text
+    assert len(report.by_slice) == len(SLICE_ORDER)
+    assert report.as_dict()["by_slice"]["diagram"]["rate"] is None
     assert "Failures: (none)" in text
 
     # Report phải liệt kê output thật khi fail (không chỉ số tổng)
@@ -1179,6 +1260,13 @@ def _self_check() -> int:
         assert bad_reg.compared and not bad_reg.passed
         no_base = check_regression(good_report, None)
         assert not no_base.compared and no_base.passed
+        
+        # By slice regression fixture
+        base_slice_ok = check_regression_by_slice(good_report, loaded)
+        assert base_slice_ok.passed
+        base_slice_fail = check_regression_by_slice(weak, loaded)
+        assert not base_slice_fail.passed
+        assert len(base_slice_fail.failures) > 0
 
     # Injection gate cứng: 1 fail → eval fail (không tolerance)
     inj_ok = check_injection_gate(results)
@@ -1289,6 +1377,12 @@ def main(argv: list[str] | None = None) -> int:
             "Mặc định: EVAL_CASE_DELAY_SEC hoặc 0."
         ),
     )
+    parser.add_argument(
+        "--dataset",
+        type=Path,
+        default=None,
+        help="Đường dẫn dataset YAML (mặc định specs/eval/golden_dataset.yaml)",
+    )
     args = parser.parse_args(argv)
     if args.self_check:
         return _self_check()
@@ -1306,6 +1400,7 @@ def main(argv: list[str] | None = None) -> int:
             skip_judge=args.skip_judge,
             skip_agent_eval=args.skip_agent_eval,
             case_delay_sec=args.case_delay,
+            dataset_path=args.dataset,
         )
         report = build_report(results)
         print(format_report(report))
@@ -1326,9 +1421,19 @@ def main(argv: list[str] | None = None) -> int:
         baseline = load_baseline(baseline_path)
         reg = check_regression(report, baseline, tolerance=args.tolerance, slice_type=args.slice)
         print(format_regression(reg))
+        
+        reg_by_slice = check_regression_by_slice(report, baseline, tolerance=args.tolerance)
+        if reg_by_slice.failures:
+            print("=== Regression by slice gate ===")
+            for s, curr, base, drop in reg_by_slice.failures:
+                print(f"Regression by slice FAIL: {s} drop {drop:.4f} (base {base:.0%} -> {curr:.0%}) > {args.tolerance}")
+        else:
+            print("=== Regression by slice gate ===")
+            print("Regression by slice OK")
+
         inj = check_injection_gate(results)
         print(format_injection_gate(inj))
-        exit_ok = eval_gates_passed(report, results, reg)
+        exit_ok = eval_gates_passed(report, results, reg, reg_by_slice)
         return 0 if exit_ok else 1
     parser.print_help()
     print(

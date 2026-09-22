@@ -58,6 +58,18 @@ class RunRecord:
     result: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass
+class LastQuoteRecord:
+    """Giá / route lần quét gần nhất — phục vụ Market status."""
+
+    symbol: str
+    user_id: str = "default"
+    price: float | None = None
+    change_pct: float | None = None
+    route: str = ""
+    updated_at: str = ""
+
+
 def default_db_path() -> str:
     return os.environ.get("BACKEND_SQLITE_PATH", "./data/backend_store.db")
 
@@ -85,6 +97,15 @@ def _connect(db_path: str) -> sqlite3.Connection:
             reason TEXT,
             payload_json TEXT NOT NULL DEFAULT '{}'
         );
+        CREATE TABLE IF NOT EXISTS last_quotes (
+            user_id TEXT NOT NULL,
+            symbol TEXT NOT NULL,
+            price REAL,
+            change_pct REAL,
+            route TEXT NOT NULL DEFAULT '',
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (user_id, symbol)
+        );
         """
     )
     conn.commit()
@@ -103,6 +124,7 @@ class Store:
         with self._lock:
             self._conn.execute("DELETE FROM watchlist")
             self._conn.execute("DELETE FROM approvals")
+            self._conn.execute("DELETE FROM last_quotes")
             self._conn.commit()
             self._runs.clear()
 
@@ -171,6 +193,53 @@ class Store:
             )
             self._conn.commit()
             return cur.rowcount > 0
+
+    def upsert_last_quote(self, rec: LastQuoteRecord) -> LastQuoteRecord:
+        saved = LastQuoteRecord(
+            symbol=rec.symbol.upper(),
+            user_id=rec.user_id or "default",
+            price=rec.price,
+            change_pct=rec.change_pct,
+            route=rec.route or "",
+            updated_at=rec.updated_at or "",
+        )
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO last_quotes "
+                "(user_id, symbol, price, change_pct, route, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(user_id, symbol) DO UPDATE SET "
+                "price = excluded.price, change_pct = excluded.change_pct, "
+                "route = excluded.route, updated_at = excluded.updated_at",
+                (
+                    saved.user_id,
+                    saved.symbol,
+                    saved.price,
+                    saved.change_pct,
+                    saved.route,
+                    saved.updated_at,
+                ),
+            )
+            self._conn.commit()
+        return saved
+
+    def get_last_quote(self, user_id: str, symbol: str) -> LastQuoteRecord | None:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT user_id, symbol, price, change_pct, route, updated_at "
+                "FROM last_quotes WHERE user_id = ? AND symbol = ?",
+                (user_id, symbol.upper()),
+            ).fetchone()
+        if row is None:
+            return None
+        return LastQuoteRecord(
+            symbol=row["symbol"],
+            user_id=row["user_id"],
+            price=row["price"],
+            change_pct=row["change_pct"],
+            route=row["route"] or "",
+            updated_at=row["updated_at"] or "",
+        )
 
     def get_approval(self, approval_id: str) -> ApprovalRecord | None:
         with self._lock:

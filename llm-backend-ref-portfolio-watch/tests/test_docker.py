@@ -58,3 +58,19 @@ def test_product_app_serves_health_and_ui():
     client = TestClient(product_app)
     assert client.get("/health").status_code == 200
     assert client.get("/").status_code == 200
+
+
+def test_phase13_inprocess_default(monkeypatch):
+    """Mặc định product: AI in-process, không bắt buộc service :8001."""
+    compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+    env_ex = (ROOT / ".env.example").read_text(encoding="utf-8")
+    assert 'AI_TRANSPORT: "inprocess"' in compose
+    assert "AI_TRANSPORT=inprocess" in env_ex
+    assert "\n  ai:" not in compose
+
+    from src.portfolio_watch.backend.ai_client import _use_http
+
+    monkeypatch.delenv("AI_TRANSPORT", raising=False)
+    assert _use_http() is False
+    monkeypatch.setenv("AI_TRANSPORT", "http")
+    assert _use_http() is True
