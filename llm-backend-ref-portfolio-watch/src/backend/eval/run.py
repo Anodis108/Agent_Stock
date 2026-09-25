@@ -44,7 +44,7 @@ def _find_project_root() -> Path:
         if (p / "specs").is_dir() or (p / "pyproject.toml").is_file():
             return p
         p = p.parent
-    return Path(__file__).resolve().parents[2]
+    return Path(__file__).resolve().parents[3]
 
 
 ROOT = _find_project_root()

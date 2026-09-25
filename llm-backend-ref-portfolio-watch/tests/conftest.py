@@ -1,4 +1,10 @@
-"""Pytest — dependency thật (vnstock, Cafef, SQLite, LLM production)."""
+"""Pytest Shared Fixtures — Portfolio Watch (Clean & Unified Test Suite).
+
+Cung cấp các fixture chuẩn:
+- `real_deps`: Wiring các dependency thật (Vnstock, CafeF, SQLite memory, watchlist).
+- `client`: FastAPI TestClient kết nối với database tạm thời cô lập.
+- `ai_server_url`: AI Swarm service phục vụ kiểm thử HTTP proxy.
+"""
 
 from __future__ import annotations
 
@@ -9,6 +15,7 @@ from pathlib import Path
 
 import pytest
 import uvicorn
+from fastapi.testclient import TestClient
 
 from backend.ai_main import app as ai_app
 from backend.api.deps import AppDeps, clear_deps_cache, set_app_deps
@@ -20,10 +27,11 @@ from backend.infra.storage import (
     SqlitePriceHistoryStore,
     SqliteWatchlistStore,
 )
+from backend.main import app as main_app
 
 
 def build_real_deps(db_path: str) -> AppDeps:
-    """Cùng wiring production — deps.py."""
+    """Khởi tạo AppDeps chuẩn production phục vụ kiểm thử."""
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
     memory = SqliteMemoryStore(db_path)
     deps = AppDeps(
@@ -48,9 +56,10 @@ def _free_port() -> int:
 
 @pytest.fixture
 def real_deps(tmp_path, monkeypatch):
-    """SQLite tạm + nguồn giá/tin thật cho từng test AI/graph."""
+    """SQLite tạm thời + nguồn giá/tin thật cho từng bài kiểm thử agent/graph."""
     db = tmp_path / "portfolio_watch.db"
     monkeypatch.setenv("SQLITE_PATH", str(db))
+    monkeypatch.setenv("BACKEND_SQLITE_PATH", str(tmp_path / "backend_store.db"))
     clear_deps_cache()
     deps = build_real_deps(str(db))
     set_app_deps(deps)
@@ -59,9 +68,24 @@ def real_deps(tmp_path, monkeypatch):
     clear_deps_cache()
 
 
+@pytest.fixture
+def client(tmp_path, monkeypatch):
+    """TestClient kết nối tới app FastAPI với database tạm thời cô lập."""
+    temp_db = tmp_path / "test_api.db"
+    monkeypatch.setenv("SQLITE_PATH", str(temp_db))
+    monkeypatch.setenv("BACKEND_SQLITE_PATH", str(tmp_path / "test_store.db"))
+    clear_deps_cache()
+    deps = build_real_deps(str(temp_db))
+    set_app_deps(deps)
+    c = TestClient(main_app)
+    yield c
+    set_app_deps(None)
+    clear_deps_cache()
+
+
 @pytest.fixture(scope="session")
 def ai_server_url(tmp_path_factory):
-    """AI service thật trên port ngẫu nhiên — Backend gọi HTTP thật."""
+    """AI service thật trên port ngẫu nhiên phục vụ kiểm thử HTTP proxy."""
     base = tmp_path_factory.mktemp("ai_server")
     db = base / "ai.db"
     clear_deps_cache()

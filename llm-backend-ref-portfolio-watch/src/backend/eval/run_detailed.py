@@ -41,7 +41,7 @@ def _find_project_root() -> Path:
         if (p / "specs").is_dir() or (p / "pyproject.toml").is_file():
             return p
         p = p.parent
-    return Path(__file__).resolve().parents[2]
+    return Path(__file__).resolve().parents[3]
 
 
 ROOT = _find_project_root()
@@ -508,11 +508,12 @@ def run_detailed_evaluation(
     print(f"Đã lưu chi tiết JSON tại: {out_json}")
 
     if save_baseline_flag:
+        v_num = "5" if "v5" in p.name else "4"
         baseline_obj = {
             "created": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "purpose": "V4 Product Edition — baseline đánh giá chất lượng 30 cases chuẩn hóa",
-            "dataset": "resources/eval/golden_v4.yaml",
-            "dataset_version": "4.0",
+            "purpose": f"V{v_num} Product Edition — baseline đánh giá chất lượng {total_cases} cases chuẩn hóa",
+            "dataset": f"resources/eval/{p.name}",
+            "dataset_version": f"{v_num}.0",
             "tolerance": 0.05,
             "scorer_flags": {
                 "rule_based": True,
@@ -539,8 +540,8 @@ def run_detailed_evaluation(
             ],
         }
         target_baselines = [
-            ROOT / "resources" / "eval" / "v4_baseline.json",
-            ROOT / "specs" / "eval" / "v4_baseline.json",
+            ROOT / "resources" / "eval" / f"v{v_num}_baseline.json",
+            ROOT / "specs" / "eval" / f"v{v_num}_baseline.json",
         ]
         for b_path in target_baselines:
             b_path.parent.mkdir(parents=True, exist_ok=True)

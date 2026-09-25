@@ -1,7 +1,6 @@
-"""AI runtime cho Backend — mặc định gọi LangGraph nội bộ (Phase 2).
+"""AI runtime client — mặc định gọi LangGraph Swarm nội bộ (in-process).
 
-Giữ chữ ký `ai_chat` / `ai_scan` để `backend/main.py` không đổi.
-HTTP proxy cũ: đặt `AI_TRANSPORT=http` (+ `AI_BASE_URL`) — dùng cho test/V2 split.
+Hỗ trợ chế độ HTTP proxy khi cấu hình AI_TRANSPORT=http (dùng cho kiến trúc phân tán microservices hoặc testing).
 """
 
 from __future__ import annotations
@@ -32,7 +31,7 @@ def _use_http() -> bool:
 
 
 class AiClientError(RuntimeError):
-    pass
+    """Ngoại lệ khi gọi AI Swarm qua HTTP hoặc in-process."""
 
 
 def _is_timeout(exc: BaseException) -> bool:
@@ -112,7 +111,7 @@ def _chat_inprocess(
             user_id=user_id,
             request_id=request_id,
         )
-    except Exception as exc:  # noqa: BLE001 — map sang AiClientError cho main
+    except Exception as exc:  # noqa: BLE001
         raise AiClientError(f"AI in-process chat lỗi: {exc}") from exc
 
     price_payload = None
@@ -227,6 +226,7 @@ def ai_chat(
     user_id: str = "default",
     request_id: str | None = None,
 ) -> dict[str, Any]:
+    """Thực thi câu hỏi chat với AI Swarm (in-process hoặc qua HTTP proxy)."""
     if _use_http():
         payload: dict[str, Any] = {"question": question, "user_id": user_id}
         if request_id:
@@ -244,6 +244,7 @@ def ai_scan(
     threshold_pct: float | None = None,
     request_id: str | None = None,
 ) -> dict[str, Any]:
+    """Thực thi quét giám sát mã cổ phiếu với AI Swarm."""
     if _use_http():
         payload: dict[str, Any] = {"symbol": symbol, "user_id": user_id}
         if threshold_pct is not None:

@@ -19,8 +19,9 @@ def resolve_prompts_dir() -> Path:
     """Tìm `resources/prompts/` hoặc `prompts/` — local editable, Docker, hoặc cwd."""
     here = Path(__file__).resolve()
     candidates = (
+        here.parents[4] / "resources" / "prompts",
         here.parents[3] / "resources" / "prompts",
-        here.parents[3] / "prompts",
+        here.parents[4] / "prompts",
         Path("/app/resources/prompts"),
         Path("/app/prompts"),
         Path.cwd() / "resources" / "prompts",

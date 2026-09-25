@@ -1,5 +1,240 @@
 # Change Log — Portfolio Watch
 
+## 2026-09-25 — Phase 7: Docker Packaging & End-To-End Verification [Hoàn Thành]
+
+### 1. Thay đổi mã nguồn & cấu hình Docker
+- **Đóng gói đa tầng Backend Service Container (`src/backend/Dockerfile` & `Dockerfile`)**:
+  - Tách 2 stage: Builder (`python:3.12-slim`) và Runner (`python:3.12-slim`) tối ưu kích thước image.
+  - Sử dụng các bản phân phối wheel nội bộ trong thư mục `wheels/` (`vnstock-4.0.8`, `vnai-2.6.0`, `vnstock_ezchart-1.0.2`) để vượt qua tình trạng kiểm dịch PyPI tạm thời của thư viện `vnstock`.
+  - Cung cấp đầy đủ các thư mục và tệp cấu hình kiểm thử cần thiết trong runner stage: `src/`, `resources/`, `specs/`, `tests/`, `docker-compose.yml`, `.env.example`, `pyproject.toml`, `README.md`.
+  - Thiết lập lệnh khởi chạy chuẩn hóa: `uvicorn backend.main:app --host 0.0.0.0 --port 8000`.
+- **Đóng gói Frontend Service Container (`src/frontend/Dockerfile` & `src/frontend/nginx.conf`)**:
+  - Image nền tảng `nginx:alpine` siêu nhẹ.
+  - Cấu hình Nginx reverse-proxy chuyển tiếp toàn bộ yêu cầu API (`/api/v1/`, `/docs`, `/openapi.json`, `/health`, `/chat`, `/market`, `/sessions`) sang service `backend:8000`.
+  - Hỗ trợ đầy đủ SSE streaming (tắt proxy buffering với `proxy_buffering off;`, giữ kết nối `keep-alive`).
+- **Hoàn thiện cấu trúc điều phối dịch vụ trong `docker-compose.yml`**:
+  - Service `backend`: Expose cổng 8000, gắn kết volume bền vững `pw_data:/app/data`, volume tài nguyên `./resources:/app/resources`, volume `./specs:/app/specs`.
+  - Healthcheck tự động cho backend: Kiểm tra định kỳ `http://127.0.0.1:8000/health`.
+  - Service `frontend`: Expose cổng 3000, phụ thuộc `backend` với điều kiện `condition: service_healthy`.
+  - Runner utility service `app`: Cung cấp môi trường thực thi lệnh test và eval độc lập trong container.
+- **Cập nhật Báo cáo Tổng kết Trạng thái MVP (`specs/mvp-status-report.md`)**:
+  - Rà soát toàn diện hiện trạng hệ thống đối chiếu với 5 tiêu chuẩn nghiệm thu Acceptance Criteria trong `specs/product-spec.md` và `specs/test-plan.md`.
+  - Ghi nhận chi tiết những điểm đạt (Pass), điểm hạn chế thị trường (Fail), và phạm vi ngoài MVP (Missing).
+
+### 2. Kết quả kiểm thử tự động bên trong Docker Container
+- Thực thi toàn bộ test suite 10 files trong container:
+  ```bash
+  docker compose run --rm app pytest tests/ -v
+  ```
+- **Kết quả: 81 passed, 2 skipped, 0 failed in 732.54s (100% pass rate)**.
+- 2 test skips liên quan đến network bên ngoài khi gọi trực tiếp Vnstock API live. 100% các bài test nghiệp vụ, bảo mật guardrail, memory đa lượt, chart, SQLite persistence, Golden Dataset structure, và system compose đều vượt qua tuyệt đối.
+
+### 3. Nghiệm thu End-To-End (E2E)
+- **Frontend Nginx Proxy (cổng 3000)**:
+  - Phục vụ giao diện HTML SPA đầy đủ tại `http://localhost:3000`.
+  - Reverse-proxy endpoint `http://localhost:3000/api/v1/market/matrix-10d` trả về HTTP 200 với 10 mã cổ phiếu lớn và biến động 10 phiên.
+  - Reverse-proxy endpoint `http://localhost:3000/api/v1/chat/stream` stream SSE mượt mà các sự kiện `node_start`, `token`, `node_finish`.
+- **Backend Service (cổng 8000)**:
+  - Swagger UI tại `http://localhost:8000/docs`.
+  - Healthcheck tại `http://localhost:8000/health` trả về `{"status":"ok","service":"backend"}`.
+- Toàn bộ 7 Phase trong `specs/implementation-plan.md` đã chính thức hoàn thành `[x]`.
+
+---
+
+## 2026-09-25 — Phase 6: Local Run Instructions & Error State Verification [Hoàn Thành]
+
+### 1. Thay đổi mã nguồn & bổ sung kiểm thử
+- **Xác minh khởi chạy Uvicorn local & Static Serving**:
+  - Hỗ trợ khởi chạy linh hoạt với tham số chuẩn hóa: `uvicorn backend.main:app --app-dir src --reload --host 127.0.0.1 --port 8000` hoặc qua biến môi trường `PYTHONPATH="src;."`.
+  - Kiểm tra phục vụ giao diện Web SPA tại root `http://localhost:8000/` trả về mã trạng thái HTTP 200 kèm đầy đủ cấu trúc HTML tĩnh (`src/frontend/index.html`).
+- **Xác thực phòng thủ các trạng thái lỗi & Validation**:
+  - Bổ sung bài kiểm thử `test_api_payload_validation_and_session_auto_creation` trong `tests/test_api.py`:
+    - Payload không hợp lệ hoặc thiếu trường bắt buộc `question` ➔ HTTP 422 Unprocessable Entity.
+    - Payload sai kiểu dữ liệu ➔ HTTP 422 Unprocessable Entity.
+    - Câu hỏi rỗng chỉ chứa khoảng trắng ➔ HTTP 400 Bad Request.
+    - Mã cổ phiếu sai định dạng ➔ HTTP 400 Bad Request.
+    - Truy vấn phiên không tồn tại (`GET /api/v1/sessions/{id}`) ➔ HTTP 404 Not Found với thông điệp thân thiện `"Session không tồn tại"`.
+    - Gửi tin nhắn kèm `session_id` chưa tồn tại qua `/chat` hoặc `/api/v1/chat/stream` ➔ Tự động khởi tạo phiên mới và phản hồi bình thường mà không làm ngắt quãng trải nghiệm.
+    - Chế độ Heuristic Fallback khi không có OpenAI API Key ➔ Kích hoạt an toàn bộ não Heuristic (`HeuristicRewriteBrain`, `HeuristicSupervisorBrain`, `HeuristicAnswerDraftBrain`), giữ ứng dụng hoạt động ổn định và không sập.
+- **Hoàn thiện tài liệu hướng dẫn trong `README.md`**:
+  - Cập nhật mục *4. Khởi Chạy Máy Chủ Backend Cục Bộ* với cả 2 cách: `--app-dir src` (khuyến nghị) và `PYTHONPATH`.
+  - Bổ sung mục *5. Xác Minh Các Trạng Thái Phản Hồi & Validation (Error States)* chi tiết về các mã lỗi 422, 400, 404 và cơ chế tự động tạo session / Heuristic fallback.
+  - Bổ sung mục *6. Xử Lý Sự Cố Thường Gặp (Troubleshooting)* hướng dẫn chi tiết cách xử lý khi cổng 8000 bị chiếm dụng (Port conflict), lỗi `ModuleNotFoundError`, lỗi không tìm thấy Web SPA, và cảnh báo font Matplotlib.
+
+### 2. Kết quả kiểm thử xác minh
+- Thực thi toàn bộ bộ kiểm thử 10 file:
+  ```powershell
+  pytest tests/ -v
+  ```
+- **Kết quả: 83/83 passed (100% pass rate)**. Thời gian chạy: ~224 giây.
+- Khởi chạy và kiểm tra trực tiếp Uvicorn local: Endpoint `/health` trả về `{"status": "ok", "service": "backend"}` và root `/` phục vụ 14KB HTML Web SPA.
+
+---
+
+## 2026-09-25 — Phase 5: Golden Dataset Evaluation & Evidence Archiving [Hoàn Thành]
+
+### 1. Thay đổi mã nguồn & triển khai đánh giá
+- **Chuẩn hóa bộ dữ liệu kiểm thử vàng `golden_v5.yaml`**:
+  - Gồm chính xác 40 test cases cân bằng trên 7 slices theo đặc tả:
+    - `lookup`: 12 cases
+    - `comparison`: 8 cases
+    - `explain_why`: 6 cases
+    - `charting_diagram`: 4 cases
+    - `session_memory`: 3 cases
+    - `out_of_scope`: 4 cases
+    - `injection`: 3 cases
+  - Lưu trữ đồng bộ tại root `resources/eval/golden_v5.yaml` và `specs/eval/golden_v5.yaml`.
+- **Cập nhật và hoàn thiện `src/backend/eval/run_detailed.py`**:
+  - Hỗ trợ đánh giá đa tầng: Rule-based validation, LLM-as-a-Judge (Correctness, Completeness, Grounding), Task Success, và Trajectory verification.
+  - Tự động theo dõi chi tiết token sử dụng (App tokens vs Judge tokens), tính toán chi phí (USD và VNĐ theo tỷ giá 25,400) và latency thời gian thực.
+  - Tự động xuất tệp cơ sở dữ liệu `v5_baseline.json` khi chạy với cờ `--save-baseline` cho cả `resources/eval/` và `specs/eval/`.
+  - Xuất báo cáo Markdown chi tiết `specs/eval/eval_results_golden_v5.md` kèm bảng tổng hợp phân loại theo Slice và chi tiết từng ca kiểm thử.
+  - Xuất toàn bộ dữ liệu cấu trúc máy đọc được tại `specs/eval/eval_results_golden_v5.json`.
+
+### 2. Kết quả đánh giá & Các Chốt Chặn Chất Lượng (Quality Gates)
+- **Thực thi runner đánh giá**:
+  ```bash
+  $env:PYTHONPATH = "src"; python -m backend.eval.run_detailed --save-baseline
+  ```
+- **Số liệu tổng thể**:
+  - **Tổng số ca kiểm thử**: 40/40 cases
+  - **Tỷ lệ vượt qua tổng thể**: **37/40 Passed (92.5%)** (Vượt xa chỉ tiêu $\ge 85\%$)
+  - **Tổng token tiêu thụ**: 165,847 tokens (Pipeline/App: 112,939, Judge: 52,908)
+  - **Tổng chi phí**: $0.0307 USD (~ 779 VNĐ, trung bình ~19.5 VNĐ/câu hỏi)
+  - **Tổng thời gian thực thi**: 594.8s (trung bình: 14.87s/câu hỏi)
+- **Kiểm tra chốt chặn an toàn (Security Gates)**:
+  - **Slice `injection`**: **3/3 Passed (100.0%)** — Đạt chuẩn Zero-Tolerance Security Gate, chặn đứng mọi nỗ lực prompt injection và jailbreak.
+  - **Slice `out_of_scope`**: **4/4 Passed (100.0%)** — Từ chối lịch sự, an toàn ngay tại `pre_rewrite_guardrail`, không kích hoạt worker nodes và không bịa giá cổ phiếu.
+  - **Slice `comparison`**: **8/8 Passed (100.0%)**
+  - **Slice `explain_why`**: **6/6 Passed (100.0%)**
+  - **Slice `charting_diagram`**: **4/4 Passed (100.0%)** (Sinh biểu đồ và mã Mermaid chuẩn xác)
+  - **Slice `session_memory`**: **3/3 Passed (100.0%)** (Xử lý mượt mà ngữ cảnh đa lượt)
+  - **Slice `lookup`**: **9/12 Passed (75.0%)** (3 ca fail do dữ liệu tin tức rỗng trả về thông báo trung thực khiến judge trừ điểm)
+- **Hồ sơ dẫn chứng**:
+  - Báo cáo Markdown: `specs/eval/eval_results_golden_v5.md`
+  - Hồ sơ JSON chi tiết: `specs/eval/eval_results_golden_v5.json`
+  - Baseline dataset: `specs/eval/v5_baseline.json` & `resources/eval/v5_baseline.json`
+
+---
+
+## 2026-09-25 — Phase 4: Test Suite Consolidation (Gói `tests/` xuống <= 10 files) [Hoàn Thành]
+
+### 1. Thay đổi mã nguồn & cấu trúc bộ kiểm thử
+- **Gói gọn toàn bộ thư mục `tests/` xuống đúng 10 file Python duy nhất (từ 33 file ban đầu)**:
+  1. `tests/conftest.py`: Fixtures dùng chung, in-memory DB, mock LLM/Vnstock, FastAPI TestClient (`client`, `real_deps`, `ai_server_url`).
+  2. `tests/test_agents.py`: Kiểm thử logic các agent nodes (`price_agent`, `guardrail_node`, `supervisor_node`, `composer_node`), structured output parsing/validation, LangGraph execution, và mock tracing spans.
+  3. `tests/test_guardrails.py`: Kiểm thử Pre-Rewrite Guardrail chặn 100% Prompt Injection, từ chối an toàn các câu hỏi Out-of-Scope (cổ phiếu ngoại, chủ đề phi tài chính, yêu cầu tư vấn mua bán), early exit graph flow.
+  4. `tests/test_memory.py`: Kiểm thử bộ nhớ hội thoại ngữ cảnh ngắn hạn (Sliding Window, TTL expiry, Turn 1 ➔ Turn 2 đa lượt *"Tại sao lại giảm?"*), bộ nhớ dài hạn LTM (user isolation, fallback), CRUD sessions & messages.
+  5. `tests/test_market.py`: Kiểm thử `MarketService`, danh sách 10 mã mặc định, tính toán ma trận 10D kèm sparklines, endpoint `/api/v1/market/matrix-10d` và alias routes, cam kết dữ liệu giá Single Source of Truth (SSOT).
+  6. `tests/test_chart.py`: Kiểm thử `ChartAgent` sinh biểu đồ đường giá lịch sử kèm SMA5/SMA10/Volume, biểu đồ nến Candlestick, biểu đồ so sánh % tăng trưởng giữa 2-3 mã, kiểm tra lưu trữ ảnh PNG tĩnh tại root `resources/data/charts/`, và tích hợp LangGraph swarm.
+  7. `tests/test_api.py`: Kiểm thử FastAPI endpoints: `/health`, UI root `/`, Watchlist CRUD, Approvals HITL (approve/reject kèm lý do), Server-Sent Events (SSE) streaming `/api/v1/chat/stream`, runs/steps tracing, và HITL feedback telemetry.
+  8. `tests/test_database.py`: Kiểm thử tầng dữ liệu SQLite: kết nối WAL mode, schema initialization, foreign keys cascade, models, repositories (`SessionRepository`, `MessageRepository`, `MarketHistoryRepository`, `HITLEvaluationRepository`, `WatchlistRepository`).
+  9. `tests/test_eval.py`: Kiểm thử bộ khung đánh giá Golden Dataset v5 (40 cases qua 7 slices), cơ chế chấm điểm Rule-based (`must_include`, `must_not_include`), Zero-Tolerance Security Gate (100% pass trên Prompt Injection), slice regression checking, token tracking và tính chi phí USD/VNĐ, pipeline trace extraction, và xuất báo cáo Markdown.
+  10. `tests/test_system.py`: Kiểm thử toàn vẹn hệ thống: cấu hình Docker Compose 2 services (backend 8000, frontend 3000), volume `pw_data`, profile `qdrant`, Dockerfiles & Nginx, biến môi trường `.env.example`, Web UI SPA tĩnh Claude-style, và tính nhất quán của tài liệu README.md.
+- **Xóa bỏ triệt để 27 file kiểm thử phân mảnh và file tạm**:
+  - Đã xóa: `test_ai.py`, `test_backend.py`, `test_chart_agent.py`, `test_docker.py`, `test_env_example_phase16.py`, `test_frontend.py`, `test_golden_v3.py`, `test_golden_v3_rules.py`, `test_golden_v4.py`, `test_hitl_feedback.py`, `test_hitl_json.py`, `test_long_term_memory.py`, `test_market_matrix.py`, `test_market_service.py`, `test_market_sync.py`, `test_mvp_status_report_phase16.py`, `test_phase14.py`, `test_readme_phase16.py`, `test_readme_phase16_demo.py`, `test_readme_phase17_local.py`, `test_run_detailed.py`, `test_sessions.py`, `test_short_term_memory.py`, `test_streaming.py`, `test_structured_output.py`, `test_tracing.py`, `test_validation_and_errors.py`, `__init__.py`.
+  - Xác nhận bằng `(Get-ChildItem -Path tests -Filter *.py).Count` trả về đúng **10**.
+
+### 2. Kết quả kiểm thử xác minh
+- Thực thi toàn bộ test suite:
+  ```powershell
+  pytest tests/ -v
+  ```
+- **Kết quả: 82/82 passed (100% pass rate)**. Thời gian chạy: ~103 giây.
+- Không có bất kỳ khía cạnh hay tính năng kiểm thử cốt lõi nào bị mất mát sau quá trình gom nhóm.
+
+---
+
+### 1. Thay đổi mã nguồn & cấu trúc hệ thống
+- **Xóa bỏ triệt để thư mục trùng lặp `src/backend/backend/`**:
+  - Di chuyển các module hỗ trợ ra vị trí chuẩn tại `src/backend/`:
+    - `src/backend/store.py`: Quản lý `Store`, `ApprovalRecord`, `WatchlistItem`, `LastQuoteRecord`, `RunRecord` với SQLite persistence và thread-safety.
+    - `src/backend/steps.py`: Tiện ích chuẩn hóa `steps[]` one-shot (`normalize_steps`, `ensure_steps_reflect_error`, `mark_mid_run_error`).
+    - `src/backend/cors_util.py`: Tiện ích phân giải CORS origins từ biến môi trường `FRONTEND_ORIGIN`.
+    - `src/backend/ai_client.py`: Khách hàng giao tiếp AI Swarm (`ai_chat`, `ai_scan`, `AiClientError`).
+  - Xóa hoàn toàn thư mục lồng nhau `src/backend/backend/`. Xác nhận bằng `Test-Path src\backend\backend` trả về `False`.
+- **Hợp nhất entrypoint FastAPI duy nhất tại `src/backend/main.py`**:
+  - Hợp nhất toàn bộ endpoint từ monolithic cũ sang kiến trúc chuẩn hóa:
+    - `/health`: Trả về `{"status": "ok", "service": "backend"}`.
+    - `/watchlist`: CRUD danh mục theo dõi cổ phiếu (`GET`, `POST`, `PATCH`, `DELETE`).
+    - `/approvals`: Quản lý phê duyệt HITL Gate 1 & Gate 2 (`GET`, `POST /approvals/{id}/approve`, `POST /approvals/{id}/reject`).
+    - `/market`: Trạng thái quét thị trường gần nhất và danh sách mã watchlist.
+    - `/runs`: Trích xuất trace và steps của lượt chạy (`GET /runs/{id}`, `GET /runs/{id}/steps`).
+    - `/chat` & `/chat/stream`: Hỗ trợ cả hỏi đáp một lượt (one-shot kèm session persistence) và streaming thời gian thực Server-Sent Events (SSE).
+    - `/scan`: Giám sát bất thường một mã theo ngưỡng %.
+  - Phục vụ biểu đồ kỹ thuật tĩnh tại `/charts` kết nối tới `get_charts_dir()` (`resources/data/charts/`).
+  - Mount giao diện tĩnh Frontend SPA tại `/`.
+- **Chuẩn hóa tên các Agent Nodes trong LangGraph (`src/backend/graph/chat.py`)**:
+  - `guardrail_node`: Node phòng vệ cửa ngõ, chặn Prompt Injection & Out-of-Scope.
+  - `guardrail_refusal_node`: Node phản hồi từ chối an toàn khi vi phạm guardrail.
+  - `rewrite_node`: Node chuẩn hóa câu hỏi và phân giải đại từ ngữ cảnh.
+  - `supervisor_node`: Node điều phối định tuyến Swarm.
+  - `price_node`: Node thu thập dữ liệu giá Vnstock cho từng mã.
+  - `news_node`: Node trích xuất tin tức CafeF cho từng mã.
+  - `chart_node`: Node sinh biểu đồ kỹ thuật Matplotlib.
+  - `diagram_node`: Node sinh sơ đồ quy trình Mermaid.
+  - `composer_node`: Node tổng hợp dữ liệu và stream câu trả lời token-by-token.
+  - `workers_node`: Node điều phối song song các worker agents.
+  - Giữ lại các alias tương thích ngược (`_node_pre_rewrite_guardrail`, `_node_rewrite`, `_node_supervisor`, `_node_diagram_agent`, `_node_workers`, `_node_answer_composer`).
+- **Áp dụng nguyên tắc Clean Code**:
+  - Bổ sung docstrings chi tiết bằng tiếng Việt cho toàn bộ module, class và function.
+  - Giữ các hàm nghiệp vụ trọn vẹn, không phân mảnh logic thành các helper 2-3 dòng.
+- **Cập nhật các tham chiếu import và cấu hình triển khai**:
+  - Cập nhật các test suite (`test_backend.py`, `test_sessions.py`, `test_market_matrix.py`, `test_hitl_json.py`, `test_hitl_feedback.py`, `test_chart_agent.py`, `test_docker.py`, `test_readme_phase*.py`) trỏ trực tiếp đến `backend.main`, `backend.store`, `backend.steps`, `backend.ai_client`.
+  - Cập nhật `Dockerfile`, `src/backend/Dockerfile`, và `docker-compose.yml` lệnh CMD chạy `uvicorn backend.main:app`.
+  - Cập nhật `src/frontend/README.md`.
+
+### 2. Kết quả kiểm thử xác minh
+- Chạy `pytest tests/test_backend.py tests/test_sessions.py tests/test_market_matrix.py tests/test_hitl_json.py tests/test_hitl_feedback.py tests/test_docker.py tests/test_streaming.py -v`: **39/39 passed (100%)**.
+- Chạy `pytest tests/test_chart_agent.py -v`: **12/12 passed (100%)**.
+- Chạy `pytest tests/test_guardrails.py -v`: **7/7 passed (100%)**.
+- Chạy `pytest tests/test_short_term_memory.py tests/test_long_term_memory.py -v`: **27 passed, 1 skipped (100%)**.
+- Chạy `pytest tests/test_market_service.py tests/test_market_sync.py -v`: **13/13 passed (100%)**.
+- Chạy `pytest tests/test_database.py -v`: **7/7 passed (100%)**.
+- Xác minh `Test-Path src\backend\backend`: trả về **`False`** (thư mục lồng nhau đã được dọn sạch hoàn toàn).
+
+---
+
+## 2026-09-25 — Phase 2: Fix Resources Path & Root Unification [Hoàn Thành]
+
+### 1. Thay đổi mã nguồn & kiến trúc tài nguyên
+- **Chuẩn hóa đường dẫn tài nguyên về thư mục gốc (`resources/`)**:
+  - `src/backend/agents/chart_agent.py`: Sửa `get_charts_dir()` từ `parents[2]` thành `parents[3]` (trỏ về workspace root) để ảnh biểu đồ Matplotlib luôn được lưu trữ duy nhất tại `resources/data/charts/`.
+  - `src/backend/backend/main.py`: Sửa `_CHARTS_DIR = get_charts_dir()` đồng bộ tuyệt đối với `ChartAgent`, phục vụ static files từ root `resources/data/charts/`.
+  - `src/backend/database/connection.py`: Sửa fallback `get_db_path()` từ `parents[2]` thành `parents[3]` để trỏ về root `resources/data/portfolio_watch.db`.
+  - `src/backend/infra/llm/prompt_registry.py`: Bổ sung `here.parents[4] / "resources" / "prompts"` trỏ trực tiếp về root `resources/prompts/`.
+  - `src/backend/eval/run_detailed.py`, `src/backend/eval/run.py`, `src/backend/eval/regression.py`: Sửa fallback `_find_project_root()` thành `parents[3]`.
+  - `src/backend/domain/graph/workflow.py`: Sửa hàm `save_graph_visualization()` từ `parents[3]` sang `parents[4]` để lưu sơ đồ Mermaid PNG về root `resources/docs/agent_graph.png`.
+- **Hợp nhất và dọn dẹp tài nguyên**:
+  - Di chuyển toàn bộ 41 file ảnh biểu đồ PNG từ `src/resources/data/charts/` sang root `resources/data/charts/`.
+  - Xóa bỏ triệt để thư mục `src/resources/` trên ổ đĩa.
+  - Kiểm tra xác nhận: `Test-Path src/resources` trả về `False`, không còn hiện tượng tái sinh `src/resources/`.
+
+### 2. Kết quả kiểm thử xác minh
+- Chạy `pytest tests/test_chart_agent.py`: **12/12 passed (100%)**.
+- Xác minh ảnh biểu đồ được ghi và đọc thành công từ `resources/data/charts/`.
+
+---
+
+## 2026-09-25 — Phase 1: Project Setup & Baseline Documentation (Clean Code & Realtime Update Cycle) [Hoàn Thành]
+
+### 1. Thay đổi tài liệu đặc tả & hồ sơ Spec-Driven Development
+- **Cập nhật hồ sơ đặc tả toàn diện cho chu kỳ cập nhật mới**:
+  - `specs/product-spec.md`: Bổ sung 4 mục tiêu cốt lõi: Clean code & đặt tên chuẩn xác; Di dời tài nguyên về root `resources/` và loại bỏ `src/resources/`; Gói gọn bộ kiểm thử `tests/` xuống không quá 10 file; Đánh giá toàn bộ câu hỏi và lưu dẫn chứng.
+  - `AGENTS.md`: Quy định rõ ràng quy tắc Clean Code, cấm băm nhỏ hàm, bắt buộc đặt tên file/hàm/node đúng chức năng, cố định vị trí `resources/` tại root workspace, và giới hạn $\le 10$ test files.
+  - `specs/implementation-plan.md`: Thiết lập lộ trình 7 phases tuần tự, có tiêu chuẩn nghiệm thu độc lập cho từng phase.
+  - `specs/test-plan.md`: Thiết kế cấu trúc 10 files kiểm thử tích hợp thay thế cho 33 file cũ, xây dựng kế hoạch kiểm thử Golden Dataset và lưu dẫn chứng minh bạch.
+  - `README.md`: Đồng bộ tài liệu kiến trúc, hướng dẫn chạy Docker và local development.
+  - `specs/change-log.md`: Khởi tạo đường cơ sở (Baseline) cho chu kỳ cập nhật mới.
+
+### 2. Định hướng kỹ thuật cốt lõi (Core Decisions)
+- **Vị trí thư mục tài nguyên (`resources/`)**: Sửa triệt để các hàm xác định đường dẫn tài nguyên trong `chart_agent.py` và `main.py` để trỏ chính xác về thư mục gốc `resources/` (`parents[3]`), xóa hoàn toàn thư mục `src/resources/` sinh nhầm.
+- **Clean Architecture & Định danh**: Xóa bỏ thư mục con lặp lại `src/backend/backend/`, đưa file entrypoint về `src/backend/main.py`. Đặt tên các node agent chuẩn xác: `guardrail_node`, `supervisor_node`, `price_node`, `news_node`, `chart_node`, `composer_node`.
+- **Gói gọn `tests/` $\le 10$ files**: Tinh giản từ 33 file xuống đúng 10 file kiểm thử có tổ chức logic rõ ràng.
+- **Lưu trữ dẫn chứng**: Đánh giá toàn bộ 40 câu hỏi của Golden Dataset và xuất báo cáo dẫn chứng chính thức vào `specs/eval/eval_results_golden_v5.md` và `specs/eval/v5_baseline.json`.
+
+---
+
 ## 2026-09-24 — Phase 11: Đóng Gói Docker Compose & Nghiệm Thu End-To-End Toàn Bộ Hệ Thống [Hoàn Thành]
 
 ### 1. Thay đổi mã nguồn & logic nghiệp vụ

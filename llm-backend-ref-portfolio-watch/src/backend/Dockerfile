@@ -16,8 +16,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
+COPY wheels /wheels
 COPY pyproject.toml README.md ./
 RUN pip install --no-cache-dir -U pip setuptools wheel \
+    && pip install --no-cache-dir /wheels/*.whl \
     && pip install --no-cache-dir .[dev]
 
 # Stage 2: Final Runner
@@ -36,9 +38,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 COPY --from=builder /opt/venv /opt/venv
 
-COPY pyproject.toml README.md ./
+COPY pyproject.toml README.md docker-compose.yml .env.example ./
 COPY src ./src
 COPY resources ./resources
+COPY specs ./specs
 COPY tests ./tests
 
 # Link package in editable mode
@@ -48,4 +51,4 @@ RUN mkdir -p /app/data /app/data/charts
 
 EXPOSE 8000
 
-CMD ["uvicorn", "backend.backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -1,4 +1,12 @@
-"""LangGraph chat — rewrite → supervisor → workers → answer_composer."""
+"""LangGraph Chat Workflow — Đồ thị điều phối luồng Multi-Agent Swarm.
+
+Luồng điều phối chuẩn hoá:
+START ➔ guardrail_node ➔ (nếu vi phạm) ➔ guardrail_refusal_node ➔ END
+                     ➔ (nếu an toàn) ➔ rewrite_node ➔ supervisor_node
+                                                  ➔ diagram_node ➔ END
+                                                  ➔ workers_node (price_node, news_node, chart_node, eval)
+                                                  ➔ composer_node ➔ END
+"""
 
 from __future__ import annotations
 
@@ -17,9 +25,11 @@ from backend.application.answer_question import (
     build_chat_steps,
 )
 from backend.agents.answer_composer import (
+    AnswerComposeResult,
     AnswerDraftBrain,
     run_answer_composer,
 )
+from backend.agents.chart_agent import run_chart_agent
 from backend.agents.diagram_agent import run_diagram_agent
 from backend.agents.eval_agent import EvalAgentBrain, run_eval_agent
 from backend.agents.news_agent import (
@@ -65,7 +75,7 @@ _chat_deps: contextvars.ContextVar[dict[str, Any]] = contextvars.ContextVar(
 
 
 def emit_agent_event(event: str, data: dict[str, Any]) -> None:
-    """Gửi sự kiện thời gian thực (node_start, node_finish, token) đến SSE stream generator nếu có callback."""
+    """Gửi sự kiện thời gian thực (node_start, node_finish, token) đến SSE stream generator."""
     deps = _chat_deps.get()
     cb = deps.get("event_callback")
     if cb:
@@ -79,7 +89,12 @@ def _cfg(_config: RunnableConfig) -> dict[str, Any]:
     return _chat_deps.get()
 
 
-def _node_pre_rewrite_guardrail(state: ChatState, config: RunnableConfig) -> dict:
+# ==============================================================================
+# Agent Nodes
+# ==============================================================================
+
+def guardrail_node(state: ChatState, config: RunnableConfig) -> dict[str, Any]:
+    """Node phòng vệ cửa ngõ: Kiểm tra an toàn, phát hiện Prompt Injection và từ chối câu hỏi Out-of-Scope."""
     t0 = time.perf_counter()
     emit_agent_event("node_start", {"node": "pre_rewrite_guardrail", "timestamp": time.time()})
     turn = state.get("turn") or ""
@@ -99,7 +114,8 @@ def _node_pre_rewrite_guardrail(state: ChatState, config: RunnableConfig) -> dic
     }
 
 
-def _node_guardrail_refusal(state: ChatState, config: RunnableConfig) -> dict:
+def guardrail_refusal_node(state: ChatState, config: RunnableConfig) -> dict[str, Any]:
+    """Node từ chối an toàn: Phản hồi lý do từ chối lịch sự khi phát hiện vi phạm guardrail."""
     t0 = time.perf_counter()
     emit_agent_event("node_start", {"node": "guardrail_refusal", "timestamp": time.time()})
     turn = state.get("turn") or ""
@@ -112,7 +128,6 @@ def _node_guardrail_refusal(state: ChatState, config: RunnableConfig) -> dict:
     with agent_span(turn, "guardrail_refusal", input=state.get("question", "")) as box:
         box["output"] = refusal_text
 
-    from backend.agents.answer_composer import AnswerComposeResult
     compose = AnswerComposeResult(
         answer=refusal_text,
         model="guardrail",
@@ -135,13 +150,15 @@ def _node_guardrail_refusal(state: ChatState, config: RunnableConfig) -> dict:
 
 
 def route_after_guardrail(state: ChatState) -> str:
+    """Định tuyến sau Guardrail: Nếu không an toàn đi vào guardrail_refusal, ngược lại sang rewrite_question."""
     res = state.get("guardrail_result")
     if res and not res.is_safe:
         return "guardrail_refusal"
     return "rewrite_question"
 
 
-def _node_rewrite(state: ChatState, config: RunnableConfig) -> dict:
+def rewrite_node(state: ChatState, config: RunnableConfig) -> dict[str, Any]:
+    """Node viết lại câu hỏi: Chuẩn hóa câu hỏi, phân giải đại từ thay thế từ lịch sử hội thoại."""
     t0 = time.perf_counter()
     emit_agent_event("node_start", {"node": "rewrite_question", "timestamp": time.time()})
     cfg = _cfg(config)
@@ -171,7 +188,8 @@ def _node_rewrite(state: ChatState, config: RunnableConfig) -> dict:
     }
 
 
-def _node_supervisor(state: ChatState, config: RunnableConfig) -> dict:
+def supervisor_node(state: ChatState, config: RunnableConfig) -> dict[str, Any]:
+    """Node điều phối trung tâm (Supervisor): Phân tích ý định và định tuyến danh sách sub-agents cần gọi."""
     t0 = time.perf_counter()
     emit_agent_event("node_start", {"node": "supervisor", "timestamp": time.time()})
     cfg = _cfg(config)
@@ -191,7 +209,149 @@ def _node_supervisor(state: ChatState, config: RunnableConfig) -> dict:
     return {"routing": routing}
 
 
-def _node_workers(state: ChatState, config: RunnableConfig) -> dict:
+def price_node(
+    sym: str,
+    price_source: PriceSource,
+    turn: str = "",
+) -> PriceAgentResult:
+    """Node thu thập dữ liệu giá Vnstock cho một mã cổ phiếu cụ thể."""
+    t0 = time.perf_counter()
+    emit_agent_event("node_start", {"node": "price_agent", "symbol": sym, "timestamp": time.time()})
+    with agent_span(turn, "price_agent", input=sym) as box:
+        p = run_price_agent(sym, price_source, turn)
+        box["output"] = {
+            "symbol": sym,
+            "latest_close": p.latest_close,
+            "change_pct": p.change_pct,
+            "error": p.error,
+        }
+        dur = round(time.perf_counter() - t0, 3)
+        emit_agent_event("node_finish", {"node": "price_agent", "symbol": sym, "duration_s": dur, "duration_ms": int(dur * 1000)})
+        return p
+
+
+def news_node(
+    sym: str,
+    news_source: NewsSource,
+    news_brain: NewsAgentBrain | None = None,
+    days: int | None = 7,
+    turn: str = "",
+) -> NewsAgentResult:
+    """Node trích xuất tin tức CafeF cho một mã cổ phiếu cụ thể."""
+    t0 = time.perf_counter()
+    emit_agent_event("node_start", {"node": "news_agent", "symbol": sym, "timestamp": time.time()})
+    with agent_span(turn, "news_agent", input=sym) as box:
+        n = run_news_agent(
+            sym,
+            news_source,
+            news_brain or default_news_brain(),
+            days=days,
+            turn=turn,
+        )
+        box["output"] = {
+            "symbol": sym,
+            "items": len(n.items or []),
+            "error": n.error,
+        }
+        dur = round(time.perf_counter() - t0, 3)
+        emit_agent_event("node_finish", {"node": "news_agent", "symbol": sym, "duration_s": dur, "duration_ms": int(dur * 1000)})
+        return n
+
+
+def chart_node(
+    target_symbols: list[str],
+    prices: list[PriceAgentResult],
+    price_source: PriceSource,
+    history_store: PriceHistoryStore | None = None,
+    turn: str = "",
+) -> Any | None:
+    """Node sinh biểu đồ kỹ thuật Matplotlib cho một hoặc nhiều mã cổ phiếu."""
+    if not target_symbols:
+        return None
+    price_by_sym = {p.symbol.upper(): p for p in prices if p and p.symbol}
+    history_map: dict[str, list[PriceBar]] = {}
+
+    for sym_item in target_symbols:
+        s_upper = sym_item.upper()
+        bars: list[PriceBar] = []
+        if history_store:
+            try:
+                bars = list(history_store.read_history(s_upper, days=30) or [])
+            except Exception as exc:
+                _logger.warning("history_store read_history failed for %s: %s", s_upper, exc)
+                bars = []
+        if len(bars) < 5 and hasattr(price_source, "fetch_history"):
+            try:
+                fetched = price_source.fetch_history(s_upper, days=30)
+                if fetched:
+                    bars = fetched
+                    if history_store and hasattr(history_store, "upsert_bars"):
+                        try:
+                            history_store.upsert_bars(s_upper, bars)
+                        except Exception:
+                            pass
+            except Exception as exc:
+                _logger.warning("price_source fetch_history failed for %s: %s", s_upper, exc)
+        if len(bars) < 2:
+            try:
+                from backend.services.market_service import MarketService
+                from backend.infra.market_data.price_source import VnstockPriceSource
+                ms = MarketService(price_source=price_source if isinstance(price_source, VnstockPriceSource) else None)
+                hist_records = ms.get_symbol_history(s_upper, limit=15)
+                if hist_records:
+                    bars = [
+                        PriceBar(
+                            date=r.trade_date,
+                            close=r.close,
+                            open_price=r.open,
+                            high=r.high,
+                            low=r.low,
+                            volume=float(r.volume or 0),
+                        )
+                        for r in hist_records
+                    ]
+            except Exception as exc:
+                _logger.warning("MarketService get_symbol_history fallback failed for %s: %s", s_upper, exc)
+        if len(bars) < 2:
+            ref_p = price_by_sym.get(s_upper) or (prices[0] if prices else None)
+            base_close = (ref_p.latest_close if ref_p and ref_p.latest_close else 50.0)
+            from datetime import date, timedelta
+            today = date.today()
+            bars = []
+            for i in range(20, 0, -1):
+                d_i = (today - timedelta(days=i)).isoformat()
+                factor = 1.0 + ((i % 5) - 2) * 0.008
+                c = round(base_close * factor, 2)
+                bars.append(PriceBar(
+                    date=d_i,
+                    close=c,
+                    open_price=round(c * 0.995, 2),
+                    high=round(c * 1.01, 2),
+                    low=round(c * 0.99, 2),
+                    volume=1000000.0 + i * 50000.0,
+                ))
+        history_map[s_upper] = bars
+
+    t0 = time.perf_counter()
+    emit_agent_event("node_start", {"node": "chart_agent", "symbols": target_symbols, "timestamp": time.time()})
+    with agent_span(turn, "chart_agent", input=",".join(target_symbols)) as box:
+        if len(target_symbols) == 1:
+            chart_result = run_chart_agent(target_symbols[0], history_map.get(target_symbols[0].upper(), []))
+        else:
+            chart_result = run_chart_agent(target_symbols, history_map)
+        box["output"] = {
+            "success": chart_result.success,
+            "url": chart_result.url,
+            "file_path": chart_result.file_path,
+            "error": chart_result.error,
+        }
+    dur = round(time.perf_counter() - t0, 3)
+    emit_agent_event("node_finish", {"node": "chart_agent", "duration_s": dur, "duration_ms": int(dur * 1000)})
+    return chart_result
+
+
+def workers_node(state: ChatState, config: RunnableConfig) -> dict[str, Any]:
+    """Node điều phối công nhân (Workers): Gọi song song price_node, news_node, chart_node và eval_agent."""
     cfg = _cfg(config)
     turn = state.get("turn") or ""
     routing = state["routing"]
@@ -211,61 +371,27 @@ def _node_workers(state: ChatState, config: RunnableConfig) -> dict:
     need_chart = "chart" in agents or getattr(routing.route, "value", routing.route) == "chart"
     if need_chart and not need_price:
         need_price = True
+
     price: PriceAgentResult | None = None
     news: NewsAgentResult | None = None
     eval_result = None
     prices: list[PriceAgentResult] = []
     news_list: list[NewsAgentResult] = []
 
-    def _fetch_price_one(sym: str) -> PriceAgentResult:
-        t0 = time.perf_counter()
-        emit_agent_event("node_start", {"node": "price_agent", "symbol": sym, "timestamp": time.time()})
-        with agent_span(turn, "price_agent", input=sym) as box:
-            p = run_price_agent(sym, price_source, turn)
-            box["output"] = {
-                "symbol": sym,
-                "latest_close": p.latest_close,
-                "change_pct": p.change_pct,
-                "error": p.error,
-            }
-            dur = round(time.perf_counter() - t0, 3)
-            emit_agent_event("node_finish", {"node": "price_agent", "symbol": sym, "duration_s": dur, "duration_ms": int(dur * 1000)})
-            return p
-
-    def _fetch_news_one(sym: str) -> NewsAgentResult:
-        t0 = time.perf_counter()
-        emit_agent_event("node_start", {"node": "news_agent", "symbol": sym, "timestamp": time.time()})
-        with agent_span(turn, "news_agent", input=sym) as box:
-            n = run_news_agent(
-                sym,
-                news_source,
-                news_brain or default_news_brain(),
-                days=news_days,
-                turn=turn,
-            )
-            box["output"] = {
-                "symbol": sym,
-                "items": len(n.items or []),
-                "error": n.error,
-            }
-            dur = round(time.perf_counter() - t0, 3)
-            emit_agent_event("node_finish", {"node": "news_agent", "symbol": sym, "duration_s": dur, "duration_ms": int(dur * 1000)})
-            return n
-
     def _fetch_one(sym: str) -> tuple[PriceAgentResult | None, NewsAgentResult | None]:
         p_res: PriceAgentResult | None = None
         n_res: NewsAgentResult | None = None
         if need_price and need_news:
             with ThreadPoolExecutor(max_workers=2) as pool:
-                fut_p = pool.submit(_fetch_price_one, sym)
-                fut_n = pool.submit(_fetch_news_one, sym)
+                fut_p = pool.submit(price_node, sym, price_source, turn)
+                fut_n = pool.submit(news_node, sym, news_source, news_brain, news_days, turn)
                 p_res = fut_p.result()
                 n_res = fut_n.result()
         else:
             if need_price:
-                p_res = _fetch_price_one(sym)
+                p_res = price_node(sym, price_source, turn)
             if need_news:
-                n_res = _fetch_news_one(sym)
+                n_res = news_node(sym, news_source, news_brain, news_days, turn)
         return p_res, n_res
 
     if symbols and (need_price or need_news):
@@ -292,7 +418,7 @@ def _node_workers(state: ChatState, config: RunnableConfig) -> dict:
         have = {p.symbol.upper() for p in prices if p.symbol}
         for sym in symbols:
             if sym.upper() not in have:
-                p_res = _fetch_price_one(sym)
+                p_res = price_node(sym, price_source, turn)
                 prices.append(p_res)
                 if sym.upper() == (symbol or "").upper():
                     price = p_res
@@ -302,7 +428,7 @@ def _node_workers(state: ChatState, config: RunnableConfig) -> dict:
                 prices[0],
             )
         if news is None:
-            news = _fetch_news_one(symbol)
+            news = news_node(symbol, news_source, news_brain, news_days, turn)
             if news is not None and not news_list:
                 news_list = [news]
         if news is None:
@@ -330,87 +456,13 @@ def _node_workers(state: ChatState, config: RunnableConfig) -> dict:
         target_symbols = list(symbols) if symbols else ([symbol] if symbol else [])
         if not target_symbols and price and price.symbol:
             target_symbols = [price.symbol]
-        if target_symbols:
-            price_by_sym = {p.symbol.upper(): p for p in prices if p and p.symbol}
-            history_map: dict[str, list[PriceBar]] = {}
-
-            for sym_item in target_symbols:
-                s_upper = sym_item.upper()
-                bars = []
-                if history_store:
-                    try:
-                        bars = list(history_store.read_history(s_upper, days=30) or [])
-                    except Exception as exc:
-                        _logger.warning("history_store read_history failed for %s: %s", s_upper, exc)
-                        bars = []
-                if len(bars) < 5 and hasattr(price_source, "fetch_history"):
-                    try:
-                        fetched = price_source.fetch_history(s_upper, days=30)
-                        if fetched:
-                            bars = fetched
-                            if history_store and hasattr(history_store, "upsert_bars"):
-                                try:
-                                    history_store.upsert_bars(s_upper, bars)
-                                except Exception:
-                                    pass
-                    except Exception as exc:
-                        _logger.warning("price_source fetch_history failed for %s: %s", s_upper, exc)
-                if len(bars) < 2:
-                    try:
-                        from backend.services.market_service import MarketService
-                        from backend.infra.market_data.price_source import VnstockPriceSource
-                        ms = MarketService(price_source=price_source if isinstance(price_source, VnstockPriceSource) else None)
-                        hist_records = ms.get_symbol_history(s_upper, limit=15)
-                        if hist_records:
-                            bars = [
-                                PriceBar(
-                                    date=r.trade_date,
-                                    close=r.close,
-                                    open_price=r.open,
-                                    high=r.high,
-                                    low=r.low,
-                                    volume=float(r.volume or 0),
-                                )
-                                for r in hist_records
-                            ]
-                    except Exception as exc:
-                        _logger.warning("MarketService get_symbol_history fallback failed for %s: %s", s_upper, exc)
-                if len(bars) < 2:
-                    ref_p = price_by_sym.get(s_upper) or price
-                    base_close = (ref_p.latest_close if ref_p and ref_p.latest_close else 50.0)
-                    from datetime import date, timedelta
-                    today = date.today()
-                    bars = []
-                    for i in range(20, 0, -1):
-                        d_i = (today - timedelta(days=i)).isoformat()
-                        factor = 1.0 + ((i % 5) - 2) * 0.008
-                        c = round(base_close * factor, 2)
-                        bars.append(PriceBar(
-                            date=d_i,
-                            close=c,
-                            open_price=round(c * 0.995, 2),
-                            high=round(c * 1.01, 2),
-                            low=round(c * 0.99, 2),
-                            volume=1000000.0 + i * 50000.0,
-                        ))
-                history_map[s_upper] = bars
-
-            t0 = time.perf_counter()
-            emit_agent_event("node_start", {"node": "chart_agent", "symbols": target_symbols, "timestamp": time.time()})
-            with agent_span(turn, "chart_agent", input=",".join(target_symbols)) as box:
-                from backend.agents.chart_agent import run_chart_agent
-                if len(target_symbols) == 1:
-                    chart_result = run_chart_agent(target_symbols[0], history_map.get(target_symbols[0].upper(), []))
-                else:
-                    chart_result = run_chart_agent(target_symbols, history_map)
-                box["output"] = {
-                    "success": chart_result.success,
-                    "url": chart_result.url,
-                    "file_path": chart_result.file_path,
-                    "error": chart_result.error,
-                }
-            dur = round(time.perf_counter() - t0, 3)
-            emit_agent_event("node_finish", {"node": "chart_agent", "duration_s": dur, "duration_ms": int(dur * 1000)})
+        chart_result = chart_node(
+            target_symbols=target_symbols,
+            prices=prices,
+            price_source=price_source,
+            history_store=history_store,
+            turn=turn,
+        )
 
     chart_path = chart_result.url if (chart_result and chart_result.success) else None
     return {
@@ -424,7 +476,31 @@ def _node_workers(state: ChatState, config: RunnableConfig) -> dict:
     }
 
 
-def _node_answer_composer(state: ChatState, config: RunnableConfig) -> dict:
+def diagram_node(state: ChatState, config: RunnableConfig) -> dict[str, Any]:
+    """Node sinh sơ đồ quy trình Mermaid."""
+    t0 = time.perf_counter()
+    emit_agent_event("node_start", {"node": "diagram_agent", "timestamp": time.time()})
+    cfg = _cfg(config)
+    turn = state.get("turn") or ""
+    symbol = state.get("symbol")
+    with agent_span(turn, "diagram_agent", input=symbol or state.get("question", "")) as box:
+        result = run_diagram_agent(
+            symbol,
+            turn=turn,
+            question=state.get("question") or "",
+            brain=cfg.get("diagram_brain")
+        )
+        box["output"] = result.placeholder
+    compose = AnswerComposeResult(answer=result.placeholder, model="stub", draft_attempts=1, guardrail_violations=[], evidence=[], hitl_used=False)
+    for word in result.placeholder.split(" "):
+        emit_agent_event("token", {"delta": word + " "})
+    dur = round(time.perf_counter() - t0, 3)
+    emit_agent_event("node_finish", {"node": "diagram_agent", "duration_s": dur, "duration_ms": int(dur * 1000)})
+    return {"diagram_result": result, "answer": result.placeholder, "compose": compose}
+
+
+def composer_node(state: ChatState, config: RunnableConfig) -> dict[str, Any]:
+    """Node tổng hợp câu trả lời (Composer): Kết hợp dữ liệu và phát sinh câu trả lời bằng Markdown kèm stream token."""
     cfg = _cfg(config)
     turn = state.get("turn") or ""
     symbol = state.get("symbol")
@@ -458,43 +534,34 @@ def _node_answer_composer(state: ChatState, config: RunnableConfig) -> dict:
     return {"compose": compose, "answer": compose.answer}
 
 
-def _node_diagram_agent(state: ChatState, config: RunnableConfig) -> dict:
-    t0 = time.perf_counter()
-    emit_agent_event("node_start", {"node": "diagram_agent", "timestamp": time.time()})
-    cfg = _cfg(config)
-    turn = state.get("turn") or ""
-    symbol = state.get("symbol")
-    with agent_span(turn, "diagram_agent", input=symbol or state.get("question", "")) as box:
-        result = run_diagram_agent(
-            symbol,
-            turn=turn,
-            question=state.get("question") or "",
-            brain=cfg.get("diagram_brain")
-        )
-        box["output"] = result.placeholder
-    from backend.agents.answer_composer import AnswerComposeResult
-    compose = AnswerComposeResult(answer=result.placeholder, model="stub", draft_attempts=1, guardrail_violations=[], evidence=[], hitl_used=False)
-    for word in result.placeholder.split(" "):
-        emit_agent_event("token", {"delta": word + " "})
-    dur = round(time.perf_counter() - t0, 3)
-    emit_agent_event("node_finish", {"node": "diagram_agent", "duration_s": dur, "duration_ms": int(dur * 1000)})
-    return {"diagram_result": result, "answer": result.placeholder, "compose": compose}
+# Tương thích ngược với tên gọi cũ
+_node_pre_rewrite_guardrail = guardrail_node
+_node_guardrail_refusal = guardrail_refusal_node
+_node_rewrite = rewrite_node
+_node_supervisor = supervisor_node
+_node_diagram_agent = diagram_node
+_node_workers = workers_node
+_node_answer_composer = composer_node
+
 
 def route_from_supervisor(state: ChatState) -> str:
+    """Định tuyến sau Supervisor: Rẽ nhánh sang diagram_agent hoặc workers."""
     route = getattr(state["routing"].route, "value", state["routing"].route)
     if str(route) == "diagram" or "diagram" in (state["routing"].agents_to_call or []):
         return "diagram_agent"
     return "workers"
 
+
 def build_chat_graph() -> StateGraph:
+    """Xây dựng đồ thị thực thi StateGraph của Multi-Agent Swarm."""
     graph = StateGraph(ChatState)
-    graph.add_node("pre_rewrite_guardrail", _node_pre_rewrite_guardrail)
-    graph.add_node("guardrail_refusal", _node_guardrail_refusal)
-    graph.add_node("rewrite_question", _node_rewrite)
-    graph.add_node("supervisor", _node_supervisor)
-    graph.add_node("diagram_agent", _node_diagram_agent)
-    graph.add_node("workers", _node_workers)
-    graph.add_node("answer_composer", _node_answer_composer)
+    graph.add_node("pre_rewrite_guardrail", guardrail_node)
+    graph.add_node("guardrail_refusal", guardrail_refusal_node)
+    graph.add_node("rewrite_question", rewrite_node)
+    graph.add_node("supervisor", supervisor_node)
+    graph.add_node("diagram_agent", diagram_node)
+    graph.add_node("workers", workers_node)
+    graph.add_node("answer_composer", composer_node)
 
     graph.add_edge(START, "pre_rewrite_guardrail")
     graph.add_conditional_edges(
@@ -520,6 +587,7 @@ def build_chat_graph() -> StateGraph:
 
 @lru_cache(maxsize=1)
 def compile_chat_graph():
+    """Biên dịch và lưu bộ nhớ đệm đồ thị StateGraph."""
     return build_chat_graph().compile()
 
 
@@ -545,7 +613,7 @@ def run_chat_graph(
     extract_fn: Any | None = None,
     event_callback: Callable[[str, dict[str, Any]], None] | None = None,
 ) -> AnswerQuestionResult:
-    """Invoke compiled chat graph — trả cùng contract `answer_question`."""
+    """Thực thi đồ thị xử lý câu hỏi và trả về kết quả tuân thủ hợp đồng AnswerQuestionResult."""
     q = (question or "").strip()
     effective_limit = (
         limit if limit is not None else settings.memory_short_term_window
@@ -574,8 +642,6 @@ def run_chat_graph(
 
     turn_id = (turn or "").strip() or (request_id or "").strip() or str(uuid.uuid4())
 
-    # Long-term recall (pattern agent_pr: early in chat turn)
-    # Empty / None / blank user_id -> skip long-term entirely
     recalled_memories: list[str] = []
     if effective_user_id:
         recall_res = recall_memory(
@@ -648,12 +714,9 @@ def run_chat_graph(
     compose = final.get("compose")
     answer_text = final.get("answer") or ""
 
-    # Short-term append
     memory_store.append_conversation(short_term_user_id, "user", q)
     memory_store.append_conversation(short_term_user_id, "assistant", answer_text)
 
-    # Long-term store (pattern agent_pr: late in chat turn, after answer)
-    # Empty / None / blank user_id -> skip long-term entirely
     if effective_user_id:
         store_memory(
             {

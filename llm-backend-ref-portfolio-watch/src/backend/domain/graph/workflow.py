@@ -180,7 +180,7 @@ def save_graph_visualization(path: str = "resources/docs/agent_graph.png") -> st
 
     out = path
     if not Path(path).is_absolute():
-        out = str(Path(__file__).resolve().parents[3] / path)
+        out = str(Path(__file__).resolve().parents[4] / path)
 
     graph = compile_portfolio_graph().get_graph()
 

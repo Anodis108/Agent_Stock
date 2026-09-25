@@ -70,8 +70,8 @@ def get_db_path() -> Path:
     if raw:
         path = Path(raw)
     else:
-        # Default local development path
-        root = Path(__file__).resolve().parents[2]
+        # Default local development path relative to workspace root
+        root = Path(__file__).resolve().parents[3]
         path = root / "resources" / "data" / "portfolio_watch.db"
     path.parent.mkdir(parents=True, exist_ok=True)
     return path

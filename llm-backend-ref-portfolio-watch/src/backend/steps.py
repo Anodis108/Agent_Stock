@@ -1,4 +1,7 @@
-"""Chuẩn hoá steps[] one-shot (contract test-plan / timeline UI)."""
+"""Chuẩn hóa cấu trúc steps[] one-shot và gắn trạng thái lỗi.
+
+Phục vụ hiển thị tiến trình của Agent Swarm trên giao diện Timeline / Live Inspector.
+"""
 
 from __future__ import annotations
 
@@ -8,7 +11,10 @@ _ALLOWED_STATUS = frozenset({"pending", "running", "done", "error"})
 
 
 def normalize_steps(raw: Any) -> list[dict[str, Any]]:
-    """Trả list `{id, name, status, detail?, input?, output?}` — thiếu field thì điền mặc định."""
+    """Trả về danh sách `{id, name, status, detail?, input?, output?, duration_s?, duration_ms?}`.
+
+    Nếu thiếu trường nào, hàm tự động bổ sung giá trị mặc định chuẩn xác.
+    """
     if not isinstance(raw, list):
         return []
     out: list[dict[str, Any]] = []
@@ -46,11 +52,11 @@ def mark_mid_run_error(
     detail: str | None = None,
     failed_name: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Đánh `error` lên bước lỗi giữa chừng; giữ các bước done trước đó.
+    """Đánh dấu `error` lên bước gặp sự cố giữa chừng, giữ nguyên các bước `done` thành công trước đó.
 
-    - Nếu có `failed_name`: đánh bước trùng name đầu tiên.
-    - Else: đánh bước `running`/`pending` đầu tiên.
-    - Else: đánh bước cuối; nếu list rỗng → thêm bước `error`.
+    - Nếu có `failed_name`: đánh dấu bước trùng name đầu tiên.
+    - Ngược lại: đánh dấu bước `running` hoặc `pending` đầu tiên.
+    - Nếu không: đánh dấu bước cuối cùng; nếu danh sách rỗng, tạo mới một bước `error`.
     """
     out = [dict(s) for s in (steps or [])]
     msg = (detail or "lỗi giữa chừng").strip() or "lỗi giữa chừng"
@@ -69,7 +75,6 @@ def mark_mid_run_error(
             return out
 
     if out:
-        # Đã có bước error → giữ; không thì đánh bước cuối
         if any(s.get("status") == "error" for s in out):
             return out
         out[-1]["status"] = "error"
@@ -84,7 +89,7 @@ def ensure_steps_reflect_error(
     *,
     error: Any = None,
 ) -> list[dict[str, Any]]:
-    """Nếu payload có `error` (string) mà chưa có bước error → đánh giữa chừng."""
+    """Đảm bảo danh sách steps phản ánh lỗi nếu payload có trường `error`."""
     normalized = normalize_steps(steps)
     if any(s.get("status") == "error" for s in normalized):
         return normalized

@@ -27,7 +27,7 @@ services:
     command:
       [
         "uvicorn",
-        "backend.backend.main:app",
+        "backend.main:app",
         "--host",
         "0.0.0.0",
         "--port",
@@ -51,6 +51,10 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - pw_data:/app/data
+      - ./resources:/app/resources
+      - ./specs:/app/specs
+      - ./docker-compose.yml:/app/docker-compose.yml:ro
+      - ./.env.example:/app/.env.example:ro
     healthcheck:
       test:
         [
@@ -98,6 +102,10 @@ services:
       BACKEND_SQLITE_PATH: /app/data/backend_store.db
     volumes:
       - pw_data:/app/data
+      - ./resources:/app/resources
+      - ./specs:/app/specs
+      - ./docker-compose.yml:/app/docker-compose.yml:ro
+      - ./.env.example:/app/.env.example:ro
     profiles:
       - tools
       - test

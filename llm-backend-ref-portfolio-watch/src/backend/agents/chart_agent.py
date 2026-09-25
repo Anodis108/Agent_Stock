@@ -33,7 +33,7 @@ def get_charts_dir() -> Path:
     if env_dir:
         p = Path(env_dir)
     else:
-        root = Path(__file__).resolve().parents[2]
+        root = Path(__file__).resolve().parents[3]
         p = root / "resources" / "data" / "charts"
     p.mkdir(parents=True, exist_ok=True)
     return p

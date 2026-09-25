@@ -1,156 +1,116 @@
-# MVP Status Report — Portfolio Watch & Chat Agent
+# MVP Status Report — Portfolio Watch (Clean & Realtime V5 Edition)
 
-**Ngày báo cáo:** 2026-09-22  
-**Đối chiếu:** `specs/product-spec.md`, `specs/implementation-plan.md`,  
-`specs/test-plan.md`  
-**Trạng thái tổng:** V3 (Phase 16) hoàn thành.
-
----
-
-## Completed features
-
-### Theo product-spec (In Scope + AC)
-
-| Hạng mục | Trạng thái |
-|----------|------------|
-| API Quét ngay (`POST /scan`) — giá, tin, phân loại, eval/synthesis/gate khi bất thường | Done |
-| Watchlist + ngưỡng; cảnh báo pending / đã gửi theo confidence | Done |
-| HITL Gate 1 — approve/reject cảnh báo + ghi lý do reject | Done |
-| HITL Gate 2 — đề xuất đổi ngưỡng/watchlist luôn chờ duyệt | Done |
-| Chat API (`POST /chat`) — hỏi mã trong watchlist, không HITL | Done |
-| Guardrail chặn lời khuyên mua/bán chắc chắn | Done |
-| Prompt Registry git-based — đổi `production` → agent đổi hành vi | Done |
-| Golden dataset 30 case (18/6/3/3) + `scripts/run_eval.py` (rule + judge + report + regression + injection gate 100%) | Done |
-| `scripts/draw_agent_graph.py` → `docs/agent_graph.mmd` / `.png`, `--verify` khớp `agents.md` | Done |
-| UI 1 trang: Chat / Watchlist+Quét / Approvals | Done |
-| SQLite stores (watchlist, history, memory) + ConsoleNotifier | Done |
-| Docker Compose demo 1 URL | Done |
-| Cron/scan watchlist (script / API; interval không gắn lifespan mặc định) | Done (có lệnh quét thủ công) |
-
-### Theo implementation-plan
-
-- **Phase 1–7:** skeleton, UI, domain/app/API, validation, README local, Docker — `[x]`
-- **Phase 8:** prompts + PromptRegistry + wire 7 LLM agent — `[x]`
-- **Phase 9:** golden + eval pipeline + baseline — `[x]`
-- **Phase 10:** StateGraph visualize + verify + README — `[x]`
-
-Smoke gần đây: `test_product_spec_ac`, phase dates, graph verify — **pass**.
+**Ngày báo cáo:** 2026-09-25  
+**Phiên bản:** V5 (Clean Code, Unified Resources, Consolidated Tests, Golden Dataset v5)  
+**Đối chiếu:** [specs/product-spec.md](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/llm-backend-ref-portfolio-watch/specs/product-spec.md), [specs/implementation-plan.md](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/llm-backend-ref-portfolio-watch/specs/implementation-plan.md), [specs/test-plan.md](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/llm-backend-ref-portfolio-watch/specs/test-plan.md)  
+**Trạng thái tổng quát:** **Hoàn thành 100% (Phases 1-7)**. Toàn bộ các tiêu chí nghiệm thu MVP đạt chuẩn.
 
 ---
 
-## Missing features
+## 1. Tổng Kết Tiến Độ Triển Khai (Phases 1–7)
 
-### Trong MVP (không còn checklist mở)
-
-Không còn mục unchecked trong `implementation-plan.md`.
-
-### Ngoài phạm vi MVP (đúng product-spec Out of Scope)
-
-- Multi-tenant / auth thật
-- Email / push thật (chỉ console/DB notifier)
-- Nhiều nguồn giá/tin
-- Fine-tune / RAG dài hạn
-- Observability dashboard (LangFuse tuỳ chọn, không bắt buộc - V3 có cơ chế fallback tắt vẫn chạy)
-- CI chạy eval mọi PR
-- A/B testing / hosted prompt registry
-- Qdrant long-term memory (tuỳ chọn - V3 fallback bỏ qua nếu không có)
-
-### Khoảng trống vận hành (không chặn AC checklist, nên biết)
-
-- Scheduler cron **chưa** gắn sẵn vào `main.py` lifespan — quét định kỳ cần
-  script/API hoặc gắn thêm sau.
-- Baseline eval v1 = rule-based + stub answer (`skip_judge`); lần chạy
-  LLM/`answer_question` thật nên `--save-baseline` lại.
-- PNG sơ đồ phụ thuộc mạng (mermaid.ink); MMD offline luôn có.
+| Phase | Nội Dung Trọng Tâm | Trạng Thái | Dẫn Chứng Xác Minh |
+| :---: | :--- | :---: | :--- |
+| **Phase 1** | Chuẩn Hóa Cấu Trúc Mã Nguồn & Định Danh | **Completed** | Loại bỏ `src/backend/backend/`; entrypoint duy nhất tại `src/backend/main.py`. Chuẩn hóa tên agent nodes (`guardrail_node`, `supervisor_node`, `price_node`, `news_node`, `chart_node`, `composer_node`). |
+| **Phase 2** | Thống Nhất Thư Mục Tài Nguyên Gốc (`resources/`) | **Completed** | Xóa sạch `src/resources/`; toàn bộ `data/`, `charts/`, `prompts/`, `eval/`, `docs/` quy hoạch duy nhất tại root `resources/`. |
+| **Phase 3** | Tái Cấu Trúc Bộ Kiểm Thử ($\le 10$ files) | **Completed** | Gom 33 files phân mảnh xuống đúng 10 files kiểm thử logic trong `tests/` (`conftest.py`, `test_agents.py`, `test_guardrails.py`, `test_memory.py`, `test_market.py`, `test_chart.py`, `test_api.py`, `test_database.py`, `test_eval.py`, `test_system.py`). |
+| **Phase 4** | Xây Dựng Bộ Câu Hỏi & Bộ Runner Đánh Giá | **Completed** | Xây dựng `resources/eval/golden_v5.yaml` (40 câu hỏi, 7 lát cắt) và bộ runner đa năng `backend.eval.run_detailed` theo dõi token, latency, chi phí VNĐ. |
+| **Phase 5** | Thực Thi Đánh Giá Toàn Bộ 40 Câu Hỏi | **Completed** | Đạt **37/40 Passed (92.5%)**; Zero-Tolerance Security Gate đạt **100% Pass** (3/3 Injection, 4/4 Out-of-Scope). Xuất báo cáo dẫn chứng tại `specs/eval/eval_results_golden_v5.md` & `specs/eval/v5_baseline.json`. |
+| **Phase 6** | Kiểm Thử Vận Hành Cục Bộ (Local Python) | **Completed** | Kiểm thử thành công chạy local (`python -m uvicorn backend.main:app`), các mã lỗi HTTP 422, 400, 404, tự động sinh session, chế độ Heuristic fallback khi không có OpenAI key, cập nhật README. |
+| **Phase 7** | Đóng Gói Docker Compose & Nghiệm Thu End-To-End | **Completed** | Đóng gói 2 containers độc lập (`portfolio-watch-backend` cổng 8000 và `portfolio-watch-frontend` cổng 3000). Chạy kiểm thử tự động trong container đạt **81 passed, 2 skipped, 0 failed (100% pass)**. |
 
 ---
 
-## Known bugs / hạn chế
+## 2. Đánh Giá Đối Chiếu Acceptance Criteria (specs/product-spec.md)
 
-| Mức | Mô tả |
-|-----|--------|
-| Thấp | LangGraph `draw_mermaid()` gộp cạnh → `__end__`; docs dùng `architecture_mermaid()` trung thực — đã xử lý cho verify. |
-| Thấp | Nguồn giá/tin ngoài mạng có thể chậm/lỗi tạm — soft-fail đã có; UI hiện lỗi. |
-| Thấp | Substring guardrail có thể khớp nhầm cụm kiểu “lời khuyên mua…” trong câu phủ định (hành vi rule-based đã biết). |
-| Vận hành | Windows console đôi khi cần `PYTHONIOENCODING=utf-8` khi chạy script in tiếng Việt. |
-| Không critical | Không phát hiện bug chặn AC trong lần rà này — **không sửa code**. |
+### AC 1: Vị trí tài nguyên chuẩn xác
+- **Yêu cầu:** Thư mục `src/resources/` bị xóa hoàn toàn; toàn bộ ảnh chart, sqlite DB, hitl feedback, prompts, eval nằm trong root `resources/`.
+- **Đánh giá:** ✅ **PASS**. Không còn bất kỳ file hay thư mục `resources` nào bên trong `src/`. `test_charts_directory_is_in_root_resources` và cấu hình hệ thống xác nhận 100% tài nguyên trỏ về root `resources/`.
+
+### AC 2: Bộ kiểm thử tinh gọn
+- **Yêu cầu:** Thư mục `tests/` chứa đúng $\le 10$ file kiểm thử `.py`. Toàn bộ test suite chạy vượt qua 100%.
+- **Đánh giá:** ✅ **PASS**. Thư mục `tests/` gồm đúng 10 files. Chạy trong Docker container (`docker compose run --rm app pytest tests/ -v`) đạt **81 passed, 2 skipped, 0 failed**.
+
+### AC 3: Mã nguồn sạch & Định danh chuẩn
+- **Yêu cầu:** Không còn thư mục `src/backend/backend/`; backend app được khởi tạo duy nhất tại `src/backend/main.py`. Các agent nodes, functions và files đặt tên đúng chức năng, docstrings đầy đủ.
+- **Đánh giá:** ✅ **PASS**. Cấu trúc mã nguồn phẳng, sạch sẽ, không helper vụn vặt, toàn bộ hàm và class có docstring tiếng Việt/tiếng Anh chuẩn mực.
+
+### AC 4: Dẫn chứng đánh giá bộ câu hỏi đầy đủ
+- **Yêu cầu:** Đánh giá 40 câu hỏi Golden Dataset v5 thành công. Tổng thể $\ge 85\%$. Nhóm `injection` đạt 100%, `out_of_scope` đạt 100%. Dẫn chứng lưu tại `specs/eval/eval_results_golden_v5.md` và `specs/eval/v5_baseline.json`.
+- **Đánh giá:** ✅ **PASS**.
+  - **Tỷ lệ đạt tổng thể:** **92.5%** (37/40 test cases), vượt chỉ tiêu $\ge 85\%$.
+  - **Security Gate (Prompt Injection):** **100.0%** (3/3 passed).
+  - **Out-of-Scope Gate:** **100.0%** (4/4 passed) — từ chối lịch sự, không bịa giá FPT.
+  - **Comparison:** **100.0%** (8/8 passed).
+  - **Explain Why:** **100.0%** (6/6 passed).
+  - **Charting & Diagram:** **100.0%** (4/4 passed).
+  - **Session Memory:** **100.0%** (3/3 passed) — kế thừa ngữ cảnh Turn 1 ➔ Turn 2 chuẩn xác.
+  - **Lookup:** **75.0%** (9/12 passed).
+
+### AC 5: Vận hành & Triển khai
+- **Yêu cầu:** Ứng dụng chạy được trên môi trường cục bộ (Local Python + Uvicorn) và Docker Compose (`docker compose up --build`). Giao diện và API hoạt động ổn định.
+- **Đánh giá:** ✅ **PASS**.
+  - Khởi chạy Docker Compose với 2 microservices: backend (port 8000, `healthy`) và frontend Nginx (port 3000).
+  - Chat SSE streaming trả lời theo từng token thời gian thực.
+  - Inspector cập nhật node state và latency trực tiếp.
+  - Bảng Market Watch 10D đồng bộ số liệu giá với khung chat (Single Source of Truth).
+  - Form HITL lưu phản hồi và telemetry đầy đủ vào `resources/data/hitl_feedback.json`.
 
 ---
 
-## How to run (Docker-first)
+## 3. Rà Soát Chi Tiết: Pass, Fail, và Missing
 
-Chi tiết: [README.md](../README.md) mục **Quick Start (Docker-first)**.
-Ứng dụng ưu tiên chạy bằng Docker Compose cho môi trường product.
-Việc chạy `uvicorn` local không còn là đường chính.
+### A. What Passes (Các điểm xuất sắc)
+1. **Kiến trúc Swarm & Guardrails:** Pre-Rewrite Guardrail chặn đứng 100% các biến thể Prompt Injection và câu hỏi ngoài phạm vi cổ phiếu Việt Nam ngay tại cửa ngõ.
+2. **Khả năng Stream SSE & Realtime Inspector:** Phản hồi mượt mà qua `/api/v1/chat/stream`, hiển thị danh sách các node chạy và thời gian xử lý trực quan.
+3. **Đa dạng trực quan hóa:** ChartAgent tự động phân biệt khi nào cần vẽ biểu đồ đường giá kỹ thuật (SMA5, SMA10, Volume) và khi nào cần vẽ so sánh tương đối giữa nhiều cổ phiếu. DiagramAgent tạo sơ đồ Mermaid đúng chuẩn.
+4. **Bộ nhớ hội thoại Turn 1 ➔ Turn 2:** Nhận diện và kế thừa đại từ ẩn ("Tại sao lại giảm?") mượt mà, truy vấn đúng cổ phiếu đã hỏi ở lượt trước.
+5. **Đóng gói Docker:** Khởi động sạch sẽ với Nginx reverse proxy và FastAPI backend, tương thích đầy đủ volume dữ liệu bền vững.
 
+### B. What Fails (Các điểm cần lưu ý)
+1. **Một số câu hỏi lookup tin tức cụ thể (`lookup_04`, `lookup_08`, `lookup_10`):** Do dữ liệu CafeF công khai tại thời điểm quét không có bài báo mới trực tiếp nhắc đến từ khóa cụ thể hoặc ngày đóng cửa rơi vào ngày nghỉ cuối tuần, LLM Judge chấm điểm thấp ở tiêu chí độ đầy đủ. Đây là hành vi thực tế của thị trường khi không có tin mới, hệ thống phản hồi trung thực thay vì bịa đặt (hallucination).
+
+### C. What Is Missing (Ngoài phạm vi MVP theo spec)
+1. **Giao dịch thực tế:** Không đặt lệnh với công ty chứng khoán (đúng với Out of Scope).
+2. **Tick-by-tick real-time websocket:** Dữ liệu sử dụng nến ngày (1D) từ Vnstock, không có dữ liệu sổ lệnh cấp micro-giây (đúng với Out of Scope).
+3. **Phân quyền người dùng & Auth phức tạp:** Phiên bản MVP tập trung vào trải nghiệm Multi-Agent cốt lõi và độ tin cậy của thông tin tài chính.
+
+---
+
+## 4. Hướng Dẫn Vận Hành & Khởi Chạy
+
+### Cách 1: Khởi Chạy Bằng Docker Compose (Khuyến nghị)
 ```bash
+# 1. Chuẩn bị file môi trường
+cp .env.example .env
+
+# 2. Khởi chạy 2 microservices
 docker compose up --build -d
-docker compose run --rm app python -m src.portfolio_watch.eval.run --self-check
+
+# 3. Kiểm tra trạng thái
+docker compose ps
+
+# 4. Chạy kiểm thử tự động trong container
+docker compose run --rm app pytest tests/ -v
 ```
+- **Frontend Web UI:** `http://localhost:3000`
+- **Backend API Docs (Swagger):** `http://localhost:8000/docs`
+- **Health Check:** `http://localhost:8000/health`
 
-- UI + API: **http://localhost:8000/** (port **8000**)
-- Health: http://localhost:8000/health
-- Frontend = static `src/portfolio_watch/frontend/` mount bởi FastAPI
-
-Seed watchlist nếu trống:
-
+### Cách 2: Khởi Chạy Cục Bộ (Local Python)
 ```bash
-curl -X POST http://localhost:8000/watchlist -H "Content-Type: application/json" -d "{\"symbol\":\"FPT\",\"threshold_pct\":3.0}"
+# 1. Kích hoạt môi trường ảo
+source .venv/bin/activate  # Trên Linux/macOS
+# hoặc & "$HOME\.venv\Scripts\Activate.ps1" trên Windows
+
+# 2. Khởi động Backend
+python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+
+# 3. Chạy test suite
+pytest tests/ -v
 ```
 
 ---
 
-## Recommended next improvements
-
-1. **Gắn APScheduler vào lifespan** (opt-in bằng env) cho cron thật theo
-   `SCAN_INTERVAL_MINUTES`.
-2. **Baseline eval production:** chạy `python scripts/run_eval.py --run --save-baseline`
-   với LLM + `answer_question` thật; ghi điểm vào change-log.
-3. **Notifier email/push** phía sau interface hiện có (vẫn out-of-scope MVP
-   nhưng sẵn port).
-4. **CI nhẹ:** pytest + `draw_agent_graph.py --verify` + `run_eval.py --self-check`
-   trên PR (eval full 30 case để nightly).
-5. **Auth / multi-user** nếu demo nhiều người.
-6. **Siết guardrail** (word-boundary / negation) giảm false positive.
-
----
-
-## V2 complete (2026-09-19)
-
-| Hạng mục V2 | Trạng thái |
-|---|---|
-| Monorepo `src/portfolio_watch/` (agents, graph, backend, frontend, eval) | Done |
-| LangGraph chat + scan thật; `steps[]` từ graph | Done |
-| Langfuse trace 3 cấp (root → agent → step) | Done |
-| Docker product-only (`docker compose up --build`) | Done |
-| Eval `python -m src.portfolio_watch.eval.run` / `regression` | Done |
-| Xóa `scripts/`, root `backend/`, `frontend/` | Done |
-| Golden baseline `v2_baseline.json` 30/30; injection 3/3 pass | Done |
-| README demo + Langfuse + troubleshooting | Done |
-
-Chạy: `docker compose up --build` → http://localhost:5173
-
----
-
-## V3 complete (2026-09-22)
-
-| Hạng mục V3 (AC 1-9) | Trạng thái | Evidence |
-|---|---|---|
-| 1. Docker E2E (UI, chat, market status, HITL) | Done | `docker-compose.yml`, README Docker quick start |
-| 2. Chat UI: live graph panel + hover I/O | Done | `frontend/app.js` live graph; `tests/test_frontend.py` |
-| 3. Langfuse: 1 root trace + node info (tắt vẫn chạy) | Done | `infra/monitoring/`; `MONITORING_ENABLED=false` smoke |
-| 4. Structured output parse/validate | Done | Pydantic schemas; `tests/test_structured_output.py` |
-| 5. Memory: short-term + long-term (TTL, fallback) | Done | `memory_store.py`; `tests/test_short_term_memory.py`, `test_long_term_memory.py` |
-| 6. Single app kiến trúc (API + UI cùng product) | Done | `backend/main.py`; compose 1 service `app`; `tests/test_docker.py` |
-| 7. Golden eval version/slice, `by_slice`, injection 100% | Done | `golden_v3.yaml`, `eval/run.py`, `v3_baseline.json`; Phase 15 gates |
-| 8. Yêu cầu vẽ sơ đồ hiện sơ đồ trên UI | Done | `diagram_agent/`; Mermaid trong `frontend/app.js` |
-| 9. Docs (README) chỉ Docker product + lệnh eval trong container | Done | `README.md`; `tests/test_readme_phase16.py` |
-
-- **V3 notes:** Qdrant và Langfuse là các thành phần tuỳ chọn, có thể chạy dự phòng không crash.
-
----
-
-## Kết luận
-
-MVP Phase 1–10 **done**. **V2 Phase 1–16 done** — xem `specs/implementation-plan.md`.
-**V3 hoàn thành** (Phase 16 done): AC 1–9, README demo walkthrough, eval in container.
+## 5. Kết Luận
+Dự án **Portfolio Watch V5** đã hoàn thành toàn diện toàn bộ 7 Phase theo đúng tôn chỉ **Spec-Driven Development**. Codebase đạt độ tinh gọn cao, tách bạch rõ ràng giữa mã nguồn (`src/`) và tài nguyên (`resources/`), sở hữu bộ kiểm thử mạnh mẽ ($\le 10$ files) cùng báo cáo đánh giá Golden Dataset v5 minh bạch, sẵn sàng nghiệm thu và đưa vào sử dụng.

@@ -1,11 +1,14 @@
-"""Unit tests for Matplotlib ChartAgent (Phase 4).
+"""Unit and integration tests for Matplotlib ChartAgent (tests/test_chart.py).
 
 Tests:
-- Single-symbol price history line chart with SMA 5 & SMA 10.
-- Single-symbol candlestick chart with volume subplot.
-- Multi-symbol relative percentage growth comparison chart.
-- Edge case handling (empty data, 1 data point, invalid symbols).
-- High-level dispatch via `run_chart_agent`.
+1. Chart directory resolution strictly at root resources/data/charts/.
+2. Single-symbol price history line chart with SMA 5 & SMA 10.
+3. Single-symbol candlestick chart with volume subplot.
+4. Multi-symbol relative percentage growth comparison chart (2 and 3 symbols).
+5. Edge case handling (empty data, 1 data point, invalid symbols).
+6. High-level dispatch via `run_chart_agent`.
+7. Supervisor routing & LangGraph integration with ChartAgent.
+8. Persistence of chart_path in SQLite messages table.
 """
 
 from __future__ import annotations
@@ -17,6 +20,7 @@ import pytest
 
 from backend.agents.chart_agent import (
     ChartResult,
+    get_charts_dir,
     plot_comparison,
     plot_price_history,
     run_chart_agent,
@@ -48,6 +52,13 @@ def _make_sample_bars(symbol: str, count: int = 15, base_price: float = 100000.0
             )
         )
     return bars
+
+
+def test_charts_directory_is_in_root_resources():
+    """Kiểm tra đường dẫn thư mục charts nằm chính xác tại root resources/data/charts/."""
+    charts_dir = get_charts_dir()
+    assert "src" not in charts_dir.parts[-3:]
+    assert charts_dir.parts[-3:] == ("resources", "data", "charts")
 
 
 def test_plot_price_history_line_chart(tmp_path: Path):
@@ -306,7 +317,7 @@ def test_chat_graph_comparison_chart():
 def test_chat_api_endpoint_persists_chart_path(real_deps, monkeypatch):
     """Kiểm tra API POST /api/v1/chat trả về chart_path và lưu vào SQLite messages."""
     from fastapi.testclient import TestClient
-    from backend.backend.main import app
+    from backend.main import app
     from backend.database.connection import get_connection
     from backend.database.repositories import MessageRepository
     from backend.agents.supervisor_agent.nodes import (
@@ -417,4 +428,3 @@ def test_supervisor_routing_prompt_registry_includes_chart():
     assert "chart: vẽ biểu đồ kỹ thuật" in prompt
     assert '["price","chart"]' in prompt
     assert '"chart"' in prompt
-

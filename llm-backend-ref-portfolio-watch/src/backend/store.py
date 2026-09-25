@@ -1,9 +1,8 @@
-"""SQLite store — Backend sở hữu watchlist + approvals (dữ liệu thật).
+"""SQLite Store — Quản lý Watchlist, Approvals (HITL) và Runs (One-shot trace).
 
-Đường dẫn mặc định: BACKEND_SQLITE_PATH hoặc ./data/backend_store.db
-(tách khỏi AI SQLITE_PATH=./data/portfolio_watch.db).
-
-Runs (chat/scan steps) giữ in-memory — ephemeral MVP.
+Tuân thủ kiến trúc Clean Code:
+- Lưu trữ bền vững Watchlist và Approvals qua SQLite (mặc định tại resources/data/backend_store.db).
+- Quản lý bộ nhớ ngắn hạn của các lượt chạy (RunRecord) trong bộ nhớ.
 """
 
 from __future__ import annotations
@@ -19,6 +18,8 @@ from typing import Any
 
 @dataclass
 class WatchlistItem:
+    """Mục cổ phiếu trong danh mục theo dõi của người dùng."""
+
     symbol: str
     threshold_pct: float
     user_id: str = "default"
@@ -26,6 +27,8 @@ class WatchlistItem:
 
 @dataclass
 class ApprovalRecord:
+    """Bản ghi phê duyệt Human-In-The-Loop (HITL) Gate 1 hoặc Gate 2."""
+
     id: str
     user_id: str
     symbol: str
@@ -35,6 +38,7 @@ class ApprovalRecord:
     payload: dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
+        """Chuyển đổi bản ghi sang dictionary phục vụ JSON serialization."""
         return {
             "id": self.id,
             "approval_id": self.id,
@@ -49,7 +53,7 @@ class ApprovalRecord:
 
 @dataclass
 class RunRecord:
-    """Một lần chat/scan — giữ steps one-shot (in-memory)."""
+    """Lưu trữ dữ liệu một lần thực thi Chat hoặc Scan (One-shot steps) trong bộ nhớ."""
 
     id: str
     kind: str  # chat | scan
@@ -60,7 +64,7 @@ class RunRecord:
 
 @dataclass
 class LastQuoteRecord:
-    """Giá / route lần quét gần nhất — phục vụ Market status."""
+    """Giá và trạng thái định tuyến gần nhất phục vụ Market status."""
 
     symbol: str
     user_id: str = "default"
@@ -71,10 +75,13 @@ class LastQuoteRecord:
 
 
 def default_db_path() -> str:
-    return os.environ.get("BACKEND_SQLITE_PATH", "./data/backend_store.db")
+    """Đường dẫn tệp SQLite lưu trữ dữ liệu backend store (ưu tiên root resources/data/)."""
+    root_default = Path(__file__).resolve().parents[2] / "resources" / "data" / "backend_store.db"
+    return os.environ.get("BACKEND_SQLITE_PATH", str(root_default))
 
 
 def _connect(db_path: str) -> sqlite3.Connection:
+    """Khởi tạo kết nối SQLite và tạo các bảng cần thiết nếu chưa tồn tại."""
     path = Path(db_path)
     if str(path) != ":memory:":
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -113,6 +120,8 @@ def _connect(db_path: str) -> sqlite3.Connection:
 
 
 class Store:
+    """Kho lưu trữ dữ liệu tập trung cho Backend (Watchlist, Approvals, Last Quotes, Runs)."""
+
     def __init__(self, db_path: str | None = None) -> None:
         self.db_path = db_path if db_path is not None else default_db_path()
         self._lock = threading.Lock()
@@ -120,7 +129,7 @@ class Store:
         self._runs: dict[str, RunRecord] = {}
 
     def clear(self) -> None:
-        """Xoá watchlist/approvals/runs — dùng cho test."""
+        """Xóa toàn bộ dữ liệu watchlist, approvals, last_quotes và runs (dùng cho unit tests)."""
         with self._lock:
             self._conn.execute("DELETE FROM watchlist")
             self._conn.execute("DELETE FROM approvals")
@@ -129,15 +138,18 @@ class Store:
             self._runs.clear()
 
     def save_run(self, run: RunRecord) -> RunRecord:
+        """Lưu lại bản ghi lần chạy (run)."""
         with self._lock:
             self._runs[run.id] = run
             return run
 
     def get_run(self, run_id: str) -> RunRecord | None:
+        """Lấy bản ghi lần chạy theo run_id."""
         with self._lock:
             return self._runs.get(run_id)
 
     def list_watchlist(self, user_id: str = "default") -> list[WatchlistItem]:
+        """Liệt kê danh sách mã cổ phiếu trong watchlist của người dùng."""
         with self._lock:
             rows = self._conn.execute(
                 "SELECT user_id, symbol, threshold_pct FROM watchlist "
@@ -154,6 +166,7 @@ class Store:
         ]
 
     def get_watchlist(self, user_id: str, symbol: str) -> WatchlistItem | None:
+        """Lấy thông tin một mã cổ phiếu trong watchlist."""
         with self._lock:
             row = self._conn.execute(
                 "SELECT user_id, symbol, threshold_pct FROM watchlist "
@@ -169,6 +182,7 @@ class Store:
         )
 
     def upsert_watchlist(self, item: WatchlistItem) -> WatchlistItem:
+        """Thêm mới hoặc cập nhật ngưỡng cảnh báo cho mã cổ phiếu."""
         saved = WatchlistItem(
             symbol=item.symbol.upper(),
             threshold_pct=float(item.threshold_pct),
@@ -186,6 +200,7 @@ class Store:
         return saved
 
     def delete_watchlist(self, user_id: str, symbol: str) -> bool:
+        """Xóa mã cổ phiếu khỏi danh mục theo dõi."""
         with self._lock:
             cur = self._conn.execute(
                 "DELETE FROM watchlist WHERE user_id = ? AND symbol = ?",
@@ -195,6 +210,7 @@ class Store:
             return cur.rowcount > 0
 
     def upsert_last_quote(self, rec: LastQuoteRecord) -> LastQuoteRecord:
+        """Cập nhật giá và trạng thái quét gần nhất của mã cổ phiếu."""
         saved = LastQuoteRecord(
             symbol=rec.symbol.upper(),
             user_id=rec.user_id or "default",
@@ -224,6 +240,7 @@ class Store:
         return saved
 
     def get_last_quote(self, user_id: str, symbol: str) -> LastQuoteRecord | None:
+        """Lấy giá và trạng thái quét gần nhất của mã cổ phiếu."""
         with self._lock:
             row = self._conn.execute(
                 "SELECT user_id, symbol, price, change_pct, route, updated_at "
@@ -242,6 +259,7 @@ class Store:
         )
 
     def get_approval(self, approval_id: str) -> ApprovalRecord | None:
+        """Lấy thông tin bản ghi phê duyệt theo id."""
         with self._lock:
             row = self._conn.execute(
                 "SELECT id, user_id, symbol, gate, status, reason, payload_json "
@@ -253,7 +271,7 @@ class Store:
     def explain_approval_failure(
         self, approval_id: str, user_id: str = "default"
     ) -> str:
-        """Chi tiết lỗi khi approve/reject thất bại (missing / đã xử lý)."""
+        """Mô tả chi tiết nguyên nhân khi thao tác approve/reject thất bại."""
         aid = (approval_id or "").strip()
         if not aid:
             return "approval_id rỗng"
@@ -265,6 +283,7 @@ class Store:
         return "không thể xử lý approval"
 
     def list_pending(self, user_id: str = "default") -> list[ApprovalRecord]:
+        """Liệt kê danh sách các bản ghi đang chờ phê duyệt (status='pending')."""
         with self._lock:
             rows = self._conn.execute(
                 "SELECT id, user_id, symbol, gate, status, reason, payload_json "
@@ -275,6 +294,7 @@ class Store:
         return [_row_to_approval(r) for r in rows]
 
     def add_pending(self, rec: ApprovalRecord) -> ApprovalRecord:
+        """Thêm mới một yêu cầu phê duyệt vào hàng đợi."""
         with self._lock:
             existing = self._conn.execute(
                 "SELECT id, user_id, symbol, gate, status, reason, payload_json "
@@ -324,6 +344,7 @@ class Store:
     def approve(
         self, approval_id: str, user_id: str = "default"
     ) -> ApprovalRecord | None:
+        """Phê duyệt yêu cầu (chuyển status thành 'approved')."""
         with self._lock:
             row = self._conn.execute(
                 "SELECT id, user_id, symbol, gate, status, reason, payload_json "
@@ -351,6 +372,7 @@ class Store:
     def reject(
         self, approval_id: str, *, reason: str, user_id: str = "default"
     ) -> ApprovalRecord | None:
+        """Từ chối yêu cầu (chuyển status thành 'rejected' kèm lý do)."""
         with self._lock:
             row = self._conn.execute(
                 "SELECT id, user_id, symbol, gate, status, reason, payload_json "
