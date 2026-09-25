@@ -7,20 +7,20 @@ from pathlib import Path
 
 import pytest
 
-from src.portfolio_watch.agents.answer_composer import AnswerComposeResult
-from src.portfolio_watch.agents.supervisor_agent import (
+from backend.agents.answer_composer import AnswerComposeResult
+from backend.agents.supervisor_agent import (
     HeuristicRewriteBrain,
     HeuristicSupervisorBrain,
 )
-from src.portfolio_watch.domain.entities import RoutingDecision
-from src.portfolio_watch.domain.ports import PriceBar, PriceQuote
-from src.portfolio_watch.graph.chat import run_chat_graph
-from src.portfolio_watch.infra.storage.memory_store import (
+from backend.domain.entities import RoutingDecision
+from backend.domain.ports import PriceBar, PriceQuote
+from backend.graph.chat import run_chat_graph
+from backend.infra.storage.memory_store import (
     SqliteMemoryStore,
     filter_conversation_history,
     parse_timestamp,
 )
-from src.portfolio_watch.shared.settings import Settings, settings
+from backend.shared.settings import Settings, settings
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -322,3 +322,97 @@ def test_run_chat_graph_respects_sliding_window_limit(tmp_path):
     )
     # Ticker gần nhất trong window là SSI
     assert res.rewritten.symbol == "SSI"
+
+
+# ─── 6. Turn 1 ➔ Turn 2 Multi-Turn Follow-up ("Tại sao lại giảm?") ─────────
+
+def test_followup_explain_why_resolves_symbol_and_intent():
+    """Kiểm tra câu hỏi nối tiếp 'Tại sao lại giảm?' kế thừa đúng mã FPT và intent explain."""
+    brain = HeuristicRewriteBrain()
+    conversation = [
+        {"role": "user", "content": "FPT tăng hay giảm hôm nay?"},
+        {"role": "assistant", "content": "Hôm nay cổ phiếu FPT giảm 1.5% do áp lực bán phiên chiều."},
+    ]
+
+    # Turn 2: Câu hỏi nguyên nhân không có ticker
+    res_down = brain.rewrite("Tại sao lại giảm?", conversation)
+    assert res_down.symbol == "FPT"
+    assert res_down.symbols == ["FPT"]
+    assert res_down.intent == "explain"
+    assert res_down.rewritten == "Tại sao giá cổ phiếu FPT lại giảm hôm nay?"
+
+    # Kiểm tra trường hợp hỏi 'Tại sao lại tăng?'
+    res_up = brain.rewrite("Tại sao lại tăng?", conversation)
+    assert res_up.symbol == "FPT"
+    assert res_up.symbols == ["FPT"]
+    assert res_up.intent == "explain"
+    assert res_up.rewritten == "Tại sao giá cổ phiếu FPT lại tăng hôm nay?"
+
+
+def test_run_chat_graph_turn1_turn2_explain_flow(tmp_path):
+    """End-to-End Chat Graph: Turn 1 (FPT tăng hay giảm) -> Turn 2 (Tại sao lại giảm?) -> Turn 3 (Còn tin tức gì không?)."""
+    db = str(tmp_path / "test_turn1_turn2.db")
+    store = SqliteMemoryStore(db)
+    price_src = DummyPriceSource()
+    news_src = DummyNewsSource()
+    hist_store = DummyHistoryStore()
+    rewrite_brain = HeuristicRewriteBrain()
+    sup_brain = HeuristicSupervisorBrain()
+    ans_brain = DummyAnswerBrain()
+
+    user_id = "user_multiturn_flow"
+
+    # Turn 1: Người dùng hỏi trạng thái giá FPT
+    res1 = run_chat_graph(
+        "FPT tăng hay giảm hôm nay?",
+        price_source=price_src,
+        news_source=news_src,
+        history_store=hist_store,
+        memory_store=store,
+        user_id=user_id,
+        rewrite_brain=rewrite_brain,
+        supervisor_brain=sup_brain,
+        answer_brain=ans_brain,
+    )
+    assert res1.rewritten.symbol == "FPT"
+    assert "FPT" in (res1.answer or "")
+
+    # Turn 2: Người dùng hỏi tiếp nguyên nhân 'Tại sao lại giảm?'
+    res2 = run_chat_graph(
+        "Tại sao lại giảm?",
+        price_source=price_src,
+        news_source=news_src,
+        history_store=hist_store,
+        memory_store=store,
+        user_id=user_id,
+        rewrite_brain=rewrite_brain,
+        supervisor_brain=sup_brain,
+        answer_brain=ans_brain,
+    )
+    # Kế thừa chính xác mã FPT từ Turn 1
+    assert res2.rewritten.symbol == "FPT"
+    assert res2.rewritten.symbols == ["FPT"]
+    assert res2.rewritten.intent == "explain"
+    assert res2.rewritten.rewritten == "Tại sao giá cổ phiếu FPT lại giảm hôm nay?"
+    # Supervisor phân bổ sang Price, News và Eval để phân tích nguyên nhân
+    assert res2.routing.route == "explain"
+    assert set(res2.routing.agents_to_call) == {"price", "news", "eval"}
+    assert "FPT" in (res2.answer or "")
+
+    # Turn 3: Người dùng hỏi tiếp tin tức mà không cần nhắc lại ticker
+    res3 = run_chat_graph(
+        "Còn tin tức gì nữa không?",
+        price_source=price_src,
+        news_source=news_src,
+        history_store=hist_store,
+        memory_store=store,
+        user_id=user_id,
+        rewrite_brain=rewrite_brain,
+        supervisor_brain=sup_brain,
+        answer_brain=ans_brain,
+    )
+    assert res3.rewritten.symbol == "FPT"
+    assert res3.rewritten.intent == "news_lookup"
+    assert set(res3.routing.agents_to_call) == {"price", "news"}
+    assert "FPT" in (res3.answer or "")
+

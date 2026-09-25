@@ -1,0 +1,4 @@
+Trích 1 sự thật đáng nhớ dài hạn về user (mã theo dõi, danh mục, khẩu vị, phong cách) từ đoạn hội thoại sau, nếu có. Không bịa.
+
+Câu hỏi: $question
+Trả lời: $answer

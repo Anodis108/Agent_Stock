@@ -8,33 +8,33 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic import ValidationError
 
-from src.portfolio_watch.agents.eval_agent.nodes import HeuristicEvalBrain, LlmEvalBrain
-from src.portfolio_watch.agents.eval_agent.schemas import EvalSeverityOutput
-from src.portfolio_watch.agents.event_classifier.nodes import LlmEventClassifier
-from src.portfolio_watch.agents.event_classifier.schemas import ClassifierOutput
-from src.portfolio_watch.agents.news_agent.nodes import LlmNewsBrain
-from src.portfolio_watch.agents.news_agent.schemas import NewsAgentResult, NewsReactOutput
-from src.portfolio_watch.agents.price_agent import PriceAgentResult
-from src.portfolio_watch.agents.supervisor_agent.nodes import (
+from backend.agents.eval_agent.nodes import HeuristicEvalBrain, LlmEvalBrain
+from backend.agents.eval_agent.schemas import EvalSeverityOutput
+from backend.agents.event_classifier.nodes import LlmEventClassifier
+from backend.agents.event_classifier.schemas import ClassifierOutput
+from backend.agents.news_agent.nodes import LlmNewsBrain
+from backend.agents.news_agent.schemas import NewsAgentResult, NewsReactOutput
+from backend.agents.price_agent import PriceAgentResult
+from backend.agents.supervisor_agent.nodes import (
     LlmRewriteBrain,
     LlmSupervisorBrain,
     RewrittenQuestion,
     rewrite_question,
     route_question,
 )
-from src.portfolio_watch.agents.supervisor_agent.schemas import (
+from backend.agents.supervisor_agent.schemas import (
     RewriteOutput,
     SupervisorOutput,
 )
-from src.portfolio_watch.agents.synthesis_agent.nodes import LlmAlertComposer
-from src.portfolio_watch.agents.synthesis_agent.schemas import SynthesisAlertOutput
-from src.portfolio_watch.domain.entities import EventRoute, Severity, SeverityLevel
-from src.portfolio_watch.infra.llm.structured import (
+from backend.agents.synthesis_agent.nodes import LlmAlertComposer
+from backend.agents.synthesis_agent.schemas import SynthesisAlertOutput
+from backend.domain.entities import EventRoute, Severity, SeverityLevel
+from backend.infra.llm.structured import (
     call_llm_structured,
     extract_json_str,
     parse_structured,
 )
-from src.portfolio_watch.shared.schemas import (
+from backend.shared.schemas import (
     MemoryExtractOutput,
     parse_memory_extract,
 )
@@ -404,13 +404,13 @@ def test_news_agent_path_structured_and_fallback():
 
 class _FakePriceSource:
     def fetch_latest_close(self, symbol: str):
-        from src.portfolio_watch.domain.ports import PriceQuote
+        from backend.domain.ports import PriceQuote
         return PriceQuote(symbol=symbol, latest_close=120.0, prev_close=118.0)
 
 
 class _FakeNewsSource:
     def fetch_news(self, symbol: str, query=None, *, days=None):
-        from src.portfolio_watch.domain.ports import NewsItem
+        from backend.domain.ports import NewsItem
         return [NewsItem(title=f"Tin {symbol}", snippet="Kinh doanh ổn định", symbol=symbol)]
 
 
@@ -448,7 +448,7 @@ class _FakeHistoryStore:
 
 def test_chat_graph_with_structured_output_success():
     """Chat graph chạy qua LLM rewrite + supervisor structured output thành công."""
-    from src.portfolio_watch.graph.chat import run_chat_graph
+    from backend.graph.chat import run_chat_graph
 
     rw_parsed = RewriteOutput(
         rewritten="[FPT] Giá FPT hôm nay?",
@@ -482,7 +482,7 @@ def test_chat_graph_with_structured_output_success():
 
 def test_chat_graph_schema_error_does_not_crash():
     """Khi cả rewrite và supervisor trả schema hỏng -> inner guard fallback, graph không crash."""
-    from src.portfolio_watch.graph.chat import run_chat_graph
+    from backend.graph.chat import run_chat_graph
 
     # Cả hai đều trả text hỏng gây schema error
     rw_brain = LlmRewriteBrain(chat_fn=lambda msgs, p: "corrupted json error")
@@ -506,7 +506,7 @@ def test_chat_graph_schema_error_does_not_crash():
 
 
 def test_diagram_plan_schema():
-    from src.portfolio_watch.shared.schemas import DiagramPlanOutput
+    from backend.shared.schemas import DiagramPlanOutput
     out = DiagramPlanOutput(
         title="Luồng xử lý FPT",
         nodes=["nodeA", "nodeB"],

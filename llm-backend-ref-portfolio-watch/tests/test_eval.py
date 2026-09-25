@@ -7,7 +7,7 @@ from pathlib import Path
 
 import yaml
 
-from src.portfolio_watch.eval import run as eval_mod
+from backend.eval import run as eval_mod
 
 ROOT = Path(__file__).resolve().parents[1]
 GOLDEN = ROOT / "specs" / "eval" / "golden_dataset.yaml"

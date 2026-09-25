@@ -10,12 +10,12 @@ from pathlib import Path
 import pytest
 import uvicorn
 
-from src.portfolio_watch.ai_main import app as ai_app
-from src.portfolio_watch.api.deps import AppDeps, clear_deps_cache, set_app_deps
-from src.portfolio_watch.domain.entities import WatchlistItem
-from src.portfolio_watch.infra.market_data import CafefNewsSource, VnstockPriceSource
-from src.portfolio_watch.infra.notify import ConsoleNotifier
-from src.portfolio_watch.infra.storage import (
+from backend.ai_main import app as ai_app
+from backend.api.deps import AppDeps, clear_deps_cache, set_app_deps
+from backend.domain.entities import WatchlistItem
+from backend.infra.market_data import CafefNewsSource, VnstockPriceSource
+from backend.infra.notify import ConsoleNotifier
+from backend.infra.storage import (
     SqliteMemoryStore,
     SqlitePriceHistoryStore,
     SqliteWatchlistStore,

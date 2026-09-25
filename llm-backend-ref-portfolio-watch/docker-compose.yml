@@ -1,40 +1,52 @@
-# Portfolio Watch V3 — Docker product 1 service (Phase 3)
-# Up:   cp .env.example .env   # điền OPENAI_API_KEYS nếu LLM_BACKEND=openai
-#       docker compose up --build
-# Logs: docker compose logs -f app
-# Down: docker compose down
-# Data: volume `pw_data` → /app/data (SQLite: portfolio_watch.db + backend_store.db)
-# Optional: docker compose --profile qdrant up -d (Qdrant service)
+# Portfolio Watch V5 — Microservices Deployment (Frontend + Backend)
+#
+# Khởi động cả 2 container:
+#   cp .env.example .env   # Điền OPENAI_API_KEYS nếu dùng OpenAI
+#   docker compose up --build -d
+#
+# Truy cập:
+#   Frontend Web UI : http://localhost:3000 (Nginx reverse-proxy)
+#   Backend API     : http://localhost:8000 (FastAPI Swagger /docs, /health)
+#
+# Xem logs:
+#   docker compose logs -f
+#
+# Dừng hệ thống:
+#   docker compose down
 
 services:
-  app:
-    build: .
-    image: portfolio-watch:split
-    container_name: portfolio-watch-app
+  backend:
+    build:
+      context: .
+      dockerfile: src/backend/Dockerfile
+    image: portfolio-watch:backend
+    pull_policy: build
+    container_name: portfolio-watch-backend
     env_file:
       - .env
     command:
       [
         "uvicorn",
-        "src.portfolio_watch.backend.main:app",
+        "backend.backend.main:app",
         "--host",
         "0.0.0.0",
         "--port",
         "8000",
       ]
     ports:
-      - "${APP_HOST_PORT:-8000}:8000"
+      - "${BACKEND_PORT:-8000}:8000"
     environment:
       API_HOST: "0.0.0.0"
       API_PORT: "8000"
       AI_TRANSPORT: "inprocess"
-      # Same-origin product — đè FRONTEND_ORIGIN=:5173 từ .env V2 nếu còn
       FRONTEND_ORIGIN: "*"
       SQLITE_PATH: /app/data/portfolio_watch.db
       BACKEND_SQLITE_PATH: /app/data/backend_store.db
-      # Khi bật --profile qdrant, app trong mạng compose gọi service `qdrant`
+      MONITORING_ENABLED: "${MONITORING_ENABLED:-false}"
+      LANGFUSE_PUBLIC_KEY: "${LANGFUSE_PUBLIC_KEY:-}"
+      LANGFUSE_SECRET_KEY: "${LANGFUSE_SECRET_KEY:-}"
+      LANGFUSE_HOST: "${DOCKER_LANGFUSE_HOST:-http://langfuse-web:3000}"
       QDRANT_URL: http://qdrant:6333
-      LANGFUSE_HOST: "http://host.docker.internal:3000"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -47,13 +59,50 @@ services:
           "-c",
           "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')",
         ]
-      interval: 30s
+      interval: 15s
       timeout: 5s
       retries: 3
-      start_period: 15s
+      start_period: 10s
     restart: unless-stopped
 
-  # Optional service for long-term memory (Phase 8) — kích hoạt: docker compose --profile qdrant up -d
+  frontend:
+    build:
+      context: ./src/frontend
+      dockerfile: Dockerfile
+    image: portfolio-watch:frontend
+    pull_policy: build
+    container_name: portfolio-watch-frontend
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Alias / Utility runner cho test và eval trong container:
+  # docker compose run --rm app pytest tests/ -v
+  # docker compose run --rm app python -m backend.eval.run_detailed
+  app:
+    image: portfolio-watch:backend
+    build:
+      context: .
+      dockerfile: src/backend/Dockerfile
+    container_name: portfolio-watch-app
+    env_file:
+      - .env
+    environment:
+      API_HOST: "0.0.0.0"
+      API_PORT: "8000"
+      AI_TRANSPORT: "inprocess"
+      SQLITE_PATH: /app/data/portfolio_watch.db
+      BACKEND_SQLITE_PATH: /app/data/backend_store.db
+    volumes:
+      - pw_data:/app/data
+    profiles:
+      - tools
+      - test
+
+  # Service tùy chọn cho Long-term Memory Vector Search (kích hoạt: docker compose --profile qdrant up -d)
   qdrant:
     image: qdrant/qdrant:latest
     container_name: portfolio-watch-qdrant
@@ -72,3 +121,4 @@ volumes:
     name: portfolio-watch-data
   qdrant_data:
     name: portfolio-watch-qdrant-data
+

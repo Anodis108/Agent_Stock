@@ -1,0 +1,16 @@
+name: memory_fact
+version: 1
+model: gpt-4o-mini
+description: >-
+  Trích 1 sự thật đáng nhớ dài hạn về user (mã theo dõi, danh mục, khẩu vị, phong cách)
+  từ đoạn hội thoại gần nhất.
+owner: portfolio-watch
+created: 2026-09-24
+changelog: >-
+  v1: Chuẩn hoá prompt trích xuất memory fact qua Prompt Registry.
+eval_score: null
+template: |
+  Trích 1 sự thật đáng nhớ dài hạn về user (mã theo dõi, danh mục, khẩu vị, phong cách) từ đoạn hội thoại sau, nếu có. Không bịa.
+
+  Câu hỏi: $question
+  Trả lời: $answer

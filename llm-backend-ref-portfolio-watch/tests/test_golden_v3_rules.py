@@ -1,4 +1,4 @@
-from src.portfolio_watch.eval.run import GOLDEN_V3_PATH, load_golden_dataset, score_case_rule_based
+from backend.eval.run import GOLDEN_V3_PATH, load_golden_dataset, score_case_rule_based
 
 def test_golden_v3_cases_have_rules():
     """Mọi case trong golden_v3 đều có must_include và must_not_include list."""

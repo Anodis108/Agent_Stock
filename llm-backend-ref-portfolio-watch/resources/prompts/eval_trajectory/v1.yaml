@@ -1,0 +1,18 @@
+name: eval_trajectory
+version: 1
+model: gpt-4o-mini
+description: >-
+  LLM Scorer: Đánh giá chuỗi hành động multi-agent trajectory.
+owner: portfolio-watch
+created: 2026-09-24
+changelog: >-
+  v1: Chuẩn hoá prompt trajectory eval qua Prompt Registry.
+eval_score: null
+template: |
+  Bạn chấm CHUỖI HÀNH ĐỘNG của multi-agent Portfolio Watch (không chỉ câu trả lời cuối).
+
+  Luồng hợp lý điển hình: rewrite_question -> supervisor (chọn agent) -> price_agent và/hoặc news_agent (và eval_agent nếu cần giải thích) -> answer_composer -> (guardrail nếu có).
+
+  Trừ điểm nếu: gọi eval khi chưa có giá/tin cần thiết; lặp agent thừa; sai mã CP; bỏ qua agent cần thiết cho phạm vi câu hỏi.
+
+  4 tiêu chí ĐỘC LẬP, thang 1-5. Ít bước vì câu hỏi đơn giản là ĐÚNG (efficiency), không phải thiếu sót.

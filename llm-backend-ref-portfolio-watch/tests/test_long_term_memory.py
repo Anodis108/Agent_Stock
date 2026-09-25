@@ -7,24 +7,24 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.portfolio_watch.agents.answer_composer import AnswerComposeResult
-from src.portfolio_watch.agents.supervisor_agent import (
+from backend.agents.answer_composer import AnswerComposeResult
+from backend.agents.supervisor_agent import (
     HeuristicRewriteBrain,
     recall_memory,
     rewrite_question,
     store_memory,
 )
-from src.portfolio_watch.application.answer_question import answer_question
-from src.portfolio_watch.domain.ports import PriceBar, PriceQuote
-from src.portfolio_watch.graph.chat import run_chat_graph
-from src.portfolio_watch.infra.storage.long_term_memory import (
+from backend.application.answer_question import answer_question
+from backend.domain.ports import PriceBar, PriceQuote
+from backend.graph.chat import run_chat_graph
+from backend.infra.storage.long_term_memory import (
     clear_long_term_fallback,
     recall_long_term,
     save_to_long_term,
 )
-from src.portfolio_watch.infra.storage.memory_store import SqliteMemoryStore
-from src.portfolio_watch.shared.schemas import MemoryFact, parse_memory_fact
-from src.portfolio_watch.shared.settings import Settings, settings
+from backend.infra.storage.memory_store import SqliteMemoryStore
+from backend.shared.schemas import MemoryFact, parse_memory_fact
+from backend.shared.settings import Settings, settings
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -178,7 +178,8 @@ def test_qdrant_unreachable_falls_back_to_in_memory():
 
 def test_qdrant_vector_store_when_mock_embed_available():
     """Kiểm tra đường code Qdrant khi có Qdrant client và embed_fn."""
-    from qdrant_client import QdrantClient
+    qdrant_client = pytest.importorskip("qdrant_client")
+    QdrantClient = qdrant_client.QdrantClient
 
     client = QdrantClient(location=":memory:")
 

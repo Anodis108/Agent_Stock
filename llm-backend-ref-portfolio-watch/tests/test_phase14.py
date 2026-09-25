@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from src.portfolio_watch.agents.supervisor_agent.nodes import HeuristicRewriteBrain, HeuristicSupervisorBrain
-from src.portfolio_watch.graph.chat import run_chat_graph
+from backend.agents.supervisor_agent.nodes import HeuristicRewriteBrain, HeuristicSupervisorBrain
+from backend.graph.chat import run_chat_graph
 from typing import Any
-from src.portfolio_watch.domain.ports import MemoryStore, PriceSource, NewsSource, PriceHistoryStore
+from backend.domain.ports import MemoryStore, PriceSource, NewsSource, PriceHistoryStore
 
 class DummyMemoryStore(MemoryStore):
     def read_preferences(self, user_id: str = "default") -> dict[str, Any]:
@@ -14,8 +14,8 @@ class DummyMemoryStore(MemoryStore):
         pass
     def list_conversation(self, user_id: str, limit: int = 10, ttl_minutes: float | None = None) -> list[dict[str, Any]]:
         return []
-from src.portfolio_watch.agents.news_agent import NewsAgentResult
-from src.portfolio_watch.agents.price_agent import PriceAgentResult
+from backend.agents.news_agent import NewsAgentResult
+from backend.agents.price_agent import PriceAgentResult
 
 class DummyPriceSource(PriceSource):
     def fetch_current(self, symbol: str) -> PriceAgentResult:
@@ -79,9 +79,9 @@ def test_phase14_diagram_outputs_mermaid():
     assert "graph" in diagram_step["output"]["mermaid"]
 
 def test_phase14_diagram_structured_llm_plan():
-    from src.portfolio_watch.agents.diagram_agent.nodes import LlmDiagramBrain
-    from src.portfolio_watch.shared.schemas import DiagramPlanOutput
-    from src.portfolio_watch.graph.chat import run_chat_graph
+    from backend.agents.diagram_agent.nodes import LlmDiagramBrain
+    from backend.shared.schemas import DiagramPlanOutput
+    from backend.graph.chat import run_chat_graph
     
     mem_store = DummyMemoryStore()
     

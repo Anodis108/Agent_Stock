@@ -9,8 +9,8 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from src.portfolio_watch.backend.main import app, store
-from src.portfolio_watch.backend.store import ApprovalRecord, WatchlistItem
+from backend.backend.main import app, store
+from backend.backend.store import ApprovalRecord, WatchlistItem
 
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND_DIR = ROOT / "src" / "portfolio_watch" / "backend"
@@ -114,7 +114,7 @@ def test_ai_http_down_returns_502(monkeypatch):
 
 
 def test_normalize_steps_preserves_input_output():
-    from src.portfolio_watch.backend.steps import normalize_steps
+    from backend.backend.steps import normalize_steps
 
     raw = [
         {
@@ -141,8 +141,8 @@ def test_normalize_steps_preserves_input_output():
 
 
 def test_build_steps_from_chunks_populates_io():
-    from src.portfolio_watch.agents.supervisor_agent import RewrittenQuestion
-    from src.portfolio_watch.graph.steps import build_steps_from_chunks
+    from backend.agents.supervisor_agent import RewrittenQuestion
+    from backend.graph.steps import build_steps_from_chunks
 
     chunks = [
         {

@@ -6,12 +6,12 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from src.portfolio_watch.ai_main import app
-from src.portfolio_watch.application.answer_question import answer_question
-from src.portfolio_watch.application.scan_symbol import scan_symbol
-from src.portfolio_watch.infra.monitoring import tracing as tracing_mod
-from src.portfolio_watch.infra.monitoring.tracing import reset_client_for_tests, trace_request
-from src.portfolio_watch.shared.settings import settings
+from backend.ai_main import app
+from backend.application.answer_question import answer_question
+from backend.application.scan_symbol import scan_symbol
+from backend.infra.monitoring import tracing as tracing_mod
+from backend.infra.monitoring.tracing import reset_client_for_tests, trace_request
+from backend.shared.settings import settings
 
 
 class MockObservation:

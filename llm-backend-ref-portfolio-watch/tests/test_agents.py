@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import pytest
 
-from src.portfolio_watch.agents import answer_composer, synthesis_agent
-from src.portfolio_watch.agents.event_classifier import classify_event
-from src.portfolio_watch.agents.news_agent import run_news_agent
-from src.portfolio_watch.agents.price_agent import run_price_agent
-from src.portfolio_watch.domain.entities import EventRoute
-from src.portfolio_watch.domain.guardrails.output_checks import check_output
-from src.portfolio_watch.infra.market_data import CafefNewsSource, VnstockPriceSource
+from backend.agents import answer_composer, synthesis_agent
+from backend.agents.event_classifier import classify_event
+from backend.agents.news_agent import run_news_agent
+from backend.agents.price_agent import run_price_agent
+from backend.domain.entities import EventRoute
+from backend.domain.guardrails.output_checks import check_output
+from backend.infra.market_data import CafefNewsSource, VnstockPriceSource
 
 
 def test_price_agent_real_vnstock():

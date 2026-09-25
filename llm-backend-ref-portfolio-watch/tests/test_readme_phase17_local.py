@@ -18,7 +18,7 @@ def test_readme_has_optional_local_development():
 
     local_section = content.split("## Optional local development")[1].split("\n## ")[0].lower()
 
-    assert "uvicorn src.portfolio_watch.backend.main" in local_section
+    assert "uvicorn backend.backend.main" in local_section
     assert "pytest" in local_section
     assert "pip install -e" in local_section
     assert "localhost:8000" in local_section

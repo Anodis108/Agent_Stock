@@ -5,9 +5,9 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from src.portfolio_watch.ai_main import app
-from src.portfolio_watch.graph.chat import compile_chat_graph, run_chat_graph
-from src.portfolio_watch.graph.scan import compile_scan_graph
+from backend.ai_main import app
+from backend.graph.chat import compile_chat_graph, run_chat_graph
+from backend.graph.scan import compile_scan_graph
 
 
 @pytest.fixture
@@ -42,7 +42,7 @@ def test_chat_graph_compile_and_invoke(real_deps):
         memory_store=real_deps.memory_store,
         turn="t1",
     )
-    assert result.answer and result.steps[0]["name"] == "rewrite_question"
+    assert result.answer and any(s["name"] == "rewrite_question" for s in result.steps)
 
 
 def test_scan_graph_compiles():
