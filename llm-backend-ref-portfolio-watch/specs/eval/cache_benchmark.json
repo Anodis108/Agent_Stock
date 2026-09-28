@@ -1,0 +1,126 @@
+{
+  "generated_at": "2026-09-28T15:03:47Z",
+  "git_sha": "792fa34",
+  "dry_run": true,
+  "questions_run": 50,
+  "elapsed_sec": 0.01,
+  "modes": {
+    "none": {
+      "requests": 150,
+      "cache_hits": 0,
+      "cache_hit_rate": 0.0,
+      "total_tokens": 155940,
+      "total_cost_usd": 0.032814,
+      "total_cost_vnd": 833.48,
+      "by_feature": {
+        "cache_benchmark": {
+          "requests": 150,
+          "tokens": 155940,
+          "cost_usd": 0.03281399999999999
+        }
+      }
+    },
+    "tier1": {
+      "requests": 300,
+      "cache_hits": 150,
+      "cache_hit_rate": 0.5,
+      "total_tokens": 155940,
+      "total_cost_usd": 0.032814,
+      "total_cost_vnd": 833.48,
+      "by_feature": {
+        "cache_benchmark": {
+          "requests": 300,
+          "tokens": 155940,
+          "cost_usd": 0.03281399999999999
+        }
+      }
+    },
+    "tier1_tier2": {
+      "requests": 150,
+      "cache_hits": 45,
+      "cache_hit_rate": 0.3,
+      "total_tokens": 109140,
+      "total_cost_usd": 0.022959,
+      "total_cost_vnd": 583.16,
+      "by_feature": {
+        "cache_benchmark": {
+          "requests": 150,
+          "tokens": 109140,
+          "cost_usd": 0.022958999999999997
+        }
+      }
+    }
+  },
+  "semantic_audit_sample": [
+    {
+      "query": "Giá FPT hôm nay?",
+      "matched_question": "Giá FPT hôm nay bao nhiêu?",
+      "similarity": 0.95,
+      "prompt_name": "answer_compose",
+      "false_hit_risk": "low"
+    },
+    {
+      "query": "FPT giá bao nhiêu hôm nay?",
+      "matched_question": "Giá FPT hôm nay bao nhiêu?",
+      "similarity": 0.95,
+      "prompt_name": "answer_compose",
+      "false_hit_risk": "low"
+    },
+    {
+      "query": "Giá VNM hiện tại?",
+      "matched_question": "Cho tôi giá hiện tại của VNM",
+      "similarity": 0.95,
+      "prompt_name": "answer_compose",
+      "false_hit_risk": "low"
+    },
+    {
+      "query": "HPG giá thế nào?",
+      "matched_question": "HPG đang giao dịch ở mức giá nào?",
+      "similarity": 0.95,
+      "prompt_name": "answer_compose",
+      "false_hit_risk": "low"
+    },
+    {
+      "query": "Tin FPT mới nhất?",
+      "matched_question": "Tin gần đây về FPT là gì?",
+      "similarity": 0.95,
+      "prompt_name": "answer_compose",
+      "false_hit_risk": "low"
+    },
+    {
+      "query": "Tin HPG hôm nay?",
+      "matched_question": "Có tin gì mới về HPG không?",
+      "similarity": 0.95,
+      "prompt_name": "answer_compose",
+      "false_hit_risk": "low"
+    },
+    {
+      "query": "VNM tin tức?",
+      "matched_question": "Tin tức VNM hôm nay",
+      "similarity": 0.95,
+      "prompt_name": "answer_compose",
+      "false_hit_risk": "low"
+    },
+    {
+      "query": "FPT hôm nay tăng hay giảm?",
+      "matched_question": "FPT tăng hay giảm hôm nay?",
+      "similarity": 0.95,
+      "prompt_name": "answer_compose",
+      "false_hit_risk": "low"
+    },
+    {
+      "query": "So sánh VNM với HPG",
+      "matched_question": "So sánh VNM và HPG tuần này",
+      "similarity": 0.95,
+      "prompt_name": "answer_compose",
+      "false_hit_risk": "low"
+    },
+    {
+      "query": "FPT vs VNM giá hôm nay",
+      "matched_question": "So sánh giá FPT và VNM hôm nay",
+      "similarity": 0.95,
+      "prompt_name": "answer_compose",
+      "false_hit_risk": "low"
+    }
+  ]
+}

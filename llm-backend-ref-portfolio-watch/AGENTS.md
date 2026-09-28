@@ -25,6 +25,23 @@ Dự án **Portfolio Watch** tuân theo phương pháp **Spec-Driven Development
 10. **After each implementation, update specs/change-log.md**: Sau khi hoàn thành một phase, bắt buộc cập nhật chi tiết vào `specs/change-log.md` và đánh dấu `[x]` trong `specs/implementation-plan.md`.
 11. **After each implementation, explain how to test the change**: Sau mỗi lần code xong, phải cung cấp chính xác các lệnh chạy kiểm thử tự động và các bước xác minh thủ công.
 
+18. **Always read the specs before coding** — đọc trước:
+   - `specs/product-spec.md`
+   - `specs/implementation-plan.md`
+   - `specs/test-plan.md`
+   - `specs/change-log.md`
+
+12. **Implement only one phase or task at a time** — chỉ làm Phase đang mở trong `implementation-plan.md`; không nhảy phase.
+
+13. **Keep the app simple** — MVP-focused; không over-engineer (vd. dùng cache in-memory, ngrok demo, git-based prompts).
+
+14. **Do not add unnecessary libraries** — tái dùng stack hiện có: `fastapi`, `langgraph`, `pydantic`, `vnstock`, `yaml`, `pytest`.
+
+15. **Do not change architecture unless the spec is updated** — giữ cấu trúc `src/`, `resources/`, `tests/`; không tạo `src/resources/`.
+
+16. **After each implementation, update `specs/change-log.md`** — ghi rõ phase, file đổi, kết quả test.
+
+17. **After each implementation, explain how to test the change** — đưa lệnh cụ thể (pytest, eval, docker, smoke).
 ---
 
 ## 2. Target Architecture (Kiến Trúc Chuẩn Hóa)

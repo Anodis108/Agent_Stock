@@ -10,6 +10,7 @@ Tập trung kiểm tra:
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -235,6 +236,8 @@ def test_agent_span_captures_input_and_output(monkeypatch):
     reset_client_for_tests()
     monkeypatch.setattr(tracing_mod, "_client", mock_client)
 
+    monkeypatch.setattr(tracing_mod, "should_sample", lambda **kwargs: True)
+
     turn = "test_turn_123"
     with trace_request("chat", "FPT", metadata={"turn": turn}):
         with agent_span(turn, "test_node", input={"q": "FPT"}) as box:
@@ -249,3 +252,354 @@ def test_agent_span_captures_input_and_output(monkeypatch):
     assert child.input == {"q": "FPT"}
     assert child.output == {"status": "ok"}
     assert child.ended is True
+
+
+# ==============================================================================
+# 5. Prompt Registry — Phase 1 (M3-B1)
+# ==============================================================================
+
+def test_all_production_llm_prompts_load_from_registry():
+    """Mọi prompt LLM production phải có trong resources/prompts/ — không hardcode."""
+    from backend.infra.llm.prompt_registry import PRODUCTION_LLM_PROMPT_NAMES, registry
+
+    reg = registry()
+    for name in PRODUCTION_LLM_PROMPT_NAMES:
+        prompt = reg.get(name, version="production")
+        assert prompt.template.strip(), f"Prompt '{name}' có template rỗng"
+        assert (reg._root / name / "production.txt").is_file(), (
+            f"Prompt '{name}' thiếu production.txt"
+        )
+
+
+def test_eval_system_prompts_use_registry_not_hardcode():
+    """Eval judge / task_success / trajectory lấy system prompt từ registry."""
+    from backend.eval.run import _get_judge_system_prompt
+    from backend.infra.eval.agent_scorers import (
+        _get_default_success_criteria,
+        _get_task_success_system_prompt,
+        _get_trajectory_system_prompt,
+    )
+    from backend.infra.llm.prompt_registry import get_system_prompt
+
+    assert _get_judge_system_prompt() == get_system_prompt("eval_judge")
+    assert _get_task_success_system_prompt() == get_system_prompt("eval_task_success")
+    assert _get_trajectory_system_prompt() == get_system_prompt("eval_trajectory")
+    assert _get_default_success_criteria()
+
+
+def test_phase2_prompt_v2_load_metadata_and_render():
+    """Phase 2: answer_compose và rewrite_question có v2 đầy đủ metadata; render không thiếu biến."""
+    from backend.infra.llm.prompt_registry import registry
+
+    reg = registry()
+    required_meta = ("name", "model", "owner", "created", "changelog")
+
+    for name in ("answer_compose", "rewrite_question"):
+        prompt = reg.get(name, version=2)
+        assert prompt.version == 2, f"{name} v2.version phải là 2"
+        assert prompt.template.strip(), f"{name} v2 template rỗng"
+        for field in required_meta:
+            assert getattr(prompt, field, "").strip(), f"{name} v2 thiếu metadata '{field}'"
+
+    answer_rendered = reg.render(
+        "answer_compose",
+        version=2,
+        question="Giá FPT?",
+        symbol="FPT",
+        price_summary="FPT: 95000 VND",
+        news_summary="(không có tin)",
+        eval_summary="(không)",
+        evidence="FPT close=95000",
+        violations="(không)",
+    )
+    assert "FPT" in answer_rendered
+    assert "grounding" in answer_rendered.lower() or "evidence" in answer_rendered.lower()
+
+    rewrite_rendered = reg.render(
+        "rewrite_question",
+        version=2,
+        question="Tại sao lại giảm?",
+        conversation='[{"role":"user","content":"Giá FPT hôm nay?"}]',
+    )
+    assert "Tại sao lại giảm?" in rewrite_rendered
+    assert "Turn 2" in rewrite_rendered or "đại từ" in rewrite_rendered
+
+
+def test_phase2_production_still_points_to_v1():
+    """Phase 2: production.txt chưa promote v2 — production vẫn dùng template v1."""
+    from backend.infra.llm.prompt_registry import registry
+
+    reg = registry()
+    for name in ("answer_compose", "rewrite_question"):
+        prod = reg.get(name, version="production")
+        v1 = reg.get(name, version=1)
+        assert prod.template.strip() == v1.template.strip(), (
+            f"{name}: production phải giữ template v1 (chưa promote v2)"
+        )
+        v2 = reg.get(name, version=2)
+        assert v2.template.strip() != v1.template.strip(), (
+            f"{name}: v2 phải khác v1 để git diff có ý nghĩa"
+        )
+
+
+# ==============================================================================
+# Exact cache — Phase 8 (M3-B3)
+# ==============================================================================
+
+
+def test_exact_cache_key_includes_prompt_version():
+    """Cache key phải đổi khi bump prompt_version."""
+    from backend.infra.cache.exact import ExactCache, normalize_question
+
+    cache = ExactCache()
+    q = normalize_question("Giá FPT hôm nay?")
+    k_prod = cache.make_key("answer_compose", "production", "gpt-4o-mini", q)
+    k_v2 = cache.make_key("answer_compose", "2", "gpt-4o-mini", q)
+    assert k_prod != k_v2
+
+
+def test_exact_cache_hit_on_repeat_question(monkeypatch):
+    """Cùng câu hỏi 2 lần → lần 2 cache_hit=true, không gọi API lần 2."""
+    from backend.infra.cache.exact import (
+        clear_llm_cache_context,
+        get_exact_cache,
+        set_llm_cache_context,
+    )
+    from backend.infra.cost.tracker import get_cost_tracker, reset_cost_tracker
+    from backend.infra.llm import completion as completion_mod
+
+    get_exact_cache().clear()
+    reset_cost_tracker()
+    calls: list[int] = []
+
+    class _Usage:
+        prompt_tokens = 100
+        completion_tokens = 50
+        total_tokens = 150
+
+    def fake_create(**kwargs):
+        calls.append(1)
+        mock_resp = MagicMock()
+        mock_resp.choices = [MagicMock(message=MagicMock(content="cached answer"))]
+        mock_resp.usage = _Usage()
+        return mock_resp
+
+    fake_client = MagicMock()
+    fake_client.chat.completions.create = fake_create
+    monkeypatch.setattr(completion_mod, "get_client", lambda: fake_client)
+    monkeypatch.setattr(completion_mod, "retry_with_backoff", lambda fn, **kw: fn())
+    monkeypatch.setenv("EXACT_CACHE_ENABLED", "true")
+
+    messages = [{"role": "user", "content": "test"}]
+    set_llm_cache_context(
+        prompt_name="answer_compose",
+        prompt_version="production",
+        normalized_question="Giá FPT hôm nay?",
+    )
+    assert completion_mod.chat(messages) == "cached answer"
+    assert completion_mod.chat(messages) == "cached answer"
+    clear_llm_cache_context()
+
+    assert len(calls) == 1
+    summary = get_cost_tracker().summary()
+    assert summary["cache_hits"] == 1
+    assert summary["requests"] == 2
+
+
+def test_exact_cache_miss_on_prompt_version_bump(monkeypatch):
+    """Bump prompt_version → cache miss, gọi API lại."""
+    from backend.infra.cache.exact import get_exact_cache, set_llm_cache_context
+    from backend.infra.llm import completion as completion_mod
+
+    get_exact_cache().clear()
+    calls: list[int] = []
+
+    class _Usage:
+        prompt_tokens = 80
+        completion_tokens = 40
+        total_tokens = 120
+
+    def fake_create(**kwargs):
+        calls.append(1)
+        mock_resp = MagicMock()
+        mock_resp.choices = [MagicMock(message=MagicMock(content=f"answer-{len(calls)}"))]
+        mock_resp.usage = _Usage()
+        return mock_resp
+
+    fake_client = MagicMock()
+    fake_client.chat.completions.create = fake_create
+    monkeypatch.setattr(completion_mod, "get_client", lambda: fake_client)
+    monkeypatch.setattr(completion_mod, "retry_with_backoff", lambda fn, **kw: fn())
+    monkeypatch.setenv("EXACT_CACHE_ENABLED", "true")
+
+    messages = [{"role": "user", "content": "test"}]
+    set_llm_cache_context(
+        prompt_name="answer_compose",
+        prompt_version="production",
+        normalized_question="Giá FPT?",
+    )
+    first = completion_mod.chat(messages)
+    set_llm_cache_context(
+        prompt_name="answer_compose",
+        prompt_version="2",
+        normalized_question="Giá FPT?",
+    )
+    second = completion_mod.chat(messages)
+
+    assert len(calls) == 2
+    assert first == "answer-1"
+    assert second == "answer-2"
+
+
+def test_cost_baseline_with_cache_tier1_dry_run(tmp_path):
+    """cost_baseline --with-cache tier1 dry-run: pass 2 có cache hits."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+    from cost_baseline import run_baseline  # type: ignore
+
+    md = tmp_path / "cost_tier1.md"
+    js = tmp_path / "cost_tier1.json"
+    payload = run_baseline(
+        limit=5,
+        dry_run=True,
+        with_cache="tier1",
+        output_md=md,
+        output_json=js,
+    )
+    summary = payload["summary"]
+    assert payload["passes"] == 2
+    assert summary["cache_hits"] > 0
+    assert summary["cache_hit_rate"] > 0
+
+
+# ==============================================================================
+# Semantic cache — Phase 9 (M3-B3)
+# ==============================================================================
+
+
+def test_semantic_cache_skips_dynamic_question():
+    """Câu có ngày/giá động không dùng semantic cache."""
+    from backend.infra.cache.semantic import SemanticCache, is_dynamic_question
+
+    assert is_dynamic_question("Giá FPT hôm nay bao nhiêu?")
+    assert is_dynamic_question("VNM 95000 VND")
+    assert not is_dynamic_question("Tin FPT mới nhất")
+
+    cache = SemanticCache()
+    cache.store(
+        prompt_name="answer_compose",
+        prompt_version="production",
+        model="gpt-4o-mini",
+        question="Tin FPT mới nhất",
+        value="answer-a",
+    )
+    hit = cache.lookup(
+        prompt_name="answer_compose",
+        prompt_version="production",
+        model="gpt-4o-mini",
+        question="Giá FPT hôm nay?",
+    )
+    assert hit is None
+
+
+def test_semantic_cache_hit_paraphrase(monkeypatch):
+    """Paraphrase gần nghĩa → semantic hit khi cosine ≥ 0.93."""
+    from backend.infra.cache.exact import get_exact_cache, set_llm_cache_context
+    from backend.infra.cache.semantic import get_semantic_cache, set_semantic_question
+    from backend.infra.llm import completion as completion_mod
+
+    shared_vec = [1.0] + [0.0] * 255
+    monkeypatch.setattr(
+        "backend.infra.cache.semantic.embed_question",
+        lambda _text: list(shared_vec),
+    )
+
+    get_semantic_cache().clear()
+    get_exact_cache().clear()
+    calls: list[int] = []
+
+    class _Usage:
+        prompt_tokens = 90
+        completion_tokens = 30
+        total_tokens = 120
+
+    def fake_create(**kwargs):
+        calls.append(1)
+        mock_resp = MagicMock()
+        mock_resp.choices = [MagicMock(message=MagicMock(content="tin fpt answer"))]
+        mock_resp.usage = _Usage()
+        return mock_resp
+
+    fake_client = MagicMock()
+    fake_client.chat.completions.create = fake_create
+    monkeypatch.setattr(completion_mod, "get_client", lambda: fake_client)
+    monkeypatch.setattr(completion_mod, "retry_with_backoff", lambda fn, **kw: fn())
+    monkeypatch.setenv("EXACT_CACHE_ENABLED", "true")
+    monkeypatch.setenv("SEMANTIC_CACHE_ENABLED", "true")
+
+    messages = [{"role": "user", "content": "test"}]
+    set_llm_cache_context(
+        prompt_name="answer_compose",
+        prompt_version="production",
+        normalized_question="tin tuc ve fpt",
+    )
+    set_semantic_question("tin tuc ve fpt")
+    completion_mod.chat(messages)
+
+    set_llm_cache_context(
+        prompt_name="answer_compose",
+        prompt_version="production",
+        normalized_question="tin fpt",
+    )
+    set_semantic_question("tin fpt")
+    out = completion_mod.chat(messages)
+
+    assert out == "tin fpt answer"
+    assert len(calls) == 1
+    assert len(get_semantic_cache().audit_log) >= 1
+
+
+def test_semantic_cache_below_threshold_miss(monkeypatch):
+    """Cosine dưới ngưỡng → miss."""
+    from backend.infra.cache.semantic import SemanticCache
+
+    cache = SemanticCache(threshold=0.93)
+    cache.store(
+        prompt_name="answer_compose",
+        prompt_version="production",
+        model="gpt-4o-mini",
+        question="giá cổ phiếu fpt",
+        value="stored",
+    )
+    hit = cache.lookup(
+        prompt_name="answer_compose",
+        prompt_version="production",
+        model="gpt-4o-mini",
+        question="thời tiết hà nội",
+    )
+    assert hit is None
+
+
+def test_cache_benchmark_dry_run(tmp_path):
+    """cache_benchmark.py --dry-run tạo bảng 3 dòng."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+    from cache_benchmark import run_benchmark  # type: ignore
+
+    md = tmp_path / "cache_benchmark.md"
+    js = tmp_path / "cache_benchmark.json"
+    payload = run_benchmark(
+        limit=50,
+        dry_run=True,
+        output_md=md,
+        output_json=js,
+    )
+    assert md.is_file()
+    text = md.read_text(encoding="utf-8")
+    assert "Không cache" in text
+    assert "Chỉ tầng 1" in text
+    assert "Tầng 1 + 2" in text
+    modes = payload["modes"]
+    assert modes["tier1_tier2"]["cache_hits"] > modes["none"]["cache_hits"]

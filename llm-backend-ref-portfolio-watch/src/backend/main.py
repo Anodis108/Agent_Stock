@@ -18,7 +18,7 @@ from typing import Any, Literal
 from uuid import uuid4
 
 from dotenv import find_dotenv, load_dotenv
-from fastapi import FastAPI, HTTPException, Query, Depends
+from fastapi import FastAPI, HTTPException, Query, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field
 from backend.agents.chart_agent import get_charts_dir
 from backend.ai_client import AiClientError, ai_chat, ai_scan
 from backend.api.deps import AppDeps, get_app_deps
-from backend.api.routers.chat import stream_chat_generator
+from backend.api.routers.chat import stream_chat_generator_async
 from backend.api.routers.hitl import (
     alias_router as alias_hitl_router,
     direct_router as direct_hitl_router,
@@ -569,13 +569,14 @@ def post_chat(body: ChatRequest) -> dict[str, Any]:
 @app.post("/chat/stream")
 @app.post("/api/v1/chat/stream")
 @app.post("/api/chat/stream")
-def post_chat_stream(
+async def post_chat_stream(
+    request: Request,
     body: ChatRequest,
     deps: AppDeps = Depends(get_app_deps),
 ) -> StreamingResponse:
     """Endpoint Server-Sent Events (SSE) phát trực tiếp tiến trình từng agent và stream từng token của câu trả lời."""
     return StreamingResponse(
-        stream_chat_generator(body, deps),
+        stream_chat_generator_async(body, deps, request),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

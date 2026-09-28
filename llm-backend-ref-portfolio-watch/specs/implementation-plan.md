@@ -1,185 +1,386 @@
-# Implementation Plan
+# Implementation Plan — Portfolio Watch (Module III LLMOps)
 
-Kế hoạch triển khai chi tiết theo phương pháp **Spec-Driven Development** cho dự án **Portfolio Watch**.
+Kế hoạch triển khai theo **Spec-Driven Development** và hands-on **Module III** (*LLM-Engineer-Handbook/module-3-production-llmops.md*).
 
-Nguyên tắc:
-- Chỉ mở và thực hiện DUY NHẤT một phase tại một thời điểm.
-- Trước khi code một phase: tóm tắt những gì sẽ làm, file nào sẽ sửa/tạo/xóa, và cách test.
-- Sau khi hoàn thành một phase: đánh dấu `[x]`, cập nhật `specs/change-log.md`, và cung cấp lệnh kiểm thử xác minh.
-- Giữ ứng dụng đơn giản, tập trung vào MVP.
-- Chưa viết code ứng dụng trong giai đoạn lập kế hoạch này.
+## Quy tắc làm việc
 
----
-
-## Roadmap Tổng Quan
-
-| Phase | Trọng Tâm Triển Khai | Trạng Thái |
-| :---: | :--- | :---: |
-| **Phase 1** | Project Setup & Baseline Documentation | `[x]` Hoàn thành |
-| **Phase 2** | Fix Resources Path & Root Unification (Xóa `src/resources`) | `[x]` Hoàn thành |
-| **Phase 3** | Clean Code & Naming Standardization (Xóa `backend/backend`) | `[x]` Hoàn thành |
-| **Phase 4** | Test Suite Consolidation (Gói `tests/` xuống $\le 10$ files) | `[x]` Hoàn thành |
-| **Phase 5** | Golden Dataset Evaluation & Evidence Archiving (Lưu dẫn chứng) | `[x]` Hoàn thành |
-| **Phase 6** | Local Run Instructions & Error State Verification | `[x]` Hoàn thành |
-| **Phase 7** | Docker Packaging & End-To-End Verification | `[x]` Hoàn thành |
+1. Chỉ mở **một Phase** tại một thời điểm.
+2. **Trước khi code:** tóm tắt việc sẽ làm, file sẽ sửa, cách test.
+3. **Sau khi xong:** đánh dấu `[x]`, cập nhật `specs/change-log.md`, ghi lệnh test cho user.
+4. **Phase 1 đã code xong** — tiếp tục Phase 2 trở đi theo checklist bên dưới.
 
 ---
 
-## Phase 1: Project Setup & Baseline Documentation
+## Roadmap
 
-Mục tiêu: Thiết lập toàn bộ hồ sơ đặc tả, quy định AI agent, kế hoạch kiểm thử và đường cơ sở thay đổi trước khi viết code.
-
-- [x] Tạo và chuẩn hóa [AGENTS.md](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/llm-backend-ref-portfolio-watch/AGENTS.md) với các quy tắc cốt lõi: Clean Code, tài nguyên ở root `resources/`, bộ test $\le 10$ files, chạy test lưu dẫn chứng.
-- [x] Cập nhật [specs/product-spec.md](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/llm-backend-ref-portfolio-watch/specs/product-spec.md) đầy đủ 6 phần: App Goal, Target Users, Core User Flow, Features In Scope, Features Out of Scope, Acceptance Criteria.
-- [x] Cập nhật [specs/implementation-plan.md](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/llm-backend-ref-portfolio-watch/specs/implementation-plan.md) chia nhỏ thành 7 phases tuần tự với checklist cụ thể.
-- [x] Cập nhật [specs/test-plan.md](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/llm-backend-ref-portfolio-watch/specs/test-plan.md) với thiết kế 10 files kiểm thử và kế hoạch lưu dẫn chứng Golden Dataset.
-- [x] Cập nhật [README.md](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/llm-backend-ref-portfolio-watch/README.md) phản ánh kiến trúc chuẩn hóa, hướng dẫn Docker và chạy Local.
-- [x] Khởi tạo nhật ký trong [specs/change-log.md](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/llm-backend-ref-portfolio-watch/specs/change-log.md).
-
-**Tiêu chuẩn nghiệm thu Phase 1:**
-- Cả 6 file tài liệu được đồng bộ đầy đủ, nhất quán và không có mâu thuẫn.
-
----
-
-## Phase 2: Fix Resources Path & Root Unification
-
-Mục tiêu: Đưa toàn bộ tài nguyên về thư mục gốc `resources/` (ngang cấp với `src/`), xóa bỏ triệt để thư mục `src/resources/`, và sửa toàn bộ code xử lý đường dẫn.
-
-- [x] Rà soát và sửa các hàm xử lý đường dẫn tài nguyên:
-  - Sửa `src/backend/agents/chart_agent.py`: thay đổi `Path(__file__).resolve().parents[2]` thành `parents[3]` (trỏ về thư mục gốc workspace) để lưu ảnh vào `resources/data/charts/`.
-  - Sửa `src/backend/backend/main.py`: gọi `get_charts_dir()` đồng bộ trỏ về root `resources/data/charts/`.
-  - Sửa `src/backend/database/connection.py`: đảm bảo SQLite path fallback trỏ về `resources/data/portfolio_watch.db` (`parents[3]`).
-  - Sửa `src/backend/services/hitl_service.py`: trỏ chính xác về `resources/data/hitl_feedback.json` (`parents[3]`).
-  - Sửa `src/backend/infra/llm/prompt_registry.py`: bổ sung `here.parents[4] / "resources" / "prompts"` trỏ chính xác về `resources/prompts/`.
-  - Sửa `src/backend/eval/run_detailed.py`, `src/backend/eval/run.py`, và `src/backend/eval/regression.py`: sửa fallback root thành `parents[3]`.
-- [x] Di chuyển toàn bộ 41 file ảnh biểu đồ hiện có từ `src/resources/data/charts/` sang `resources/data/charts/`.
-- [x] Xóa bỏ hoàn toàn thư mục `src/resources/` trên ổ đĩa.
-- [x] Kiểm tra xác nhận: Chạy thử kiểm thử `test_chart_agent.py` và kiểm tra `Test-Path src/resources` trả về `False`, ảnh được ghi và phục vụ từ root `resources/data/charts/`.
-
-**Tiêu chuẩn nghiệm thu Phase 2:**
-- Thư mục `src/resources/` biến mất hoàn toàn khỏi cây thư mục.
-- Toàn bộ dữ liệu, prompt, ảnh chart và telemetry được nạp/ghi chuẩn xác tại root `resources/`.
+| Phase | Trọng tâm | M3 | Trạng thái |
+| :---: | :--- | :---: | :---: |
+| 0 | Spec & tài liệu nền | — | `[x]` |
+| 1 | Rà soát prompt — bỏ hardcode | B1 | `[x]` |
+| 2 | Prompt v2 + changelog | B1 | `[x]` |
+| 3 | Prompt lint + so sánh version | B1 | `[ ]` |
+| 4 | Golden subset cho PR | B2 | `[x]` |
+| 5 | Eval gate theo slice | B2 | `[x]` |
+| 6 | Eval history + chứng minh gate | B2 | `[x]` |
+| 7 | Cost baseline | B3 | `[x]` |
+| 8 | Cache tầng 1 (exact) | B3 | `[x]` |
+| 9 | Cache tầng 2 + báo cáo cost | B3 | `[x]` |
+| 10 | Docker & SSE hardening | B4 | `[x]` |
+| 11 | Deploy demo + smoke test | B5 | `[x]` |
+| 12 | GitHub Actions CI + eval gate | B6 | `[x]` |
+| 13 | Observability + playbook | B7 | `[x]` |
+| 14 | Capstone — tích hợp & feedback loop | B8 | `[x]` |
 
 ---
 
-## Phase 3: Clean Code & Naming Standardization (Core Backend)
+## Phase 0: Spec & Tài Liệu Nền
 
-Mục tiêu: Tinh gọn cấu trúc mã nguồn, loại bỏ thư mục con lặp lại `src/backend/backend/`, đặt tên file/hàm/node đúng chức năng hiện tại, và bổ sung docstrings đầy đủ.
+**Mục tiêu:** Có bộ spec MVP rõ ràng trước khi code chu kỳ M3.
 
-- [x] Tái cấu trúc thư mục backend phẳng và rõ ràng:
-  - Loại bỏ thư mục trùng lặp `src/backend/backend/`.
-  - Thống nhất entrypoint FastAPI duy nhất tại `src/backend/main.py`.
-  - Dọn dẹp router trùng lặp và các import dư thừa.
-- [x] Chuẩn hóa tên các Agent Nodes trong LangGraph workflow:
-  - `guardrail_node`: Node phòng vệ cửa ngõ, chặn Prompt Injection & Out-of-Scope.
-  - `rewrite_node`: Node chuẩn hóa câu hỏi và phân giải đại từ ngữ cảnh.
-  - `supervisor_node`: Node điều phối định tuyến Swarm.
-  - `price_node`: Node thu thập dữ liệu giá Vnstock.
-  - `news_node`: Node trích xuất tin tức CafeF.
-  - `chart_node`: Node sinh biểu đồ kỹ thuật Matplotlib.
-  - `diagram_node`: Node sinh sơ đồ quy trình Mermaid.
-  - `composer_node`: Node tổng hợp dữ liệu và stream câu trả lời.
-- [x] Áp dụng nguyên tắc Clean Code:
-  - Giữ các hàm nghiệp vụ trọn vẹn, không băm nhỏ thành các helper 2-3 dòng.
-  - Viết docstrings tiếng Việt/Anh chuẩn mực cho toàn bộ module, class và function chính.
-  - Xóa bỏ dead code và các file rác trung gian.
+- [x] Cập nhật `README.md`
+- [x] Cập nhật `AGENTS.md`
+- [x] Cập nhật `specs/product-spec.md` (goal, users, flow, scope, acceptance)
+- [x] Cập nhật `specs/implementation-plan.md`
+- [x] Cập nhật `specs/test-plan.md`
+- [x] Ghi entry spec trong `specs/change-log.md`
 
-**Tiêu chuẩn nghiệm thu Phase 3:**
-- Cấu trúc `src/backend/` gọn gàng, không còn thư mục lồng nhau `backend/backend`.
-- Các node agent và hàm nghiệp vụ có tên gọi rõ ràng, trực quan, đúng chức năng thực tế.
+**Xong khi:** 6 file trên nhất quán, không mâu thuẫn với nhau.
 
 ---
 
-## Phase 4: Test Suite Consolidation (Gói `tests/` xuống <= 10 files)
+## Phase 1: Rà Soát Prompt — Bỏ Hardcode
 
-Mục tiêu: Gom 33 file kiểm thử hiện tại vốn bị phân mảnh qua các phase thành tối đa 10 file kiểm thử logic, chuẩn mực, bao phủ 100% chức năng.
+**Mục tiêu:** Mọi agent load prompt qua registry, không còn chuỗi prompt nằm trong code.
 
-- [x] Tái cấu trúc và hợp nhất thành 10 file kiểm thử duy nhất:
-  - `tests/conftest.py`: Fixtures dùng chung, in-memory DB, mock LLM/Vnstock, test clients.
-  - `tests/test_agents.py`: Kiểm thử các agent nodes và luồng điều phối Swarm.
-  - `tests/test_guardrails.py`: Kiểm thử chặn Prompt Injection và từ chối Out-of-Scope.
-  - `tests/test_memory.py`: Kiểm thử ngữ cảnh hỏi nối tiếp Turn 1 ➔ Turn 2 và quản lý sessions.
-  - `tests/test_market.py`: Kiểm thử `MarketService`, ma trận 10D và đồng bộ dữ liệu giá.
-  - `tests/test_chart.py`: Kiểm thử `ChartAgent` và lưu trữ biểu đồ vào `resources/data/charts/`.
-  - `tests/test_api.py`: Kiểm thử các endpoint FastAPI (Chat SSE streaming, sessions, market, HITL).
-  - `tests/test_database.py`: Kiểm thử SQLite models, migrations, lưu trữ tin nhắn.
-  - `tests/test_eval.py`: Kiểm thử runner đánh giá Golden Dataset và cơ chế chấm điểm.
-  - `tests/test_system.py`: Kiểm thử Docker container, biến môi trường và tài liệu hướng dẫn.
-- [x] Xóa bỏ toàn bộ các file test cũ tạm thời theo phase (`test_env_example_phase16.py`, `test_readme_phase*.py`, `test_phase14.py`, v.v.).
-- [x] Chạy `pytest tests/ -v` xác nhận: Đúng $\le 10$ files kiểm thử, 100% test cases vượt qua (82/82 passed).
+**Handbook M3-B1 · Bước 1**
 
-**Tiêu chuẩn nghiệm thu Phase 4:**
-- Thư mục `tests/` có đúng $\le 10$ files kiểm thử.
-- Toàn bộ bài test chạy pass mà không mất đi bất kỳ khía cạnh kiểm thử cốt lõi nào.
+- [x] Liệt kê tất cả agent nodes dùng LLM (guardrail, rewrite, supervisor, composer, …)
+- [x] Tìm và ghi nhận chỗ còn hardcode prompt trong `src/backend/`
+- [x] Chuyển prompt còn sót sang `resources/prompts/<name>/v1.yaml`
+- [x] Thay caller bằng `prompt_registry.render("<name>", ...)` / `get_system_prompt()`
+- [x] Chạy `pytest tests/test_agents.py -v` — không regression
+
+**Xong khi:** Grep codebase không còn prompt dài hardcode trong agent logic.
+
+**Test:**
+```bash
+pytest tests/test_agents.py -v
+```
 
 ---
 
-## Phase 5: Golden Dataset Evaluation & Evidence Archiving
+## Phase 2: Prompt v2 + Changelog
 
-Mục tiêu: Chạy kiểm thử tự động toàn bộ 40 câu hỏi Golden Dataset, đánh giá chi tiết chất lượng câu trả lời, và lưu lại dẫn chứng minh bạch.
+**Mục tiêu:** Có ≥ 2 version prompt với metadata và lý do đổi rõ ràng.
 
-- [x] Chuẩn bị bộ dữ liệu chuẩn `resources/eval/golden_v5.yaml` gồm đúng 40 câu hỏi cân bằng 7 nhóm:
-  - `lookup` (12), `comparison` (8), `explain_why` (6), `charting_diagram` (4), `session_memory` (3), `out_of_scope` (4), `injection` (3).
-- [x] Thực thi runner đánh giá chi tiết:
-  ```bash
-  python -m backend.eval.run_detailed
-  ```
-- [x] Kiểm tra các chốt chặn chất lượng:
-  - Tỷ lệ vượt qua tổng thể đạt $\ge 85\%$ (Đạt 92.5% - 37/40 passed).
-  - Slice `injection` đạt **100% Pass** (Zero-Tolerance Security Gate - 3/3 passed).
-  - Slice `out_of_scope` đạt **100% Pass** (từ chối lịch sự, không bịa giá FPT - 4/4 passed).
-- [x] Xuất bản và lưu trữ hồ sơ dẫn chứng:
-  - Báo cáo Markdown chi tiết: `specs/eval/eval_results_golden_v5.md`.
-  - Tệp cơ sở dữ liệu JSON: `specs/eval/v5_baseline.json`.
+**Handbook M3-B1 · Bước 2**
 
-**Tiêu chuẩn nghiệm thu Phase 5:**
-- [x] Hồ sơ dẫn chứng đánh giá được lưu trữ đầy đủ trong `specs/eval/`, có số liệu minh bạch về token, chi phí và latency.
+- [x] Tạo `resources/prompts/answer_compose/v2.yaml`
+  - Siết grounding số liệu VN; cấm bịa giá
+- [x] Tạo `resources/prompts/rewrite_question/v2.yaml`
+  - Cải thiện phân giải đại từ Turn 2
+- [x] Điền `changelog` (đổi gì, **vì sao**) cho cả hai v2
+- [x] Điền metadata: `name`, `version`, `model`, `owner`, `created`
+- [x] *(Chưa promote)* Giữ `production.txt` trỏ v1 — chỉ test v2 thủ công
+
+**Xong khi:** 2 prompt có v1 + v2 đầy đủ metadata; `git diff` v1→v2 đọc được.
+
+**Test:** Load v2 qua registry với `version=2` — không lỗi thiếu biến.
 
 ---
 
-## Phase 6: Local Run Instructions & Error State Verification
+## Phase 3: Prompt Lint + So Sánh Version
 
-Mục tiêu: Kiểm tra xác minh môi trường chạy cục bộ (không dùng Docker), xác thực các trạng thái lỗi và hoàn thiện hướng dẫn chạy local.
+**Mục tiêu:** CI-ready lint prompt; script so sánh output v1 vs v2.
 
-- [x] Kiểm tra chạy backend API cục bộ bằng Uvicorn:
-  ```bash
-  uvicorn backend.main:app --app-dir src --reload --host 127.0.0.1 --port 8000
-  ```
-- [x] Kiểm tra phục vụ giao diện Web SPA tại `http://localhost:8000`.
-- [x] Xác minh các trạng thái lỗi và validation:
-  - Trường hợp không có OpenAI API Key ➔ kích hoạt chế độ Heuristic fallback mượt mà.
-  - Trường hợp câu hỏi rỗng hoặc payload không hợp lệ ➔ trả về mã lỗi HTTP 422 rõ ràng.
-  - Trường hợp session không tồn tại ➔ xử lý tạo mới hoặc báo lỗi thân thiện.
-- [x] Cập nhật phần hướng dẫn chạy local trong [README.md](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/llm-backend-ref-portfolio-watch/README.md) đầy đủ prerequisites, cài đặt, và troubleshooting.
+**Handbook M3-B1 · Bước 3–4**
 
-**Tiêu chuẩn nghiệm thu Phase 6:**
-- [x] Bất kỳ ai làm theo hướng dẫn trong README đều có thể khởi chạy ứng dụng local thành công và nhận diện rõ các trạng thái phản hồi.
+- [x] Tạo `src/backend/infra/llm/prompt_lint.py`
+  - [x] Kiểm metadata bắt buộc (`name`, `version`, `model`, `owner`, `changelog`)
+  - [x] Kiểm biến template khớp khai báo
+- [x] Tạo `scripts/compare_prompt_versions.py`
+  - [x] 5 câu hỏi stock mẫu
+  - [x] In output v1 và v2 cạnh nhau
+- [ ] *(Tùy chọn MVP)* Scaffold `pick_prompt_version()` sticky theo `session_id`
+- [x] Bổ sung test lint trong `tests/test_eval.py` hoặc file test phù hợp
+
+**Xong khi:**
+- `python -m backend.infra.llm.prompt_lint resources/prompts/` → exit 0
+- Script compare chạy được, có output so sánh
+
+**Test:**
+```bash
+python -m backend.infra.llm.prompt_lint resources/prompts/
+python scripts/compare_prompt_versions.py
+```
 
 ---
 
-## Phase 7: Docker Packaging & End-To-End Verification
+## Phase 4: Golden Subset Cho PR
 
-Mục tiêu: Đóng gói hệ thống 2 containers hoàn chỉnh với Docker Compose và kiểm thử nghiệm thu End-To-End toàn bộ ứng dụng.
+**Mục tiêu:** Bộ eval nhỏ (~20 cases) chạy nhanh trên PR.
 
-- [x] Cập nhật `src/backend/Dockerfile` và `docker-compose.yml` theo cấu trúc mới:
-  - Lệnh khởi động container backend: `uvicorn backend.main:app --host 0.0.0.0 --port 8000`.
-  - Gắn kết volume dữ liệu bền vững `/app/data` và root `resources/`.
-- [x] Khởi chạy toàn bộ hệ thống bằng một lệnh duy nhất:
-  ```bash
-  docker compose up --build -d
-  ```
-- [x] Chạy kiểm thử tự động xác minh bên trong container:
-  ```bash
-  docker compose run --rm app pytest tests/ -v
-  docker compose run --rm app python -m backend.eval.run_detailed
-  ```
-- [x] Xác minh toàn bộ các luồng trải nghiệm trên trình duyệt:
-  - Frontend Web UI tại `http://localhost:3000`.
-  - Backend API Docs tại `http://localhost:8000/docs`.
-  - Chat streaming SSE mượt mà, inspector sáng đèn đúng node.
-  - Ma trận Market Watch 10D hiển thị số liệu đồng nhất.
-- [x] Lập báo cáo tổng kết trạng thái MVP (MVP Status Report).
+**Handbook M3-B2 · Bước 1 (rút gọn)**
 
-**Tiêu chuẩn nghiệm thu Phase 7:**
-- [x] Hệ thống 2 container chạy ổn định (`healthy`), không phát sinh lỗi.
-- [x] Toàn bộ các tiêu chí nghiệm thu MVP đạt chuẩn.
+- [x] Rà soát `resources/eval/golden_v5.yaml` — mỗi case có `slice`, `expected`, assertions
+- [x] Tạo `resources/eval/golden_pr_subset.yaml` (~20 cases)
+  - [x] Ưu tiên: `injection`, `out_of_scope`, `comparison`, `session_memory`
+- [x] Cập nhật runner hỗ trợ flag `--subset`
+- [x] Subset chạy xong < ~3 phút (local, có API key)
+
+**Xong khi:** `python -m backend.eval.run --subset` chạy 20 cases và ra report.
+
+**Test:**
+```bash
+python -m backend.eval.run --subset --report specs/eval/pr_subset_report.md
+```
+
+---
+
+## Phase 5: Eval Gate Theo Slice
+
+**Mục tiêu:** Script gate chặn merge khi điểm tụt quá ngưỡng — đặc biệt slice bảo mật.
+
+**Handbook M3-B2 · Bước 5**
+
+- [x] Tạo `src/backend/eval/gate.py` với ngưỡng:
+  - [x] `overall` ≥ 0.85 (tolerance 0.03)
+  - [x] `rule_pass_rate` ≥ 0.95 (tolerance 0.02)
+  - [x] `slice:injection` = 100% (tolerance 0)
+  - [x] `slice:out_of_scope` = 100% (tolerance 0)
+- [x] Runner xuất `--json` cho gate đọc
+- [x] Report markdown liệt kê **case fail** kèm output (không chỉ số tổng)
+- [x] Report có `by_slice` aggregate
+
+**Xong khi:** `python -m backend.eval.gate --run <report.json>` trả exit 0/1 đúng.
+
+**Test:**
+```bash
+python -m backend.eval.run --subset --json specs/eval/pr_report.json
+python -m backend.eval.gate --run specs/eval/pr_report.json
+echo $?   # 0 = pass
+```
+
+---
+
+## Phase 6: Eval History + Chứng Minh Gate
+
+**Mục tiêu:** Lưu lịch sử eval; chứng minh gate bắt regression thật.
+
+**Handbook M3-B2 · Maintain + noise**
+
+- [x] Lưu mỗi lần chạy vào `specs/eval/history/<timestamp>_<sha>.json`
+- [x] Chạy full eval 3 lần trên cùng commit → ghi σ (variance nền)
+- [x] Calibrate `drop_tolerance` nếu cần (σ + buffer)
+- [x] **Drill:** Sửa prompt tạm bỏ ràng buộc injection → gate **exit 1**
+- [x] **Drill:** Revert prompt → gate **exit 0**
+- [ ] Cập nhật baseline: `specs/eval/v5_baseline.json` nếu cải thiện
+
+**Xong khi:** Có ≥ 1 file history; drill gate pass/fail đã ghi trong `change-log.md`.
+
+**Test:**
+```bash
+python -m backend.eval.run_detailed
+python -m backend.eval.gate --run specs/eval/v5_baseline.json
+```
+
+---
+
+## Phase 7: Cost Baseline
+
+**Mục tiêu:** Đo cost/token trước khi bật cache.
+
+**Handbook M3-B3 · Bước 1**
+
+- [x] Tạo `src/backend/infra/cost/tracker.py` — hàm `record_cost(...)`
+- [x] Gắn tracker vào lớp gọi LLM (`ai_client.py` / completion)
+- [x] Tag mỗi request: `feature`, `model`, `prompt_version`, `cache_hit=false`
+- [x] Tạo `resources/eval/replay_faq.yaml` (~50 câu, ~30% trùng/gần giống)
+- [x] Script `scripts/cost_baseline.py` — chạy replay **không cache**, ghi tổng cost + token
+
+**Xong khi:** Có file báo cáo baseline (vd. `specs/eval/cost_baseline.md`) với số liệu cụ thể.
+
+**Test:**
+```bash
+python scripts/cost_baseline.py
+```
+
+---
+
+## Phase 8: Cache Tầng 1 (Exact)
+
+**Mục tiêu:** Cache exact-match; key có `prompt_version`.
+
+**Handbook M3-B3 · Bước 2**
+
+- [x] Tạo `src/backend/infra/cache/exact.py`
+- [x] Cache key = hash(`prompt_name`, `prompt_version`, `model`, `normalized_question`)
+- [x] TTL 24h — MVP: in-memory hoặc SQLite (không Redis)
+- [x] Bọc lớp gọi LLM: check cache → miss thì gọi → store
+- [x] Test: cùng câu hỏi 2 lần → lần 2 `cache_hit=true`
+- [x] Test: bump `prompt_version` → cache miss (không trả câu cũ)
+
+**Xong khi:** Replay FAQ lần 2 có hit rate > 0 trên câu trùng.
+
+**Test:**
+```bash
+pytest tests/test_agents.py -v -k cache
+python scripts/cost_baseline.py --with-cache tier1
+```
+
+---
+
+## Phase 9: Cache Tầng 2 + Báo Cáo Cost
+
+**Mục tiêu:** Semantic cache đơn giản + bảng so sánh cost.
+
+**Handbook M3-B3 · Bước 3–4**
+
+- [x] Tạo `src/backend/infra/cache/semantic.py` (MVP đơn giản)
+  - [x] Embed câu hỏi sau `rewrite_node`
+  - [x] Ngưỡng cosine ≥ 0.93
+  - [x] Bỏ qua câu có ngày/giá động
+- [x] Script `scripts/cache_benchmark.py` — bảng 3 dòng:
+  - [x] Không cache
+  - [x] Chỉ tầng 1
+  - [x] Tầng 1 + 2
+- [x] Manual audit: soát 10 semantic hit — ghi false hit (nếu có)
+- [x] Lưu báo cáo: `specs/eval/cache_benchmark.md`
+
+**Xong khi:** Bảng cost trước/sau có số liệu trên **cùng** tập replay.
+
+---
+
+## Phase 10: Docker & SSE Hardening
+
+**Mục tiêu:** Xác minh patterns production cho container và streaming.
+
+**Handbook M3-B4**
+
+- [x] Kiểm tra SSE dừng khi client disconnect (`chat.py`)
+- [x] Kiểm tra retry 429/timeout — backoff + jitter (`ai_client.py`)
+- [x] Xác minh `LLM_SEMAPHORE` giới hạn concurrent calls
+- [x] Rà Dockerfile: non-root, HEALTHCHECK, `.dockerignore` gọn
+- [x] Rà nginx: `proxy_buffering off` cho SSE
+- [x] Script `scripts/benchmark_sse.py` — 50 request, đo p50/p95
+- [x] Ghi kết quả: `specs/eval/sse_benchmark.md` (semaphore 5 vs 20)
+
+**Xong khi:** `docker compose up --build` healthy; benchmark documented.
+
+**Test:**
+```bash
+docker compose up --build -d
+curl http://localhost:8000/health
+curl http://localhost:3000/api/v1/chat/stream   # smoke thủ công
+pytest tests/test_api.py tests/test_system.py -v
+```
+
+---
+
+## Phase 11: Deploy Demo + Smoke Test
+
+**Mục tiêu:** Public URL demo an toàn; smoke test tự động.
+
+**Handbook M3-B5 · MVP = ngrok**
+
+- [x] Tạo `deploy/smoke.py`
+  - [x] `GET /health` → ok
+  - [x] 1 câu hỏi FPT có đáp án biết trước
+- [x] Xác minh ngrok + Docker Compose (cập nhật README nếu thiếu)
+- [x] Tạo `src/backend/shared/secrets.py` — local đọc `.env`; stub GCP
+- [x] Tạo template `deploy/nginx-portfolio-watch.conf` (SSE buffering off)
+- [ ] *(Tùy chọn)* Template `deploy/llm-app.service` + `startup.sh`
+
+**Xong khi:** Smoke pass local; ngrok URL stream được; không secret trong repo/image.
+
+**Test:**
+```bash
+python deploy/smoke.py --url http://localhost:8000
+ngrok http 3000
+python deploy/smoke.py --url https://<ngrok-url>
+```
+
+---
+
+## Phase 12: GitHub Actions CI + Eval Gate
+
+**Mục tiêu:** PR đổi prompt/agent phải pass lint, test, eval subset.
+
+**Handbook M3-B6**
+
+- [x] Tạo `.github/workflows/ci.yml`
+  - [x] Prompt lint
+  - [x] `pytest tests/ -q` (mock LLM)
+- [x] Tạo `.github/workflows/eval-gate.yml`
+  - [x] Trigger: `resources/prompts/**`, `src/backend/**`, `resources/eval/**`
+  - [x] Chạy eval subset + gate
+  - [x] Cache `.eval_cache`
+- [x] Document branch protection trong README
+- [x] **Drill:** PR test — sửa prompt phá injection → gate đỏ
+- [ ] *(Tùy chọn)* `cd.yml` + rollback `.lkg`
+
+**Xong khi:** Workflow chạy trên PR; drill gate đỏ/xanh đã ghi nhận.
+
+---
+
+## Phase 13: Observability + Playbook
+
+**Mục tiêu:** Trace sampling, cost log, 1 incident playbook đã diễn tập.
+
+**Handbook M3-B7**
+
+- [x] Mở rộng `infra/monitoring/tracing.py`
+  - [x] `should_sample()`: 100% lỗi/guardrail/chậm, ~5% bình thường
+  - [x] Spans: guardrail, rewrite, supervisor, price, news, chart, composer
+- [x] Redact PII (SĐT, email) trước export trace
+- [x] Script `scripts/cost_dashboard.py` — cost, p95, cache hit rate
+- [x] Viết `resources/docs/incident-playbook-cost-spike.md`
+- [x] Viết `resources/docs/incident-playbook-jailbreak.md`
+- [x] Diễn tập 1 incident — ghi log vào `change-log.md`
+
+**Xong khi:** 1 trace chat đủ spans; dashboard ≥ 3 metric; 1 drill documented.
+
+---
+
+## Phase 14: Capstone — Tích Hợp & Feedback Loop
+
+**Mục tiêu:** Pipeline M3 end-to-end; HITL → golden draft; rollback drill.
+
+**Handbook M3-B8**
+
+- [x] Viết `resources/docs/m3-production-pipeline.md` (Mermaid diagram)
+- [x] Tạo `scripts/hitl_to_golden_draft.py`
+  - [x] Đọc thumbs-down từ `resources/data/hitl_feedback.json`
+  - [x] Xuất draft YAML case để review
+- [x] Checklist production-ready → cập nhật `specs/mvp-status-report.md`
+- [x] Diễn tập rollback 1 trục (prompt alias **hoặc** image tag)
+- [x] Chạy full eval v5; lưu baseline cuối chu kỳ M3
+- [x] Rà "đường nối":
+  - [x] Cache key có `prompt_version`
+  - [x] Eval trigger đủ paths trong CI
+  - [x] Smoke có câu hỏi thật, không chỉ `/health`
+
+**Xong khi:** Diagram khớp thực tế; ≥ 1 HITL draft case; full eval ≥ 85%, injection/out_of_scope 100%.
+
+**Test:**
+```bash
+pytest tests/ -v
+python -m backend.eval.run_detailed
+python -m backend.eval.gate --run specs/eval/v5_baseline.json
+docker compose up --build -d
+python deploy/smoke.py --url http://localhost:8000
+```
+
+---
+
+## Lệnh Kiểm Tra Theo Phase
+
+| Phase | Lệnh chính |
+| :---: | :--- |
+| 1–3 | `pytest tests/test_agents.py -v` · `python -m backend.infra.llm.prompt_lint resources/prompts/` |
+| 4–6 | `python -m backend.eval.run --subset` · `python -m backend.eval.gate --run <json>` |
+| 7–9 | `python scripts/cost_baseline.py` · `python scripts/cache_benchmark.py` |
+| 10 | `docker compose up --build -d` · `pytest tests/test_api.py -v` |
+| 11 | `python deploy/smoke.py --url http://localhost:8000` |
+| 12 | Push PR → xem GitHub Actions |
+| 13–14 | Full eval + smoke + rollback drill |

@@ -1,0 +1,25 @@
+{
+  "saved_at": "2026-09-28T15:28:00Z",
+  "git_sha": "792fa34",
+  "drill": "gate_revert_pass",
+  "phase": "M3-B2-Phase6",
+  "report": {
+    "total": 20,
+    "passed": 19,
+    "rate": 0.95,
+    "rule_pass_rate": 0.96,
+    "by_slice": {
+      "injection": {
+        "total": 3,
+        "passed": 3,
+        "rate": 1.0
+      },
+      "out_of_scope": {
+        "total": 4,
+        "passed": 4,
+        "rate": 1.0
+      }
+    },
+    "failures": []
+  }
+}

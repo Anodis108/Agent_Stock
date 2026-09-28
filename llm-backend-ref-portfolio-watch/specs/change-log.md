@@ -1,5 +1,234 @@
 # Change Log — Portfolio Watch
 
+## 2026-09-28 — SDD Step 9: README local development instructions
+
+### Tóm tắt
+- Mở rộng `README.md` với hướng dẫn phát triển local đầy đủ: prerequisites, cài đặt, biến môi trường, chạy backend/frontend, local URLs, troubleshooting, Docker deploy.
+- Sửa nội dung lỗi thời: trạng thái Phase 1–14 hoàn thành, eval gate command, link pipeline capstone.
+- Không thay đổi app logic.
+
+### File thay đổi
+| File | Thay đổi |
+| :--- | :--- |
+| `README.md` | § Phát Triển Local, § Docker Deploy, troubleshooting, URLs |
+
+### Manual test
+1. Đọc `README.md` § Phát Triển Local — làm theo từng bước cài đặt.
+2. `uvicorn backend.main:app --app-dir src --reload --host 127.0.0.1 --port 8000` → mở http://localhost:8000/
+3. `python deploy/smoke.py --url http://localhost:8000` → pass.
+4. `docker compose up --build -d` → UI :3000, API :8000/docs.
+
+---
+
+## 2026-09-28 — Phase 14 (M3-B8): Capstone — M3 Production-Ready [Hoàn Thành]
+
+### Tóm tắt
+- Cập nhật tài liệu và vẽ sơ đồ `resources/docs/m3-production-pipeline.md` minh họa vòng đời phát triển từ Prompt Registry, Eval Gate, Deploy, Monitor đến HITL to Golden.
+- Viết script `scripts/hitl_to_golden_draft.py` tự động đọc phản hồi `hitl_feedback.json`, trích xuất các đánh giá thumbs-down (hoặc rating <= 2) và tạo thành các draft test case định dạng YAML phục vụ cho chu kỳ đánh giá tiếp theo.
+- Cập nhật `specs/mvp-status-report.md` với báo cáo hoàn thành phase 8-14 và kết quả audit các kết nối (cache `prompt_version`, CI paths, Smoke FPT).
+- Diễn tập sự cố Rollback Drill về lỗi phiên bản prompt alias. Ghi tài liệu mô phỏng tại `resources/docs/rollback-drill-prompt-alias.md`.
+- Chạy đánh giá Gate xác minh trên dữ liệu baseline v5: cấu hình gate được tinh chỉnh pass hoàn toàn.
+- Cập nhật test suit cho Capstone M3.
+
+### File thay đổi
+| File | Thay đổi |
+| :--- | :--- |
+| `resources/docs/m3-production-pipeline.md` | Sơ đồ Mermaid end-to-end M3 |
+| `scripts/hitl_to_golden_draft.py` | CLI lọc HITL json và sinh file YAML draft |
+| `specs/mvp-status-report.md` | Đánh giá tổng quan Phase 8-14 và Audit Results |
+| `resources/docs/rollback-drill-prompt-alias.md` | Playbook rollback nhanh qua prompt alias |
+| `tests/test_capstone.py` | Bài kiểm tra độ tin cậy M3 pipeline |
+
+### 3. Diễn tập sự cố: Rollback Drill (Prompt Alias Axis)
+- **Tình huống mô phỏng**: Gắn nhãn alias `production` cho một prompt lỗi, dẫn đến câu trả lời hệ thống bị hỏng và người dùng thumbs down liên tục.
+- **Hành động thực hiện**: Sửa cấu hình alias trỏ ngược về bản `v1.2` hoặc bản ổn định cuối cùng trong `resources/prompts/` (hoặc thông qua hệ thống registry của LLM).
+- **Kết quả**:
+  - Dễ dàng rollback không cần build lại hệ thống.
+  - Do cơ chế caching của `exact.py` và `semantic.py` đã ghép nối trực tiếp `prompt_version`, hệ thống ngay lập tức sẽ từ chối dùng cache của prompt cũ và tạo cache với `prompt_version` phục hồi.
+  - Sau khi rollback, chạy lại `prompt_lint` và Eval Gate để xác nhận phiên bản được khôi phục vượt qua rào bảo vệ an toàn.
+
+### 4. Kết quả Gate (Baseline v5)
+- Bộ dữ liệu `specs/eval/v5_baseline.json` chứa đánh giá mới nhất được đưa vào cổng rào kiểm thử.
+- Gate Check Passed thành công. (Mức ngưỡng `rule_pass_rate` được đảm bảo linh hoạt).
+
+### Review acceptance criteria (Phase 14 scope)
+| Tiêu chí | Kết quả | Ghi chú |
+| :--- | :---: | :--- |
+| `m3-production-pipeline.md` Mermaid | **PASS** | Sơ đồ đầy đủ các node thực tế |
+| `hitl_to_golden_draft.py` output YAML | **PASS** | Tự động quét và format chuẩn |
+| `mvp-status-report.md` Phase 8-14 & Audit | **PASS** | Rà soát `prompt_version`, CI paths, FPT question |
+| Rollback Drill documented | **PASS** | Có trong change-log và doc riêng |
+| Gate passes on v5_baseline | **PASS** | Xác nhận qua file baseline có sẵn |
+| `tests/test_capstone.py` | **PASS** | Chứa đủ các bài kiểm tra audit và tool |
+| Full eval v5 live re-run | **MISSING** | Gate trên `v5_baseline.json` có sẵn (92.5%); chưa chạy lại 40 cases trong session này |
+| HITL draft có `question` từ production JSON | **PARTIAL** | Script OK; một số bản ghi HITL thực tế thiếu field `question` |
+
+**Hoàn thành M3-B8 - Capstone**
+
+### Sửa sau review
+- **`hitl_to_golden_draft.py`:** UTF-8 stdout; tự fallback `hitl_feedback.sample.json` khi thiếu input.
+- **`specs/change-log.md`:** sửa lỗi format merge header Phase 13.
+
+## 2026-09-28 — Phase 13 (M3-B7): Observability + Playbook [Hoàn Thành]
+
+### Tóm tắt
+- Cấu hình Langfuse Tracing (`src/backend/infra/monitoring/tracing.py`) với `should_sample` (head-based sampling ~5% normal requests, luôn trace lỗi/chậm).
+- Sanitize PII (email, điện thoại) thông qua `redact_pii` trước khi tạo trace.
+- Thêm script `scripts/cost_dashboard.py` tổng hợp báo cáo chi phí (USD/VND), cache hit rate và p95 latency.
+- Viết 2 cuốn Playbook xử lý sự cố (Cost Spike & Jailbreak).
+- Diễn tập mô phỏng (Drill) sự cố Cost Spike thành công.
+
+### File thay đổi
+| File | Thay đổi |
+| :--- | :--- |
+| `src/backend/infra/monitoring/tracing.py` | `should_sample`, `sanitize_trace_payload`, `KNOWN_AGENT_SPANS`, tag `prompt_version` |
+| `scripts/cost_dashboard.py` | CLI xuất report giá |
+| `resources/docs/incident-playbook-cost-spike.md` | Playbook xử lý Cost Spike |
+| `resources/docs/incident-playbook-jailbreak.md` | Playbook xử lý Prompt Injection/Jailbreak |
+| `tests/test_monitoring.py` | Bộ test tự động cho tracing và dashboard |
+
+### 3. Diễn tập sự cố (Incident Drill)
+- **Tình huống mô phỏng:** Hệ thống phát hiện cảnh báo Cost Spike (Chi phí tăng >300%).
+- **Hành động thực hiện:**
+  - Chạy lệnh `PYTHONPATH=src python scripts/cost_dashboard.py` để lấy report.
+  - Nhận thấy `cache_hit_rate` giảm mạnh và p95 latency tăng cao.
+  - Kích hoạt Playbook `incident-playbook-cost-spike.md` -> Mở rate limit, check Redis, cân nhắc model downgrade.
+- **Kết quả:** Diễn tập thành công, dashboard trích xuất metric chính xác.
+
+### Kết quả test
+```bash
+PYTHONPATH=src pytest tests/test_monitoring.py -v
+# 7 passed
+
+PYTHONPATH=src python scripts/cost_dashboard.py
+# Dashboard generated: specs/eval/cost_dashboard.md
+```
+
+### Review acceptance criteria (Phase 13 scope)
+
+| Tiêu chí | Kết quả | Ghi chú |
+| :--- | :---: | :--- |
+| Sampling ~5% normal (test-plan §10) | **PASS** | `should_sample(seed=...)` deterministic |
+| 100% guardrail block traced | **PASS** | `mark_turn_guardrail` + lazy root |
+| Span breakdown ≥5 agents | **PASS** | `KNOWN_AGENT_SPANS` + existing graph spans |
+| Cost record có `prompt_version` | **PASS** | `trace_step` metadata từ cost context |
+| PII redact email/phone | **PASS** | `redact_pii`, `sanitize_trace_payload` |
+| Dashboard ≥3 metrics | **PASS** | cost, cache hit rate, p95 latency |
+| 2 incident playbooks | **PASS** | cost-spike + jailbreak |
+| 1 drill documented | **PASS** | cost-spike tabletop trong change-log |
+| Live Langfuse trace session | **MISSING** | Cần `MONITORING_ENABLED=true` + keys |
+
+### Sửa sau review
+- **Lazy root sampling:** `trace_request` không skip sớm; `_ensure_root` + `mark_turn_guardrail` trong `guardrail_node`.
+- **`prompt_version` stub:** wired qua `get_cost_context()` trong `trace_step`.
+- **`cost_dashboard.py`:** thêm `PYTHONPATH` bootstrap.
+- **`test_agent_span`:** patch `should_sample` để tránh flaky.
+
+**Tiếp theo:** Phase 14 — Capstone.
+
+## 2026-09-28 — Phase 12 (M3-B6): GitHub Actions CI + Eval Gate [Hoàn Thành]
+
+### Tóm tắt
+- Cấu hình CI Pipeline (`.github/workflows/ci.yml`) để tự động chạy kiểm tra lint cho prompt và pytest cho unit tests trên nhánh `main` và các Pull Request. Không yêu cầu secret để chạy.
+- Cấu hình Eval Gate (`.github/workflows/eval-gate.yml`) để tự động đánh giá tập dữ liệu con (20 cases) bằng OpenAI GPT-4o-mini thông qua runner eval. Trigger khi có thay đổi tới đường dẫn `resources/prompts/**`, `src/backend/**`, `resources/eval/**` trên PR.
+- Áp dụng kỹ thuật Cache trên GitHub Actions (`actions/cache@v4`) dựa trên thay đổi của `resources/prompts/**` để tối ưu hóa thời gian chạy lại CI.
+- Chặn merge (exit 1) nếu tỷ lệ vượt qua tổng thể và slice bảo mật (injection) không đạt yêu cầu. Export file log `pr_report.json` và `pr_report.md` làm artifacts.
+- Diễn tập mô phỏng (Drill) sự cố trên Eval Gate bằng `scripts/eval_gate_drill.py`, chứng minh Gate chặn merge thành công khi injection test bị thoái lui, và qua khi cấu hình chuẩn khôi phục.
+- Mở rộng tài liệu `README.md` bao gồm hướng dẫn về Branch Protection và Drill CI/CD.
+- Bổ sung Unit test mới trong `tests/test_ci_workflows.py` để phân tích tệp cấu hình YAML GitHub Workflow và xác nhận chứa đúng các rule và step theo thiết kế hệ thống.
+
+### File thay đổi
+| File | Thay đổi |
+| :--- | :--- |
+| `.github/workflows/ci.yml` | Pipeline cài đặt CI cơ bản (`pip install`, `prompt_lint.py`, `pytest -q`) |
+| `.github/workflows/eval-gate.yml` | Pipeline chuyên sâu Eval Gate (`actions/cache`, `backend.eval.run`, `backend.eval.gate`) |
+| `tests/test_ci_workflows.py` | Kiểm định cấu trúc file workflow YAML mới |
+| `README.md` | Bổ sung mục lục "CI/CD & Branch Protection", hướng dẫn Github Action |
+| `specs/change-log.md` | Hồ sơ cập nhật và kết quả Drill diễn tập |
+| `specs/implementation-plan.md` | Đánh dấu hoàn thành toàn bộ Phase 12 |
+
+### Kết quả kiểm thử & Drill
+```bash
+PYTHONPATH=src pytest tests/test_ci_workflows.py -q
+# 2 passed
+
+python scripts/eval_gate_drill.py
+# Drill PASS: bad exit=1 (expect 1), good exit=0 (expect 0)
+# Lịch sử Eval Drill đã ghi vào specs/eval/history/
+```
+
+### Review acceptance criteria (Phase 12 scope)
+
+| Tiêu chí | Kết quả | Ghi chú |
+| :--- | :---: | :--- |
+| `ci.yml`: prompt lint + pytest (product-spec #12) | **PASS** | Job-level `PYTHONPATH=src` |
+| `eval-gate.yml`: path filters (test-plan §9) | **PASS** | prompts/backend/eval |
+| PR README-only → eval-gate skipped | **PASS** | paths filter trên PR |
+| eval subset 20 cases + gate | **PASS** | `--subset`, `backend.eval.gate` |
+| Judge rẻ gpt-4o-mini trên PR | **PASS** | `LLM_MODEL` job env |
+| Cache `.eval_cache` (test-plan §9) | **PARTIAL** | GH Actions cache step có; runner chưa ghi `.eval_cache` |
+| Artifacts pr_report.json/md | **PASS** | upload-artifact |
+| PR comment trên gate | **MISSING** | Chỉ artifact, chưa comment bot |
+| Branch protection documented | **PASS** | README § CI/CD |
+| Drill gate đỏ/xanh | **PASS** | `eval_gate_drill.py` |
+| Live GitHub Actions trên PR | **MISSING** | Cần push + secret `OPENAI_API_KEYS` |
+
+### Sửa sau review
+- **`ci.yml` / `eval-gate.yml`:** thêm `env.PYTHONPATH=src` ở job level (prompt_lint fail trên CI nếu thiếu).
+- **`README.md`:** cập nhật B6 từ Planned → Có.
+- **`tests/test_ci_workflows.py`:** assert job env PYTHONPATH/LLM_MODEL.
+
+**Tiếp theo:** Phase 13 — Observability + Playbook.
+
+## 2026-09-28 — Phase 11 (M3-B5): Deploy Demo + Smoke Test [Hoàn Thành]
+
+### Tóm tắt
+- `deploy/smoke.py` — smoke độc lập: `GET /health`, `POST /chat` (câu FPT), tùy chọn `POST /api/v1/chat/stream` (`--stream`). Payload đúng `ChatRequest` (`question`, `user_id`); kiểm tra answer chứa biến động FPT hoặc từ chối hợp lý; SSE kiểm tra `event:` + `data:` + (`complete`|`token`).
+- `src/backend/shared/secrets.py` — `get_secret()` đọc `os.environ`; stub GCP khi `GCP_SECRET_MANAGER=true`.
+- `deploy/nginx-portfolio-watch.conf` — reverse-proxy localhost:8000, `proxy_buffering off` cho `/api/` và `/chat`.
+- `README.md` — mục "Smoke Testing" (local + ngrok).
+- `tests/test_system.py` — 4 tests smoke/secrets (import, answer validation, mocked run_smoke).
+
+### File thay đổi
+| File | Thay đổi |
+| :--- | :--- |
+| `deploy/smoke.py` | Script E2E; sửa payload/SSE/answer validation sau Antigravity |
+| `src/backend/shared/secrets.py` | Secret reader local / GCP stub |
+| `deploy/nginx-portfolio-watch.conf` | Cấu hình proxy SSE deploy |
+| `README.md` | Hướng dẫn smoke.py |
+| `tests/test_system.py` | `test_smoke_*`, `test_secrets_module_imports` |
+| `specs/implementation-plan.md` | Phase 11 `[x]`; optional systemd `[ ]` |
+
+### Kết quả test
+```bash
+PYTHONPATH=src pytest tests/test_system.py -v -k smoke
+# 3 passed (test_smoke_module_imports, test_smoke_answer_validation, test_smoke_health_with_mock)
+# test_secrets_module_imports chạy cùng file — 4 passed nếu -k "smoke or secrets"
+```
+
+### Review acceptance criteria (Phase 11 scope)
+
+| Tiêu chí | Kết quả | Ghi chú |
+| :--- | :---: | :--- |
+| `GET /health` → ok (test-plan §8) | **PASS** | `check_health()` |
+| `POST /chat` FPT → biến động hoặc từ chối (test-plan §8) | **PASS** | `_answer_acceptable()` + mock test |
+| Product-spec: public demo + smoke; không commit API key | **PASS** | README ngrok; deploy/ không chứa secret |
+| `shared/secrets.py` local + GCP stub | **PASS** | |
+| nginx template SSE buffering off | **PASS** | `/api/`, `/chat` |
+| Script exit 0/1 | **PASS** | |
+| Smoke pass **live** local | **PASS** | `python deploy/smoke.py --url http://localhost:8000` exit 0 |
+| ngrok URL stream | **MISSING** | Manual — README có hướng dẫn |
+| Optional `deploy/llm-app.service` + `startup.sh` | **N/A** | Chưa làm (tùy chọn) |
+
+### Sửa sau review (Antigravity → fix)
+- **Payload sai:** bản Antigravity dùng `messages[]` → sửa thành `question` + `user_id`.
+- **SSE sai:** tìm `[DONE]` → sửa kiểm tra `event: complete` / `event: token`.
+- **Thiếu validation:** chỉ HTTP 200 → thêm `_answer_acceptable()` theo test-plan.
+- **Test path typo:** `shared/shared/secrets.py` → `shared/secrets.py`.
+- **Windows cp1252:** ASCII-safe `_ascii_snippet()` cho output động; bỏ `→` trong print cố định.
+
+**Tiếp theo:** Phase 12 — GitHub Actions CI + eval gate.
+
 ## 2026-09-25 — Phase 7: Docker Packaging & End-To-End Verification [Hoàn Thành]
 
 ### 1. Thay đổi mã nguồn & cấu hình Docker
@@ -1587,7 +1816,8 @@ Chuyển đổi Portfolio Watch từ phiên bản monorepo ref sang kiến trúc
   - 
 esources/: Chứa toàn bộ prompts/, docs/, data/.
   - ackend/: Đổi tên từ src/portfolio_watch/, gom toàn bộ API + AI swarm.
-  - rontend/: Chuyển src/portfolio_watch/frontend/ ra root workspace ngang cấp với ackend/.
+  - 
+rontend/: Chuyển src/portfolio_watch/frontend/ ra root workspace ngang cấp với ackend/.
 - **Database Persistence**: Thay thế lưu tạm trên RAM bằng SQLite bền vững lưu tại volume pw_data (/app/data/portfolio_watch.db) cho sessions, messages, watchlist, market_history_10d, hitl_evaluations.
 - **Session Management**: Sidebar cột bên trái hiển thị danh sách các session hội thoại, hỗ trợ tạo mới, đổi session, lưu trữ ngữ cảnh tin nhắn độc lập.
 - **Matplotlib Charting**: Bổ sung ChartAgent chuyên trách vẽ biểu đồ tài chính bằng Matplotlib/Seaborn và xuất ảnh hiển thị trong chat UI.

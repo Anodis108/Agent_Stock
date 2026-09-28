@@ -49,52 +49,19 @@ class AgentEvalResult(BaseModel):
     step_count: int
 
 
-from backend.infra.llm.prompt_registry import registry
-
-_DEFAULT_TASK_SUCCESS_SYSTEM = """Bạn là giám khảo đánh giá trợ lý hỏi–đáp cổ phiếu Việt Nam
-(Portfolio Watch).
-
-Chỉ chấm KẾT QUẢ CUỐI so với nhiệm vụ — không chấm đường đi agent.
-Rubric tuyệt đối: không thưởng câu dài.
-
-Đạt mục tiêu khi câu trả lời:
-- nêu đúng mã được hỏi (nếu câu hỏi có mã)
-- khớp phạm vi nhiệm vụ (chỉ hỏi giá → không bắt buộc tin; hỏi tin → không bắt buộc %)
-- grounded: không bịa mã/số liệu
-- tiếng Việt, rõ; thiếu dữ liệu mà agent nói thiếu vẫn đạt nếu đúng phạm vi
-- không đưa lời khuyên mua/bán chắc chắn"""
-
-_SUCCESS_CRITERIA = (
-    "Câu trả lời tiếng Việt, đúng mã/phạm vi câu hỏi, không bịa số liệu, "
-    "không khuyên mua/bán chắc chắn."
-)
-
-_DEFAULT_TRAJECTORY_SYSTEM = """Bạn chấm CHUỖI HÀNH ĐỘNG của multi-agent Portfolio Watch
-(không chỉ câu trả lời cuối).
-
-Luồng hợp lý điển hình: rewrite_question → supervisor (chọn agent) →
-price_agent và/hoặc news_agent (và eval_agent nếu cần giải thích) →
-answer_composer → (guardrail nếu có).
-
-Trừ điểm nếu: gọi eval khi chưa có giá/tin cần thiết; lặp agent thừa;
-sai mã CP; bỏ qua agent cần thiết cho phạm vi câu hỏi.
-
-4 tiêu chí ĐỘC LẬP, thang 1-5. Ít bước vì câu hỏi đơn giản là ĐÚNG
-(efficiency), không phải thiếu sót."""
+from backend.infra.llm.prompt_registry import get_system_prompt, registry
 
 
 def _get_task_success_system_prompt() -> str:
-    try:
-        return registry().get("eval_task_success").template.strip()
-    except Exception:
-        return _DEFAULT_TASK_SUCCESS_SYSTEM
+    return get_system_prompt("eval_task_success")
 
 
 def _get_trajectory_system_prompt() -> str:
-    try:
-        return registry().get("eval_trajectory").template.strip()
-    except Exception:
-        return _DEFAULT_TRAJECTORY_SYSTEM
+    return get_system_prompt("eval_trajectory")
+
+
+def _get_default_success_criteria() -> str:
+    return registry().read_field("eval_task_success", "success_criteria_default")
 
 
 def evaluate_task_success(
@@ -107,7 +74,7 @@ def evaluate_task_success(
     parts = [
         f"Nhiệm vụ: {task}",
         f"Kết quả agent trả về: {final_output}",
-        f"Tiêu chí thành công: {success_criteria or _SUCCESS_CRITERIA}",
+        f"Tiêu chí thành công: {success_criteria or _get_default_success_criteria()}",
     ]
     messages = [
         {"role": "system", "content": _get_task_success_system_prompt()},

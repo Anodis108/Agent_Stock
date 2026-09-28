@@ -33,6 +33,23 @@ def resolve_prompts_dir() -> Path:
     return candidates[0]
 
 
+# Prompt production dùng LLM — Phase 1 audit (M3-B1).
+PRODUCTION_LLM_PROMPT_NAMES: tuple[str, ...] = (
+    "answer_compose",
+    "rewrite_question",
+    "supervisor_routing",
+    "synthesis_alert",
+    "news_agent_react",
+    "event_classification",
+    "eval_severity",
+    "diagram_plan",
+    "memory_fact",
+    "eval_judge",
+    "eval_task_success",
+    "eval_trajectory",
+)
+
+
 @dataclass(frozen=True)
 class Prompt:
     """Một version cụ thể của 1 prompt + metadata."""
@@ -152,6 +169,29 @@ class PromptRegistry:
     ) -> str:
         prompt = self.get(name, version)
         return _render_template(prompt.template, **variables)
+
+    def read_field(
+        self, name: str, field: str, version: int | str = "production"
+    ) -> str:
+        """Đọc trường metadata bổ sung từ YAML (vd. success_criteria_default)."""
+        resolved = self._resolve_version(name, version)
+        path = self._root / name / f"v{resolved}.yaml"
+        if not path.is_file():
+            raise FileNotFoundError(
+                f"Không tìm thấy prompt '{name}' version {resolved} tại {path}"
+            )
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict) or field not in data:
+            raise ValueError(f"Prompt '{name}' thiếu trường '{field}' tại {path}")
+        value = str(data[field]).strip()
+        if not value:
+            raise ValueError(f"Trường '{field}' của prompt '{name}' rỗng tại {path}")
+        return value
+
+
+def get_system_prompt(name: str, version: int | str = "production") -> str:
+    """System prompt từ registry — không hardcode fallback trong caller."""
+    return registry().get(name, version=version).template.strip()
 
 
 @lru_cache

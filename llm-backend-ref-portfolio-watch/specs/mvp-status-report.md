@@ -7,7 +7,7 @@
 
 ---
 
-## 1. Tổng Kết Tiến Độ Triển Khai (Phases 1–7)
+## 1. Tổng Kết Tiến Độ Triển Khai (Phases 1–14)
 
 | Phase | Nội Dung Trọng Tâm | Trạng Thái | Dẫn Chứng Xác Minh |
 | :---: | :--- | :---: | :--- |
@@ -18,6 +18,13 @@
 | **Phase 5** | Thực Thi Đánh Giá Toàn Bộ 40 Câu Hỏi | **Completed** | Đạt **37/40 Passed (92.5%)**; Zero-Tolerance Security Gate đạt **100% Pass** (3/3 Injection, 4/4 Out-of-Scope). Xuất báo cáo dẫn chứng tại `specs/eval/eval_results_golden_v5.md` & `specs/eval/v5_baseline.json`. |
 | **Phase 6** | Kiểm Thử Vận Hành Cục Bộ (Local Python) | **Completed** | Kiểm thử thành công chạy local (`python -m uvicorn backend.main:app`), các mã lỗi HTTP 422, 400, 404, tự động sinh session, chế độ Heuristic fallback khi không có OpenAI key, cập nhật README. |
 | **Phase 7** | Đóng Gói Docker Compose & Nghiệm Thu End-To-End | **Completed** | Đóng gói 2 containers độc lập (`portfolio-watch-backend` cổng 8000 và `portfolio-watch-frontend` cổng 3000). Chạy kiểm thử tự động trong container đạt **81 passed, 2 skipped, 0 failed (100% pass)**. |
+| **Phase 8-14** | M3 Production-Ready (Capstone) | **Completed** | Triển khai end-to-end vòng lặp kiểm thử và vận hành M3. Các chốt chặn chất lượng: CI/CD, Tracing, Playbook, Rollback Drill, HITL to Golden Draft. |
+
+### Connection Audit Results (M3)
+1. **Cache Prompt Version**: Chìa khóa bộ nhớ cache Semantic/Exact đều đã chứa trường `prompt_version`, bảo đảm tránh ô nhiễm dữ liệu khi thay đổi prompt.
+2. **CI Eval-Gate Paths**: Triggers chính xác trên các thay đổi từ `resources/prompts/**`, `src/backend/**`, và `resources/eval/**` trong tệp `.github/workflows/eval-gate.yml`.
+3. **Smoke Test FPT Question**: Kịch bản smoke test gọi `/chat` kiểm tra với câu hỏi có ý nghĩa thị trường thực sự ("FPT hôm nay thế nào?").
+4. **Capstone Deliverables**: Hoàn thành pipeline xuất HITL Feedback JSON thành Golden Draft (`resources/eval/drafts/`) và diễn tập xử lý sự cố.
 
 ---
 

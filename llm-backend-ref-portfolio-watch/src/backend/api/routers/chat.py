@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import queue
 import threading
 import time
+from collections.abc import AsyncIterator, Callable
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -174,26 +176,14 @@ def post_chat(
         conn.close()
 
 
-def stream_chat_generator(
-    body: ChatRequest,
-    deps: AppDeps,
-):
-    """Generator phát các sự kiện Server-Sent Events (SSE) theo thời gian thực:
-    - node_start: Khi một agent/node bắt đầu chạy
-    - node_finish: Khi một agent/node hoàn thành, kèm thời gian thực thi (duration_s, duration_ms)
-    - token: Từng mẩu từ/token phản hồi trực tiếp từ LLM
-    - complete: Trả lời hoàn chỉnh và toàn bộ metadata
-    - error: Khi gặp sự cố ngoài ý muốn
-    """
+def _prepare_stream_session(body: ChatRequest) -> tuple[str, str]:
+    """Tạo/tìm session và lưu tin nhắn user — trả (session_id, question)."""
     question = normalize_question(body.question)
-    t_start = time.perf_counter()
-
     conn = get_connection()
     try:
         s_repo = SessionRepository(conn)
         m_repo = MessageRepository(conn)
 
-        # 1. Quản lý Session: tìm session cũ hoặc tạo session mới
         session_id = (body.session_id or "").strip()
         if session_id:
             session = s_repo.get(session_id)
@@ -207,7 +197,6 @@ def stream_chat_generator(
             session = s_repo.create(title=title_from_question(question))
             session_id = session.id
 
-        # 2. Lưu tin nhắn người dùng vào SQLite
         m_repo.create(
             session_id=session_id,
             role="user",
@@ -215,6 +204,26 @@ def stream_chat_generator(
         )
     finally:
         conn.close()
+    return session_id, question
+
+
+def stream_chat_generator(
+    body: ChatRequest,
+    deps: AppDeps,
+    *,
+    is_disconnected: Callable[[], bool] | None = None,
+    cancel_event: threading.Event | None = None,
+):
+    """Generator phát các sự kiện Server-Sent Events (SSE) theo thời gian thực:
+    - node_start: Khi một agent/node bắt đầu chạy
+    - node_finish: Khi một agent/node hoàn thành, kèm thời gian thực thi (duration_s, duration_ms)
+    - token: Từng mẩu từ/token phản hồi trực tiếp từ LLM
+    - complete: Trả lời hoàn chỉnh và toàn bộ metadata
+    - error: Khi gặp sự cố ngoài ý muốn
+    """
+    session_id, question = _prepare_stream_session(body)
+    t_start = time.perf_counter()
+    cancel = cancel_event or threading.Event()
 
     event_queue: queue.Queue[tuple[str, dict[str, Any]] | None] = queue.Queue()
 
@@ -222,6 +231,9 @@ def stream_chat_generator(
         event_queue.put((event, data))
 
     def _worker():
+        from backend.graph.chat import StreamCancelledError, set_stream_cancel_event
+
+        set_stream_cancel_event(cancel)
         try:
             result = answer_question(
                 question,
@@ -313,32 +325,81 @@ def stream_chat_generator(
                 "total_duration_s": total_duration_s,
             }
             event_queue.put(("complete", complete_data))
+        except StreamCancelledError:
+            event_queue.put(("error", {"error": "client disconnected"}))
         except Exception as exc:
             event_queue.put(("error", {"error": str(exc)}))
         finally:
+            set_stream_cancel_event(None)
             event_queue.put(None)
 
     worker_thread = threading.Thread(target=_worker, daemon=True)
     worker_thread.start()
 
     while True:
-        item = event_queue.get()
+        if is_disconnected and is_disconnected():
+            cancel.set()
+            break
+        try:
+            item = event_queue.get(timeout=0.2)
+        except queue.Empty:
+            if not worker_thread.is_alive():
+                break
+            continue
         if item is None:
             break
         event, data = item
         yield f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
+async def stream_chat_generator_async(
+    body: ChatRequest,
+    deps: AppDeps,
+    request: Request,
+) -> AsyncIterator[str]:
+    """Async SSE wrapper — dừng khi client disconnect."""
+    cancel = threading.Event()
+    loop = asyncio.get_running_loop()
+    chunks: queue.Queue[str | None] = queue.Queue()
+
+    def _run_sync_gen() -> None:
+        try:
+            for chunk in stream_chat_generator(
+                body,
+                deps,
+                is_disconnected=lambda: cancel.is_set(),
+                cancel_event=cancel,
+            ):
+                chunks.put(chunk)
+        finally:
+            chunks.put(None)
+
+    loop.run_in_executor(None, _run_sync_gen)
+
+    while True:
+        if await request.is_disconnected():
+            cancel.set()
+            break
+        try:
+            chunk = await asyncio.to_thread(chunks.get, True, 0.2)
+        except queue.Empty:
+            continue
+        if chunk is None:
+            break
+        yield chunk
+
+
 @router.post("/chat/stream")
 @router.post("/api/v1/chat/stream")
 @router.post("/api/chat/stream")
-def post_chat_stream(
+async def post_chat_stream(
+    request: Request,
     body: ChatRequest,
     deps: AppDeps = Depends(get_app_deps),
 ) -> StreamingResponse:
     """Endpoint Server-Sent Events (SSE) phát trực tiếp tiến trình chạy của từng agent và stream từng token của câu trả lời."""
     return StreamingResponse(
-        stream_chat_generator(body, deps),
+        stream_chat_generator_async(body, deps, request),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

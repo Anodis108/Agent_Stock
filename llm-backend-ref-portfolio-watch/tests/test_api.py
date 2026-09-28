@@ -152,6 +152,30 @@ def test_chat_stream_sse_flow(client: TestClient):
     assert "complete" in event_names
 
 
+def test_stream_cancel_event_stops_pipeline():
+    """SSE cancel event → check_stream_cancelled raise StreamCancelledError."""
+    import threading
+
+    from backend.graph.chat import (
+        StreamCancelledError,
+        check_stream_cancelled,
+        set_stream_cancel_event,
+    )
+
+    ev = threading.Event()
+    set_stream_cancel_event(ev)
+    check_stream_cancelled()  # chưa set → ok
+    ev.set()
+    try:
+        check_stream_cancelled()
+        raised = False
+    except StreamCancelledError:
+        raised = True
+    finally:
+        set_stream_cancel_event(None)
+    assert raised
+
+
 def test_chat_stream_guardrail_refusal_streaming(client: TestClient):
     """Kiểm tra câu hỏi Out-of-Scope được stream mượt mà khi bị chặn bởi Guardrail."""
     resp = client.post(

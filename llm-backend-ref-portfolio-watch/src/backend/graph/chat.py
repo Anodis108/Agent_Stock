@@ -63,7 +63,7 @@ from backend.domain.ports import (
     PriceSource,
 )
 from backend.graph.state import ChatState
-from backend.infra.monitoring.tracing import agent_span
+from backend.infra.monitoring.tracing import agent_span, mark_turn_guardrail
 from backend.infra.storage.memory_store import filter_conversation_history
 from backend.shared.logging import get_logger
 from backend.shared.settings import settings
@@ -72,10 +72,29 @@ _logger = get_logger(__name__)
 _chat_deps: contextvars.ContextVar[dict[str, Any]] = contextvars.ContextVar(
     "_chat_deps", default={}
 )
+_stream_cancel: contextvars.ContextVar[Any | None] = contextvars.ContextVar(
+    "_stream_cancel", default=None
+)
+
+
+class StreamCancelledError(Exception):
+    """Client đóng SSE — dừng pipeline."""
+
+
+def set_stream_cancel_event(event: Any | None) -> None:
+    """Gắn threading.Event từ SSE generator; None để clear."""
+    _stream_cancel.set(event)
+
+
+def check_stream_cancelled() -> None:
+    ev = _stream_cancel.get()
+    if ev is not None and getattr(ev, "is_set", lambda: False)():
+        raise StreamCancelledError("client disconnected")
 
 
 def emit_agent_event(event: str, data: dict[str, Any]) -> None:
     """Gửi sự kiện thời gian thực (node_start, node_finish, token) đến SSE stream generator."""
+    check_stream_cancelled()
     deps = _chat_deps.get()
     cb = deps.get("event_callback")
     if cb:
@@ -106,6 +125,8 @@ def guardrail_node(state: ChatState, config: RunnableConfig) -> dict[str, Any]:
             "category": res.category,
             "reason": res.reason,
         }
+    if not res.is_safe:
+        mark_turn_guardrail(turn)
     dur = round(time.perf_counter() - t0, 3)
     emit_agent_event("node_finish", {"node": "pre_rewrite_guardrail", "duration_s": dur, "duration_ms": int(dur * 1000)})
     return {
@@ -171,6 +192,9 @@ def rewrite_node(state: ChatState, config: RunnableConfig) -> dict[str, Any]:
             turn=turn,
             memories=state.get("memories") or [],
         )
+        from backend.infra.cache.semantic import set_semantic_question
+
+        set_semantic_question(rewritten.rewritten or state.get("question") or "")
         box["output"] = {
             "rewritten": rewritten.rewritten,
             "symbol": rewritten.symbol,
@@ -641,6 +665,10 @@ def run_chat_graph(
     )
 
     turn_id = (turn or "").strip() or (request_id or "").strip() or str(uuid.uuid4())
+
+    from backend.infra.cache.semantic import clear_semantic_question
+
+    clear_semantic_question()
 
     recalled_memories: list[str] = []
     if effective_user_id:

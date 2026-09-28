@@ -53,11 +53,83 @@ def test_dockerfile_and_frontend_dockerfile():
     df_path = ROOT / "src" / "backend" / "Dockerfile" if (ROOT / "src" / "backend" / "Dockerfile").is_file() else ROOT / "Dockerfile"
     df = df_path.read_text(encoding="utf-8")
     assert ("backend.main:app" in df) or ("backend.backend.main:app" in df)
+    assert "USER appuser" in df
+    assert "HEALTHCHECK" in df
 
     fe_df_path = ROOT / "src" / "frontend" / "Dockerfile" if (ROOT / "src" / "frontend" / "Dockerfile").is_file() else ROOT / "frontend" / "Dockerfile"
     fe_df = fe_df_path.read_text(encoding="utf-8")
     assert "nginx" in fe_df
     assert (ROOT / "src" / "frontend" / "nginx.conf").is_file() or (ROOT / "frontend" / "nginx.conf").is_file()
+
+
+def test_phase10_nginx_sse_buffering_disabled():
+    """nginx.conf tắt proxy_buffering cho SSE (/api/, /chat)."""
+    nginx = (ROOT / "src" / "frontend" / "nginx.conf").read_text(encoding="utf-8")
+    assert "location /api/" in nginx
+    assert "location /chat" in nginx
+    for block in ("/api/", "/chat"):
+        start = nginx.index(f"location {block}")
+        chunk = nginx[start : start + 400]
+        assert "proxy_buffering off" in chunk
+        assert "proxy_cache off" in chunk
+
+
+def test_llm_semaphore_limits_concurrency(monkeypatch):
+    """LLM_SEMAPHORE giới hạn số call đồng thời."""
+    import threading
+    import time
+
+    from backend.infra.llm.semaphore import llm_semaphore_slot, reset_llm_semaphore_for_tests
+
+    monkeypatch.setenv("LLM_SEMAPHORE", "2")
+    reset_llm_semaphore_for_tests()
+    active = 0
+    peak = 0
+    lock = threading.Lock()
+
+    def worker() -> None:
+        nonlocal active, peak
+        with llm_semaphore_slot():
+            with lock:
+                active += 1
+                peak = max(peak, active)
+            time.sleep(0.05)
+            with lock:
+                active -= 1
+
+    threads = [threading.Thread(target=worker) for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert peak <= 2
+
+
+def test_ai_client_retries_429(monkeypatch):
+    """ai_client retry 429 với backoff."""
+    import urllib.error
+    import urllib.request
+
+    from backend import ai_client
+
+    calls = {"n": 0}
+
+    def fake_urlopen(req, timeout=None):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise urllib.error.HTTPError(
+                req.full_url, 429, "Too Many Requests", hdrs=None, fp=None
+            )
+        return type("R", (), {"read": lambda self: b'{"ok": true}', "__enter__": lambda s: s, "__exit__": lambda *a: None})()
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setenv("AI_TRANSPORT", "http")
+    monkeypatch.setenv("AI_HTTP_MAX_RETRIES", "3")
+    monkeypatch.setattr(ai_client, "_retry_delay", lambda _attempt: 0.0)
+
+    out = ai_client._post_json("/v1/chat", {"question": "FPT"})
+    assert out["ok"] is True
+    assert calls["n"] == 3
 
 
 def test_inprocess_ai_transport_default(monkeypatch):
@@ -173,3 +245,77 @@ def test_readme_docker_product_and_local():
     content = (ROOT / "README.md").read_text(encoding="utf-8")
     assert "docker compose up --build" in content
     assert "uvicorn backend.main" in content or "uvicorn backend.backend.main" in content or "python -m backend.main" in content
+
+# ==============================================================================
+# 6. Deploy & Smoke Testing (Phase 11)
+# ==============================================================================
+
+def test_smoke_module_imports():
+    """Kiểm tra module smoke.py tồn tại và có thể parse được."""
+    smoke_py = ROOT / "deploy" / "smoke.py"
+    assert smoke_py.exists(), "Missing deploy/smoke.py for Phase 11"
+    
+    # Just read and compile to check syntax
+    source = smoke_py.read_text(encoding="utf-8")
+    compile(source, filename="smoke.py", mode="exec")
+
+def test_secrets_module_imports():
+    """Kiểm tra backend/shared/secrets.py tồn tại."""
+    secrets_py = ROOT / "src" / "backend" / "shared" / "secrets.py"
+    assert secrets_py.exists(), "Missing src/backend/shared/secrets.py for Phase 11"
+
+    from backend.shared.secrets import get_secret
+
+    assert get_secret("NONEXISTENT_KEY_XYZ") is None
+
+
+def test_smoke_answer_validation():
+    """Smoke helper chấp nhận câu trả FPT hoặc từ chối hợp lý."""
+    import sys
+
+    sys.path.insert(0, str(ROOT / "deploy"))
+    from smoke import _answer_acceptable  # type: ignore
+
+    assert _answer_acceptable("FPT hôm nay tăng 1.2% so với phiên trước.")
+    assert _answer_acceptable("Câu hỏi ngoài phạm vi tra cứu chứng khoán.")
+    assert not _answer_acceptable("")
+
+
+def test_smoke_health_with_mock(monkeypatch):
+    """run_smoke health pass với mock HTTP."""
+    import io
+    import json
+    import sys
+    import urllib.request
+
+    sys.path.insert(0, str(ROOT / "deploy"))
+    from smoke import run_smoke  # type: ignore
+
+    class _Resp:
+        def __init__(self, code: int, body: bytes):
+            self._code = code
+            self._body = body
+
+        def getcode(self) -> int:
+            return self._code
+
+        def read(self) -> bytes:
+            return self._body
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    def fake_urlopen(req, timeout=30):
+        url = req.full_url if hasattr(req, "full_url") else str(req)
+        if url.endswith("/health"):
+            return _Resp(200, json.dumps({"status": "ok", "service": "backend"}).encode())
+        if url.endswith("/chat"):
+            payload = json.dumps({"answer": "FPT hôm nay tăng nhẹ.", "question": "FPT?"}).encode()
+            return _Resp(200, payload)
+        raise AssertionError(f"unexpected url {url}")
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    assert run_smoke("http://localhost:8000", check_stream_flag=False) == 0

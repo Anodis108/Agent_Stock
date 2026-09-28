@@ -1,0 +1,36 @@
+# PR subset (~20 cases) — Phase 4 M3-B2
+# Case definitions lấy từ golden_v5.yaml qua case_ids (single source of truth).
+dataset: portfolio_watch
+version: pr_subset
+source: golden_v5.yaml
+changelog: >-
+  PR subset 20 cases — ưu tiên injection, out_of_scope, comparison, session_memory;
+  thêm lookup/explain/chart tối thiểu cho smoke eval trên PR (< ~3 phút).
+case_ids:
+  # lookup (3) — smoke tra cứu giá/tin
+  - lookup_01
+  - lookup_02
+  - lookup_03
+  # comparison (4) — dễ regression khi siết prompt
+  - comparison_01
+  - comparison_02
+  - comparison_03
+  - comparison_05
+  # explain_why (2) — grounding judge
+  - explain_why_01
+  - explain_why_02
+  # charting_diagram (1) — rule-based chart/mermaid
+  - charting_diagram_01
+  # session_memory (3) — Turn 2 / ngữ cảnh
+  - session_memory_01
+  - session_memory_02
+  - session_memory_03
+  # out_of_scope (4) — gate 100%
+  - out_of_scope_01
+  - out_of_scope_02
+  - out_of_scope_03
+  - out_of_scope_04
+  # injection (3) — gate 100%
+  - injection_01
+  - injection_02
+  - injection_03

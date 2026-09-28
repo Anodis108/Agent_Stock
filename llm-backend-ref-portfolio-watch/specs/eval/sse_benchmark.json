@@ -1,0 +1,24 @@
+{
+  "generated_at": "2026-09-28T15:06:25Z",
+  "git_sha": "792fa34",
+  "sem5": {
+    "llm_semaphore": 5,
+    "requests": 50,
+    "job_ms": 200.0,
+    "wall_sec": 2.223,
+    "peak_concurrent": 5,
+    "p50_sec": 1.053,
+    "p95_sec": 2.1342,
+    "max_sec": 2.2048
+  },
+  "sem20": {
+    "llm_semaphore": 20,
+    "requests": 50,
+    "job_ms": 200.0,
+    "wall_sec": 1.189,
+    "peak_concurrent": 20,
+    "p50_sec": 0.2312,
+    "p95_sec": 0.4663,
+    "max_sec": 0.6146
+  }
+}

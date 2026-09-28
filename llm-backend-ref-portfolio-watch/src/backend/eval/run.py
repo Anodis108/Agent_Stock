@@ -68,6 +68,11 @@ GOLDEN_V5_PATH = (
     if (ROOT / "resources" / "eval" / "golden_v5.yaml").is_file()
     else ROOT / "specs" / "eval" / "golden_v5.yaml"
 )
+GOLDEN_PR_SUBSET_PATH = (
+    ROOT / "resources" / "eval" / "golden_pr_subset.yaml"
+    if (ROOT / "resources" / "eval" / "golden_pr_subset.yaml").is_file()
+    else ROOT / "specs" / "eval" / "golden_pr_subset.yaml"
+)
 BASELINE_PATH = (
     ROOT / "resources" / "eval" / "v5_baseline.json"
     if (ROOT / "resources" / "eval" / "v5_baseline.json").is_file()
@@ -177,24 +182,11 @@ class LlmJudgeResult:
         }
 
 
-from backend.infra.llm.prompt_registry import registry
-
-_DEFAULT_JUDGE_SYSTEM = """Bạn là giám khảo đánh giá câu trả lời trợ lý theo dõi cổ phiếu VN.
-
-Chấm điểm 1-5 cho MỖI tiêu chí ĐỘC LẬP:
-- correctness: thông tin đúng / khớp expected (nếu có)
-- completeness: trả lời đủ ý câu hỏi
-- grounding: bám expected/context, không bịa số liệu hay tin không có căn cứ
-
-Không thưởng điểm vì câu trả lời dài hoặc format đẹp nếu nội dung không
-tương xứng (verbosity / style bias)."""
+from backend.infra.llm.prompt_registry import get_system_prompt
 
 
 def _get_judge_system_prompt() -> str:
-    try:
-        return registry().get("eval_judge").template.strip()
-    except Exception:
-        return _DEFAULT_JUDGE_SYSTEM
+    return get_system_prompt("eval_judge")
 
 
 def score_rule_based(
@@ -306,6 +298,37 @@ def validate_golden_case_rules(case: dict) -> None:
         raise ValueError(f"Case {cid} slice.type={slice_type!r} không thuộc RULE_SLICES")
 
 
+def resolve_golden_cases(data: dict, *, base_dir: Path) -> list[dict]:
+    """Trả về danh sách case — hỗ trợ subset tham chiếu `case_ids` + `source`."""
+    if "cases" in data:
+        cases = data["cases"]
+        if not isinstance(cases, list):
+            raise ValueError("Trường 'cases' phải là list")
+        return cases
+    case_ids = data.get("case_ids")
+    if not isinstance(case_ids, list) or not case_ids:
+        raise ValueError("Dataset phải có 'cases' hoặc 'case_ids' không rỗng")
+    source_name = str(data.get("source") or "golden_v5.yaml")
+    source_path = base_dir / source_name
+    if not source_path.is_file():
+        raise FileNotFoundError(
+            f"Subset source '{source_name}' không tìm thấy tại {source_path}"
+        )
+    source_data = yaml.safe_load(source_path.read_text(encoding="utf-8"))
+    if not isinstance(source_data, dict) or "cases" not in source_data:
+        raise ValueError(f"Source dataset không hợp lệ: {source_path}")
+    by_id = {str(c.get("id")): c for c in source_data["cases"] if c.get("id")}
+    resolved: list[dict] = []
+    for cid in case_ids:
+        key = str(cid)
+        if key not in by_id:
+            raise ValueError(
+                f"case_id '{key}' không có trong source {source_name}"
+            )
+        resolved.append(by_id[key])
+    return resolved
+
+
 def load_golden_dataset(path: Path | None = None, validate_rules: bool = False) -> dict:
     p = path
     if p is None:
@@ -318,11 +341,23 @@ def load_golden_dataset(path: Path | None = None, validate_rules: bool = False) 
         else:
             p = GOLDEN_PATH
     data = yaml.safe_load(p.read_text(encoding="utf-8"))
-    if not isinstance(data, dict) or "cases" not in data:
+    if not isinstance(data, dict):
         raise ValueError(f"invalid golden dataset: {p}")
-    if p.name in {"golden_v3.yaml", "golden_v4.yaml", "golden_v5.yaml"} or validate_rules:
+    cases = resolve_golden_cases(data, base_dir=p.parent)
+    data = {**data, "cases": cases}
+    validate_names = {
+        "golden_v3.yaml",
+        "golden_v4.yaml",
+        "golden_v5.yaml",
+        "golden_pr_subset.yaml",
+    }
+    if p.name in validate_names or validate_rules:
         for c in data["cases"]:
             validate_golden_case_rules(c)
+            if not str(c.get("expected") or "").strip():
+                raise ValueError(f"Case {c.get('id')} thiếu expected")
+            if not (c.get("slice") or {}).get("type"):
+                raise ValueError(f"Case {c.get('id')} thiếu slice.type")
     return data
 
 
@@ -831,6 +866,19 @@ class EvalReport:
                 for f in self.failures
             ],
         }
+
+
+def eval_report_to_gate_json(
+    report: EvalReport, results: list[CaseEvalResult]
+) -> dict:
+    """JSON export cho gate.py — gồm by_slice, failures, rule_pass_rate."""
+    payload = report.as_dict()
+    rule_passed = sum(1 for r in results if r.rule.passed)
+    total = len(results)
+    payload["rule_passed"] = rule_passed
+    payload["rule_total"] = total
+    payload["rule_pass_rate"] = (rule_passed / total) if total else 0.0
+    return payload
 
 
 def build_report(results: list[CaseEvalResult]) -> EvalReport:
@@ -1447,10 +1495,36 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Đường dẫn dataset YAML (mặc định specs/eval/golden_dataset.yaml)",
     )
+    parser.add_argument(
+        "--subset",
+        action="store_true",
+        help="Chạy PR subset (~20 cases) từ golden_pr_subset.yaml",
+    )
+    parser.add_argument(
+        "--report",
+        type=Path,
+        default=None,
+        help="Ghi report markdown ra file (vd specs/eval/pr_subset_report.md)",
+    )
+    parser.add_argument(
+        "--json",
+        type=Path,
+        default=None,
+        help="Ghi report JSON cho gate (vd specs/eval/pr_report.json)",
+    )
+    parser.add_argument(
+        "--save-history",
+        action="store_true",
+        help="Lưu report JSON vào specs/eval/history/<timestamp>_<sha>.json",
+    )
     args = parser.parse_args(argv)
     if args.self_check:
         return _self_check()
-    if args.run or args.case_id or args.slice:
+    if args.subset:
+        args.run = True
+        if args.dataset is None:
+            args.dataset = GOLDEN_PR_SUBSET_PATH
+    if args.run or args.case_id or args.slice or args.subset:
         if hasattr(sys.stdout, "reconfigure"):
             try:
                 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -1467,7 +1541,30 @@ def main(argv: list[str] | None = None) -> int:
             dataset_path=args.dataset,
         )
         report = build_report(results)
-        print(format_report(report))
+        report_text = format_report(report)
+        print(report_text)
+        if args.report:
+            args.report.parent.mkdir(parents=True, exist_ok=True)
+            args.report.write_text(report_text, encoding="utf-8")
+            print(f"Report saved: {args.report}")
+        gate_payload = eval_report_to_gate_json(report, results)
+        if args.json:
+            args.json.parent.mkdir(parents=True, exist_ok=True)
+            args.json.write_text(
+                json.dumps(gate_payload, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            print(f"JSON saved: {args.json}")
+        if args.save_history:
+            from backend.eval.history import save_eval_history
+
+            meta = {
+                "dataset": str(args.dataset or GOLDEN_V5_PATH),
+                "subset": bool(args.subset),
+                "skip_judge": bool(args.skip_judge),
+            }
+            hist_path = save_eval_history(gate_payload, extra_meta=meta)
+            print(f"History saved: {hist_path}")
         if args.case_id and len(results) == 1:
             print(format_case_detail(results[0]))
         print(format_trajectory_warnings(results))
@@ -1501,9 +1598,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if exit_ok else 1
     parser.print_help()
     print(
-        "\nDùng --self-check hoặc --run [--case-id ID] [--limit N] "
+        "\nDùng --self-check hoặc --run [--subset] [--case-id ID] [--limit N] "
         "[--skip-judge] [--skip-agent-eval] [--save-baseline] "
-        "[--baseline PATH] [--tolerance 0.05]."
+        "[--baseline PATH] [--report PATH] [--json PATH] [--save-history] "
+        "[--tolerance 0.05]."
     )
     return 0
 

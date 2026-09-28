@@ -7,7 +7,9 @@ from __future__ import annotations
 
 import json
 import os
+import random
 import socket
+import time
 import urllib.error
 import urllib.request
 from typing import Any
@@ -45,7 +47,18 @@ def _is_timeout(exc: BaseException) -> bool:
     return "timed out" in str(exc).lower()
 
 
-def _post_json(
+def _is_rate_limited(exc: BaseException) -> bool:
+    if isinstance(exc, urllib.error.HTTPError) and exc.code == 429:
+        return True
+    msg = str(exc).lower()
+    return "429" in msg or "rate limit" in msg or "too many requests" in msg
+
+
+def _retry_delay(attempt: int) -> float:
+    return (2**attempt) + random.uniform(0, 1)
+
+
+def _post_json_once(
     path: str,
     payload: dict[str, Any],
     *,
@@ -89,6 +102,58 @@ def _post_json(
     if not isinstance(data, dict):
         raise AiClientError("AI response không phải object")
     return data
+
+
+def _post_json(
+    path: str,
+    payload: dict[str, Any],
+    *,
+    timeout: float | None = None,
+    request_id: str | None = None,
+    max_retries: int | None = None,
+) -> dict[str, Any]:
+    """POST JSON với retry exponential backoff + jitter cho 429/timeout."""
+    retries = max_retries
+    if retries is None:
+        raw = os.environ.get("AI_HTTP_MAX_RETRIES", "3")
+        try:
+            retries = max(1, int(raw))
+        except ValueError:
+            retries = 3
+
+    last_exc: BaseException | None = None
+    for attempt in range(retries):
+        try:
+            return _post_json_once(
+                path,
+                payload,
+                timeout=timeout,
+                request_id=request_id,
+            )
+        except AiClientError as exc:
+            last_exc = exc
+            if attempt >= retries - 1:
+                raise
+            if _is_rate_limited(exc) or _is_timeout(exc):
+                time.sleep(_retry_delay(attempt))
+                continue
+            raise
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, socket.timeout) as exc:
+            last_exc = exc
+            if attempt >= retries - 1:
+                if isinstance(exc, urllib.error.HTTPError):
+                    detail = exc.read().decode("utf-8", errors="replace")
+                    raise AiClientError(f"AI HTTP {exc.code}: {detail or exc.reason}") from exc
+                if _is_timeout(exc):
+                    raise AiClientError("AI timeout") from exc
+                raise AiClientError(f"AI không kết nối được: {exc}") from exc
+            if _is_rate_limited(exc) or _is_timeout(exc):
+                time.sleep(_retry_delay(attempt))
+                continue
+            raise AiClientError(str(exc)) from exc
+    if last_exc is not None:
+        raise AiClientError(str(last_exc)) from last_exc
+    raise AiClientError("AI HTTP retry exhausted")
 
 
 def _chat_inprocess(

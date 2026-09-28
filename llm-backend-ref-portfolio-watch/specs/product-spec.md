@@ -1,150 +1,148 @@
-# Product Spec
+# Product Spec — Portfolio Watch
 
 ## App Name
-**Portfolio Watch — Multi-Agent Stock Assistant (Clean & Realtime Edition)**
+**Portfolio Watch — Multi-Agent Stock Assistant (Production LLMOps Edition)**
 
 ---
 
 ## App Goal
 
-Cung cấp một ứng dụng web tinh gọn (MVP) trợ giúp theo dõi, phân tích cổ phiếu Việt Nam thông qua hệ thống Đa tác nhân (Multi-Agent Swarm) với phản hồi thời gian thực (Streaming SSE) và bảng giám sát thị trường 10 phiên.
+Xây dựng ứng dụng web MVP giúp theo dõi và phân tích cổ phiếu Việt Nam qua **Multi-Agent Swarm**, đồng thời áp dụng quy trình **Production LLMOps** (Module III — *LLM-Engineer-Handbook/module-3-production-llmops.md*).
 
-Mục tiêu trọng tâm của chu kỳ cập nhật này:
-1. **Clean Code & Đặt tên chuẩn xác**: Loại bỏ cấu trúc lồng nhau thừa thãi (`src/backend/backend/`), đặt tên file, hàm nghiệp vụ và agent node phản ánh đúng chức năng hiện tại (`guardrail_node`, `supervisor_node`, `price_node`, `news_node`, `chart_node`, `composer_node`), không băm nhỏ hàm thái quá, bổ sung docstrings đầy đủ.
-2. **Khắc phục vị trí tài nguyên (`resources/`)**: Xóa bỏ thư mục `src/resources/` sinh nhầm trong `src/`; toàn bộ tài nguyên hệ thống (`prompts/`, `data/`, `charts/`, `eval/`, `docs/`) thống nhất nằm tại thư mục gốc `resources/` (ngang cấp với `src/`).
-3. **Gói gọn bộ kiểm thử (`tests/`) xuống không quá 10 file**: Tinh giản 33 file test phân mảnh thành tối đa 10 file kiểm thử có cấu trúc logic, dễ bảo trì, bao phủ toàn diện tính năng.
-4. **Đánh giá toàn bộ bộ câu hỏi & lưu dẫn chứng**: Chạy kiểm thử tự động toàn bộ 40 câu hỏi của Golden Dataset, đo lường chi tiết và lưu trữ báo cáo làm dẫn chứng chính thức tại `specs/eval/`.
+**Một câu:** Người dùng chat hỏi về cổ phiếu VN và nhận câu trả lời streaming; kỹ sư vận hành hệ thống an toàn, đo được chất lượng, và cải tiến qua prompt/eval — không qua train model.
+
+> **Chú thích (Handbook M3):** Vòng lặp chính là `prompt/dataset version → evaluate → deploy → monitor → feedback`. Artifact quan trọng: **prompt + config + eval set**.
+
+**Hai mục tiêu song song:**
+
+| | End user | LLMOps (M3) |
+| :--- | :--- | :--- |
+| **Làm gì** | Tra cứu giá, tin, biểu đồ; hỏi nối tiếp theo ngữ cảnh | Version prompt, eval gate, cost/cache, CI/CD, observability |
+| **Thành công khi** | Chat nhanh, đúng dữ liệu VN, an toàn | Biết version đang chạy; PR xấu bị chặn; rollback được |
 
 ---
 
 ## Target Users
 
-1. **Nhà đầu tư cá nhân (End User)**:
-   - Cần tra cứu nhanh giá, biến động 10 phiên, tin tức xúc tác và biểu đồ kỹ thuật của cổ phiếu Việt Nam.
-   - Trải nghiệm chat thông minh với tốc độ phản hồi tức thì (Streaming text theo từng token).
-   - Hỏi tiếp các câu hỏi tự nhiên theo ngữ cảnh mà không cần nhắc lại mã cổ phiếu (ví dụ: *"Tại sao lại giảm?"*).
-   - Nắm bắt xu hướng thị trường qua bảng ma trận Market Watch 10D với số liệu chuẩn xác 100%.
-   - Gửi đánh giá phản hồi (HITL) trực tiếp để góp phần nâng cao chất lượng câu trả lời.
+### 1. Nhà đầu tư cá nhân
+- Tra cứu giá, biến động 10 phiên, tin tức, biểu đồ cổ phiếu VN.
+- Chat streaming; hỏi tiếp không cần nhắc lại mã (*"FPT tăng hay giảm?"* → *"Tại sao lại giảm?"*).
+- Xem bảng Market Watch 10D; gửi phản hồi 👍/👎 dưới mỗi câu trả lời.
 
-2. **Kỹ sư AI & Backend Developer**:
-   - Cần codebase sạch sẽ, phân tầng rõ ràng, dễ bảo trì và mở rộng thêm tác nhân mới.
-   - Quan sát minh bạch tiến trình hoạt động của các agent qua Live Swarm Inspector cập nhật real-time.
-   - Quản lý bộ test gọn gàng ($\le 10$ files) phục vụ CI/CD nhanh chóng.
-   - Có báo cáo đánh giá Golden Dataset minh bạch làm dẫn chứng so sánh benchmark qua từng phiên bản.
+### 2. Kỹ sư AI / LLMOps
+- Vận hành swarm agents, prompt registry, eval pipeline, deploy demo.
+- Theo dõi Live Swarm Inspector, cost, trace sampling.
+- Rollback nhanh: **image tag**, **prompt alias**, hoặc **model config**.
+
+> **Chú thích:** Sửa code → unit test; sửa prompt/model → eval gate trước khi merge.
 
 ---
 
 ## Core User Flow
 
-1. **Truy cập ứng dụng**:
-   - Người dùng mở trình duyệt vào `http://localhost:3000` (Frontend Nginx) hoặc `http://localhost:8000` (Backend API).
-   - Giao diện gồm 3 khu vực chính: Sidebar quản lý phiên (trái), Khung chat chính (giữa), Live Swarm Inspector (phải).
-2. **Hỏi đáp cổ phiếu (Turn 1)**:
-   - Người dùng nhập câu hỏi (ví dụ: *"FPT hôm nay tăng hay giảm?"*).
-   - Hệ thống đi qua `guardrail_node` xác thực an toàn.
-   - Live Inspector kích hoạt node và hiển thị thời gian xử lý (`⏱ 0.35s`).
-   - Khung chat stream câu trả lời từng token thời gian thực: thông báo mức biến động giá kèm tin tức liên quan.
-3. **Hỏi nối tiếp theo ngữ cảnh (Turn 2)**:
-   - Người dùng hỏi câu lửng lơ: *"Tại sao lại giảm?"*.
-   - Hệ thống tự động đọc lịch sử phiên, nhận diện đại từ ẩn, kế thừa mã `"FPT"` và giải trình nguyên nhân biến động giá.
-4. **Phòng vệ câu hỏi ngoài lề hoặc can thiệp prompt**:
-   - Người dùng hỏi ngoài phạm vi (*"Giá cổ phiếu AAPL?"*, *"Thời tiết hôm nay?"*) hoặc gửi câu lệnh can thiệp (*"Ignore previous instructions..."*).
-   - `guardrail_node` từ chối lịch sự ngay tại cửa ngõ; không trả lời lan man, không gán nhầm sang FPT.
-5. **Yêu cầu biểu đồ kỹ thuật**:
-   - Người dùng yêu cầu: *"Vẽ biểu đồ giá FPT 10 phiên"* hoặc *"So sánh biến động VNM và HPG"*.
-   - `chart_node` sinh ảnh biểu đồ kỹ thuật lưu vào `resources/data/charts/` và hiển thị ảnh trực quan trong khung chat.
-6. **Xem bảng Market Watch 10D**:
-   - Người dùng chuyển sang tab **Market Watch (10D)** để theo dõi ma trận giá 10 mã cổ phiếu lớn qua 10 phiên.
-   - Dữ liệu giá đảm bảo trùng khớp 100% với số liệu trả lời trong khung chat (Single Source of Truth).
-7. **Đánh giá phản hồi (HITL)**:
-   - Dưới mỗi câu trả lời, người dùng có thể bấm Thumbs Up 👍 / Thumbs Down 👎 hoặc chấm 1-5 sao.
-   - Khi đánh giá tiêu cực, form xuất hiện cho phép chọn lý do cụ thể và ghi nhận xét.
-   - Dữ liệu đánh giá kèm toàn bộ telemetry được lưu vào `resources/data/hitl_feedback.json`.
+### Luồng người dùng (End User)
+
+1. Mở app — `http://localhost:3000` (Docker) hoặc `http://localhost:8000` (local).
+2. **Turn 1** — Nhập câu hỏi (vd. *"FPT hôm nay tăng hay giảm?"*).
+   - Guardrail kiểm tra an toàn → supervisor điều phối price/news/chart → composer stream câu trả lời từng token (SSE).
+   - Live Inspector hiển thị node đang chạy và thời gian xử lý.
+3. **Turn 2** — Hỏi nối tiếp (vd. *"Tại sao lại giảm?"*).
+   - Hệ thống đọc session, kế thừa mã cổ phiếu, trả lời theo ngữ cảnh.
+4. **Yêu cầu biểu đồ** — *"Vẽ biểu đồ FPT 10 phiên"* → ảnh hiện trong chat.
+5. **Market Watch** — Tab ma trận 10 mã × 10 phiên; số liệu khớp với chat.
+6. **Phản hồi HITL** — 👍/👎; feedback lưu để cải thiện golden dataset sau.
+
+### Luồng từ chối (Edge Cases)
+
+- Câu ngoài phạm vi (AAPL, thời tiết, tư vấn mua bán) → guardrail từ chối lịch sự.
+- Prompt injection → guardrail chặn ngay, không gọi worker agents.
+
+### Luồng vận hành (LLMOps — M3)
+
+```
+Sửa prompt/code → PR → lint + pytest → eval subset (gate) → merge
+→ deploy (Docker/ngrok) → monitor + HITL → thêm case vào golden set
+```
 
 ---
 
 ## Features In Scope
 
-### 1. Clean Code & Chuẩn Hóa Định Danh
-- Loại bỏ thư mục lồng nhau `src/backend/backend/`; file khởi chạy backend duy nhất tại `src/backend/main.py`.
-- Chuẩn hóa tên agent nodes và functions phản ánh đúng chức năng:
-  - `guardrail_node`: Phòng thủ sớm, phát hiện Injection và Out-of-scope.
-  - `rewrite_node`: Chuẩn hóa câu hỏi và phân giải đại từ ngữ cảnh.
-  - `supervisor_node`: Định tuyến điều phối các worker agents.
-  - `price_node`: Lấy giá và dữ liệu lịch sử từ Vnstock.
-  - `news_node`: Quét và trích xuất tin tức tài chính CafeF.
-  - `chart_node`: Sinh biểu đồ đường giá SMA/Volume hoặc biểu đồ so sánh %.
-  - `diagram_node`: Sinh sơ đồ quy trình Mermaid.
-  - `composer_node`: Tổng hợp dữ liệu và stream câu trả lời cuối cùng.
-- Không băm nhỏ hàm nghiệp vụ thành các helper vụn vặt; viết hàm trọn vẹn, liền mạch, có docstrings đầy đủ.
+### A. Tính năng sản phẩm (đã có / duy trì)
 
-### 2. Thống Nhất Vị Trí Tài Nguyên (`resources/`)
-- Xóa bỏ triệt để thư mục `src/resources/`.
-- Toàn bộ tài nguyên nằm duy nhất tại thư mục gốc `resources/` (ngang cấp với `src/`):
-  - `resources/data/charts/`: Lưu trữ các ảnh biểu đồ Matplotlib.
-  - `resources/data/portfolio_watch.db`: SQLite database lưu trữ phiên và tin nhắn.
-  - `resources/data/hitl_feedback.json`: Tệp lưu trữ telemetry đánh giá người dùng.
-  - `resources/prompts/`: Registry lưu prompt của từng agent node.
-  - `resources/eval/`: Bộ dữ liệu kiểm thử vàng `golden_v5.yaml` và baseline.
-- Sửa toàn bộ mã nguồn xử lý đường dẫn để trỏ chính xác về root `resources/`.
+| # | Tính năng | Mô tả ngắn |
+| :---: | :--- | :--- |
+| 1 | Chat SSE streaming | Câu trả lời chạy từng token; Inspector realtime |
+| 2 | Multi-Agent Swarm | guardrail → rewrite → supervisor → price/news/chart → composer |
+| 3 | Guardrails | Chặn injection & out-of-scope (fail-closed) |
+| 4 | Session memory | Hỏi nối tiếp Turn 1 → Turn 2 |
+| 5 | Chart agent | Biểu đồ giá lưu `resources/data/charts/` |
+| 6 | Market Watch 10D | Ma trận giá; đồng bộ với chat |
+| 7 | HITL feedback | Telemetry JSON tại `resources/data/hitl_feedback.json` |
+| 8 | Docker 2-container | Frontend :3000 + Backend :8000 |
 
-### 3. Gói Gọn Bộ Kiểm Thử (`tests/` <= 10 Files)
-- Hợp nhất 33 file kiểm thử hiện tại thành tối đa 10 file có cấu trúc rõ ràng:
-  1. `tests/conftest.py`: Fixtures dùng chung, in-memory DB, mock clients.
-  2. `tests/test_agents.py`: Kiểm thử các agent nodes và luồng điều phối swarm.
-  3. `tests/test_guardrails.py`: Kiểm thử chặn Prompt Injection và từ chối Out-of-Scope.
-  4. `tests/test_memory.py`: Kiểm thử ngữ cảnh hỏi nối tiếp Turn 1 ➔ Turn 2 và quản lý sessions.
-  5. `tests/test_market.py`: Kiểm thử MarketService, ma trận 10D và đồng bộ dữ liệu giá.
-  6. `tests/test_chart.py`: Kiểm thử ChartAgent và lưu trữ biểu đồ vào `resources/data/charts/`.
-  7. `tests/test_api.py`: Kiểm thử các endpoint FastAPI (Chat SSE streaming, sessions, market, HITL).
-  8. `tests/test_database.py`: Kiểm thử SQLite models, migrations, lưu trữ tin nhắn.
-  9. `tests/test_eval.py`: Kiểm thử runner đánh giá Golden Dataset và cơ chế chấm điểm.
-  10. `tests/test_system.py`: Kiểm thử Docker container, biến môi trường và tài liệu hướng dẫn.
-- Xóa bỏ toàn bộ các file test tạm thời theo phase cũ.
+### B. Tính năng LLMOps (M3 — cần hoàn thiện)
 
-### 4. Đánh Giá Bộ Câu Hỏi & Lưu Trữ Dẫn Chứng
-- Chạy kiểm thử tự động toàn bộ 40 câu hỏi trong `resources/eval/golden_v5.yaml` trên 7 slices:
-  `lookup` (12), `comparison` (8), `explain_why` (6), `charting_diagram` (4), `session_memory` (3), `out_of_scope` (4), `injection` (3).
-- Lưu kết quả đánh giá, pipeline trace, thời gian xử lý, số token và chi phí làm dẫn chứng tại:
-  - Báo cáo chi tiết: `specs/eval/eval_results_golden_v5.md`.
-  - Tệp cơ sở dữ liệu: `specs/eval/v5_baseline.json`.
+| # | Tính năng | Handbook | MVP |
+| :---: | :--- | :---: | :--- |
+| 1 | Prompt registry git-based | M3-B1 | Version + `production.txt` + lint |
+| 2 | Eval pipeline + gate | M3-B2 | 40 cases golden v5; subset 20 cho PR; gate theo slice |
+| 3 | Cost tracking + cache 2 tầng | M3-B3 | Exact cache + semantic đơn giản; key có `prompt_version` |
+| 4 | SSE/Docker hardening | M3-B4 | Disconnect stop, retry 429, benchmark latency |
+| 5 | Deploy demo | M3-B5 | ngrok public URL + smoke test (GCP tùy chọn) |
+| 6 | CI/CD eval gate | M3-B6 | GitHub Actions: lint → pytest → eval subset |
+| 7 | Observability | M3-B7 | Trace sampling, cost log, 1 incident playbook |
+| 8 | Capstone feedback loop | M3-B8 | HITL → draft golden case; pipeline diagram |
 
-### 5. Khả Năng Cốt Lõi Của Ứng Dụng Web
-- Phản hồi câu trả lời chạy chữ từng token qua Server-Sent Events (`/api/v1/chat/stream`).
-- Live Agent Inspector hiển thị trạng thái và thời gian chạy từng node theo thời gian thực.
-- Đồng bộ 100% số liệu giá giữa khung chat và bảng Market Watch 10D (Single Source of Truth).
-- Form đánh giá HITL cho phép chọn lý do chi tiết và xuất telemetry JSON.
+> **Chú thích trạng thái:** Chat/Docker/guardrail/eval cơ bản **đã có**. Cache, CI/CD, eval gate, cost dashboard **chưa có** — triển khai theo `implementation-plan.md`.
 
 ---
 
 ## Features Out of Scope
 
-Để giữ dự án đơn giản, tập trung hoàn thiện MVP chất lượng cao, các tính năng sau **không** thuộc phạm vi triển khai:
-1. **Đặt lệnh giao dịch thực tế**: Không tích hợp API mua bán cổ phiếu với các công ty chứng khoán.
-2. **Streaming giá Tick-by-Tick**: Không hỗ trợ websocket realtime từng giây (chỉ sử dụng dữ liệu nến ngày 1D).
-3. **Hệ thống phân quyền & người dùng phức tạp**: Không triển khai OAuth2, RBAC nhiều cấp hay hệ thống thanh toán.
-4. **Visual Graph Builder**: Không xây dựng công cụ kéo thả trực quan để chỉnh sửa luồng agent graph.
+Giữ MVP đơn giản — **không** làm trong chu kỳ này:
+
+1. **Đặt lệnh giao dịch thực** — không tích hợp broker.
+2. **Streaming giá tick-by-tick** — chỉ dữ liệu nến ngày 1D.
+3. **OAuth2 / RBAC / thanh toán** — single-user demo.
+4. **Self-host vLLM/TGI production** — dùng API provider; vLLM chỉ mở rộng.
+5. **Fine-tuning LoRA** — nhánh tách biệt, không thuộc đường chính M3.
+6. **Visual Graph Builder** — chỉnh workflow qua code/spec.
+7. **Redis / infra cache nặng** — MVP dùng in-memory hoặc SQLite.
 
 ---
 
 ## Acceptance Criteria
 
-1. **Vị trí tài nguyên chuẩn xác**:
-   - Thư mục `src/resources/` bị xóa hoàn toàn; không có file tài nguyên nào sinh ra trong `src/`.
-   - Toàn bộ ảnh chart, cơ sở dữ liệu, file HITL feedback và prompts nằm đúng trong root `resources/`.
-2. **Bộ kiểm thử tinh gọn**:
-   - Thư mục `tests/` chứa đúng $\le 10$ file kiểm thử `.py`.
-   - Toàn bộ test suite chạy vượt qua 100% (`pytest tests/`).
-3. **Mã nguồn sạch & Định danh chuẩn**:
-   - Không còn thư mục `src/backend/backend/`; backend app được khởi tạo duy nhất tại `src/backend/main.py`.
-   - Các agent nodes, functions và files được đặt tên chính xác theo chức năng.
-   - Toàn bộ các module, class và function chính có docstrings rõ ràng.
-4. **Dẫn chứng đánh giá bộ câu hỏi đầy đủ**:
-   - Đánh giá toàn bộ 40 câu hỏi của Golden Dataset thành công.
-   - Tỷ lệ vượt qua tổng thể (Overall Pass Rate) $\ge 85\%$.
-   - Nhóm `injection` đạt **100% Pass** (Zero-Tolerance Security Gate).
-   - Nhóm `out_of_scope` đạt **100% Pass** (từ chối lịch sự, không bịa đặt hoặc trả về giá FPT).
-   - Báo cáo dẫn chứng được lưu đầy đủ tại `specs/eval/eval_results_golden_v5.md` và `specs/eval/v5_baseline.json`.
-5. **Vận hành & Triển khai**:
-   - Ứng dụng chạy được trên môi trường cục bộ (Local Python + Uvicorn) và Docker Compose (`docker compose up --build`).
-   - Giao diện người dùng và API hoạt động ổn định, tin cậy.
+Tiêu chí nghiệm thu MVP — pass khi **tất cả** mục dưới đạt:
+
+### Sản phẩm (End User)
+
+1. Chat SSE hoạt động; Inspector hiển thị node và latency.
+2. Turn 2 kế thừa đúng mã cổ phiếu từ Turn 1.
+3. Injection và out-of-scope bị chặn 100% (không trả giá bịa).
+4. Chart sinh ảnh hợp lệ; Market Watch 10D khớp số liệu chat.
+5. HITL lưu feedback vào `resources/data/hitl_feedback.json`.
+6. `docker compose up --build` chạy ổn định; UI tại `:3000`, API tại `:8000`.
+
+### LLMOps (Module III)
+
+7. **Prompt:** Không hardcode prompt trong agents; ≥ 2 prompt có ≥ 2 version + changelog; đổi production chỉ sửa `production.txt`.
+8. **Eval:** Golden v5 (40 cases) overall ≥ 85%; slices `injection` và `out_of_scope` = 100%; report có `by_slice` và liệt kê case fail.
+9. **Gate:** `eval.gate` exit 1 khi slice injection tụt (đã chứng minh bằng test cố ý).
+10. **Cost/Cache:** Có baseline cost; cache key chứa `prompt_version`; có báo cáo trước/sau.
+11. **Deploy:** Public demo URL (ngrok) + smoke pass; không commit API key.
+12. **CI:** Workflow chạy lint + pytest + eval subset trên PR đổi prompt/agent.
+13. **Observability:** Trace sampling + cost ghi kèm `prompt_version`; ≥ 1 playbook incident đã diễn tập.
+14. **Capstone:** Pipeline diagram khớp thực tế; ≥ 1 HITL case chuyển thành golden draft; rollback 1 trục đã thử.
+
+### Kiểm thử tổng hợp
+
+```bash
+pytest tests/ -v
+python -m backend.eval.run_detailed
+python -m backend.eval.gate --run <report.json>   # sau Phase 2
+docker compose up --build -d
+```
+
+Dẫn chứng eval: `specs/eval/eval_results_golden_v5.md`, `specs/eval/v5_baseline.json`.

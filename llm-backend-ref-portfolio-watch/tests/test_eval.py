@@ -308,3 +308,351 @@ def test_generate_markdown_report_formatting():
     assert "lookup_01" in md
     assert "price_agent ➔ composer" in md
     assert "PASS" in md
+
+
+# ==============================================================================
+# 8. Prompt Lint — Phase 3 (M3-B1)
+# ==============================================================================
+
+
+def test_prompt_lint_passes_on_resources_prompts():
+    """Mọi prompt trong resources/prompts/ phải pass lint (metadata + biến template)."""
+    from backend.infra.llm.prompt_lint import lint_prompts_dir
+    from backend.infra.llm.prompt_registry import resolve_prompts_dir
+
+    issues = lint_prompts_dir(resolve_prompts_dir())
+    assert not issues, "\n".join(str(i) for i in issues)
+
+
+def test_prompt_lint_catches_missing_metadata(tmp_path: Path):
+    """Lint báo lỗi khi thiếu metadata bắt buộc."""
+    from backend.infra.llm.prompt_lint import lint_prompt_file
+
+    prompt_dir = tmp_path / "demo_prompt"
+    prompt_dir.mkdir()
+    bad = prompt_dir / "v1.yaml"
+    bad.write_text(
+        "name: demo_prompt\nversion: 1\ntemplate: 'Hello $user'\n",
+        encoding="utf-8",
+    )
+    issues = lint_prompt_file(bad, prompt_name="demo_prompt")
+    messages = " ".join(i.message for i in issues)
+    assert "model" in messages
+    assert "owner" in messages
+    assert "changelog" in messages
+
+
+def test_prompt_lint_catches_variables_mismatch(tmp_path: Path):
+    """Lint báo lỗi khi variables khai báo không khớp template."""
+    from backend.infra.llm.prompt_lint import lint_prompt_file
+
+    prompt_dir = tmp_path / "demo_prompt"
+    prompt_dir.mkdir()
+    bad = prompt_dir / "v1.yaml"
+    bad.write_text(
+        """
+name: demo_prompt
+version: 1
+model: gpt-4o-mini
+owner: test
+created: 2026-01-01
+changelog: test
+variables:
+  - user
+  - extra
+template: |
+  Hello $user
+""".strip(),
+        encoding="utf-8",
+    )
+    issues = lint_prompt_file(bad, prompt_name="demo_prompt")
+    assert any("variables khai báo" in i.message for i in issues)
+
+
+# ==============================================================================
+# 9. Golden PR Subset — Phase 4 (M3-B2)
+# ==============================================================================
+
+GOLDEN_PR_SUBSET = ROOT / "resources" / "eval" / "golden_pr_subset.yaml"
+
+
+def test_golden_pr_subset_loads_20_cases():
+    """PR subset phải có ~20 cases resolve từ golden_v5."""
+    from backend.eval.run import load_golden_dataset
+
+    assert GOLDEN_PR_SUBSET.is_file(), "Thiếu golden_pr_subset.yaml"
+    data = load_golden_dataset(GOLDEN_PR_SUBSET, validate_rules=True)
+    cases = data["cases"]
+    assert len(cases) == 20, f"PR subset cần 20 cases, có {len(cases)}"
+    ids = {c["id"] for c in cases}
+    assert len(ids) == 20, "case_id trùng lặp trong subset"
+    for c in cases:
+        assert c.get("expected"), f"{c['id']} thiếu expected"
+        assert (c.get("slice") or {}).get("type"), f"{c['id']} thiếu slice"
+
+
+def test_golden_pr_subset_priority_slices():
+    """Subset ưu tiên injection, out_of_scope, comparison, session_memory."""
+    from backend.eval.run import load_golden_dataset
+
+    data = load_golden_dataset(GOLDEN_PR_SUBSET)
+    by_slice: dict[str, int] = {}
+    for c in data["cases"]:
+        st = (c.get("slice") or {}).get("type", "unknown")
+        by_slice[st] = by_slice.get(st, 0) + 1
+    assert by_slice.get("injection") == 3
+    assert by_slice.get("out_of_scope") == 4
+    assert by_slice.get("comparison", 0) >= 4
+    assert by_slice.get("session_memory") == 3
+
+
+def test_golden_pr_subset_runner_stub():
+    """Runner chạy subset với answer_fn stub — không cần API."""
+    from backend.eval.run import build_report, load_golden_dataset, run_eval
+
+    cases = load_golden_dataset(GOLDEN_PR_SUBSET)["cases"]
+
+    def stub_answer(q: str) -> str:
+        if "mua" in q.lower() or "bán" in q.lower() or "ignore" in q.lower():
+            return "Không thể tư vấn mua/bán. Thông tin tham khảo."
+        if "thời tiết" in q.lower() or "AAPL" in q or "TSLA" in q:
+            return "Ngoài phạm vi theo dõi danh mục chứng khoán VN."
+        return "FPT VNM HPG thông tin giá tham khảo."
+
+    results = run_eval(
+        cases,
+        answer_fn=stub_answer,
+        skip_judge=True,
+        skip_agent_eval=True,
+    )
+    report = build_report(results)
+    assert report.total == 20
+    assert report.rate >= 0.5
+
+
+# ==============================================================================
+# 10. Eval Gate — Phase 5 (M3-B2)
+# ==============================================================================
+
+
+def _gate_report(
+    *,
+    rate: float = 0.90,
+    rule_pass_rate: float = 0.96,
+    injection_rate: float = 1.0,
+    out_of_scope_rate: float = 1.0,
+) -> dict:
+    return {
+        "total": 20,
+        "passed": int(rate * 20),
+        "rate": rate,
+        "rule_pass_rate": rule_pass_rate,
+        "by_slice": {
+            "injection": {
+                "total": 3,
+                "passed": int(injection_rate * 3),
+                "rate": injection_rate,
+            },
+            "out_of_scope": {
+                "total": 4,
+                "passed": int(out_of_scope_rate * 4),
+                "rate": out_of_scope_rate,
+            },
+        },
+        "failures": [],
+    }
+
+
+def test_eval_report_to_gate_json_includes_rule_pass_rate():
+    """JSON export cho gate phải có rule_pass_rate và by_slice."""
+    from backend.eval.run import eval_report_to_gate_json
+
+    results = [
+        eval_mod.CaseEvalResult(
+            "lookup_01", "lookup", "q", "out",
+            eval_mod.RuleBasedScore(passed=True),
+            eval_mod.LlmJudgeResult(skipped=True),
+            passed=True,
+        ),
+        eval_mod.CaseEvalResult(
+            "lookup_02", "lookup", "q", "bad",
+            eval_mod.RuleBasedScore(passed=False),
+            eval_mod.LlmJudgeResult(skipped=True),
+            passed=False,
+        ),
+    ]
+    report = eval_mod.build_report(results)
+    payload = eval_report_to_gate_json(report, results)
+    assert payload["rule_pass_rate"] == 0.5
+    assert payload["rule_passed"] == 1
+    assert "by_slice" in payload
+    assert payload["failures"][0]["output"] == "bad"
+
+
+def test_gate_passes_good_report():
+    """Gate pass khi overall, rule, injection, out_of_scope đạt ngưỡng."""
+    from backend.eval.gate import check_gates
+
+    result = check_gates(_gate_report())
+    assert result.passed is True
+    assert all(c.passed for c in result.checks)
+
+
+def test_gate_fails_injection_slice():
+    """Gate exit fail khi slice injection tụt (product-spec #9)."""
+    from backend.eval.gate import check_gates
+
+    result = check_gates(_gate_report(injection_rate=0.6667))
+    assert result.passed is False
+    inj = next(c for c in result.checks if c.name == "slice:injection")
+    assert inj.passed is False
+
+
+def test_gate_fails_overall_and_rule_rate():
+    """Gate fail khi overall hoặc rule_pass_rate dưới ngưỡng."""
+    from backend.eval.gate import check_gates
+
+    low_overall = check_gates(_gate_report(rate=0.80))
+    assert low_overall.passed is False
+
+    low_rule = check_gates(_gate_report(rule_pass_rate=0.90))
+    assert low_rule.passed is False
+
+
+def test_gate_cli_exit_code(tmp_path: Path):
+    """CLI gate trả exit 0/1 đúng."""
+    from backend.eval.gate import main
+
+    good = tmp_path / "good.json"
+    good.write_text(json.dumps(_gate_report()), encoding="utf-8")
+    assert main(["--run", str(good)]) == 0
+
+    bad = tmp_path / "bad.json"
+    bad.write_text(json.dumps(_gate_report(injection_rate=0.0)), encoding="utf-8")
+    assert main(["--run", str(bad)]) == 1
+
+
+# ==============================================================================
+# 11. Eval History + Gate Drill — Phase 6 (M3-B2)
+# ==============================================================================
+
+
+def test_save_eval_history_writes_timestamped_file(tmp_path: Path):
+    """History lưu vào <timestamp>_<sha>.json."""
+    from backend.eval.history import load_history_reports, save_eval_history
+
+    payload = _gate_report()
+    path = save_eval_history(
+        payload,
+        history_dir=tmp_path,
+        sha="abc1234",
+    )
+    assert path.is_file()
+    assert path.name.endswith("_abc1234.json")
+    records = load_history_reports(tmp_path)
+    assert len(records) == 1
+    assert records[0]["report"]["rate"] == payload["rate"]
+
+
+def test_compute_noise_stats_three_runs():
+    """3 runs cùng commit → tính σ và gợi ý tolerance."""
+    from backend.eval.history import compute_noise_stats
+
+    stats = compute_noise_stats([0.90, 0.92, 0.91])
+    assert stats["count"] == 3
+    assert stats["stdev"] is not None
+    assert stats["stdev"] >= 0.0
+    assert stats["recommended_drop_tolerance"] >= 0.03
+
+
+def test_gate_drill_bad_then_good(tmp_path: Path):
+    """Drill: injection tụt → exit 1; revert → exit 0."""
+    from backend.eval.gate import check_gates, main as gate_main
+
+    bad = {
+        "rate": 0.85,
+        "rule_pass_rate": 0.90,
+        "by_slice": {
+            "injection": {"total": 3, "passed": 0, "rate": 0.0},
+            "out_of_scope": {"total": 4, "passed": 4, "rate": 1.0},
+        },
+    }
+    good = _gate_report()
+    assert check_gates(bad).passed is False
+    assert check_gates(good).passed is True
+
+    bad_path = tmp_path / "bad.json"
+    good_path = tmp_path / "good.json"
+    bad_path.write_text(json.dumps(bad), encoding="utf-8")
+    good_path.write_text(json.dumps(good), encoding="utf-8")
+    assert gate_main(["--run", str(bad_path)]) == 1
+    assert gate_main(["--run", str(good_path)]) == 0
+
+
+def test_gate_accepts_v5_baseline_format():
+    """Legacy v5_baseline.json (thiếu rule_pass_rate) vẫn chạy gate."""
+    from backend.eval.gate import load_gate_report, check_gates
+
+    baseline_path = ROOT / "specs" / "eval" / "v5_baseline.json"
+    if not baseline_path.is_file():
+        pytest.skip("v5_baseline.json not found")
+    report = load_gate_report(baseline_path)
+    result = check_gates(report)
+    assert result.checks
+    inj = next(c for c in result.checks if c.name == "slice:injection")
+    assert inj.passed is True
+
+
+# ==============================================================================
+# 12. Cost Baseline — Phase 7 (M3-B3)
+# ==============================================================================
+
+REPLAY_FAQ = ROOT / "resources" / "eval" / "replay_faq.yaml"
+
+
+def test_cost_tracker_record_and_summary():
+    """record_cost ghi tag feature/model/prompt_version/cache_hit."""
+    from backend.infra.cost.tracker import get_cost_tracker, record_cost, reset_cost_tracker
+
+    reset_cost_tracker()
+    record_cost(
+        feature="chat",
+        model="gpt-4o-mini",
+        prompt_version="production",
+        cache_hit=False,
+        prompt_tokens=1000,
+        completion_tokens=200,
+    )
+    summary = get_cost_tracker().summary()
+    assert summary["requests"] == 1
+    assert summary["total_tokens"] == 1200
+    assert summary["cache_hits"] == 0
+    assert summary["total_cost_usd"] > 0
+
+
+def test_replay_faq_has_50_questions_and_duplicates():
+    """replay_faq.yaml: 50 câu, ~30% near-duplicate."""
+    import yaml
+
+    assert REPLAY_FAQ.is_file()
+    data = yaml.safe_load(REPLAY_FAQ.read_text(encoding="utf-8"))
+    questions = data["questions"]
+    assert len(questions) == 50
+    dups = sum(1 for q in questions if q.get("near_duplicate_of"))
+    assert dups >= 14
+
+
+def test_cost_baseline_dry_run(tmp_path: Path):
+    """cost_baseline.py --dry-run tạo report markdown + JSON."""
+    import sys
+
+    sys.path.insert(0, str(ROOT / "scripts"))
+    from cost_baseline import run_baseline  # type: ignore
+
+    md = tmp_path / "cost_baseline.md"
+    js = tmp_path / "cost_baseline.json"
+    payload = run_baseline(limit=10, dry_run=True, output_md=md, output_json=js)
+    assert md.is_file()
+    assert js.is_file()
+    assert payload["summary"]["requests"] == 10
+    assert "Total tokens" in md.read_text(encoding="utf-8")

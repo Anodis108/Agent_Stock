@@ -312,6 +312,11 @@ Continue with one next unchecked item in specs/implementation-plan.md.
 Implement only that item.
 Do not modify unrelated files unless necessary.
 
+Before coding, summarize:
+- what you will build
+- which files you will edit
+- how you will test it
+
 After implementation:
 - mark the task as completed
 - update specs/change-log.md

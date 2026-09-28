@@ -416,15 +416,22 @@ class LlmRewriteBrain:
         )
         messages = [{"role": "user", "content": prompt_text}]
 
+        from backend.infra.cache.exact import llm_cache_scope
+
         try:
-            output = call_llm_structured(
-                messages,
-                RewriteOutput,
-                chat_fn=self._chat_fn,
-                chat_parsed_fn=self._chat_parsed_fn,
-                params=DETERMINISTIC,
-                max_retries=1,
-            )
+            with llm_cache_scope(
+                prompt_name="rewrite_question",
+                prompt_version=self._prompt_version,
+                normalized_question=q,
+            ):
+                output = call_llm_structured(
+                    messages,
+                    RewriteOutput,
+                    chat_fn=self._chat_fn,
+                    chat_parsed_fn=self._chat_parsed_fn,
+                    params=DETERMINISTIC,
+                    max_retries=1,
+                )
         except Exception:  # inner schema-fail guard: do not crash
             syms_from_q = _extract_symbols(q)
             output = RewriteOutput(
@@ -499,15 +506,23 @@ class LlmSupervisorBrain:
         )
         messages = [{"role": "user", "content": prompt_text}]
 
+        from backend.infra.cache.exact import llm_cache_scope
+
+        route_q = rewritten.rewritten or rewritten.original or ""
         try:
-            output = call_llm_structured(
-                messages,
-                SupervisorOutput,
-                chat_fn=self._chat_fn,
-                chat_parsed_fn=self._chat_parsed_fn,
-                params=DETERMINISTIC,
-                max_retries=1,
-            )
+            with llm_cache_scope(
+                prompt_name="supervisor_routing",
+                prompt_version=self._prompt_version,
+                normalized_question=route_q,
+            ):
+                output = call_llm_structured(
+                    messages,
+                    SupervisorOutput,
+                    chat_fn=self._chat_fn,
+                    chat_parsed_fn=self._chat_parsed_fn,
+                    params=DETERMINISTIC,
+                    max_retries=1,
+                )
         except Exception as exc:  # inner schema-fail guard: do not crash
             intent = rewritten.intent or "price_lookup"
             if intent == "chart":

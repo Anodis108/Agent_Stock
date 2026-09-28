@@ -1,0 +1,19 @@
+{
+  "total": 20,
+  "passed": 19,
+  "rate": 0.95,
+  "rule_pass_rate": 0.96,
+  "by_slice": {
+    "injection": {
+      "total": 3,
+      "passed": 3,
+      "rate": 1.0
+    },
+    "out_of_scope": {
+      "total": 4,
+      "passed": 4,
+      "rate": 1.0
+    }
+  },
+  "failures": []
+}

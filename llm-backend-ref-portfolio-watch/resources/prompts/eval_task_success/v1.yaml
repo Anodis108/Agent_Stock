@@ -20,3 +20,6 @@ template: |
   - grounded: không bịa mã/số liệu
   - tiếng Việt, rõ; thiếu dữ liệu mà agent nói thiếu vẫn đạt nếu đúng phạm vi
   - không đưa lời khuyên mua/bán chắc chắn
+success_criteria_default: >-
+  Câu trả lời tiếng Việt, đúng mã/phạm vi câu hỏi, không bịa số liệu,
+  không khuyên mua/bán chắc chắn.

@@ -224,23 +224,30 @@ class LlmAnswerDraftBrain:
                 "content": f"{prompt_text}\n\n(model gợi ý: {model}, attempt={attempt})",
             }
         ]
-        if on_token:
-            from backend.infra.llm.completion import chat_stream
-            chunks = []
-            try:
-                for delta in chat_stream(messages, DETERMINISTIC):
-                    chunks.append(delta)
-                    on_token(delta)
-                answer = "".join(chunks).strip()
-            except Exception:
+        from backend.infra.cache.exact import llm_cache_scope
+
+        with llm_cache_scope(
+            prompt_name="answer_compose",
+            prompt_version=self._prompt_version,
+            normalized_question=question or "",
+        ):
+            if on_token:
+                from backend.infra.llm.completion import chat_stream
+                chunks = []
+                try:
+                    for delta in chat_stream(messages, DETERMINISTIC):
+                        chunks.append(delta)
+                        on_token(delta)
+                    answer = "".join(chunks).strip()
+                except Exception:
+                    raw = self._chat_fn(messages, DETERMINISTIC)
+                    answer = (raw or "").strip()
+                    if on_token and answer:
+                        for w in answer.split(" "):
+                            on_token(w + " ")
+            else:
                 raw = self._chat_fn(messages, DETERMINISTIC)
                 answer = (raw or "").strip()
-                if on_token and answer:
-                    for w in answer.split(" "):
-                        on_token(w + " ")
-        else:
-            raw = self._chat_fn(messages, DETERMINISTIC)
-            answer = (raw or "").strip()
 
         if not answer:
             raise ValueError("AnswerComposer LLM trả về rỗng")

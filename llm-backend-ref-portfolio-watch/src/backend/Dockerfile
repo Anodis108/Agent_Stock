@@ -47,8 +47,16 @@ COPY tests ./tests
 # Link package in editable mode
 RUN pip install --no-cache-dir --no-deps -e .
 
-RUN mkdir -p /app/data /app/data/charts
+RUN mkdir -p /app/data /app/data/charts \
+    && groupadd -r appuser --gid 10001 \
+    && useradd -r -g appuser --uid 10001 --home-dir /app --shell /usr/sbin/nologin appuser \
+    && chown -R appuser:appuser /app
+
+USER appuser
 
 EXPOSE 8000
+
+HEALTHCHECK --interval=15s --timeout=5s --retries=3 --start-period=10s \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"
 
 CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
