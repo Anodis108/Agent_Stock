@@ -64,8 +64,8 @@ def _record_cache_hit_cost(*, model: str) -> None:
         pass
 
 
-def _try_tiered_cache_get() -> str | None:
-    cache_key, cache = _resolve_exact_cache_key(settings.llm_model)
+def _try_tiered_cache_get(model: str) -> str | None:
+    cache_key, cache = _resolve_exact_cache_key(model)
     if cache_key is not None and cache is not None:
         hit = cache.get(cache_key)
         if hit is not None:
@@ -128,7 +128,7 @@ def chat(
     models = resolve_model_chain(model)
     primary_model = models[0]
     cache_key, cache = _resolve_exact_cache_key(primary_model)
-    cached = _try_tiered_cache_get()
+    cached = _try_tiered_cache_get(primary_model)
     if cached is not None:
         _record_cache_hit_cost(model=primary_model)
         return cached

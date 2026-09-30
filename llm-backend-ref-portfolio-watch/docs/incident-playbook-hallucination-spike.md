@@ -9,7 +9,7 @@
 ## Phát hiện nhanh
 
 ```bash
-PYTHONPATH=src python scripts/cost_dashboard.py --days 1
+PYTHONPATH=src python scripts/cost_dashboard.py
 PYTHONPATH=src python -m backend.eval.run --golden resources/eval/golden_v5.yaml --limit 10
 ```
 

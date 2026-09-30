@@ -165,6 +165,42 @@
 
 ---
 
+## 2026-09-30 — M3 gaps: review vs acceptance criteria (SDD Bước 7)
+
+### Review đối chiếu `product-spec.md` / `test-plan.md` / Module 3 hands-on
+
+| Tiêu chí | Kết quả | Ghi chú |
+| :--- | :---: | :--- |
+| A/B prompt sticky bucket (Bài 1) | **PASS** | `pick_prompt_version` + wire `run_answer_composer` |
+| Model cascade + `model=` thật (Bài 3) | **PASS** | `select_answer_model` → `chat(..., model=)` |
+| Fallback provider chain (Bài 7) | **PASS** | `providers.py`; chỉ kích hoạt khi `LLM_FALLBACK_BACKENDS` set |
+| Eval cache read/write (Bài 6) | **PASS** | `eval_cache.py` + `eval_one_case`; hash gồm model + prompt version |
+| Cost budget hard limit (Bài 3/7) | **PASS** | `check_budget_or_raise` trước mỗi LLM call |
+| Cost dashboard alert exit code | **PASS** | `--fail-on-alert` |
+| Playbooks hallucination + outage (Bài 7) | **PASS** | `docs/incident-playbook-*.md` |
+| Unit tests M3 features | **PASS** | 8 tests trong `test_module3_features.py` |
+| Exact cache dùng đúng model param | **PASS** (sau fix) | `_try_tiered_cache_get(model)` — trước đó lookup sai key |
+| Cloud deploy GCP (Bài 5) | **N/A** | Out of scope theo yêu cầu user |
+| Ollama vs vLLM benchmark | **N/A** | Out of scope theo yêu cầu user |
+| Live GitHub Actions + branch protection | **MISSING** | Thao tác thủ công trên GitHub Settings |
+| `chat_stream` model cascade/fallback | **PARTIAL** | Stream dùng model đầu chain; chưa fallback backend |
+| Playbook cost-spike/jailbreak path trong mapping | **PASS** (sau fix) | Sửa link → `resources/docs/` |
+
+### Sửa sau review
+- **`completion.py`**: `_try_tiered_cache_get(model)` — exact cache hit đúng khi `model=gpt-4o`.
+- **`run.py`**: eval cache hash thêm `prompt_version` (A/B).
+- **`incident-playbook-hallucination-spike.md`**: bỏ flag `--days` không tồn tại trên `cost_dashboard.py`.
+- **`docs_exec_module3_handson_mapping.md`**: sửa đường dẫn playbook cost-spike/jailbreak.
+- **`tests/test_module3_features.py`**: thêm test cache theo model + eval_one_case cache skip.
+
+### Kết quả test
+```bash
+PYTHONPATH=src pytest tests/test_module3_features.py tests/test_agents.py tests/test_ci_workflows.py -q
+# 49 passed
+```
+
+---
+
 ## 2026-09-30 — M3 gaps: A/B, cascade, eval cache, budget, playbooks
 
 ### Tóm tắt
@@ -174,7 +210,7 @@
 - **Cost budget**: `BudgetExceededError`, `check_budget_or_raise`, dashboard `--fail-on-alert`.
 - **Playbooks**: hallucination spike, provider outage.
 - **Drills**: `drill_fallback_provider.py`, `drill_cost_alert.py`.
-- **Tests**: `tests/test_module3_features.py` (6 tests).
+- **Tests**: `tests/test_module3_features.py` (8 tests).
 
 ## 2026-09-30 — M3-B6 full CI/CD (Bài 6) at monorepo root
 

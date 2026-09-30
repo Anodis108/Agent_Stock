@@ -664,13 +664,21 @@ def score_case_trajectory(
     )
 
 
-def _eval_cache_prompt_hash(case: dict) -> str:
+def _eval_cache_prompt_hash(case: dict, *, user_id: str = "eval") -> str:
     from backend.eval.eval_cache import prompt_hash_from_messages
+    from backend.infra.llm.prompt_experiment import pick_prompt_version
     from backend.shared.settings import settings
 
     question = str(case.get("question") or "")
     base = prompt_hash_from_messages([{"role": "user", "content": question}])
-    return f"{base}:{settings.llm_model}"
+    prompt_version = pick_prompt_version(
+        user_id,
+        enabled=settings.prompt_ab_enabled,
+        version_a=settings.prompt_ab_version_a,
+        version_b=settings.prompt_ab_version_b,
+        split_pct=settings.prompt_ab_split_pct,
+    )
+    return f"{base}:{settings.llm_model}:{prompt_version}"
 
 
 def eval_one_case(
