@@ -89,17 +89,17 @@ Mục tiêu: Tái sử dụng và tích hợp framework đánh giá chất lư�
 
 ## Phase 6: Frontend UI Enhancements & Multi-tenant Switcher
 Mục tiêu: Bổ sung giao diện Quản lý danh mục P&L và bộ chuyển đổi người dùng (User Switcher).
-- [ ] **Task 6.1:** Thêm thanh điều khiển **User Switcher** ở thanh tiêu đề Web UI (`src/frontend/index.html` & `app.js`):
+- [x] **Task 6.1:** Thêm thanh điều khiển **User Switcher** ở thanh tiêu đề Web UI (`src/frontend/index.html` & `app.js`):
   - Dropdown chọn nhanh: `User A`, `User B`, `Default`.
   - Tự động gắn header `X-User-ID` vào các request API tương ứng.
-- [ ] **Task 6.2:** Thêm Tab **Quản Lý Danh Mục (P&L)**:
+- [x] **Task 6.2:** Thêm Tab **Quản Lý Danh Mục (P&L)**:
   - Hiển thị 3 thẻ tóm tắt: Tổng giá trị tài sản (NAV), Tổng Lãi/Lỗ (VND), Tỷ suất lợi nhuận toàn danh mục (%).
   - Bảng danh mục cổ phiếu: Mã, Số lượng, Giá mua, Thị giá hiện tại, Lãi/Lỗ VND, % Sinh lời, Thao tác Thêm/Xóa mã.
-- [ ] **Task 6.3:** Cập nhật Live Graph & I/O Inspector:
+- [x] **Task 6.3:** Cập nhật Live Graph & I/O Inspector:
   - Hiển thị danh sách `sub_questions` trong mục Output của `rewrite_question`.
   - Hiển thị kết quả tính toán RSI/MA trong mục I/O của `eval_agent`.
   - Bảo toàn chức năng hover/click hiển thị đầy đủ System Prompt / Thông tin tĩnh.
-- [ ] **Verification:** Mở giao diện trên trình duyệt, chuyển đổi user và thử thêm/xóa mã trong bảng danh mục.
+- [x] **Verification:** Mở giao diện trên trình duyệt, chuyển đổi user và thử thêm/xóa mã trong bảng danh mục.
 
 ---
 

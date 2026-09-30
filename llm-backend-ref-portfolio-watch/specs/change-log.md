@@ -1,5 +1,45 @@
 # Change Log — Portfolio Watch
 
+## 2026-09-30 — Phase 6: Frontend UI Enhancements & Multi-tenant Switcher [Review & Hoàn Thành 100%]
+
+### Tóm tắt Review Đối Chiếu Acceptance Criteria & Test Matrix
+- **Kết quả đối chiếu Spec & Test Plan**:
+  - **What passes (Đạt 100%)**:
+    - **AC-1 & UI-01 (Multi-tenant User Switcher Control)**:
+      - Bổ sung thanh điều khiển dropdown User Switcher ở thanh header: hỗ trợ chuyển đổi nhanh giữa `User A (Chuyên gia)`, `User B (Cá nhân)` và `Default`.
+      - Tự động gắn header `X-User-ID` tương ứng vào tất cả các request REST API (`/api/portfolio`, `/api/watchlist`, `/api/chat`, `/api/sessions`, `/market`) và SSE stream `/chat/stream` (`test_portfolio_user_switcher_isolation` PASS).
+      - Dữ liệu giữa các User được cô lập hoàn toàn: User A thêm mã thì User B không nhìn thấy và ngược lại.
+    - **AC-3 & UI-02 (Tab Quản Lý Danh Mục P&L)**:
+      - Bổ sung nút tab `Danh mục (P&L)` trong `secondary-tabs` và giao diện tab-pane `#portfolio`.
+      - Hiển thị 3 thẻ tóm tắt trực quan: **Tổng giá trị tài sản (NAV)**, **Tổng Lãi/Lỗ (VND)** và **Tỷ suất lợi nhuận toàn danh mục (%)** với chỉ báo màu xanh (`pnl-up`) và đỏ (`pnl-down`).
+      - Bảng danh mục cổ phiếu: Mã, Số lượng, Giá mua, Thị giá hiện tại, Lãi/Lỗ VND, % Sinh lời và Thao tác Xóa vị thế (`🗑️`).
+      - Hỗ trợ thêm vị thế mới với form nhập liệu trực quan và xử lý xóa vị thế với cập nhật tức thời (`test_ui_contains_user_switcher_and_portfolio_tab` PASS).
+    - **AC-4 & UI-03 (Live Graph & I/O Inspector Enhancements)**:
+      - Cập nhật Live Graph & I/O Inspector: khi hover/click node `rewrite_question`, hiển thị danh sách chi tiết các `sub_questions` (1. ..., 2. ...).
+      - Khi hover/click node `eval_agent`, hiển thị chi tiết các chỉ báo kỹ thuật: RSI(14), MA(20), MA(50) và Tín hiệu phân tích kỹ thuật.
+      - Bảo toàn chức năng hover/click hiển thị đầy đủ System Prompt / Thông tin tĩnh của toàn bộ các agent nodes.
+    - **AC-7 (Bảo toàn kiểm thử hồi quy)**:
+      - 100% tests trong `tests/test_api.py` (18/18 tests) và test suites khác tiếp tục PASS 100%.
+  - **What fails**: Không có bài test hay tiêu chuẩn nào thất bại (**0 Failed**).
+  - **What was missing & was fixed**:
+    - Bổ sung span output cho `sub_questions` trong `rewrite_node` và indicators (RSI/MA/Signal) trong `eval_agent` tại `chat.py`.
+    - Tích hợp User Switcher vào luồng khởi động (`initUserSwitcher`, `initPortfolio`) tự động đồng bộ khi chuyển user.
+- **Phạm vi tuân thủ**:
+  - Triển khai đầy đủ và chính xác các tính năng thuộc Phase 6 theo đúng `specs/implementation-plan.md`.
+
+### File thay đổi
+| File | Thay đổi |
+| :--- | :--- |
+| `src/frontend/index.html` | Thêm User Switcher dropdown ở header, tab nút `Danh mục (P&L)` và tab-pane `#portfolio` (3 thẻ NAV/P&L/%, form thêm vị thế, bảng P&L) |
+| `src/frontend/style.css` | Bổ sung styles cho User Switcher, thẻ P&L summary, bảng danh mục và màu sắc chỉ báo lãi/lỗ |
+| `src/frontend/app.js` | Triển khai `currentUserId`, header `X-User-ID`, `loadPortfolio`, `doAddHolding`, `doDeleteHolding`, hiển thị `sub_questions` và RSI/MA trong I/O Inspector |
+| `src/backend/graph/chat.py` | Bổ sung `sub_questions` vào output span của `rewrite_question` và RSI/MA vào output span của `eval_agent` |
+| `tests/test_api.py` | Bổ sung 2 unit tests kiểm tra giao diện User Switcher, Tab Portfolio và tính cô lập đa người dùng |
+| `specs/implementation-plan.md` | Đánh dấu hoàn thành toàn bộ checklist Phase 6 |
+| `specs/change-log.md` | Ghi nhận chi tiết phát hành Phase 6 |
+
+---
+
 ## 2026-09-30 — Phase 5: Agent Evaluation Framework (`agent_eval.py`) [Review & Hoàn Thành 100%]
 
 ### Tóm tắt Review Đối Chiếu Acceptance Criteria & Test Matrix

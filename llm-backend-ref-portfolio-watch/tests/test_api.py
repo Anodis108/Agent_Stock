@@ -272,3 +272,266 @@ def test_api_payload_validation_and_session_auto_creation(client: TestClient):
     assert detail.status_code == 200
     assert detail.json()["session"]["id"] == "auto_sess_phase6"
 
+
+# ==============================================================================
+# Phase 2: Portfolio P&L & Multi-tenant API Tests
+# ==============================================================================
+
+def test_portfolio_holdings_crud_and_pnl_calculation(client: TestClient, monkeypatch):
+    """Kiểm tra toàn bộ luồng thêm holding, tính P&L (PL-01, PL-02, PL-03)."""
+    from backend.api.deps import get_app_deps
+    from backend.domain.ports import PriceQuote
+
+    deps = get_app_deps()
+
+    # Mock PriceSource trả về giá theo kịch bản: FPT=120.0, HPG=27.0
+    class MockPriceSource:
+        def fetch_latest_close(self, symbol: str) -> PriceQuote:
+            if symbol == "FPT":
+                return PriceQuote(symbol="FPT", latest_close=120.0, prev_close=118.0)
+            elif symbol == "HPG":
+                return PriceQuote(symbol="HPG", latest_close=27.0, prev_close=28.0)
+            return PriceQuote(symbol=symbol, latest_close=50.0, prev_close=50.0)
+
+    monkeypatch.setattr(deps, "price_source", MockPriceSource())
+
+    # 1. Thêm vị thế FPT: 1,000 cp @ giá 100.0 (PL-01)
+    res_fpt = client.post(
+        "/api/portfolio/holdings",
+        json={"symbol": "FPT", "quantity": 1000, "avg_buy_price": 100.0},
+    )
+    assert res_fpt.status_code == 201
+    fpt_data = res_fpt.json()
+    assert fpt_data["symbol"] == "FPT"
+    assert fpt_data["quantity"] == 1000
+
+    # 2. Thêm vị thế HPG: 2,000 cp @ giá 30.0 (PL-02)
+    res_hpg = client.post(
+        "/api/portfolio/holdings",
+        json={"symbol": "hpg", "quantity": 2000, "avg_buy_price": 30.0},
+    )
+    assert res_hpg.status_code == 201
+    hpg_data = res_hpg.json()
+    assert hpg_data["symbol"] == "HPG"
+
+    # 3. GET /api/portfolio -> Kiểm tra tính toán lãi/lỗ
+    res_pf = client.get("/api/portfolio")
+    assert res_pf.status_code == 200
+    pf = res_pf.json()
+
+    assert pf["count"] == 2
+    fpt_item = next(i for i in pf["items"] if i["symbol"] == "FPT")
+    hpg_item = next(i for i in pf["items"] if i["symbol"] == "HPG")
+
+    # FPT: cost = 100tr, market = 120tr, pnl = +20tr (+20%)
+    assert fpt_item["cost_basis"] == 100000000.0
+    assert fpt_item["market_value"] == 120000000.0
+    assert fpt_item["unrealized_pnl"] == 20000000.0
+    assert fpt_item["pnl_pct"] == 20.0
+
+    # HPG: cost = 60tr, market = 54tr, pnl = -6tr (-10%)
+    assert hpg_item["cost_basis"] == 60000000.0
+    assert hpg_item["market_value"] == 54000000.0
+    assert hpg_item["unrealized_pnl"] == -6000000.0
+    assert hpg_item["pnl_pct"] == -10.0
+
+    # PL-03: Tổng NAV = 174tr, Cost = 160tr, P&L = +14tr (+8.75%)
+    assert pf["total_cost"] == 160000000.0
+    assert pf["total_nav"] == 174000000.0
+    assert pf["total_unrealized_pnl"] == 14000000.0
+    assert pf["total_pnl_pct"] == 8.75
+
+
+def test_portfolio_multi_tenant_header_isolation(client: TestClient):
+    """Kiểm tra cô lập dữ liệu theo header X-User-ID (MT-03)."""
+    # User A thêm FPT
+    res_a = client.post(
+        "/api/portfolio/holdings",
+        headers={"X-User-ID": "user_a"},
+        json={"symbol": "FPT", "quantity": 500, "avg_buy_price": 100.0},
+    )
+    assert res_a.status_code == 201
+
+    # User B thêm VNM
+    res_b = client.post(
+        "/api/portfolio/holdings",
+        headers={"X-User-ID": "user_b"},
+        json={"symbol": "VNM", "quantity": 800, "avg_buy_price": 60.0},
+    )
+    assert res_b.status_code == 201
+
+    # Kiểm tra User A chỉ thấy FPT
+    pf_a = client.get("/api/portfolio", headers={"X-User-ID": "user_a"}).json()
+    assert pf_a["count"] == 1
+    assert pf_a["items"][0]["symbol"] == "FPT"
+
+    # Kiểm tra User B chỉ thấy VNM
+    pf_b = client.get("/api/portfolio", headers={"X-User-ID": "user_b"}).json()
+    assert pf_b["count"] == 1
+    assert pf_b["items"][0]["symbol"] == "VNM"
+
+
+def test_portfolio_delete_holding(client: TestClient):
+    """Kiểm tra xóa vị thế nắm giữ."""
+    created = client.post(
+        "/api/portfolio/holdings",
+        headers={"X-User-ID": "del_user"},
+        json={"symbol": "TCB", "quantity": 1000, "avg_buy_price": 30.0},
+    ).json()
+    holding_id = created["id"]
+
+    # Xóa vị thế
+    del_res = client.delete(
+        f"/api/portfolio/holdings/{holding_id}",
+        headers={"X-User-ID": "del_user"},
+    )
+    assert del_res.status_code == 200
+    assert del_res.json()["ok"] is True
+
+    # Xóa lại lần nữa -> 404
+    del_again = client.delete(
+        f"/api/portfolio/holdings/{holding_id}",
+        headers={"X-User-ID": "del_user"},
+    )
+    assert del_again.status_code == 404
+
+
+def test_user_settings_api(client: TestClient):
+    """Kiểm tra GET và PUT /api/user/settings (MT-02)."""
+    # Mặc định threshold là 3.0
+    res_get = client.get("/api/user/settings", headers={"X-User-ID": "test_settings_user"})
+    assert res_get.status_code == 200
+    assert res_get.json()["alert_threshold_pct"] == 3.0
+
+    # Cập nhật thành 4.5%
+    res_put = client.put(
+        "/api/user/settings",
+        headers={"X-User-ID": "test_settings_user"},
+        json={"alert_threshold_pct": 4.5},
+    )
+    assert res_put.status_code == 200
+    assert res_put.json()["alert_threshold_pct"] == 4.5
+
+    # Lấy lại xác nhận đã cập nhật
+    res_check = client.get("/api/user/settings", headers={"X-User-ID": "test_settings_user"})
+    assert res_check.json()["alert_threshold_pct"] == 4.5
+
+
+def test_portfolio_price_error_graceful_fallback(client: TestClient, monkeypatch):
+    """Kiểm tra khi mã lỗi giá không làm crash toàn bộ danh mục (PL-04)."""
+    from backend.api.deps import get_app_deps
+    from backend.domain.ports import PriceQuote
+
+    deps = get_app_deps()
+
+    class FailingPriceSource:
+        def fetch_latest_close(self, symbol: str) -> PriceQuote:
+            return PriceQuote(symbol=symbol, latest_close=None, error="Data unavailable")
+
+    monkeypatch.setattr(deps, "price_source", FailingPriceSource())
+
+    client.post(
+        "/api/portfolio/holdings",
+        headers={"X-User-ID": "err_user"},
+        json={"symbol": "XYZ", "quantity": 100, "avg_buy_price": 50.0},
+    )
+
+    res = client.get("/api/portfolio", headers={"X-User-ID": "err_user"})
+    assert res.status_code == 200
+    data = res.json()
+    assert data["count"] == 1
+    assert data["items"][0]["price_error"] is True
+    assert data["items"][0]["unrealized_pnl"] == 0.0
+
+
+def test_watchlist_multi_tenant_header_isolation(client: TestClient):
+    """Kiểm tra cô lập watchlist theo header X-User-ID (MT-01)."""
+    # User A thêm FPT, HPG
+    client.post("/watchlist", headers={"X-User-ID": "user_a"}, json={"symbol": "FPT"})
+    client.post("/watchlist", headers={"X-User-ID": "user_a"}, json={"symbol": "HPG"})
+
+    # User B thêm VNM, TCB
+    client.post("/watchlist", headers={"X-User-ID": "user_b"}, json={"symbol": "VNM"})
+    client.post("/watchlist", headers={"X-User-ID": "user_b"}, json={"symbol": "TCB"})
+
+    # Kiểm tra User A
+    res_a = client.get("/watchlist", headers={"X-User-ID": "user_a"})
+    assert res_a.status_code == 200
+    syms_a = {item["symbol"] for item in res_a.json()["items"]}
+    assert "FPT" in syms_a
+    assert "HPG" in syms_a
+    assert "VNM" not in syms_a
+    assert "TCB" not in syms_a
+
+    # Kiểm tra User B
+    res_b = client.get("/watchlist", headers={"X-User-ID": "user_b"})
+    assert res_b.status_code == 200
+    syms_b = {item["symbol"] for item in res_b.json()["items"]}
+    assert "VNM" in syms_b
+    assert "TCB" in syms_b
+    assert "FPT" not in syms_b
+    assert "HPG" not in syms_b
+
+
+def test_ui_contains_user_switcher_and_portfolio_tab(client: TestClient):
+    """Kiểm tra Web UI tĩnh phục vụ đầy đủ User Switcher và Tab Quản lý Danh mục (Phase 6)."""
+    res = client.get("/")
+    assert res.status_code == 200
+    html = res.text
+    assert "user-switcher-select" in html, "Thiếu User Switcher dropdown trong index.html"
+    assert "data-tab=\"portfolio\"" in html, "Thiếu nút chuyển tab Portfolio P&L"
+    assert "id=\"portfolio\"" in html, "Thiếu tab-pane portfolio trong index.html"
+    assert "pnl-total-nav" in html, "Thiếu thẻ hiển thị Tổng NAV"
+    assert "pnl-total-pnl" in html, "Thiếu thẻ hiển thị Tổng Lãi/Lỗ"
+    assert "pnl-total-pct" in html, "Thiếu thẻ hiển thị Tỷ suất sinh lời %"
+    assert "portfolio-add-form" in html, "Thiếu form thêm cổ phiếu vào danh mục"
+
+
+def test_portfolio_user_switcher_isolation(client: TestClient):
+    """Kiểm tra cô lập danh mục đầu tư khi chuyển đổi User A và User B qua X-User-ID."""
+    # 1. User A thêm FPT
+    add_a = client.post(
+        "/api/portfolio/holdings",
+        headers={"X-User-ID": "user_a"},
+        json={"symbol": "FPT", "quantity": 100, "avg_buy_price": 130.0},
+    )
+    assert add_a.status_code == 201
+    holding_id_a = add_a.json()["id"]
+
+    # 2. User B thêm VNM
+    add_b = client.post(
+        "/api/portfolio/holdings",
+        headers={"X-User-ID": "user_b"},
+        json={"symbol": "VNM", "quantity": 200, "avg_buy_price": 65.0},
+    )
+    assert add_b.status_code == 201
+
+    # 3. User A chỉ thấy FPT
+    p_a = client.get("/api/portfolio", headers={"X-User-ID": "user_a"})
+    assert p_a.status_code == 200
+    syms_a = [item["symbol"] for item in p_a.json()["items"]]
+    assert "FPT" in syms_a
+    assert "VNM" not in syms_a
+
+    # 4. User B chỉ thấy VNM
+    p_b = client.get("/api/portfolio", headers={"X-User-ID": "user_b"})
+    assert p_b.status_code == 200
+    syms_b = [item["symbol"] for item in p_b.json()["items"]]
+    assert "VNM" in syms_b
+    assert "FPT" not in syms_b
+
+    # 5. User A xóa FPT thành công
+    del_a = client.delete(
+        f"/api/portfolio/holdings/{holding_id_a}",
+        headers={"X-User-ID": "user_a"},
+    )
+    assert del_a.status_code == 200
+
+    # User A giờ danh mục trống
+    p_a_after = client.get("/api/portfolio", headers={"X-User-ID": "user_a"})
+    assert p_a_after.status_code == 200
+    assert len(p_a_after.json()["items"]) == 0
+
+
+
+

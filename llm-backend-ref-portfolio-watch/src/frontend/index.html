@@ -23,6 +23,16 @@
         <span>Market Watch (10D)</span>
       </button>
     </nav>
+    <div class="header-user-switcher">
+      <label for="user-switcher-select" class="user-switcher-label">
+        <span class="user-icon">👤</span> Người dùng:
+      </label>
+      <select id="user-switcher-select" class="user-switcher-select" aria-label="Chuyển đổi người dùng">
+        <option value="user_a">User A (Chuyên gia)</option>
+        <option value="user_b">User B (Cá nhân)</option>
+        <option value="default" selected>Default</option>
+      </select>
+    </div>
     <div class="header-meta">
       <p class="config-line">
         API:
@@ -153,6 +163,9 @@
         <button type="button" class="tab-btn active" data-tab="timeline" role="tab" aria-selected="true">
           Timeline bước
         </button>
+        <button type="button" class="tab-btn" data-tab="portfolio" role="tab" aria-selected="false">
+          Danh mục (P&L)
+        </button>
         <button type="button" class="tab-btn" data-tab="watchlist" role="tab" aria-selected="false">
           Watchlist
         </button>
@@ -166,6 +179,67 @@
 
       <!-- Nội dung các tabs -->
       <div class="tab-content">
+        <!-- 1. Quản lý Danh mục (P&L) - Phase 6 -->
+        <section id="portfolio" class="tab-pane" aria-labelledby="portfolio-heading">
+          <h2 id="portfolio-heading" class="sr-only">Quản lý Danh mục (P&L)</h2>
+          <div class="portfolio-pane-header">
+            <div class="portfolio-pane-title">
+              <strong>Danh Mục Đầu Tư (P&L)</strong>
+              <span id="portfolio-user-badge" class="user-badge">user: default</span>
+            </div>
+            <button type="button" id="btn-refresh-portfolio" class="btn-refresh-sm" title="Làm mới danh mục">🔄 Làm mới</button>
+          </div>
+
+          <!-- 3 Thẻ tóm tắt P&L -->
+          <div class="portfolio-summary-cards">
+            <div class="pnl-card">
+              <span class="pnl-card-label">Tổng NAV</span>
+              <span id="pnl-total-nav" class="pnl-card-val">0 ₫</span>
+            </div>
+            <div class="pnl-card">
+              <span class="pnl-card-label">Tổng Lãi/Lỗ</span>
+              <span id="pnl-total-pnl" class="pnl-card-val pnl-ref">0 ₫</span>
+            </div>
+            <div class="pnl-card">
+              <span class="pnl-card-label">Tỷ suất (%)</span>
+              <span id="pnl-total-pct" class="pnl-card-val pnl-ref">0.00%</span>
+            </div>
+          </div>
+
+          <!-- Form Thêm Cổ Phiếu Vào Danh Mục -->
+          <div class="portfolio-actions">
+            <div id="portfolio-error" class="portfolio-error" style="display: none;" role="alert"></div>
+            <form id="portfolio-add-form" class="row portfolio-form" onsubmit="return false;">
+              <input id="portfolio-symbol" type="text" placeholder="Mã (vd. FPT)" maxlength="5" required />
+              <input id="portfolio-quantity" type="number" min="1" step="1" placeholder="Số lượng" required />
+              <input id="portfolio-price" type="number" min="0.1" step="0.1" placeholder="Giá mua (nghìn đ)" required />
+              <button type="submit" id="portfolio-add-btn">Thêm</button>
+            </form>
+          </div>
+
+          <!-- Bảng danh mục cổ phiếu -->
+          <div class="portfolio-table-wrap">
+            <table class="panel-table portfolio-table">
+              <thead>
+                <tr>
+                  <th>Mã</th>
+                  <th>SL</th>
+                  <th>Giá vốn</th>
+                  <th>Thị giá</th>
+                  <th>Lãi/Lỗ</th>
+                  <th>% Lời</th>
+                  <th>Xóa</th>
+                </tr>
+              </thead>
+              <tbody id="portfolio-body">
+                <tr>
+                  <td colspan="7" class="placeholder"><em>(Đang tải danh mục…)</em></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
         <!-- 2. Timeline bước -->
         <section id="timeline" class="tab-pane active" aria-labelledby="timeline-heading">
           <h2 id="timeline-heading" class="sr-only">Timeline bước</h2>
