@@ -60,6 +60,11 @@ _TICKER_STOPWORDS = frozenset(
         "BAO",  # «bao nhiêu» — không phải mã
         "ATC",  # Lệnh ATC — không phải mã
         "ATO",  # Lệnh ATO — không phải mã
+        "GIA",  # «giá» — không phải mã
+        "TAI",  # «tại» — không phải mã
+        "TIA",  # typo «tịa» — không phải mã
+        "HIEN",  # «hiện» — không phải mã
+        "TOI",  # «tôi» — không phải mã
     }
 )
 _REF_PREV_RE = re.compile(
@@ -190,8 +195,15 @@ def _normalize_symbols(
     from_text: list[str],
     from_llm: list[str] | None = None,
 ) -> tuple[str | None, list[str]]:
+    text_set = {(s or "").strip().upper() for s in from_text if (s or "").strip()}
+    llm_syms = list(from_llm or [])
+    # Bỏ mã LLM bịa không xuất hiện trong câu hỏi khi đã trích được mã từ text.
+    if text_set and llm_syms:
+        llm_syms = [
+            s for s in llm_syms if (s or "").strip().upper() in text_set
+        ]
     ordered: list[str] = []
-    for sym in list(from_llm or []) + ([primary] if primary else []) + list(from_text):
+    for sym in llm_syms + ([primary] if primary else []) + list(from_text):
         s = (sym or "").strip().upper()
         if s and s not in ordered:
             ordered.append(s)

@@ -18,11 +18,18 @@ def test_pick_prompt_version_sticky_bucket():
     v1 = pick_prompt_version("user-a", enabled=True, split_pct=50)
     v2 = pick_prompt_version("user-a", enabled=True, split_pct=50)
     assert v1 == v2
-    assert v1 in {"v1", "v2"}
+    assert v1 in {"production", "v2"}
 
 
 def test_pick_prompt_version_disabled():
-    assert pick_prompt_version("any", enabled=False) == "v1"
+    assert pick_prompt_version("any", enabled=False) == "production"
+
+
+def test_prompt_registry_accepts_v1_alias():
+    from backend.infra.llm.prompt_registry import registry
+
+    p = registry().get("answer_compose", version="v1")
+    assert p.version == 1
 
 
 def test_resolve_model_chain_dedupes():

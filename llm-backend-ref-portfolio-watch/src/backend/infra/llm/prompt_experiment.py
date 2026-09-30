@@ -9,7 +9,7 @@ def pick_prompt_version(
     user_id: str,
     *,
     enabled: bool = False,
-    version_a: str = "v1",
+    version_a: str = "production",
     version_b: str = "v2",
     split_pct: int = 50,
 ) -> str:
@@ -18,7 +18,7 @@ def pick_prompt_version(
     Cùng user_id luôn nhận cùng variant (sticky bucket).
     """
     if not enabled:
-        return version_a
+        return version_a or "production"
     if split_pct <= 0:
         return version_a
     if split_pct >= 100:

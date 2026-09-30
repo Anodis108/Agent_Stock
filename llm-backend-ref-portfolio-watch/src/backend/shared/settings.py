@@ -25,7 +25,7 @@ class Settings(BaseSettings):
 
     # A/B prompt testing (Bài 1)
     prompt_ab_enabled: bool = False
-    prompt_ab_version_a: str = "v1"
+    prompt_ab_version_a: str = "production"
     prompt_ab_version_b: str = "v2"
     prompt_ab_split_pct: int = 50
 

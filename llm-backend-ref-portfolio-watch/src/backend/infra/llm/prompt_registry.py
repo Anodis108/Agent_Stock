@@ -120,6 +120,9 @@ class PromptRegistry:
             if not versions:
                 raise ValueError(f"Không có version nào cho prompt '{name}'")
             return versions[-1]
+        lowered = text.lower()
+        if lowered.startswith("v") and lowered[1:].isdigit():
+            return int(lowered[1:])
         raise ValueError(f"Alias version không hỗ trợ: {version!r}")
 
     def _load(self, name: str, version: int) -> Prompt:

@@ -1,5 +1,23 @@
 # Change Log — Portfolio Watch
 
+## 2026-09-30 — Fix chat «Cho tôi giá hiện tịa VNM»
+
+### Triệu chứng
+- `POST /chat` → 500 `sqlite3.OperationalError: readonly database` (volume `/app/data` owner root).
+- AnswerComposer: `Alias version không hỗ trợ: 'v1'`.
+- LLM thêm mã ảo XIN, VUI khi chỉ hỏi VNM.
+
+### Sửa
+- `prompt_registry.py`: alias `v1`/`v2`; default A/B variant A = `production`.
+- `supervisor_agent/nodes.py`: lọc mã LLM không có trong text; stopwords GIA/TAI/TIA/HIEN/TOI.
+- `docker-entrypoint.sh` + Dockerfile: `chown /app/data` trước khi chạy `appuser`.
+
+### Test
+- Local: VNM 59.4, -1.49% — PASS
+- Docker API: 200 sau `chown` volume — PASS (rebuild image để có code mới)
+
+---
+
 ## 2026-09-30 — Phase 8: Regression Gate, Local Run & ngrok Demo Readiness [Review & Hoàn Thành 100%]
 
 ### Tóm tắt Review Đối Chiếu Acceptance Criteria & Test Matrix
