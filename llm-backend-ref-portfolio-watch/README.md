@@ -78,7 +78,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### Chạy Backend API Server
+### Chạy Backend API Server (Local Run)
 ```bash
 # Chạy với uvicorn tại cổng 8080 (hoặc 8000)
 powershell -Command "Set-Item -Path Env:PYTHONPATH -Value 'src'; uvicorn backend.main:app --app-dir src --host 127.0.0.1 --port 8080 --reload"
@@ -87,35 +87,74 @@ powershell -Command "Set-Item -Path Env:PYTHONPATH -Value 'src'; uvicorn backend
 - Health check: `http://localhost:8080/health`
 - Giao diện Web App: Mở trình duyệt tại `http://localhost:8080` (Backend phục vụ trực tiếp static files frontend).
 
+### Chạy Với Docker Compose
+Hệ thống hỗ trợ đóng gói container hóa toàn diện cho cả Backend và Nginx frontend:
+```bash
+# Khởi chạy toàn bộ hệ thống với Docker Compose
+docker compose up --build
+```
+Ứng dụng sẽ khả dụng tại `http://localhost:8080`.
+
+### Hướng Dẫn Sử Dụng Giao Diện Web UI (MVP 2.0)
+1. **Bộ Chuyển Đổi Người Dùng (User Switcher):**
+   - Trên thanh tiêu đề góc phải, chọn tài khoản nhanh (`User A`, `User B`, `Default`).
+   - Mọi request (chat, watchlist, portfolio) tự động gắn header `X-User-ID: <user_id>` để đảm bảo phân tách dữ liệu tuyệt đối giữa các nhà đầu tư.
+2. **Tab Quản Lý Danh Mục Đầu Tư (Portfolio P&L):**
+   - Chuyển sang tab **"Danh mục (P&L)"** trên giao diện.
+   - Thẻ thống kê thời gian thực: Tổng giá trị tài sản (NAV), Lãi/Lỗ ròng (VND), Tỷ suất lợi nhuận (%).
+   - Bảng quản lý cổ phiếu: Theo dõi khối lượng, giá mua bình quân, giá hiện tại, P&L từng mã.
+   - Thao tác Thêm mã (`Mã`, `Khối lượng`, `Giá mua`) và Xóa mã trực tiếp trên bảng.
+3. **Tra Cứu & Trò Chuyện Thông Minh (Chat Tab):**
+   - Hỗ trợ câu hỏi so sánh phức tạp (e.g., *"So sánh FPT và VNM về giá và tin tức"*), hệ thống tự động phân rã thành các `sub_questions` con.
+   - I/O Inspector hiển thị trực quan các bước: Pre-Rewrite Guardrail, Sub-queries, Chỉ báo RSI/SMA và Live Graph.
+
 ---
 
 ## 5. Hướng Dẫn Kiểm Thử (Testing & Quality Gate)
 
-### 5.1. Chạy Bộ Unit Tests Cốt Lõi (10 Files)
+### 5.1. Chạy Bộ Test Suite Hồi Quy Đầy Đủ
 ```bash
+# Chạy toàn bộ test suite (176 tests)
 powershell -Command "Set-Item -Path Env:PYTHONPATH -Value 'src'; pytest tests/ -v"
 ```
-*Yêu cầu nghiệm thu:* 100% test cases PASSED (hiện tại: 139/139 passed).
+*Yêu cầu nghiệm thu:* 100% test cases PASSED (>= 145 tests; hiện tại: 176/176 passed).
 
-### 5.2. Chạy Đánh Giá Agent Tự Động (`agent_eval.py`)
+### 5.2. Kiểm Tra Hồi Quy Bảo Vệ An Toàn (Safety Guardrails)
 ```bash
+# Kiểm tra chặn tuyệt đối Prompt Injection và Out-of-scope queries
+powershell -Command "Set-Item -Path Env:PYTHONPATH -Value 'src'; pytest tests/test_guardrails.py -v"
+```
+*Tiêu chí:* 100% câu hỏi tấn công Prompt Injection và lạc đề bị từ chối an toàn (Fail-closed) với mã phản hồi từ chối chuẩn mực.
+
+### 5.3. Chạy Đánh Giá Agent Tự Động (`agent_eval.py`)
+```bash
+# Chạy đánh giá mẫu nhanh (5 câu hỏi)
+powershell -Command "Set-Item -Path Env:PYTHONPATH -Value 'src'; python scripts/run_agent_eval.py --sample 5"
+
+# Hoặc chạy toàn bộ bộ benchmark
 powershell -Command "Set-Item -Path Env:PYTHONPATH -Value 'src'; python scripts/run_agent_eval.py"
 ```
-Đo lường các chỉ số:
-- **Routing Accuracy:** Tỷ lệ điều phối đúng worker.
-- **Query Decomposition Quality:** Tỷ lệ tách câu hỏi multihop chính xác.
-- **Groundedness Score:** Tỷ lệ không bịa đặt số liệu (chống hallucination).
+Đo lường 4 tiêu chí cốt lõi:
+- **Routing Precision/Recall:** Tỷ lệ phân phối đúng worker của Supervisor Agent.
+- **Query Decomposition Quality:** Tỷ lệ tách câu hỏi phức tạp thành sub-queries độc lập.
+- **Groundedness Score:** Tỷ lệ câu trả lời bám sát dữ liệu thực tế, chống bịa đặt (Hallucination).
+- **Task Success Rate:** Tỷ lệ phản hồi thành công và trọn vẹn yêu cầu của người dùng.
+
+Báo cáo chi tiết được tự động xuất ra `specs/eval/agent_eval_report.json` và `specs/eval/agent_eval_report.md`.
 
 ---
 
 ## 6. Hướng Dẫn Demo Với ngrok
 
-Để trình diễn web app trực tiếp ra internet:
+Để trình diễn Web App trực tiếp ra internet cho người dùng từ xa:
 ```bash
-# Bước 1: Khởi động backend local (cổng 8080)
+# Bước 1: Kiểm tra trạng thái Backend sẵn sàng
+python scripts/start_ngrok_demo.py --port 8080 --check-only
+
+# Bước 2: Khởi động backend local nếu chưa chạy (cổng 8080)
 uvicorn backend.main:app --app-dir src --port 8080
 
-# Bước 2: Chạy script mở tunnel ngrok tự động
-python scripts/start_ngrok_demo.py
+# Bước 3: Mở tunnel ngrok public
+python scripts/start_ngrok_demo.py --port 8080
 ```
-Script sẽ cung cấp URL Public HTTPS (ví dụ: `https://xxxx.ngrok-free.app`) để người dùng bên ngoài truy cập và trải nghiệm trực tiếp.
+Script sẽ cung cấp URL Public HTTPS (ví dụ: `https://xxxx.ngrok-free.app`) để người dùng truy cập từ smartphone hoặc máy tính bảng bên ngoài một cách an toàn.

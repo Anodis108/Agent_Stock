@@ -85,8 +85,9 @@ def test_guardrail_turn_always_traced(mock_enabled, mock_get_langfuse):
 
 def test_cost_dashboard_script_runs():
     # Run the dashboard script in a subprocess
+    import sys
     result = subprocess.run(
-        ["python", "scripts/cost_dashboard.py"],
+        [sys.executable, "scripts/cost_dashboard.py"],
         capture_output=True,
         text=True,
         env={"PYTHONPATH": "src", **import_os_env()}

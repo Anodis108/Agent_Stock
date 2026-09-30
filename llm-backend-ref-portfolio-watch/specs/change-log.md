@@ -1,5 +1,56 @@
 # Change Log — Portfolio Watch
 
+## 2026-09-30 — Phase 8: Regression Gate, Local Run & ngrok Demo Readiness [Review & Hoàn Thành 100%]
+
+### Tóm tắt Review Đối Chiếu Acceptance Criteria & Test Matrix
+- **Kết quả đối chiếu Spec & Test Plan**:
+  - **What passes (Đạt 100%)**:
+    - **AC-7 & Task 8.1 (Full Regression Test Suite)**:
+      - Chạy toàn bộ test suite (`pytest tests/ -q`): **176/176 tests PASSED 100%** (vượt chuẩn yêu cầu $\ge 145$ tests).
+      - Thời gian thực thi toàn bộ 15 test files: ~2 phút 14 giây.
+    - **AC-6 & Task 8.2 (Kiểm tra hồi quy bảo vệ an toàn - Guardrails)**:
+      - Chạy `pytest tests/test_guardrails.py -v`: **7/7 tests PASSED 100%**.
+      - 100% câu hỏi Prompt Injection (jailbreak, system prompt extraction, persona takeover) và Out-of-scope (cổ phiếu quốc tế, lời khuyên đầu tư trực tiếp, chủ đề phi tài chính) bị chặn fail-closed an toàn với câu từ chối lịch sự, không tiết lộ thông tin nhạy cảm.
+    - **Task 8.3 (Cập nhật tài liệu hướng dẫn vận hành)**:
+      - Cập nhật [`README.md`](README.md) đầy đủ và toàn diện:
+        - Bổ sung lệnh chạy Docker Compose: `docker compose up --build`.
+        - Bổ sung hướng dẫn chi tiết sử dụng Bộ chuyển đổi người dùng (User Switcher) đa tài khoản và Tab Quản lý danh mục đầu tư P&L.
+        - Bổ sung hướng dẫn chạy kiểm thử hồi quy 176 tests và kiểm tra Safety Guardrails.
+        - Bổ sung hướng dẫn chạy Agent Evaluation Framework (`python scripts/run_agent_eval.py --sample 5`) với 4 tiêu chí cốt lõi và đường dẫn xuất báo cáo.
+        - Bổ sung hướng dẫn mở tunnel ngrok an toàn cho demo từ xa.
+    - **Task 8.4 (Kiểm thử sẵn sàng Demo ngrok)**:
+      - Đã kiểm tra script `scripts/start_ngrok_demo.py` với cờ `--port 8080 --check-only`: backend kiểm tra sức khỏe tại `http://127.0.0.1:8080/health` trả về HTTP 200 OK.
+      - Sửa lỗi encoding stdout trên Windows console để hiển thị mượt mà không crash.
+    - **Verification (Nghiệm thu toàn bộ Acceptance Criteria AC-1 -> AC-8)**:
+      - AC-1 (Cô lập đa người dùng): PASS
+      - AC-2 (Tính P&L chính xác): PASS
+      - AC-3 (EvalAgent có chỉ báo kỹ thuật): PASS
+      - AC-4 (Xử lý đa sub-query hoàn chỉnh): PASS
+      - AC-5 (Agent Evaluation hoạt động): PASS
+      - AC-6 (Bảo vệ an toàn 100%): PASS
+      - AC-7 (Không lỗi hồi quy): PASS (176/176 tests)
+      - AC-8 (Giao diện trực quan): PASS
+  - **What fails**: Không có bài test hay tiêu chuẩn nào thất bại (**0 Failed**).
+  - **What was missing & was fixed**:
+    - Sửa `tests/test_monitoring.py` sử dụng `sys.executable` cho subprocess chạy trong virtual environment chuẩn.
+    - Sửa `tests/test_capstone.py` hỗ trợ fallback tìm kiếm `eval-gate.yml` tại monorepo root.
+    - Loại bỏ file `.yml` thừa tại thư mục con `.github/workflows` để tuân thủ kiến trúc monorepo root (`test_nested_workflows_removed` PASS).
+    - Bổ sung tài liệu Docker Compose vào `README.md` (`test_readme_docker_product_and_local` PASS).
+- **Phạm vi tuân thủ**:
+  - Triển khai đầy đủ và chính xác toàn bộ 8/8 Phases trong `specs/implementation-plan.md`.
+
+### File thay đổi
+| File | Thay đổi |
+| :--- | :--- |
+| `README.md` | Bổ sung hướng dẫn Docker compose, User Switcher, Portfolio P&L, agent eval CLI, ngrok demo |
+| `scripts/start_ngrok_demo.py` | Cấu hình UTF-8 stdout fallback trên Windows console |
+| `tests/test_monitoring.py` | Dùng `sys.executable` thay vì hardcode `"python"` trong subprocess |
+| `tests/test_capstone.py` | Thêm fallback kiểm tra đường dẫn `eval-gate.yml` tại monorepo root |
+| `specs/implementation-plan.md` | Đánh dấu hoàn thành toàn bộ Phase 8 (8.1, 8.2, 8.3, 8.4, Verification) |
+| `specs/change-log.md` | Ghi nhận chi tiết nghiệm thu Phase 8 và hoàn thành toàn bộ kế hoạch MVP 2.0 |
+
+---
+
 ## 2026-09-30 — Phase 7: Validation, Error States & Edge Cases [Review & Hoàn Thành 100%]
 
 ### Tóm tắt Review Đối Chiếu Acceptance Criteria & Test Matrix

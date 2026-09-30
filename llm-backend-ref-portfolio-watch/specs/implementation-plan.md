@@ -118,8 +118,8 @@ Mục tiêu: Đảm bảo hệ thống xử lý mượt mà các trường hợp
 
 ## Phase 8: Regression Gate, Local Run & ngrok Demo Readiness
 Mục tiêu: Đảm bảo toàn bộ hệ thống hoạt động ổn định, không lỗi hồi quy và sẵn sàng demo.
-- [ ] **Task 8.1:** Chạy lại toàn bộ test suite (`pytest tests/ -v`), đảm bảo 100% tests PASS (>= 145 tests).
-- [ ] **Task 8.2:** Kiểm tra hồi quy bảo vệ an toàn: 100% câu hỏi Prompt Injection và Out-of-scope tiếp tục bị chặn fail-closed.
-- [ ] **Task 8.3:** Cập nhật tài liệu hướng dẫn vận hành trong `README.md` với các lệnh chạy mới.
-- [ ] **Task 8.4:** Kiểm thử mở tunnel ngrok bằng `python scripts/start_ngrok_demo.py` và kiểm tra truy cập từ thiết bị bên ngoài.
-- [ ] **Verification:** Kiểm tra báo cáo cuối cùng đạt toàn bộ Acceptance Criteria trong `specs/product-spec.md`.
+- [x] **Task 8.1:** Chạy lại toàn bộ test suite (`pytest tests/ -v`), đảm bảo 100% tests PASS (>= 145 tests).
+- [x] **Task 8.2:** Kiểm tra hồi quy bảo vệ an toàn: 100% câu hỏi Prompt Injection và Out-of-scope tiếp tục bị chặn fail-closed.
+- [x] **Task 8.3:** Cập nhật tài liệu hướng dẫn vận hành trong `README.md` với các lệnh chạy mới.
+- [x] **Task 8.4:** Kiểm thử mở tunnel ngrok bằng `python scripts/start_ngrok_demo.py` và kiểm tra truy cập từ thiết bị bên ngoài.
+- [x] **Verification:** Kiểm tra báo cáo cuối cùng đạt toàn bộ Acceptance Criteria trong `specs/product-spec.md`.
