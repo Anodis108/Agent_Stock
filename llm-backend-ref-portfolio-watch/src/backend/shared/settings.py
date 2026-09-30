@@ -18,6 +18,24 @@ class Settings(BaseSettings):
     llm_max_completion_tokens: int = 800
     llm_top_p: float = 1.0
     llm_max_retries: int = 5
+    # Model cascade: thử lần lượt sau model chính (comma-separated)
+    llm_model_cascade: str = ""
+    # Fallback backend khi primary outage (comma-separated: ollama,openai,...)
+    llm_fallback_backends: str = ""
+
+    # A/B prompt testing (Bài 1)
+    prompt_ab_enabled: bool = False
+    prompt_ab_version_a: str = "v1"
+    prompt_ab_version_b: str = "v2"
+    prompt_ab_split_pct: int = 50
+
+    # Eval cache (Bài 6 CI)
+    eval_cache_enabled: bool = True
+    eval_cache_dir: str = ".eval_cache"
+
+    # Cost budget (Bài 3/7)
+    cost_daily_limit_usd: float = 0.0  # 0 = không giới hạn
+    cost_alert_threshold_usd: float = 1.0
 
     # App
     app_name: str = "Portfolio Watch & Chat Agent"
@@ -73,6 +91,18 @@ class Settings(BaseSettings):
     @property
     def default_symbols(self) -> list[str]:
         return [s.strip().upper() for s in self.default_watchlist.split(",") if s.strip()]
+
+    @property
+    def model_cascade_list(self) -> list[str]:
+        if not self.llm_model_cascade.strip():
+            return []
+        return [m.strip() for m in self.llm_model_cascade.split(",") if m.strip()]
+
+    @property
+    def fallback_backends_list(self) -> list[str]:
+        if not self.llm_fallback_backends.strip():
+            return []
+        return [b.strip().lower() for b in self.llm_fallback_backends.split(",") if b.strip()]
 
 
 settings = Settings()

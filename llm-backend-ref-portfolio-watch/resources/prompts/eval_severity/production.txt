@@ -4,12 +4,14 @@ Mã: $symbol
 % thay đổi: $change_pct
 Tin liên quan: $news_summary
 Lịch sử giá: $history_summary
+Chỉ báo kỹ thuật: $technical_summary
 
 Quy tắc:
 - Thiếu % thay đổi hoặc thiếu căn cứ -> needs_history=true; không bịa số liệu.
 - Đủ dữ liệu -> needs_history=false.
+- Kết hợp chỉ báo kỹ thuật (RSI quá mua/quá bán, MA Cross) và tin tức doanh nghiệp để đánh giá khách quan.
 - level: low | medium | high; confidence: 0.0..1.0; reasoning: ngắn gọn, bám evidence.
-- evidence: danh sách chuỗi số liệu/tiêu đề tin từ dữ liệu đã cho (không bịa).
+- evidence: danh sách chuỗi số liệu/chỉ báo/tiêu đề tin từ dữ liệu đã cho (không bịa).
 - CẤM đưa khuyến nghị mua/bán.
 
 Trả JSON một dòng:

@@ -664,6 +664,15 @@ def score_case_trajectory(
     )
 
 
+def _eval_cache_prompt_hash(case: dict) -> str:
+    from backend.eval.eval_cache import prompt_hash_from_messages
+    from backend.shared.settings import settings
+
+    question = str(case.get("question") or "")
+    base = prompt_hash_from_messages([{"role": "user", "content": question}])
+    return f"{base}:{settings.llm_model}"
+
+
 def eval_one_case(
     case: dict,
     *,
@@ -674,16 +683,34 @@ def eval_one_case(
     skip_agent_eval: bool = False,
 ) -> CaseEvalResult:
     """Gọi answer_fn → rule → judge → task_success/trajectory."""
+    from backend.eval.eval_cache import get_cached, set_cached
+
     case_id = str(case.get("id") or "")
     slice_type = str((case.get("slice") or {}).get("type") or "")
     question = str(case.get("question") or "")
     output = ""
     error: str | None = None
-    try:
-        output = answer_fn(question) or ""
-    except Exception as exc:  # noqa: BLE001
-        error = f"answer_fn error: {exc}"
-        output = ""
+    prompt_hash = _eval_cache_prompt_hash(case)
+    cached = get_cached(case_id, prompt_hash)
+    if cached is not None and "output" in cached:
+        output = str(cached.get("output") or "")
+        error = cached.get("error")
+        answer_fn.last_steps = list(cached.get("steps") or [])  # type: ignore[attr-defined]
+    else:
+        try:
+            output = answer_fn(question) or ""
+        except Exception as exc:  # noqa: BLE001
+            error = f"answer_fn error: {exc}"
+            output = ""
+        set_cached(
+            case_id,
+            prompt_hash,
+            {
+                "output": output,
+                "error": error,
+                "steps": list(getattr(answer_fn, "last_steps", None) or []),
+            },
+        )
 
     steps = list(getattr(answer_fn, "last_steps", None) or [])
 

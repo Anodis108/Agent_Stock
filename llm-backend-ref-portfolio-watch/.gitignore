@@ -20,3 +20,9 @@ build/
 *.pth
 
 .agy-runs/
+.eval_cache/
+wheels/
+specs/eval/runs/
+specs/eval/pr_report.json
+specs/eval/pr_report.md
+deploy/lkg/

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -12,10 +13,22 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from backend.infra.cost.tracker import get_cost_tracker  # noqa: E402
+from backend.infra.cost.tracker import (  # noqa: E402
+    get_cost_tracker,
+    is_over_alert_threshold,
+)
+from backend.shared.settings import settings  # noqa: E402
 
 
-def main():
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Cost & observability dashboard")
+    parser.add_argument(
+        "--fail-on-alert",
+        action="store_true",
+        help="Exit 1 if cost exceeds COST_ALERT_THRESHOLD_USD or daily limit",
+    )
+    args = parser.parse_args()
+
     tracker = get_cost_tracker()
     summary = tracker.summary()
     
@@ -70,15 +83,32 @@ def main():
     out_md.write_text(dashboard_md, encoding="utf-8")
     
     out_json = Path("specs/eval/cost_dashboard.json")
+    budget_limit = settings.cost_daily_limit_usd
+    alert_threshold = settings.cost_alert_threshold_usd
+    over_alert = is_over_alert_threshold()
+    over_budget = budget_limit > 0 and total_usd >= budget_limit
+
     out_json.write_text(json.dumps({
         "total_usd": total_usd,
         "total_vnd": total_vnd,
         "cache_hit_rate_pct": cache_hit_rate,
         "p95_latency_s": p95_latency,
+        "cost_alert_threshold_usd": alert_threshold,
+        "cost_daily_limit_usd": budget_limit,
+        "over_alert": over_alert,
+        "over_budget": over_budget,
         "summary": summary
     }, indent=2), encoding="utf-8")
 
     print(f"Dashboard generated: {out_md}")
+    if over_budget:
+        print(f"FAIL: daily budget exceeded (${total_usd:.6f} >= ${budget_limit:.4f})")
+        return 1
+    if args.fail_on_alert and over_alert:
+        print(f"WARN: over alert threshold (${total_usd:.6f} >= ${alert_threshold:.4f})")
+        return 1
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -8,8 +8,14 @@ from typing import Any, TypeVar
 from openai.types.chat import ChatCompletion, ChatCompletionMessageParam
 from pydantic import BaseModel
 
+from backend.infra.cost.tracker import check_budget_or_raise
 from backend.infra.llm.client import get_client, mark_current_key_limited
 from backend.infra.llm.params import GenerationParams
+from backend.infra.llm.providers import (
+    call_with_backend_fallback,
+    call_with_model_cascade,
+    resolve_model_chain,
+)
 from backend.infra.llm.resilience import retry_with_backoff
 from backend.shared.settings import settings
 
@@ -17,7 +23,7 @@ TModel = TypeVar("TModel", bound=BaseModel)
 Messages = list[ChatCompletionMessageParam]
 
 
-def _resolve_exact_cache_key() -> tuple[str, Any] | tuple[None, None]:
+def _resolve_exact_cache_key(model: str) -> tuple[str, Any] | tuple[None, None]:
     from backend.infra.cache.exact import (
         get_exact_cache,
         get_llm_cache_context,
@@ -37,18 +43,18 @@ def _resolve_exact_cache_key() -> tuple[str, Any] | tuple[None, None]:
     key = cache.make_key(
         prompt_name,
         prompt_version,
-        settings.llm_model,
+        model,
         normalize_question(str(normalized_q)),
     )
     return key, cache
 
 
-def _record_cache_hit_cost() -> None:
+def _record_cache_hit_cost(*, model: str) -> None:
     try:
         from backend.infra.cost.tracker import record_completion_usage
 
         record_completion_usage(
-            model=settings.llm_model,
+            model=model,
             prompt_tokens=0,
             completion_tokens=0,
             total_tokens=0,
@@ -59,7 +65,7 @@ def _record_cache_hit_cost() -> None:
 
 
 def _try_tiered_cache_get() -> str | None:
-    cache_key, cache = _resolve_exact_cache_key()
+    cache_key, cache = _resolve_exact_cache_key(settings.llm_model)
     if cache_key is not None and cache is not None:
         hit = cache.get(cache_key)
         if hit is not None:
@@ -83,69 +89,97 @@ def _store_tiered_cache(cache_key: str | None, cache: Any, content: str) -> None
         pass
 
 
-def chat(messages: Messages, params: GenerationParams | None = None) -> str:
+def _record_usage(response: Any, *, model: str) -> None:
+    if not hasattr(response, "usage") or not response.usage:
+        return
+    try:
+        from backend.infra.monitoring.tracing import record_step_usage
+
+        record_step_usage(
+            prompt_tokens=response.usage.prompt_tokens,
+            completion_tokens=response.usage.completion_tokens,
+            total_tokens=response.usage.total_tokens,
+            model=model,
+        )
+    except Exception:
+        pass
+    try:
+        from backend.infra.cost.tracker import record_completion_usage
+
+        record_completion_usage(
+            model=model,
+            prompt_tokens=response.usage.prompt_tokens or 0,
+            completion_tokens=response.usage.completion_tokens or 0,
+            total_tokens=response.usage.total_tokens,
+            cache_hit=False,
+        )
+    except Exception:
+        pass
+
+
+def chat(
+    messages: Messages,
+    params: GenerationParams | None = None,
+    *,
+    model: str | None = None,
+) -> str:
     params = params or GenerationParams()
-    cache_key, cache = _resolve_exact_cache_key()
+    check_budget_or_raise()
+    models = resolve_model_chain(model)
+    primary_model = models[0]
+    cache_key, cache = _resolve_exact_cache_key(primary_model)
     cached = _try_tiered_cache_get()
     if cached is not None:
-        _record_cache_hit_cost()
+        _record_cache_hit_cost(model=primary_model)
         return cached
 
     from backend.infra.llm.semaphore import llm_semaphore_slot
 
-    client = get_client()
+    def _call_one(resolved_model: str, backend_name: str | None) -> str:
+        client = get_client() if backend_name is None else get_client(backend_name)
 
-    def _call() -> ChatCompletion:
-        return client.chat.completions.create(
-            model=settings.llm_model,
-            messages=messages,
-            **params.to_openai_kwargs(),
+        def _call() -> ChatCompletion:
+            return client.chat.completions.create(
+                model=resolved_model,
+                messages=messages,
+                **params.to_openai_kwargs(),
+            )
+
+        with llm_semaphore_slot():
+            response = retry_with_backoff(
+                _call,
+                max_retries=settings.llm_max_retries,
+                on_rate_limit=lambda: mark_current_key_limited(client),
+            )
+        content = response.choices[0].message.content or ""
+        _record_usage(response, model=resolved_model)
+        return content
+
+    def _call_model(resolved_model: str) -> str:
+        return call_with_backend_fallback(
+            lambda backend: _call_one(resolved_model, backend)
         )
 
-    with llm_semaphore_slot():
-        response = retry_with_backoff(
-            _call,
-            max_retries=settings.llm_max_retries,
-            on_rate_limit=lambda: mark_current_key_limited(client),
-        )
-    content = response.choices[0].message.content or ""
+    content = call_with_model_cascade(models, _call_model)
     _store_tiered_cache(cache_key, cache, content)
-    if hasattr(response, "usage") and response.usage:
-        try:
-            from backend.infra.monitoring.tracing import record_step_usage
-
-            record_step_usage(
-                prompt_tokens=response.usage.prompt_tokens,
-                completion_tokens=response.usage.completion_tokens,
-                total_tokens=response.usage.total_tokens,
-                model=settings.llm_model,
-            )
-        except Exception:
-            pass
-        try:
-            from backend.infra.cost.tracker import record_completion_usage
-
-            record_completion_usage(
-                model=settings.llm_model,
-                prompt_tokens=response.usage.prompt_tokens or 0,
-                completion_tokens=response.usage.completion_tokens or 0,
-                total_tokens=response.usage.total_tokens,
-                cache_hit=False,
-            )
-        except Exception:
-            pass
     return content
 
 
 def chat_stream(
-    messages: Messages, params: GenerationParams | None = None
+    messages: Messages,
+    params: GenerationParams | None = None,
+    *,
+    model: str | None = None,
 ) -> Iterator[str]:
     params = params or GenerationParams()
+    check_budget_or_raise()
+    models = resolve_model_chain(model)
+    resolved_model = models[0]
     client = get_client()
 
     def _open_stream():
         return client.chat.completions.create(
-            model=settings.llm_model,
+            model=resolved_model,
             messages=messages,
             stream=True,
             **params.to_openai_kwargs(),
@@ -167,75 +201,70 @@ def chat_parsed(
     messages: Messages,
     schema: type[TModel],
     params: GenerationParams | None = None,
+    *,
+    model: str | None = None,
 ) -> TModel:
     params = params or GenerationParams()
-    cache_key, cache = _resolve_exact_cache_key()
+    check_budget_or_raise()
+    models = resolve_model_chain(model)
+    primary_model = models[0]
+    cache_key, cache = _resolve_exact_cache_key(primary_model)
     if cache_key is not None and cache is not None:
         hit = cache.get(cache_key)
         if hit is not None:
-            _record_cache_hit_cost()
+            _record_cache_hit_cost(model=primary_model)
             return schema.model_validate_json(hit)
 
     from backend.infra.llm.semaphore import llm_semaphore_slot
 
-    client = get_client()
+    def _call_one(resolved_model: str, backend_name: str | None) -> TModel:
+        client = get_client() if backend_name is None else get_client(backend_name)
 
-    def _call():
-        return client.chat.completions.parse(
-            model=settings.llm_model,
-            messages=messages,
-            response_format=schema,
-            **params.to_openai_kwargs(),
+        def _call():
+            return client.chat.completions.parse(
+                model=resolved_model,
+                messages=messages,
+                response_format=schema,
+                **params.to_openai_kwargs(),
+            )
+
+        with llm_semaphore_slot():
+            completion = retry_with_backoff(
+                _call,
+                max_retries=settings.llm_max_retries,
+                on_rate_limit=lambda: mark_current_key_limited(client),
+            )
+        _record_usage(completion, model=resolved_model)
+        parsed = completion.choices[0].message.parsed
+        if parsed is None:
+            raise ValueError("Model không trả về output khớp schema.")
+        _store_tiered_cache(cache_key, cache, parsed.model_dump_json())
+        return parsed
+
+    def _call_model(resolved_model: str) -> TModel:
+        return call_with_backend_fallback(
+            lambda backend: _call_one(resolved_model, backend)
         )
 
-    with llm_semaphore_slot():
-        completion = retry_with_backoff(
-            _call,
-            max_retries=settings.llm_max_retries,
-            on_rate_limit=lambda: mark_current_key_limited(client),
-        )
-    if hasattr(completion, "usage") and completion.usage:
-        try:
-            from backend.infra.monitoring.tracing import record_step_usage
-
-            record_step_usage(
-                prompt_tokens=completion.usage.prompt_tokens,
-                completion_tokens=completion.usage.completion_tokens,
-                total_tokens=completion.usage.total_tokens,
-                model=settings.llm_model,
-            )
-        except Exception:
-            pass
-        try:
-            from backend.infra.cost.tracker import record_completion_usage
-
-            record_completion_usage(
-                model=settings.llm_model,
-                prompt_tokens=completion.usage.prompt_tokens or 0,
-                completion_tokens=completion.usage.completion_tokens or 0,
-                total_tokens=completion.usage.total_tokens,
-                cache_hit=False,
-            )
-        except Exception:
-            pass
-    parsed = completion.choices[0].message.parsed
-    if parsed is None:
-        raise ValueError("Model không trả về output khớp schema.")
-    _store_tiered_cache(cache_key, cache, parsed.model_dump_json())
-    return parsed
+    return call_with_model_cascade(models, _call_model)
 
 
 def chat_with_tools(
     messages: Messages,
     tools: list[dict],
     params: GenerationParams | None = None,
+    *,
+    model: str | None = None,
 ) -> ChatCompletion:
     params = params or GenerationParams()
+    check_budget_or_raise()
+    models = resolve_model_chain(model)
+    resolved_model = models[0]
     client = get_client()
 
     def _call() -> ChatCompletion:
         return client.chat.completions.create(
-            model=settings.llm_model,
+            model=resolved_model,
             messages=messages,
             tools=tools,
             **params.to_openai_kwargs(),
@@ -246,29 +275,7 @@ def chat_with_tools(
         max_retries=settings.llm_max_retries,
         on_rate_limit=lambda: mark_current_key_limited(client),
     )
-    if hasattr(response, "usage") and response.usage:
-        try:
-            from backend.infra.monitoring.tracing import record_step_usage
-
-            record_step_usage(
-                prompt_tokens=response.usage.prompt_tokens,
-                completion_tokens=response.usage.completion_tokens,
-                total_tokens=response.usage.total_tokens,
-                model=settings.llm_model,
-            )
-        except Exception:
-            pass
-        try:
-            from backend.infra.cost.tracker import record_completion_usage
-
-            record_completion_usage(
-                model=settings.llm_model,
-                prompt_tokens=response.usage.prompt_tokens or 0,
-                completion_tokens=response.usage.completion_tokens or 0,
-                total_tokens=response.usage.total_tokens,
-            )
-        except Exception:
-            pass
+    _record_usage(response, model=resolved_model)
     return response
 
 
@@ -278,4 +285,3 @@ from backend.infra.llm.structured import (
     extract_json_str,
     parse_structured,
 )
-

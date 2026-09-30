@@ -46,7 +46,9 @@ class SqliteWatchlistStore:
         )
 
     def upsert(self, item: WatchlistItem) -> WatchlistItem:
+        from datetime import datetime, timezone
         sym = item.symbol.strip().upper()
+        now = datetime.now(timezone.utc).isoformat()
         saved = WatchlistItem(
             user_id=item.user_id,
             symbol=sym,
@@ -54,9 +56,9 @@ class SqliteWatchlistStore:
         )
         with self._conn() as conn:
             conn.execute(
-                "INSERT INTO watchlist (user_id, symbol, threshold_pct) VALUES (?, ?, ?) "
-                "ON CONFLICT(user_id, symbol) DO UPDATE SET threshold_pct = excluded.threshold_pct",
-                (saved.user_id, saved.symbol, saved.threshold_pct),
+                "INSERT INTO watchlist (user_id, symbol, threshold_pct, updated_at) VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(user_id, symbol) DO UPDATE SET threshold_pct = excluded.threshold_pct, updated_at = excluded.updated_at",
+                (saved.user_id, saved.symbol, saved.threshold_pct, now),
             )
             conn.commit()
         return saved

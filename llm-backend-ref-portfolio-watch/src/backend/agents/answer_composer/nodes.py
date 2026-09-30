@@ -23,7 +23,9 @@ from backend.domain.guardrails.output_checks import (
 from backend.domain.ports import MemoryStore
 from backend.infra.llm.completion import chat
 from backend.infra.llm.params import DETERMINISTIC
+from backend.infra.llm.prompt_experiment import pick_prompt_version
 from backend.infra.llm.prompt_registry import registry
+from backend.shared.settings import settings
 
 MODEL_LIGHT = "gpt-4o-mini"
 MODEL_HEAVY = "gpt-4o"
@@ -127,32 +129,65 @@ class HeuristicAnswerDraftBrain:
         news_list: list[NewsAgentResult] | None = None,
         on_token: Callable[[str], None] | None = None,
     ) -> str:
+        all_prices = prices or ([price] if price else [])
+        all_news = news_list or ([news] if news else [])
         sym = symbol or (price.symbol if price else None) or "N/A"
-        if prices and len(prices) > 1:
-            sym = "+".join(p.symbol for p in prices)
-        parts = [f"Trả lời về {sym}:"]
-        for p in prices or ([price] if price else []):
-            if p and p.change_pct is not None and p.latest_close is not None:
+        if all_prices and len(all_prices) > 1:
+            sym = "+".join(p.symbol for p in all_prices)
+
+        parts: list[str] = []
+        if len(all_prices) > 1 or len(all_news) > 1:
+            parts.append(f"Tổng hợp so sánh về {sym}:")
+            # 1. So sánh giá
+            price_details = []
+            for p in all_prices:
+                if p and p.change_pct is not None and p.latest_close is not None:
+                    price_details.append(
+                        f"{p.symbol} đóng cửa {p.latest_close}, thay đổi {p.change_pct:.2f}%"
+                    )
+                elif p and p.error:
+                    price_details.append(f"{p.symbol}: lỗi giá ({p.error.strip()})")
+            if price_details:
+                parts.append("Mục so sánh giá: " + "; ".join(price_details) + ".")
+
+            # 2. Tin tức
+            news_details = []
+            for n in all_news:
+                if n and n.items:
+                    titles = "; ".join(i.title for i in n.items[:2])
+                    news_details.append(f"{n.symbol}: {titles}")
+            if news_details:
+                parts.append("Mục tin tức sự kiện: " + "; ".join(news_details) + ".")
+
+            # 3. Đánh giá
+            if eval_result is not None:
+                sev = eval_result.severity
+                parts.append(f"Mục đánh giá: {sev.reasoning} (mức {sev.level.value}).")
+        else:
+            parts.append(f"Trả lời về {sym}:")
+            for p in all_prices:
+                if p and p.change_pct is not None and p.latest_close is not None:
+                    parts.append(
+                        f"{p.symbol} đóng cửa {p.latest_close}, "
+                        f"thay đổi {p.change_pct:.2f}%."
+                    )
+                elif p and p.error:
+                    err_text = p.error.strip()
+                    if any(k in err_text.lower() for k in ("không lấy được", "không tìm thấy", "mã cổ phiếu", "nguồn dữ liệu")):
+                        parts.append(f"{p.symbol}: {err_text}.")
+                    else:
+                        parts.append(f"{p.symbol}: không lấy được giá ({err_text}).")
+            for n in all_news:
+                if n and n.items:
+                    titles = "; ".join(i.title for i in n.items[:3])
+                    parts.append(f"Tin {n.symbol}: {titles}.")
+            if eval_result is not None:
+                sev = eval_result.severity
                 parts.append(
-                    f"{p.symbol} đóng cửa {p.latest_close}, "
-                    f"thay đổi {p.change_pct:.2f}%."
+                    f"Đánh giá: {sev.reasoning} "
+                    f"(mức {sev.level.value})."
                 )
-            elif p and p.error:
-                err_text = p.error.strip()
-                if any(k in err_text.lower() for k in ("không lấy được", "không tìm thấy", "mã cổ phiếu", "nguồn dữ liệu")):
-                    parts.append(f"{p.symbol}: {err_text}.")
-                else:
-                    parts.append(f"{p.symbol}: không lấy được giá ({err_text}).")
-        for n in news_list or ([news] if news else []):
-            if n and n.items:
-                titles = "; ".join(i.title for i in n.items[:3])
-                parts.append(f"Tin {n.symbol}: {titles}.")
-        if eval_result is not None:
-            sev = eval_result.severity
-            parts.append(
-                f"Đánh giá: {sev.reasoning} "
-                f"(mức {sev.level.value})."
-            )
+
         cp = next((e.split(":", 1)[1] for e in evidence if e.startswith("chart_path:")), None)
         if cp:
             parts.append(f"Đã tạo biểu đồ kỹ thuật tại: {cp}.")
@@ -235,18 +270,18 @@ class LlmAnswerDraftBrain:
                 from backend.infra.llm.completion import chat_stream
                 chunks = []
                 try:
-                    for delta in chat_stream(messages, DETERMINISTIC):
+                    for delta in chat_stream(messages, DETERMINISTIC, model=model):
                         chunks.append(delta)
                         on_token(delta)
                     answer = "".join(chunks).strip()
                 except Exception:
-                    raw = self._chat_fn(messages, DETERMINISTIC)
+                    raw = self._chat_fn(messages, DETERMINISTIC, model=model)
                     answer = (raw or "").strip()
                     if on_token and answer:
                         for w in answer.split(" "):
                             on_token(w + " ")
             else:
-                raw = self._chat_fn(messages, DETERMINISTIC)
+                raw = self._chat_fn(messages, DETERMINISTIC, model=model)
                 answer = (raw or "").strip()
 
         if not answer:
@@ -332,12 +367,25 @@ def run_answer_composer(
     on_token: Callable[[str], None] | None = None,
 ) -> AnswerComposeResult:
     """Soạn câu trả lời + vòng rewrite khi guardrail fail. Không tạo HITL."""
-    _ = memory_store, user_id  # preferences có thể dùng sau; MVP heuristic không cần
+    _ = memory_store
+    prompt_version = pick_prompt_version(
+        user_id,
+        enabled=settings.prompt_ab_enabled,
+        version_a=settings.prompt_ab_version_a,
+        version_b=settings.prompt_ab_version_b,
+        split_pct=settings.prompt_ab_split_pct,
+    )
+    if brain is None:
+        draft_brain: AnswerDraftBrain = LlmAnswerDraftBrain(prompt_version=prompt_version)
+    else:
+        draft_brain = brain
+    from backend.infra.cost.tracker import set_cost_context
+
+    set_cost_context(feature="answer_composer", prompt_version=str(prompt_version))
     evidence = build_evidence(
         price, news, eval_result, prices=prices, news_list=news_list, chart_path=chart_path
     )
     model = select_answer_model(eval_result)
-    draft_brain = brain or _DEFAULT_ANSWER_BRAIN_FACTORY()
     violations: list[str] = []
     answer = ""
     attempts = 0

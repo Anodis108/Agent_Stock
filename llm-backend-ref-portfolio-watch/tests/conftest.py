@@ -33,6 +33,12 @@ from backend.main import app as main_app
 def build_real_deps(db_path: str) -> AppDeps:
     """Khởi tạo AppDeps chuẩn production phục vụ kiểm thử."""
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+    from backend.database.connection import get_connection
+    from backend.database.repositories import (
+        PortfolioHoldingRepository,
+        UserSettingsRepository,
+    )
+    conn = get_connection(db_path)
     memory = SqliteMemoryStore(db_path)
     deps = AppDeps(
         price_source=VnstockPriceSource(),
@@ -41,6 +47,8 @@ def build_real_deps(db_path: str) -> AppDeps:
         memory_store=memory,
         notifier=ConsoleNotifier(memory),
         watchlist_store=SqliteWatchlistStore(db_path),
+        holdings_repo=PortfolioHoldingRepository(conn),
+        user_settings_repo=UserSettingsRepository(conn),
     )
     deps.watchlist_store.upsert(
         WatchlistItem(symbol="FPT", threshold_pct=3.0, user_id="default")
