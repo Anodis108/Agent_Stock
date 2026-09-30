@@ -105,14 +105,14 @@ Mục tiêu: Bổ sung giao diện Quản lý danh mục P&L và bộ chuyển �
 
 ## Phase 7: Validation, Error States & Edge Cases
 Mục tiêu: Đảm bảo hệ thống xử lý mượt mà các trường hợp biên và dữ liệu bất thường.
-- [ ] **Task 7.1:** Xử lý trường hợp mã cổ phiếu không tồn tại trong danh mục P&L:
+- [x] **Task 7.1:** Xử lý trường hợp mã cổ phiếu không tồn tại trong danh mục P&L:
   - Hiển thị thông báo lỗi rõ ràng, đánh dấu `price_error`, không làm crash giao diện danh mục.
-- [ ] **Task 7.2:** Xử lý trường hợp người dùng mới chưa có danh mục (Empty State):
+- [x] **Task 7.2:** Xử lý trường hợp người dùng mới chưa có danh mục (Empty State):
   - Hiển thị hướng dẫn trực quan: *"Danh mục đang trống. Hãy thêm mã cổ phiếu đầu tiên của bạn!"*.
-- [ ] **Task 7.3:** Xử lý trường hợp câu hỏi phức tạp không thể phân rã:
+- [x] **Task 7.3:** Xử lý trường hợp câu hỏi phức tạp không thể phân rã:
   - Fallback an toàn về chính câu hỏi gốc, tiếp tục luồng xử lý thông thường.
-- [ ] **Task 7.4:** Viết tests kiểm tra các trường hợp biên trong `tests/test_api.py`.
-- [ ] **Verification:** Chạy `pytest tests/` đảm bảo không có unhandled exceptions.
+- [x] **Task 7.4:** Viết tests kiểm tra các trường hợp biên trong `tests/test_api.py`.
+- [x] **Verification:** Chạy `pytest tests/` đảm bảo không có unhandled exceptions.
 
 ---
 

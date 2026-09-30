@@ -1678,7 +1678,7 @@
       if (!tbody) return;
 
       if (!items.length) {
-        tbody.innerHTML = '<tr><td colspan="7" class="placeholder"><em>Danh mục đang trống. Hãy thêm mã cổ phiếu đầu tiên!</em></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" class="placeholder"><em>Danh mục đang trống. Hãy thêm mã cổ phiếu đầu tiên của bạn!</em></td></tr>';
         return;
       }
 

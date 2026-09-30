@@ -1,5 +1,41 @@
 # Change Log — Portfolio Watch
 
+## 2026-09-30 — Phase 7: Validation, Error States & Edge Cases [Review & Hoàn Thành 100%]
+
+### Tóm tắt Review Đối Chiếu Acceptance Criteria & Test Matrix
+- **Kết quả đối chiếu Spec & Test Plan**:
+  - **What passes (Đạt 100%)**:
+    - **AC-3 & Task 7.1 (Xử lý mã không tồn tại / Lỗi giá thị trường trong P&L)**:
+      - Khi thêm một mã cổ phiếu lạ không tồn tại trên sàn hoặc nguồn giá Vnstock không trả về dữ liệu (ví dụ mã `XYZ99`), hệ thống không bao giờ ném lỗi HTTP 500, trả về status 200 an toàn.
+      - Vị thế được đánh dấu `price_error=True`, `current_price=None`, `unrealized_pnl=0.0`. Giao diện Frontend hiển thị nhãn cảnh báo `⚠️ Lỗi giá` và giữ nguyên dòng trong bảng, bảo toàn tính toán Tổng NAV bằng giá vốn an toàn mà không làm crash ứng dụng (`test_portfolio_unknown_symbol_price_error_handling` PASS).
+    - **AC-3 & Task 7.2 (Xử lý Empty State cho người dùng mới)**:
+      - Khi một người dùng mới mở danh mục lần đầu hoặc chưa có vị thế cổ phiếu nào, hệ thống trả về `count=0`, `items=[]`, `total_nav=0.0`.
+      - Giao diện Web hiển thị hướng dẫn trực quan chuẩn xác: *"Danh mục đang trống. Hãy thêm mã cổ phiếu đầu tiên của bạn!"* (`test_portfolio_new_user_empty_state` PASS).
+    - **AC-4 & Task 7.3 (Fallback an toàn khi câu hỏi phức tạp không thể phân rã)**:
+      - Bổ sung cơ chế phòng vệ `try...except` và fallback an toàn trong `_decompose_query`.
+      - Với các câu hỏi phức tạp không chứa mã cổ phiếu, câu hỏi ngữ cảnh mở hoặc input dị biệt, hệ thống luôn fallback an toàn về chính câu hỏi gốc, tiếp tục luồng xử lý thông thường mà không bao giờ phát sinh unhandled exception (`test_query_decomposition_safe_fallback` PASS).
+    - **AC-7 & Task 7.4 (Kiểm thử biên và bảo toàn hồi quy)**:
+      - Bổ sung 3 unit tests mới trong `tests/test_api.py`.
+      - Toàn bộ 58 tests (37 tests trong `tests/test_agents.py` và 21 tests trong `tests/test_api.py`) tiếp tục PASS 100%.
+  - **What fails**: Không có bài test hay tiêu chuẩn nào thất bại (**0 Failed**).
+  - **What was missing & was fixed**:
+    - Bọc `_decompose_query` với lớp bảo vệ an toàn để dự phòng các tình huống input đặc biệt hoặc lỗi logic phát sinh.
+    - Cập nhật thông điệp empty state trong `app.js` cho khớp 100% với yêu cầu spec.
+- **Phạm vi tuân thủ**:
+  - Triển khai đầy đủ và chính xác các tính năng thuộc Phase 7 theo đúng `specs/implementation-plan.md`.
+
+### File thay đổi
+| File | Thay đổi |
+| :--- | :--- |
+| `src/backend/agents/supervisor_agent/nodes.py` | Thêm defensive fallback trong `_decompose_query` quay về câu hỏi gốc khi câu hỏi không thể phân rã |
+| `src/frontend/app.js` | Cập nhật thông báo empty state trực quan khớp spec |
+| `src/frontend/index.html` | Cập nhật placeholder danh mục rỗng |
+| `tests/test_api.py` | Bổ sung 3 unit tests cho Task 7.1 (price error), Task 7.2 (empty state), Task 7.3 (decomposition safe fallback) |
+| `specs/implementation-plan.md` | Đánh dấu hoàn thành toàn bộ checklist Phase 7 |
+| `specs/change-log.md` | Ghi nhận chi tiết phát hành Phase 7 |
+
+---
+
 ## 2026-09-30 — Phase 6: Frontend UI Enhancements & Multi-tenant Switcher [Review & Hoàn Thành 100%]
 
 ### Tóm tắt Review Đối Chiếu Acceptance Criteria & Test Matrix

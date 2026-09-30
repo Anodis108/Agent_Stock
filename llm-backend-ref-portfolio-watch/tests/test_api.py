@@ -533,5 +533,76 @@ def test_portfolio_user_switcher_isolation(client: TestClient):
     assert len(p_a_after.json()["items"]) == 0
 
 
+# ==============================================================================
+# Phase 7: Validation, Error States & Edge Cases Tests
+# ==============================================================================
+
+def test_portfolio_unknown_symbol_price_error_handling(client: TestClient):
+    """Task 7.1: Mã cổ phiếu không tồn tại trong danh mục P&L -> đánh dấu price_error, không crash."""
+    unknown_user = "test_err_user"
+    # Thêm mã không có trên sàn chứng khoán
+    res = client.post(
+        "/api/portfolio/holdings",
+        headers={"X-User-ID": unknown_user},
+        json={"symbol": "XYZ99", "quantity": 100, "avg_buy_price": 50.0},
+    )
+    assert res.status_code == 201
+
+    # Xem danh mục P&L: không crash 500, trả về status 200
+    p_res = client.get("/api/portfolio", headers={"X-User-ID": unknown_user})
+    assert p_res.status_code == 200
+    data = p_res.json()
+    assert data["count"] == 1
+    item = data["items"][0]
+    assert item["symbol"] == "XYZ99"
+    assert item["price_error"] is True
+    assert item["current_price"] is None
+    assert item["unrealized_pnl"] == 0.0
+    # Tổng NAV an toàn bằng đúng giá vốn
+    assert data["total_nav"] == item["cost_basis"]
+
+
+def test_portfolio_new_user_empty_state(client: TestClient):
+    """Task 7.2: Người dùng mới chưa có danh mục (Empty State) -> Trả về danh mục rỗng hợp lệ."""
+    fresh_user = "brand_new_investor_999"
+    res = client.get("/api/portfolio", headers={"X-User-ID": fresh_user})
+    assert res.status_code == 200
+    data = res.json()
+    assert data["count"] == 0
+    assert data["items"] == []
+    assert data["total_nav"] == 0.0
+    assert data["total_unrealized_pnl"] == 0.0
+    assert data["total_pnl_pct"] == 0.0
+
+
+def test_query_decomposition_safe_fallback():
+    """Task 7.3: Câu hỏi phức tạp không thể phân rã -> Fallback an toàn về chính câu hỏi gốc."""
+    from backend.agents.supervisor_agent.nodes import _decompose_query
+
+    # 1. Câu hỏi phức tạp nhưng không có ticker và không thể phân rã
+    q_complex = "Hãy phân tích tình hình kinh tế vĩ mô quốc tế tác động thế nào đến lạm phát"
+    sub_qs = _decompose_query(
+        question=q_complex,
+        rewritten=q_complex,
+        symbols=[],
+        intent="general",
+        llm_sub_questions=None,
+    )
+    assert len(sub_qs) == 1
+    assert sub_qs[0] == q_complex
+
+    # 2. Câu hỏi gây lỗi / bất thường -> Fallback an toàn về câu hỏi gốc
+    sub_qs_err = _decompose_query(
+        question="Câu hỏi kiểm thử fallback lỗi",
+        rewritten="",
+        symbols=[],
+        intent="unknown",
+        llm_sub_questions=None,
+    )
+    assert len(sub_qs_err) == 1
+    assert sub_qs_err[0] == "Câu hỏi kiểm thử fallback lỗi"
+
+
+
 
 
