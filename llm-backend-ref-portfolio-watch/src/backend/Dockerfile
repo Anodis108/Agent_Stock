@@ -55,6 +55,7 @@ RUN mkdir -p /app/data /app/data/charts \
     && useradd -r -g appuser --uid 10001 --home-dir /app --shell /usr/sbin/nologin appuser \
     && chown -R appuser:appuser /app
 
+# USER appuser (chạy qua gosu appuser trong docker-entrypoint.sh để sửa quyền /app/data)
 COPY src/backend/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 

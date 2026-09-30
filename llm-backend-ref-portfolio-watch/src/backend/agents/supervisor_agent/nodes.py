@@ -189,6 +189,20 @@ def _extract_symbol(text: str) -> str | None:
     return syms[0] if syms else None
 
 
+def _symbols_from_original_question(q: str) -> list[str]:
+    """Mã trích từ câu hỏi gốc — không dùng rewritten (tránh «xin vui» → XIN/VUI)."""
+    return _extract_symbols(q)
+
+
+def _restrict_symbols_to_original(q: str, symbols: list[str]) -> list[str]:
+    """Giữ mã có trong câu gốc; nếu gốc không có mã thì giữ nguyên (follow-up/memory)."""
+    q_syms = _symbols_from_original_question(q)
+    if not q_syms:
+        return symbols
+    allowed = set(q_syms)
+    return [s for s in symbols if s in allowed]
+
+
 def _normalize_symbols(
     *,
     primary: str | None,
@@ -607,6 +621,8 @@ class LlmRewriteBrain:
             from_text=_extract_symbols(f"{q} {rewritten}"),
             from_llm=llm_syms,
         )
+        symbols = _restrict_symbols_to_original(q, symbols)
+        symbol = symbols[0] if symbols else symbol
         # Đại từ / follow-up không có ticker → lấy mã từ conversation hoặc long-term memory.
         symbol, symbols = _apply_memory_symbol(
             q,

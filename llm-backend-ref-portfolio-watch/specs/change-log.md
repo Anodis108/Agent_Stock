@@ -5,16 +5,15 @@
 ### Triệu chứng
 - `POST /chat` → 500 `sqlite3.OperationalError: readonly database` (volume `/app/data` owner root).
 - AnswerComposer: `Alias version không hỗ trợ: 'v1'`.
-- LLM thêm mã ảo XIN, VUI khi chỉ hỏi VNM.
+- LLM rewrite đọc nhầm «hiện tịa» → «xin vui» → mã ảo XIN, VUI.
 
 ### Sửa
 - `prompt_registry.py`: alias `v1`/`v2`; default A/B variant A = `production`.
-- `supervisor_agent/nodes.py`: lọc mã LLM không có trong text; stopwords GIA/TAI/TIA/HIEN/TOI.
+- `supervisor_agent/nodes.py`: `_restrict_symbols_to_original()`; stopwords GIA/TAI/TIA/HIEN/TOI.
 - `docker-entrypoint.sh` + Dockerfile: `chown /app/data` trước khi chạy `appuser`.
 
 ### Test
-- Local: VNM 59.4, -1.49% — PASS
-- Docker API: 200 sau `chown` volume — PASS (rebuild image để có code mới)
+- Local + Docker `POST /chat`: VNM 59.4, -1.49%, không XIN/VUI — PASS
 
 ---
 

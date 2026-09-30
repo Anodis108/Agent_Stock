@@ -25,6 +25,13 @@ def test_pick_prompt_version_disabled():
     assert pick_prompt_version("any", enabled=False) == "production"
 
 
+def test_restrict_symbols_blocks_xin_vui_from_typo():
+    from backend.agents.supervisor_agent.nodes import _restrict_symbols_to_original
+
+    q = "Cho tôi giá hiện tịa VNM"
+    assert _restrict_symbols_to_original(q, ["VNM", "XIN", "VUI"]) == ["VNM"]
+
+
 def test_prompt_registry_accepts_v1_alias():
     from backend.infra.llm.prompt_registry import registry
 
