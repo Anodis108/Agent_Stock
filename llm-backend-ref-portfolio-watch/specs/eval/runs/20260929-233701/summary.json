@@ -1,0 +1,46 @@
+{
+  "run_id": "20260929-233701",
+  "timestamp": "2026-09-29T16:37:21.343838+00:00",
+  "dataset": "golden_v5.yaml",
+  "total_cases": 1,
+  "passed": 0,
+  "failed": 1,
+  "pass_rate": 0.0,
+  "slice_breakdown": {
+    "lookup": {
+      "slice_type": "lookup",
+      "total": 1,
+      "passed": 0,
+      "failed": 1,
+      "rate": 0.0
+    },
+    "comparison": {
+      "slice_type": "comparison",
+      "total": 0,
+      "passed": 0,
+      "failed": 0,
+      "rate": null
+    },
+    "out_of_scope": {
+      "slice_type": "out_of_scope",
+      "total": 0,
+      "passed": 0,
+      "failed": 0,
+      "rate": null
+    },
+    "injection": {
+      "slice_type": "injection",
+      "total": 0,
+      "passed": 0,
+      "failed": 0,
+      "rate": null
+    },
+    "diagram": {
+      "slice_type": "diagram",
+      "total": 0,
+      "passed": 0,
+      "failed": 0,
+      "rate": null
+    }
+  }
+}

@@ -238,10 +238,16 @@ def _hooked_chat_with_tools(messages, tools, params=None):
     return completion
 
 
-# Install monkey patches
-completion_mod.chat = _hooked_chat
-completion_mod.chat_parsed = _hooked_chat_parsed
-completion_mod.chat_with_tools = _hooked_chat_with_tools
+def install_completion_hooks():
+    completion_mod.chat = _hooked_chat
+    completion_mod.chat_parsed = _hooked_chat_parsed
+    completion_mod.chat_with_tools = _hooked_chat_with_tools
+
+
+def uninstall_completion_hooks():
+    completion_mod.chat = _original_chat
+    completion_mod.chat_parsed = _original_chat_parsed
+    completion_mod.chat_with_tools = _original_chat_with_tools
 
 
 def extract_pipeline_trace(steps: list[dict]) -> str:
@@ -280,12 +286,19 @@ class CachedNewsSource:
         self.inner = inner
         self.cache: dict[tuple, Any] = {}
 
-    def fetch_news(self, symbol: str, days: int = 7, limit: int = 5):
-        key = ((symbol or "").upper(), days, limit)
+    def fetch_news(
+        self,
+        symbol: str,
+        query: str | None = None,
+        *,
+        days: int | None = 7,
+        limit: int = 5,
+    ):
+        key = ((symbol or "").upper(), query, days, limit)
         if key in self.cache:
             return self.cache[key]
         try:
-            res = self.inner.fetch_news(symbol, days=days, limit=limit)
+            res = self.inner.fetch_news(symbol, query=query, days=days)
             self.cache[key] = res
             return res
         except (Exception, SystemExit) as exc:
@@ -338,113 +351,116 @@ def run_detailed_evaluation(
     eval_results: list[CaseEvalResult] = []
 
     start_all = time.perf_counter()
+    install_completion_hooks()
+    try:
+        for idx, case in enumerate(cases, 1):
+            cid = case.get("id", f"case_{idx}")
+            slice_type = (case.get("slice") or {}).get("type", "unknown")
+            question = case.get("question", "")
 
-    for idx, case in enumerate(cases, 1):
-        cid = case.get("id", f"case_{idx}")
-        slice_type = (case.get("slice") or {}).get("type", "unknown")
-        question = case.get("question", "")
+            print(f"[{idx}/{total_cases}] Chạy case: {cid} (slice: {slice_type}) | Q: '{question[:50]}...'")
 
-        print(f"[{idx}/{total_cases}] Chạy case: {cid} (slice: {slice_type}) | Q: '{question[:50]}...'")
+            # Reset token tracker for this case
+            _tracker.reset()
+            t0 = time.perf_counter()
 
-        # Reset token tracker for this case
-        _tracker.reset()
-        t0 = time.perf_counter()
-
-        # Step 1: Run App answering
-        _tracker.active_stage = "app"
-        fn = make_answer_fn(
-            price_source=cached_price,
-            news_source=cached_news,
-            history_store=deps.history_store,
-            memory_store=deps.memory_store,
-            user_id=f"eval-{cid}",
-        )
-
-        def tracked_answer_fn(q: str) -> str:
+            # Step 1: Run App answering
             _tracker.active_stage = "app"
-            out = fn(q)
-            tracked_answer_fn.last_steps = getattr(fn, "last_steps", [])
-            return out
+            fn = make_answer_fn(
+                price_source=cached_price,
+                news_source=cached_news,
+                history_store=deps.history_store,
+                memory_store=deps.memory_store,
+                user_id=f"eval-{cid}",
+            )
 
-        tracked_answer_fn.last_steps = []
+            def tracked_answer_fn(q: str) -> str:
+                _tracker.active_stage = "app"
+                out = fn(q)
+                tracked_answer_fn.last_steps = getattr(fn, "last_steps", [])
+                return out
 
-        def tracked_chat_parsed(*args, **kwargs):
-            _tracker.active_stage = "eval_judge"
-            return _hooked_chat_parsed(*args, **kwargs)
+            tracked_answer_fn.last_steps = []
 
-        res = eval_one_case(
-            case,
-            answer_fn=tracked_answer_fn,
-            chat_parsed_fn=tracked_chat_parsed,
-            agent_eval_parsed_fn=tracked_chat_parsed,
-            skip_judge=skip_judge,
-            skip_agent_eval=skip_agent_eval,
-        )
+            def tracked_chat_parsed(*args, **kwargs):
+                _tracker.active_stage = "eval_judge"
+                return _hooked_chat_parsed(*args, **kwargs)
 
-        elapsed = time.perf_counter() - t0
-        eval_results.append(res)
+            res = eval_one_case(
+                case,
+                answer_fn=tracked_answer_fn,
+                chat_parsed_fn=tracked_chat_parsed,
+                agent_eval_parsed_fn=tracked_chat_parsed,
+                skip_judge=skip_judge,
+                skip_agent_eval=skip_agent_eval,
+            )
 
-        # Pipeline trace
-        trace_str = extract_pipeline_trace(res.steps)
+            elapsed = time.perf_counter() - t0
+            eval_results.append(res)
 
-        # App vs Judge tokens
-        app_tokens = sum(r.total_tokens for r in _tracker.records if r.stage == "app")
-        judge_tokens = sum(r.total_tokens for r in _tracker.records if r.stage == "eval_judge")
+            # Pipeline trace
+            trace_str = extract_pipeline_trace(res.steps)
 
-        status_str = "PASS" if res.passed else "FAIL"
+            # App vs Judge tokens
+            app_tokens = sum(r.total_tokens for r in _tracker.records if r.stage == "app")
+            judge_tokens = sum(r.total_tokens for r in _tracker.records if r.stage == "eval_judge")
 
-        case_data = {
-            "index": idx,
-            "case_id": cid,
-            "slice": slice_type,
-            "question": question,
-            "expected": case.get("expected", ""),
-            "answer": res.output,
-            "status": status_str,
-            "passed": res.passed,
-            "pipeline_trace": trace_str,
-            "steps": res.steps,
-            "latency_s": round(elapsed, 2),
-            "tokens": {
-                "prompt_tokens": _tracker.total_prompt_tokens,
-                "completion_tokens": _tracker.total_completion_tokens,
-                "total_tokens": _tracker.total_tokens,
-                "app_tokens": app_tokens,
-                "judge_tokens": judge_tokens,
-            },
-            "cost": {
-                "usd": round(_tracker.total_cost_usd, 6),
-                "vnd": round(_tracker.total_cost_vnd, 2),
-            },
-            "scoring": {
-                "rule_based": {
-                    "passed": res.rule.passed,
-                    "missing": res.rule.missing,
-                    "forbidden_found": res.rule.forbidden_found,
+            status_str = "PASS" if res.passed else "FAIL"
+
+            case_data = {
+                "index": idx,
+                "case_id": cid,
+                "slice": slice_type,
+                "question": question,
+                "expected": case.get("expected", ""),
+                "answer": res.output,
+                "status": status_str,
+                "passed": res.passed,
+                "pipeline_trace": trace_str,
+                "steps": res.steps,
+                "latency_s": round(elapsed, 2),
+                "tokens": {
+                    "prompt_tokens": _tracker.total_prompt_tokens,
+                    "completion_tokens": _tracker.total_completion_tokens,
+                    "total_tokens": _tracker.total_tokens,
+                    "app_tokens": app_tokens,
+                    "judge_tokens": judge_tokens,
                 },
-                "llm_judge": res.judge.as_dict() if hasattr(res.judge, "as_dict") else res.judge,
-                "task_success": res.task_success.as_dict() if res.task_success else None,
-                "trajectory": res.trajectory.as_dict() if res.trajectory else None,
-            },
-            "error": res.error,
-        }
-        detailed_results.append(case_data)
+                "cost": {
+                    "usd": round(_tracker.total_cost_usd, 6),
+                    "vnd": round(_tracker.total_cost_vnd, 2),
+                },
+                "scoring": {
+                    "rule_based": {
+                        "passed": res.rule.passed,
+                        "missing": res.rule.missing,
+                        "forbidden_found": res.rule.forbidden_found,
+                    },
+                    "llm_judge": res.judge.as_dict() if hasattr(res.judge, "as_dict") else res.judge,
+                    "task_success": res.task_success.as_dict() if res.task_success else None,
+                    "trajectory": res.trajectory.as_dict() if res.trajectory else None,
+                },
+                "error": res.error,
+            }
+            detailed_results.append(case_data)
 
-        # Print concise case summary
-        print(
-            f"   ➔ Status: {status_str} | Trace: [{trace_str}] | "
-            f"Tokens: {_tracker.total_tokens} (App: {app_tokens}, Judge: {judge_tokens}) | "
-            f"Cost: ${_tracker.total_cost_usd:.5f} ({_tracker.total_cost_vnd:.0f} VND) | Time: {elapsed:.2f}s"
-        )
-        if not res.passed:
-            print(f"      [FAIL REASON] Rule: {res.rule.passed} (Missing: {res.rule.missing}, Forbidden: {res.rule.forbidden_found})")
-            if hasattr(res.judge, "skipped") and not res.judge.skipped:
-                print(f"      [FAIL REASON] Judge: {res.judge.passed} (Score: {getattr(res.judge.score, 'overall', 'N/A')})")
-            if res.task_success and not res.task_success.skipped and res.task_success.result:
-                print(f"      [FAIL REASON] TaskSuccess: {res.task_success.result.success} - {res.task_success.result.reasoning}")
+            # Print concise case summary
+            print(
+                f"   ➔ Status: {status_str} | Trace: [{trace_str}] | "
+                f"Tokens: {_tracker.total_tokens} (App: {app_tokens}, Judge: {judge_tokens}) | "
+                f"Cost: ${_tracker.total_cost_usd:.5f} ({_tracker.total_cost_vnd:.0f} VND) | Time: {elapsed:.2f}s"
+            )
+            if not res.passed:
+                print(f"      [FAIL REASON] Rule: {res.rule.passed} (Missing: {res.rule.missing}, Forbidden: {res.rule.forbidden_found})")
+                if hasattr(res.judge, "skipped") and not res.judge.skipped:
+                    print(f"      [FAIL REASON] Judge: {res.judge.passed} (Score: {getattr(res.judge.score, 'overall', 'N/A')})")
+                if res.task_success and not res.task_success.skipped and res.task_success.result:
+                    print(f"      [FAIL REASON] TaskSuccess: {res.task_success.result.success} - {res.task_success.result.reasoning}")
 
-        if case_delay_sec > 0 and idx < total_cases:
-            time.sleep(case_delay_sec)
+            if case_delay_sec > 0 and idx < total_cases:
+                time.sleep(case_delay_sec)
+    finally:
+        uninstall_completion_hooks()
 
     total_duration = time.perf_counter() - start_all
 

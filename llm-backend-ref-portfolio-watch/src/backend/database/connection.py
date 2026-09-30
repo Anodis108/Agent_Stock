@@ -51,6 +51,8 @@ CREATE TABLE IF NOT EXISTS hitl_evaluations (
     feedback TEXT,
     is_positive INTEGER NOT NULL CHECK (is_positive IN (0, 1)),
     reason TEXT,
+    question TEXT,
+    answer TEXT,
     created_at TEXT NOT NULL,
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
@@ -96,12 +98,16 @@ def get_connection(db_path: str | Path | None = None) -> sqlite3.Connection:
 def init_db(conn: sqlite3.Connection) -> None:
     """Execute DDL statements to ensure all required tables exist and migrate schemas."""
     conn.executescript(SCHEMA_SQL)
-    # Check if reason column exists in hitl_evaluations for migration
+    # Check if reason, question, answer columns exist in hitl_evaluations for migration
     try:
         cursor = conn.execute("PRAGMA table_info(hitl_evaluations)")
         columns = [row["name"] for row in cursor.fetchall()]
         if "reason" not in columns:
             conn.execute("ALTER TABLE hitl_evaluations ADD COLUMN reason TEXT")
+        if "question" not in columns:
+            conn.execute("ALTER TABLE hitl_evaluations ADD COLUMN question TEXT")
+        if "answer" not in columns:
+            conn.execute("ALTER TABLE hitl_evaluations ADD COLUMN answer TEXT")
     except Exception:
         pass
     conn.commit()

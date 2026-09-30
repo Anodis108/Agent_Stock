@@ -31,6 +31,7 @@ template: |
 
   Yêu cầu trình bày:
   - Tiếng Việt, ngắn gọn; nếu hỏi nhiều mã, nêu đủ từng mã được hỏi.
+  - Khi trả lời về giá, nêu mức giá đóng cửa và biến động so với phiên trước (nếu có thông tin change_pct hoặc prev_close trong price_summary/evidence, ví dụ: không đổi hoặc tăng/giảm bao nhiêu % so với phiên trước) để câu trả lời có đầy đủ căn cứ.
   - Câu "tại sao tăng/giảm" trích tiêu đề tin từ evidence — không suy đoán nguyên nhân không có tin.
   - Khắc phục các vi phạm trong $violations nhưng giữ nguyên số liệu/tin trong evidence.
   - CẤM mọi lời khuyên mua/bán hoặc khuyến nghị đầu tư chắc chắn.

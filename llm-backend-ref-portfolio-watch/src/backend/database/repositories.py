@@ -63,6 +63,8 @@ class HITLEvaluationRecord:
     is_positive: bool
     created_at: str
     reason: str | None = None
+    question: str | None = None
+    answer: str | None = None
 
 
 @dataclass
@@ -350,6 +352,8 @@ class HITLEvaluationRepository:
         rating: int | None = None,
         feedback: str | None = None,
         reason: str | None = None,
+        question: str | None = None,
+        answer: str | None = None,
         eval_id: str | None = None,
     ) -> HITLEvaluationRecord:
         eid = eval_id or str(uuid4())
@@ -357,10 +361,10 @@ class HITLEvaluationRepository:
         pos_int = 1 if is_positive else 0
         self.conn.execute(
             """
-            INSERT INTO hitl_evaluations (id, message_id, session_id, rating, feedback, is_positive, reason, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO hitl_evaluations (id, message_id, session_id, rating, feedback, is_positive, reason, question, answer, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (eid, message_id, session_id, rating, feedback, pos_int, reason, now),
+            (eid, message_id, session_id, rating, feedback, pos_int, reason, question, answer, now),
         )
         self.conn.commit()
         return HITLEvaluationRecord(
@@ -372,12 +376,14 @@ class HITLEvaluationRepository:
             is_positive=is_positive,
             created_at=now,
             reason=reason,
+            question=question,
+            answer=answer,
         )
 
     def get(self, eval_id: str) -> HITLEvaluationRecord | None:
         cursor = self.conn.execute(
             """
-            SELECT id, message_id, session_id, rating, feedback, is_positive, reason, created_at
+            SELECT id, message_id, session_id, rating, feedback, is_positive, reason, question, answer, created_at
             FROM hitl_evaluations
             WHERE id = ?
             """,
@@ -394,13 +400,15 @@ class HITLEvaluationRepository:
             feedback=row["feedback"],
             is_positive=bool(row["is_positive"]),
             reason=row["reason"] if "reason" in row.keys() else None,
+            question=row["question"] if "question" in row.keys() else None,
+            answer=row["answer"] if "answer" in row.keys() else None,
             created_at=row["created_at"],
         )
 
     def list_by_session(self, session_id: str) -> list[HITLEvaluationRecord]:
         cursor = self.conn.execute(
             """
-            SELECT id, message_id, session_id, rating, feedback, is_positive, reason, created_at
+            SELECT id, message_id, session_id, rating, feedback, is_positive, reason, question, answer, created_at
             FROM hitl_evaluations
             WHERE session_id = ?
             ORDER BY created_at DESC
@@ -416,6 +424,8 @@ class HITLEvaluationRepository:
                 feedback=row["feedback"],
                 is_positive=bool(row["is_positive"]),
                 reason=row["reason"] if "reason" in row.keys() else None,
+                question=row["question"] if "question" in row.keys() else None,
+                answer=row["answer"] if "answer" in row.keys() else None,
                 created_at=row["created_at"],
             )
             for row in cursor.fetchall()
@@ -424,7 +434,7 @@ class HITLEvaluationRepository:
     def list_all(self, limit: int = 100) -> list[HITLEvaluationRecord]:
         cursor = self.conn.execute(
             """
-            SELECT id, message_id, session_id, rating, feedback, is_positive, reason, created_at
+            SELECT id, message_id, session_id, rating, feedback, is_positive, reason, question, answer, created_at
             FROM hitl_evaluations
             ORDER BY created_at DESC
             LIMIT ?
@@ -440,6 +450,8 @@ class HITLEvaluationRepository:
                 feedback=row["feedback"],
                 is_positive=bool(row["is_positive"]),
                 reason=row["reason"] if "reason" in row.keys() else None,
+                question=row["question"] if "question" in row.keys() else None,
+                answer=row["answer"] if "answer" in row.keys() else None,
                 created_at=row["created_at"],
             )
             for row in cursor.fetchall()

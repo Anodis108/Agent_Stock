@@ -37,6 +37,8 @@ class FeedbackCreateRequest(BaseModel):
     feedback_text: str | None = None
     feedback: str | None = None
     reason: str | None = None
+    question: str | None = None
+    answer: str | None = None
 
 
 class FeedbackOut(BaseModel):
@@ -50,6 +52,8 @@ class FeedbackOut(BaseModel):
     feedback_text: str | None = None
     is_positive: bool = True
     reason: str | None = None
+    question: str | None = None
+    answer: str | None = None
     created_at: str
 
 
@@ -78,6 +82,34 @@ def _create_feedback_record(body: FeedbackCreateRequest) -> FeedbackOut:
         if not sess_repo.get(sid):
             sess_repo.create(title="Cuộc trò chuyện", session_id=sid)
 
+        from backend.database.repositories import MessageRepository
+        m_repo = MessageRepository(conn)
+        
+        question = body.question
+        answer = body.answer
+        
+        if not question or not answer:
+            assistant_msg = m_repo.get(body.message_id) if body.message_id else None
+            
+            if not question:
+                session_msgs = m_repo.list_by_session(sid)
+                if assistant_msg:
+                    for i, m in enumerate(session_msgs):
+                        if m.id == assistant_msg.id:
+                            for prev_idx in range(i - 1, -1, -1):
+                                if session_msgs[prev_idx].role == "user":
+                                    question = session_msgs[prev_idx].content
+                                    break
+                            break
+                if not question:
+                    for m in reversed(session_msgs):
+                        if m.role == "user":
+                            question = m.content
+                            break
+
+            if not answer:
+                answer = assistant_msg.content if assistant_msg else ""
+                
         rec = repo.create(
             message_id=body.message_id or "",
             session_id=sid,
@@ -85,6 +117,8 @@ def _create_feedback_record(body: FeedbackCreateRequest) -> FeedbackOut:
             rating=effective_rating,
             feedback=fb_content,
             reason=body.reason,
+            question=question,
+            answer=answer,
         )
 
         # Export rich telemetry to resources/data/hitl_feedback.json
@@ -97,6 +131,8 @@ def _create_feedback_record(body: FeedbackCreateRequest) -> FeedbackOut:
                 rating=rec.rating,
                 is_positive=rec.is_positive,
                 reason=rec.reason,
+                question=rec.question,
+                answer=rec.answer,
                 user_feedback=rec.feedback,
                 created_at=rec.created_at,
             )
@@ -113,6 +149,8 @@ def _create_feedback_record(body: FeedbackCreateRequest) -> FeedbackOut:
             feedback_text=rec.feedback,
             is_positive=rec.is_positive,
             reason=rec.reason,
+            question=rec.question,
+            answer=rec.answer,
             created_at=rec.created_at,
         )
     finally:
@@ -139,6 +177,8 @@ def _list_feedbacks_data(session_id: str | None = None, limit: int = 100) -> Fee
                 feedback_text=r.feedback,
                 is_positive=r.is_positive,
                 reason=r.reason,
+                question=r.question,
+                answer=r.answer,
                 created_at=r.created_at,
             )
             for r in records
@@ -165,6 +205,8 @@ def _get_feedback_by_id(eval_id: str) -> FeedbackOut:
             feedback_text=rec.feedback,
             is_positive=rec.is_positive,
             reason=rec.reason,
+            question=rec.question,
+            answer=rec.answer,
             created_at=rec.created_at,
         )
     finally:

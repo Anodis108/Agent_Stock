@@ -209,6 +209,8 @@ def test_hitl_feedback_and_telemetry_export(client: TestClient, tmp_path, monkey
             "rating": 2,
             "reason": "wrong_data",
             "feedback_text": "Số liệu không khớp",
+            "question": "What is FPT price?",
+            "answer": "FPT price is 100",
         },
     )
     assert resp.status_code == 200
@@ -216,6 +218,16 @@ def test_hitl_feedback_and_telemetry_export(client: TestClient, tmp_path, monkey
     assert data["message_id"] == "test_msg_001"
     assert data["is_positive"] is False
     assert data["rating"] == 2
+    assert data["question"] == "What is FPT price?"
+    assert data["answer"] == "FPT price is 100"
+    
+    # check that it's in the db
+    fb_list = client.get("/api/v1/hitl/feedbacks?session_id=test_sess_001")
+    assert fb_list.status_code == 200
+    assert len(fb_list.json()["items"]) > 0
+    item = fb_list.json()["items"][0]
+    assert item["question"] == "What is FPT price?"
+    assert item["answer"] == "FPT price is 100"
 
 
 # ==============================================================================

@@ -199,6 +199,8 @@ def run_benchmark(
     output_json.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"Report: {output_md}")
     print(f"JSON:   {output_json}")
+    os.environ.pop("EXACT_CACHE_ENABLED", None)
+    os.environ.pop("SEMANTIC_CACHE_ENABLED", None)
     return payload
 
 

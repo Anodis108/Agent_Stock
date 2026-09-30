@@ -37,36 +37,17 @@ def record_hitl_telemetry(
     rating: int | None,
     is_positive: bool,
     reason: str | None,
-    user_feedback: str | None,
+    question: str | None = None,
+    answer: str | None = None,
+    user_feedback: str | None = None,
     created_at: str | None = None,
 ) -> dict[str, Any]:
     """Extract context from SQLite messages and append telemetry entry to hitl_feedback.json."""
     m_repo = MessageRepository(conn)
     
-    # 1. Retrieve the assistant message
+    # 1. Retrieve the assistant message for trace data
     assistant_msg = m_repo.get(message_id) if message_id else None
     
-    # 2. Retrieve the user question in this session (the user message preceding the assistant message)
-    question = ""
-    session_msgs = m_repo.list_by_session(session_id)
-    if assistant_msg:
-        # Find the message right before assistant_msg
-        for i, m in enumerate(session_msgs):
-            if m.id == assistant_msg.id:
-                # Look backwards for the closest user message
-                for prev_idx in range(i - 1, -1, -1):
-                    if session_msgs[prev_idx].role == "user":
-                        question = session_msgs[prev_idx].content
-                        break
-                break
-    if not question:
-        # Fallback to the latest user message in session
-        for m in reversed(session_msgs):
-            if m.role == "user":
-                question = m.content
-                break
-
-    answer = assistant_msg.content if assistant_msg else ""
     pipeline_trace = None
     execution_duration_s = None
     tokens_used = None

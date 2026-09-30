@@ -365,10 +365,12 @@ def test_exact_cache_hit_on_repeat_question(monkeypatch):
         get_exact_cache,
         set_llm_cache_context,
     )
+    from backend.infra.cache.semantic import get_semantic_cache
     from backend.infra.cost.tracker import get_cost_tracker, reset_cost_tracker
     from backend.infra.llm import completion as completion_mod
 
     get_exact_cache().clear()
+    get_semantic_cache().clear()
     reset_cost_tracker()
     calls: list[int] = []
 
@@ -387,6 +389,7 @@ def test_exact_cache_hit_on_repeat_question(monkeypatch):
     fake_client = MagicMock()
     fake_client.chat.completions.create = fake_create
     monkeypatch.setattr(completion_mod, "get_client", lambda: fake_client)
+    monkeypatch.setattr("backend.infra.llm.client.get_client", lambda: fake_client)
     monkeypatch.setattr(completion_mod, "retry_with_backoff", lambda fn, **kw: fn())
     monkeypatch.setenv("EXACT_CACHE_ENABLED", "true")
 
@@ -408,10 +411,16 @@ def test_exact_cache_hit_on_repeat_question(monkeypatch):
 
 def test_exact_cache_miss_on_prompt_version_bump(monkeypatch):
     """Bump prompt_version → cache miss, gọi API lại."""
-    from backend.infra.cache.exact import get_exact_cache, set_llm_cache_context
+    from backend.infra.cache.exact import (
+        clear_llm_cache_context,
+        get_exact_cache,
+        set_llm_cache_context,
+    )
+    from backend.infra.cache.semantic import get_semantic_cache
     from backend.infra.llm import completion as completion_mod
 
     get_exact_cache().clear()
+    get_semantic_cache().clear()
     calls: list[int] = []
 
     class _Usage:
@@ -429,6 +438,7 @@ def test_exact_cache_miss_on_prompt_version_bump(monkeypatch):
     fake_client = MagicMock()
     fake_client.chat.completions.create = fake_create
     monkeypatch.setattr(completion_mod, "get_client", lambda: fake_client)
+    monkeypatch.setattr("backend.infra.llm.client.get_client", lambda: fake_client)
     monkeypatch.setattr(completion_mod, "retry_with_backoff", lambda fn, **kw: fn())
     monkeypatch.setenv("EXACT_CACHE_ENABLED", "true")
 
@@ -445,6 +455,7 @@ def test_exact_cache_miss_on_prompt_version_bump(monkeypatch):
         normalized_question="Giá FPT?",
     )
     second = completion_mod.chat(messages)
+    clear_llm_cache_context()
 
     assert len(calls) == 2
     assert first == "answer-1"
@@ -505,7 +516,11 @@ def test_semantic_cache_skips_dynamic_question():
 
 def test_semantic_cache_hit_paraphrase(monkeypatch):
     """Paraphrase gần nghĩa → semantic hit khi cosine ≥ 0.93."""
-    from backend.infra.cache.exact import get_exact_cache, set_llm_cache_context
+    from backend.infra.cache.exact import (
+        clear_llm_cache_context,
+        get_exact_cache,
+        set_llm_cache_context,
+    )
     from backend.infra.cache.semantic import get_semantic_cache, set_semantic_question
     from backend.infra.llm import completion as completion_mod
 
@@ -534,6 +549,7 @@ def test_semantic_cache_hit_paraphrase(monkeypatch):
     fake_client = MagicMock()
     fake_client.chat.completions.create = fake_create
     monkeypatch.setattr(completion_mod, "get_client", lambda: fake_client)
+    monkeypatch.setattr("backend.infra.llm.client.get_client", lambda: fake_client)
     monkeypatch.setattr(completion_mod, "retry_with_backoff", lambda fn, **kw: fn())
     monkeypatch.setenv("EXACT_CACHE_ENABLED", "true")
     monkeypatch.setenv("SEMANTIC_CACHE_ENABLED", "true")
@@ -554,6 +570,7 @@ def test_semantic_cache_hit_paraphrase(monkeypatch):
     )
     set_semantic_question("tin fpt")
     out = completion_mod.chat(messages)
+    clear_llm_cache_context()
 
     assert out == "tin fpt answer"
     assert len(calls) == 1

@@ -1,0 +1,206 @@
+{
+  "dataset": "golden_v5.yaml",
+  "timestamp": "2026-09-29T03:55:08.971593+00:00",
+  "summary": {
+    "total_cases": 2,
+    "passed_cases": 2,
+    "failed_cases": 0,
+    "pass_rate_pct": 100.0,
+    "total_tokens": 3613,
+    "total_app_tokens": 3613,
+    "total_judge_tokens": 0,
+    "total_cost_usd": 0.000615,
+    "total_cost_vnd": 15.64,
+    "total_duration_sec": 33.6,
+    "avg_latency_per_case_sec": 16.8,
+    "by_slice": {
+      "lookup": {
+        "slice_type": "lookup",
+        "total": 2,
+        "passed": 2,
+        "failed": 0,
+        "rate": 1.0
+      },
+      "comparison": {
+        "slice_type": "comparison",
+        "total": 0,
+        "passed": 0,
+        "failed": 0,
+        "rate": null
+      },
+      "out_of_scope": {
+        "slice_type": "out_of_scope",
+        "total": 0,
+        "passed": 0,
+        "failed": 0,
+        "rate": null
+      },
+      "injection": {
+        "slice_type": "injection",
+        "total": 0,
+        "passed": 0,
+        "failed": 0,
+        "rate": null
+      },
+      "diagram": {
+        "slice_type": "diagram",
+        "total": 0,
+        "passed": 0,
+        "failed": 0,
+        "rate": null
+      }
+    }
+  },
+  "cases": [
+    {
+      "index": 1,
+      "case_id": "lookup_01",
+      "slice": "lookup",
+      "question": "Giá FPT hôm nay bao nhiêu?",
+      "expected": "Trả lời có mã FPT và thông tin giá (hoặc báo trạng thái dữ liệu).",
+      "answer": "Giá cổ phiếu FPT hôm nay là 63.5, giảm 0.31% so với phiên trước.",
+      "status": "PASS",
+      "passed": true,
+      "pipeline_trace": "pre_rewrite_guardrail ➔ rewrite_question ➔ supervisor ➔ price_agent ➔ answer_composer",
+      "steps": [
+        {
+          "tool": "pre_rewrite_guardrail",
+          "args": {},
+          "observation": "safe: Câu hỏi an toàn và thuộc phạm vi chứng khoán Việt Nam"
+        },
+        {
+          "tool": "rewrite_question",
+          "args": {},
+          "observation": "Giá cổ phiếu FPT hôm nay là bao nhiêu?"
+        },
+        {
+          "tool": "supervisor",
+          "args": {},
+          "observation": "price_lookup: ['price'] — Chỉ hỏi giá cổ phiếu FPT."
+        },
+        {
+          "tool": "price_agent",
+          "args": {},
+          "observation": "FPT close=63.5 chg=-0.31397174254317556"
+        },
+        {
+          "tool": "answer_composer",
+          "args": {},
+          "observation": "Giá cổ phiếu FPT hôm nay là 63.5, giảm 0.31% so với phiên trước."
+        }
+      ],
+      "latency_s": 28.79,
+      "tokens": {
+        "prompt_tokens": 1767,
+        "completion_tokens": 79,
+        "total_tokens": 1846,
+        "app_tokens": 1846,
+        "judge_tokens": 0
+      },
+      "cost": {
+        "usd": 0.000312,
+        "vnd": 7.94
+      },
+      "scoring": {
+        "rule_based": {
+          "passed": true,
+          "missing": [],
+          "forbidden_found": []
+        },
+        "llm_judge": {
+          "skipped": true,
+          "skip_reason": "skip_judge=True",
+          "score": null,
+          "passed": null
+        },
+        "task_success": {
+          "skipped": true,
+          "skip_reason": "skip_agent_eval=True",
+          "result": null
+        },
+        "trajectory": {
+          "skipped": true,
+          "skip_reason": "skip_agent_eval=True",
+          "warn": false,
+          "result": null
+        }
+      },
+      "error": null
+    },
+    {
+      "index": 2,
+      "case_id": "lookup_02",
+      "slice": "lookup",
+      "question": "Cho tôi giá hiện tại của VNM",
+      "expected": "Trả lời có mã VNM và giá hoặc trạng thái dữ liệu.",
+      "answer": "Giá hiện tại của cổ phiếu VNM là 60.0. Cổ phiếu này đã giảm 0.50% so với giá đóng cửa trước đó là 60.3.",
+      "status": "PASS",
+      "passed": true,
+      "pipeline_trace": "pre_rewrite_guardrail ➔ rewrite_question ➔ supervisor ➔ price_agent ➔ answer_composer",
+      "steps": [
+        {
+          "tool": "pre_rewrite_guardrail",
+          "args": {},
+          "observation": "safe: Câu hỏi an toàn và thuộc phạm vi chứng khoán Việt Nam"
+        },
+        {
+          "tool": "rewrite_question",
+          "args": {},
+          "observation": "Cho tôi biết giá hiện tại của cổ phiếu VNM."
+        },
+        {
+          "tool": "supervisor",
+          "args": {},
+          "observation": "price_lookup: ['price'] — Chỉ hỏi giá hiện tại của cổ phiếu VNM."
+        },
+        {
+          "tool": "price_agent",
+          "args": {},
+          "observation": "VNM close=60.0 chg=-0.49751243781094057"
+        },
+        {
+          "tool": "answer_composer",
+          "args": {},
+          "observation": "Giá hiện tại của cổ phiếu VNM là 60.0. Cổ phiếu này đã giảm 0.50% so với giá đóng cửa trước đó là 60.3."
+        }
+      ],
+      "latency_s": 4.71,
+      "tokens": {
+        "prompt_tokens": 1682,
+        "completion_tokens": 85,
+        "total_tokens": 1767,
+        "app_tokens": 1767,
+        "judge_tokens": 0
+      },
+      "cost": {
+        "usd": 0.000303,
+        "vnd": 7.7
+      },
+      "scoring": {
+        "rule_based": {
+          "passed": true,
+          "missing": [],
+          "forbidden_found": []
+        },
+        "llm_judge": {
+          "skipped": true,
+          "skip_reason": "skip_judge=True",
+          "score": null,
+          "passed": null
+        },
+        "task_success": {
+          "skipped": true,
+          "skip_reason": "skip_agent_eval=True",
+          "result": null
+        },
+        "trajectory": {
+          "skipped": true,
+          "skip_reason": "skip_agent_eval=True",
+          "warn": false,
+          "result": null
+        }
+      },
+      "error": null
+    }
+  ]
+}

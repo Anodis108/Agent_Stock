@@ -1,0 +1,137 @@
+{
+  "dataset": "golden_v5.yaml",
+  "timestamp": "2026-09-29T16:23:25.941314+00:00",
+  "summary": {
+    "total_cases": 1,
+    "passed_cases": 0,
+    "failed_cases": 1,
+    "pass_rate_pct": 0.0,
+    "total_tokens": 2543,
+    "total_app_tokens": 1838,
+    "total_judge_tokens": 705,
+    "total_cost_usd": 0.000468,
+    "total_cost_vnd": 11.88,
+    "total_duration_sec": 19.3,
+    "avg_latency_per_case_sec": 19.3,
+    "by_slice": {
+      "lookup": {
+        "slice_type": "lookup",
+        "total": 1,
+        "passed": 0,
+        "failed": 1,
+        "rate": 0.0
+      },
+      "comparison": {
+        "slice_type": "comparison",
+        "total": 0,
+        "passed": 0,
+        "failed": 0,
+        "rate": null
+      },
+      "out_of_scope": {
+        "slice_type": "out_of_scope",
+        "total": 0,
+        "passed": 0,
+        "failed": 0,
+        "rate": null
+      },
+      "injection": {
+        "slice_type": "injection",
+        "total": 0,
+        "passed": 0,
+        "failed": 0,
+        "rate": null
+      },
+      "diagram": {
+        "slice_type": "diagram",
+        "total": 0,
+        "passed": 0,
+        "failed": 0,
+        "rate": null
+      }
+    }
+  },
+  "cases": [
+    {
+      "index": 1,
+      "case_id": "lookup_08",
+      "slice": "lookup",
+      "question": "Giá đóng cửa gần nhất của VNM",
+      "expected": "Thông tin giá đóng cửa gần nhất của cổ phiếu VNM (ví dụ mức giá 60.6 hoặc theo dữ liệu thị trường có sẵn).",
+      "answer": "Giá đóng cửa gần nhất của cổ phiếu VNM là 60.3.",
+      "status": "FAIL",
+      "passed": false,
+      "pipeline_trace": "pre_rewrite_guardrail ➔ rewrite_question ➔ supervisor ➔ price_agent ➔ answer_composer",
+      "steps": [
+        {
+          "tool": "pre_rewrite_guardrail",
+          "args": {},
+          "observation": "safe: Câu hỏi an toàn và thuộc phạm vi chứng khoán Việt Nam"
+        },
+        {
+          "tool": "rewrite_question",
+          "args": {},
+          "observation": "Giá đóng cửa gần nhất của cổ phiếu VNM là bao nhiêu?"
+        },
+        {
+          "tool": "supervisor",
+          "args": {},
+          "observation": "price_lookup: ['price'] — Chỉ hỏi giá đóng cửa gần nhất của cổ phiếu VNM."
+        },
+        {
+          "tool": "price_agent",
+          "args": {},
+          "observation": "VNM close=60.3 chg=0.0"
+        },
+        {
+          "tool": "answer_composer",
+          "args": {},
+          "observation": "Giá đóng cửa gần nhất của cổ phiếu VNM là 60.3."
+        }
+      ],
+      "latency_s": 19.29,
+      "tokens": {
+        "prompt_tokens": 2351,
+        "completion_tokens": 192,
+        "total_tokens": 2543,
+        "app_tokens": 1838,
+        "judge_tokens": 705
+      },
+      "cost": {
+        "usd": 0.000468,
+        "vnd": 11.88
+      },
+      "scoring": {
+        "rule_based": {
+          "passed": true,
+          "missing": [],
+          "forbidden_found": []
+        },
+        "llm_judge": {
+          "skipped": false,
+          "skip_reason": null,
+          "score": {
+            "correctness": 2,
+            "completeness": 2,
+            "grounding": 2,
+            "overall": 2.0,
+            "reasoning": "Câu trả lời đưa ra giá đóng cửa là 60.3, nhưng không khớp với thông tin tham khảo hoặc dữ liệu thị trường có sẵn. Thông tin không chính xác và thiếu căn cứ để xác nhận giá trị này. Ngoài ra, câu trả lời cũng không cung cấp thêm thông tin nào khác để làm rõ hơn về giá cổ phiếu VNM."
+          },
+          "passed": false
+        },
+        "task_success": {
+          "skipped": true,
+          "skip_reason": "skip_agent_eval=True",
+          "result": null
+        },
+        "trajectory": {
+          "skipped": true,
+          "skip_reason": "skip_agent_eval=True",
+          "warn": false,
+          "result": null
+        }
+      },
+      "error": null
+    }
+  ]
+}

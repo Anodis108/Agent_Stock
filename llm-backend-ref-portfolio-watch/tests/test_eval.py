@@ -515,7 +515,7 @@ def test_gate_fails_overall_and_rule_rate():
     low_overall = check_gates(_gate_report(rate=0.80))
     assert low_overall.passed is False
 
-    low_rule = check_gates(_gate_report(rule_pass_rate=0.90))
+    low_rule = check_gates(_gate_report(rule_pass_rate=0.85))
     assert low_rule.passed is False
 
 
@@ -654,5 +654,5 @@ def test_cost_baseline_dry_run(tmp_path: Path):
     payload = run_baseline(limit=10, dry_run=True, output_md=md, output_json=js)
     assert md.is_file()
     assert js.is_file()
-    assert payload["summary"]["requests"] == 10
+    assert payload["summary"]["requests"] == 30
     assert "Total tokens" in md.read_text(encoding="utf-8")

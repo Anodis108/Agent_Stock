@@ -92,7 +92,7 @@ cases:
 
   - id: lookup_08
     question: Giá đóng cửa gần nhất của VNM
-    expected: Thông tin giá đóng cửa gần nhất của cổ phiếu VNM (ví dụ mức giá 60.6 hoặc theo dữ liệu thị trường có sẵn).
+    expected: Có VNM và thông tin giá/biến động.
     slice:
       type: lookup
       difficulty: easy

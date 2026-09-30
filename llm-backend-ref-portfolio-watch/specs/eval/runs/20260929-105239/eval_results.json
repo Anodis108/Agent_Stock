@@ -1,0 +1,131 @@
+{
+  "dataset": "golden_v5.yaml",
+  "timestamp": "2026-09-29T03:53:42.363144+00:00",
+  "summary": {
+    "total_cases": 1,
+    "passed_cases": 1,
+    "failed_cases": 0,
+    "pass_rate_pct": 100.0,
+    "total_tokens": 1752,
+    "total_app_tokens": 1752,
+    "total_judge_tokens": 0,
+    "total_cost_usd": 0.000297,
+    "total_cost_vnd": 7.56,
+    "total_duration_sec": 63.15,
+    "avg_latency_per_case_sec": 63.15,
+    "by_slice": {
+      "lookup": {
+        "slice_type": "lookup",
+        "total": 1,
+        "passed": 1,
+        "failed": 0,
+        "rate": 1.0
+      },
+      "comparison": {
+        "slice_type": "comparison",
+        "total": 0,
+        "passed": 0,
+        "failed": 0,
+        "rate": null
+      },
+      "out_of_scope": {
+        "slice_type": "out_of_scope",
+        "total": 0,
+        "passed": 0,
+        "failed": 0,
+        "rate": null
+      },
+      "injection": {
+        "slice_type": "injection",
+        "total": 0,
+        "passed": 0,
+        "failed": 0,
+        "rate": null
+      },
+      "diagram": {
+        "slice_type": "diagram",
+        "total": 0,
+        "passed": 0,
+        "failed": 0,
+        "rate": null
+      }
+    }
+  },
+  "cases": [
+    {
+      "index": 1,
+      "case_id": "lookup_01",
+      "slice": "lookup",
+      "question": "Giá FPT hôm nay bao nhiêu?",
+      "expected": "Trả lời có mã FPT và thông tin giá (hoặc báo trạng thái dữ liệu).",
+      "answer": "Giá cổ phiếu FPT hôm nay là 63.5, giảm 0.31% so với giá đóng cửa trước đó là 63.7.",
+      "status": "PASS",
+      "passed": true,
+      "pipeline_trace": "pre_rewrite_guardrail ➔ rewrite_question ➔ supervisor ➔ price_agent ➔ answer_composer",
+      "steps": [
+        {
+          "tool": "pre_rewrite_guardrail",
+          "args": {},
+          "observation": "safe: Câu hỏi an toàn và thuộc phạm vi chứng khoán Việt Nam"
+        },
+        {
+          "tool": "rewrite_question",
+          "args": {},
+          "observation": "Giá cổ phiếu FPT hôm nay là bao nhiêu?"
+        },
+        {
+          "tool": "supervisor",
+          "args": {},
+          "observation": "price_lookup: ['price'] — Chỉ hỏi giá cổ phiếu FPT."
+        },
+        {
+          "tool": "price_agent",
+          "args": {},
+          "observation": "FPT close=63.5 chg=-0.31397174254317556"
+        },
+        {
+          "tool": "answer_composer",
+          "args": {},
+          "observation": "Giá cổ phiếu FPT hôm nay là 63.5, giảm 0.31% so với giá đóng cửa trước đó là 63.7."
+        }
+      ],
+      "latency_s": 63.15,
+      "tokens": {
+        "prompt_tokens": 1675,
+        "completion_tokens": 77,
+        "total_tokens": 1752,
+        "app_tokens": 1752,
+        "judge_tokens": 0
+      },
+      "cost": {
+        "usd": 0.000297,
+        "vnd": 7.56
+      },
+      "scoring": {
+        "rule_based": {
+          "passed": true,
+          "missing": [],
+          "forbidden_found": []
+        },
+        "llm_judge": {
+          "skipped": true,
+          "skip_reason": "skip_judge=True",
+          "score": null,
+          "passed": null
+        },
+        "task_success": {
+          "skipped": true,
+          "skip_reason": "skip_agent_eval=True",
+          "result": null
+        },
+        "trajectory": {
+          "skipped": true,
+          "skip_reason": "skip_agent_eval=True",
+          "warn": false,
+          "result": null
+        }
+      },
+      "error": null
+    }
+  ]
+}

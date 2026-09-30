@@ -229,6 +229,7 @@ def run_baseline(
         f"${summary['total_cost_usd']:.6f} USD "
         f"({summary['total_cost_vnd']:,.0f} VND)"
     )
+    os.environ.pop("EXACT_CACHE_ENABLED", None)
     return payload
 
 
