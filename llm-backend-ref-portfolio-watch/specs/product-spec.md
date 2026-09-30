@@ -61,11 +61,11 @@ Xây dựng trợ lý phân tích và quản lý danh mục cổ phiếu Việt 
 ---
 
 ## 6. Acceptance Criteria
-- [ ] **AC-1 (Cô lập đa người dùng):** Thao tác thêm/xóa mã trong Watchlist, Holdings và thay đổi ngưỡng của `user_a` không làm thay đổi dữ liệu của `user_b`.
-- [ ] **AC-2 (Tính P&L chính xác):** Với 1,000 FPT mua giá 100.0 khi thị giá là 120.0, bảng hiển thị đúng Lãi `+20,000,000 VND` (+20.0%) và tính đúng tổng NAV danh mục.
-- [ ] **AC-3 (EvalAgent có chỉ báo kỹ thuật):** Khi phân tích cổ phiếu có biến động mạnh, EvalAgent nhận được RSI(14) và trạng thái MA20/MA50 trong context để đưa ra lý giải định lượng, thuyết phục.
-- [ ] **AC-4 (Xử lý đa sub-query hoàn chỉnh):** Khi hỏi câu hỏi so sánh hoặc đa ý (ví dụ: *"So sánh giá và tin tức của FPT và HPG"*), hệ thống phân rã thành các câu hỏi con, Supervisor gọi đầy đủ worker cho cả 2 mã và câu trả lời bao quát trọn vẹn cả 2 khía cạnh.
-- [ ] **AC-5 (Agent Evaluation hoạt động):** Chạy `agent_eval.py` thành công và xuất báo cáo chấm điểm chi tiết đạt chuẩn $\ge 85\%$.
-- [ ] **AC-6 (Bảo vệ an toàn 100%):** 100% câu hỏi Prompt Injection và Out-of-scope bị chặn fail-closed lịch sự.
-- [ ] **AC-7 (Không lỗi hồi quy):** Toàn bộ 139 unit tests hiện tại tiếp tục PASS 100%.
-- [ ] **AC-8 (Giao diện trực quan):** Web UI có thanh chuyển đổi người dùng (User Switcher) và tab hiển thị bảng danh mục P&L rõ ràng.
+- [x] **AC-1 (Cô lập đa người dùng):** Thao tác thêm/xóa mã trong Watchlist, Holdings và thay đổi ngưỡng của `user_a` không làm thay đổi dữ liệu của `user_b`.
+- [x] **AC-2 (Tính P&L chính xác):** Với 1,000 FPT mua giá 100.0 khi thị giá là 120.0, bảng hiển thị đúng Lãi `+20,000,000 VND` (+20.0%) và tính đúng tổng NAV danh mục.
+- [x] **AC-3 (EvalAgent có chỉ báo kỹ thuật):** Khi phân tích cổ phiếu có biến động mạnh, EvalAgent nhận được RSI(14) và trạng thái MA20/MA50 trong context để đưa ra lý giải định lượng, thuyết phục.
+- [x] **AC-4 (Xử lý đa sub-query hoàn chỉnh):** Khi hỏi câu hỏi so sánh hoặc đa ý (ví dụ: *"So sánh giá và tin tức của FPT và HPG"*), hệ thống phân rã thành các câu hỏi con, Supervisor gọi đầy đủ worker cho cả 2 mã và câu trả lời bao quát trọn vẹn cả 2 khía cạnh.
+- [x] **AC-5 (Agent Evaluation hoạt động):** Chạy `agent_eval.py` thành công và xuất báo cáo chấm điểm chi tiết đạt chuẩn $\ge 85\%$.
+- [x] **AC-6 (Bảo vệ an toàn 100%):** 100% câu hỏi Prompt Injection và Out-of-scope bị chặn fail-closed lịch sự.
+- [x] **AC-7 (Không lỗi hồi quy):** Toàn bộ 176 unit tests hiện tại tiếp tục PASS 100%.
+- [x] **AC-8 (Giao diện trực quan):** Web UI có thanh chuyển đổi người dùng (User Switcher) và tab hiển thị bảng danh mục P&L rõ ràng.
