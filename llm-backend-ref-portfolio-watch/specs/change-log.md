@@ -1,5 +1,222 @@
 # Change Log — Portfolio Watch
 
+## 2026-09-30 — Phase 5: Agent Evaluation Framework (`agent_eval.py`) [Review & Hoàn Thành 100%]
+
+### Tóm tắt Review Đối Chiếu Acceptance Criteria & Test Matrix
+- **Kết quả đối chiếu Spec & Test Plan**:
+  - **What passes (Đạt 100%)**:
+    - **AC-5 & EVAL-01 (Routing Precision/Recall & Accuracy)**:
+      - Module `score_routing` đánh giá độ chính xác phân phối tác vụ của Supervisor tới các worker agents (`price`, `news`, `eval`, `chart`, `diagram`). Kiểm tra chuẩn xác các lát cắt (lookup, comparison, explain_why, charting_diagram, injection, out_of_scope) (`test_agent_eval_routing_metric` PASS).
+    - **AC-5 & EVAL-02 (Query Decomposition Quality)**:
+      - Module `score_query_decomposition` đánh giá chất lượng phân rã câu hỏi: câu hỏi phức tạp đa mã được chia tách thành >= 2 câu hỏi con độc lập có gắn mã cổ phiếu rõ nghĩa, câu hỏi đơn được bảo toàn không phân rã dư thừa (`test_agent_eval_decomposition_metric` PASS).
+    - **AC-5 & EVAL-03 (Groundedness / Faithfulness Score)**:
+      - Module `score_groundedness` rà soát và đối chiếu tỷ lệ % và số liệu được đề cập trong câu trả lời tổng hợp so với bằng chứng thực tế từ Price, News và Technical Indicators trong evidence list, phát hiện và trừ điểm nếu có hiện tượng bịa đặt số liệu (`test_agent_eval_groundedness_metric` PASS).
+    - **AC-5 & EVAL-04 (Task Success Rate & Zero-Tolerance Guardrails)**:
+      - Module `score_task_success` kiểm tra chặt chẽ việc đáp ứng các từ khóa bắt buộc (`must_include`) và tuyệt đối không vi phạm các từ cấm khuyến nghị mua/bán (`must_not_include`) (`test_agent_eval_task_success_metric` PASS).
+    - **AC-5 & EVAL-05 (Automated Benchmark Runner & Export)**:
+      - Tích hợp runner `run_agent_eval` và hàm xuất báo cáo `export_eval_report` lưu kết quả đồng thời dưới định dạng JSON (`specs/eval/agent_eval_report.json`) và Markdown (`specs/eval/agent_eval_report.md`) (`test_agent_eval_benchmark_runner_and_export` PASS).
+    - **AC-6 & CLI Tooling**:
+      - Cung cấp CLI script `scripts/run_agent_eval.py` hỗ trợ các tham số `--sample`, `--dataset`, `--output-dir`. Chạy thử nghiệm `--sample 5` đạt Overall Score 96.2%, Zero-Tolerance Guardrails 100.0%.
+  - **What fails**: Không có ca test nào thất bại (**0 Failed**).
+  - **What was missing & was fixed**:
+    - Chuẩn hóa test case injection trong `test_eval.py` đồng bộ với bộ dữ liệu chuẩn `golden_v5.yaml`.
+    - Thêm 5 unit tests mới vào Mục 13 của `tests/test_eval.py` nâng tổng số test case tự động kiểm thử.
+- **Phạm vi tuân thủ**:
+  - Triển khai trọn vẹn và cô lập Phase 5 theo đúng `specs/implementation-plan.md`.
+
+### File thay đổi
+| File | Thay đổi |
+| :--- | :--- |
+| `src/backend/eval/agent_eval.py` | Tạo mới module đánh giá Swarm Agent với 4 core metrics (`score_routing`, `score_query_decomposition`, `score_groundedness`, `score_task_success`) và runner `run_agent_eval` |
+| `src/backend/eval/__init__.py` | Re-export các dataclass và hàm đánh giá từ `agent_eval.py` |
+| `scripts/run_agent_eval.py` | Tạo mới CLI runner thực thi benchmark và xuất báo cáo JSON + Markdown |
+| `tests/test_eval.py` | Bổ sung Mục 13 kiểm thử toàn diện 4 metrics và runner (5 unit tests) |
+| `specs/eval/agent_eval_report.json` | File báo cáo kết quả đánh giá Agent Swarm dạng JSON |
+| `specs/eval/agent_eval_report.md` | File báo cáo kết quả đánh giá Agent Swarm dạng Markdown |
+| `specs/implementation-plan.md` | Đánh dấu hoàn thành toàn bộ checklist Phase 5 |
+| `specs/change-log.md` | Cập nhật ghi chú phát hành Phase 5 |
+
+---
+
+## 2026-09-30 — M3 gaps: A/B, cascade, eval cache, budget, playbooks
+
+### Tóm tắt
+- **A/B prompts**: `prompt_experiment.py` + wire `run_answer_composer` (sticky bucket theo `user_id`).
+- **Model cascade + fallback provider**: `providers.py`, `completion.py` nhận `model=`, thử cascade và fallback backend.
+- **Eval cache**: `eval_cache.py` + read/write trong `eval_one_case`.
+- **Cost budget**: `BudgetExceededError`, `check_budget_or_raise`, dashboard `--fail-on-alert`.
+- **Playbooks**: hallucination spike, provider outage.
+- **Drills**: `drill_fallback_provider.py`, `drill_cost_alert.py`.
+- **Tests**: `tests/test_module3_features.py` (6 tests).
+
+## 2026-09-30 — M3-B6 full CI/CD (Bài 6) at monorepo root
+
+### Tóm tắt
+- Di chuyển GitHub Actions lên `vn-stock-swarm/.github/workflows/` (GitHub chỉ nhận workflow ở root repo).
+- **`ci.yml`**: concurrency, pip cache, prompt lint, pytest.
+- **`eval-gate.yml`**: eval subset + gate, cache, artifact, comment PR.
+- **`cd.yml`**: Docker build + smoke + LKG rollback trên runner.
+- Xóa `wheels/`, cập nhật `.gitignore`.
+
+### Branch protection (GitHub Settings → Branches)
+Require: `lint-and-test`, `eval-gate`, `build-smoke-lkg`. Secret: `OPENAI_API_KEYS`.
+
+## 2026-09-30 — Phase 4: Rewrite & Query Decomposition Cho Đa Sub-query [Review & Hoàn Thành 100%]
+
+### Tóm tắt Review Đối Chiếu Acceptance Criteria & Test Matrix
+- **Kết quả đối chiếu Spec & Test Plan**:
+  - **What passes (Đạt 100%)**:
+    - **AC-4 & DEC-01 (Phân rã câu hỏi so sánh đa mã)**:
+      - Khi câu hỏi yêu cầu so sánh đa mã (ví dụ: *"So sánh FPT và HPG về biến động giá và tin tức gần đây"*), `rewrite_question` phân rã thành các `sub_questions` độc lập theo từng mã và từng khía cạnh (giá FPT, giá HPG, tin tức FPT, tin tức HPG) (`test_dec_01_multi_symbol_comparison_decomposition` PASS).
+    - **AC-4 & DEC-02 (Phân rã câu hỏi đa ý trên 1 mã)**:
+      - Khi câu hỏi vừa hỏi giá vừa hỏi tin tức/nguyên nhân biến động (ví dụ: *"Giá VNM hiện tại bao nhiêu và có tin tức gì giải thích vì sao giảm?"*), hệ thống phân rã chuẩn xác thành 2 sub-queries: (1) Giá & biến động của VNM, (2) Tin tức và nguyên nhân tác động giá VNM (`test_dec_02_single_symbol_multi_intent_decomposition` PASS).
+    - **AC-4 & DEC-03 (Bảo toàn câu hỏi đơn giản)**:
+      - Khi người dùng hỏi câu hỏi đơn ý (ví dụ: *"Giá FPT hôm nay"*), `sub_questions` giữ nguyên đúng 1 câu hỏi chính, không phân rã dư thừa (`test_dec_03_simple_question_preservation` PASS).
+    - **AC-4 & DEC-04 (Kế thừa ngữ cảnh vào sub-queries)**:
+      - Khi người dùng hỏi nối tiếp so sánh với mã mới (Turn 1: *"FPT hôm nay thế nào?"*, Turn 2: *"So sánh với HPG về giá và tin tức"*), hệ thống tự động kế thừa mã FPT từ Turn 1 để `symbols` chứa cả `["FPT", "HPG"]` và sinh các sub-queries đầy đủ ngữ cảnh cho cả 2 mã (`test_dec_04_context_inheritance_in_subqueries` PASS).
+    - **AC-4 & DEC-05 (Supervisor điều phối đa sub-queries)**:
+      - `SupervisorBrain` (cả Heuristic và LLM) quét qua toàn bộ `sub_questions` để tổng hợp đầy đủ các worker agents cần gọi (`agents_to_call`), kích hoạt cả `price`, `news` và `eval` mà không bỏ sót bất kỳ tác vụ nào (`test_dec_05_supervisor_routing_multi_subqueries` PASS).
+    - **AC-4 (Multi-evidence Synthesis)**:
+      - `AnswerComposer` tổng hợp dữ liệu từ nhiều sub-queries và trình bày có cấu trúc rõ ràng: phân tách mục so sánh giá, mục tin tức sự kiện từng mã và mục đánh giá rủi ro, không thiên vị hay bỏ sót mã nào (`test_answer_composer_multi_evidence_synthesis` PASS).
+    - **AC-7 (Bảo toàn kiểm thử hồi quy)**:
+      - Toàn bộ 70 tests trong `tests/` tiếp tục PASS 100%.
+  - **What fails**: Không có ca test nào thất bại (**0 Failed**).
+  - **What was missing & was fixed**:
+    - Nâng cấp `_needs_memory_symbol` nhận diện mẫu câu so sánh với mã mới (`so sánh với`, `so với`) để kế thừa mã trước đó vào ngữ cảnh.
+    - Cập nhật prompt template `rewrite_question` và `answer_compose` (`v1.yaml` và `production.txt`) với các chỉ dẫn phân rã và tổng hợp chi tiết.
+    - Thêm 6 unit tests mới trong `tests/test_agents.py`.
+- **Phạm vi tuân thủ**:
+  - Chỉ tập trung triển khai các tính năng thuộc Phase 4.
+  - Không thêm bất kỳ tính năng ngoài scope nào.
+
+### File thay đổi
+| File | Thay đổi |
+| :--- | :--- |
+| `src/backend/agents/supervisor_agent/nodes.py` | Cập nhật `_needs_memory_symbol`, `_decompose_query`, `HeuristicSupervisorBrain` và `LlmSupervisorBrain` |
+| `resources/prompts/rewrite_question/v1.yaml` | Bổ sung hướng dẫn phân rã câu hỏi chi tiết |
+| `resources/prompts/rewrite_question/production.txt` | Cập nhật file prompt production tương ứng |
+| `src/backend/agents/answer_composer/nodes.py` | Cập nhật `HeuristicAnswerDraftBrain` trình bày theo cấu trúc mục so sánh |
+| `resources/prompts/answer_compose/v1.yaml` | Bổ sung yêu cầu trình bày có cấu trúc cho câu hỏi đa mã/đa ý |
+| `resources/prompts/answer_compose/production.txt` | Cập nhật file prompt production tương ứng |
+| `tests/test_agents.py` | Bổ sung 6 unit tests cho `DEC-01` đến `DEC-05` và multi-evidence synthesis |
+| `specs/implementation-plan.md` | Đánh dấu hoàn thành toàn bộ checklist Phase 4 |
+| `specs/change-log.md` | Ghi nhận kết quả triển khai và review Phase 4 |
+
+---
+
+## 2026-09-30 — Phase 3: Technical Indicators & Multi-source News Cho EvalAgent [Review & Hoàn Thành 100%]
+
+### Tóm tắt Review Đối Chiếu Acceptance Criteria & Test Matrix
+- **Kết quả đối chiếu Spec & Test Plan**:
+  - **What passes (Đạt 100%)**:
+    - **AC-3 & IND-01 (Tính RSI 14 phiên chuẩn xác)**:
+      - Xây dựng hàm `compute_rsi(closes, period=14)` theo chuẩn thuật toán làm mượt Wilder (Wilder's smoothing).
+      - Giới hạn giá trị chuẩn trong khoảng [0, 100], phát hiện chính xác trạng thái Quá mua (`RSI > 70`) và Quá bán (`RSI < 30`) (`test_compute_rsi_accuracy` PASS).
+    - **AC-3 & IND-02, IND-03 (Tính SMA20/50 & Nhận diện Giao Cắt MA)**:
+      - Xây dựng hàm `compute_sma(closes, period)` và `analyze_technical_indicators(closes)`.
+      - Phát hiện chính xác `golden_cross` (SMA20 cắt lên trên SMA50) và `death_cross` (SMA20 cắt xuống dưới SMA50) (`test_compute_sma_and_crossovers` PASS).
+    - **AC-3 & EV-01 (EvalAgent kết hợp Phân tích Kỹ thuật + Tin tức đa nguồn)**:
+      - Nâng cấp `HeuristicEvalBrain` và `LlmEvalBrain` tự động trích xuất chuỗi nến lịch sử từ `PriceAgentResult`, tính toán `IndicatorSummary` và đưa vào evidence/reasoning.
+      - Tự động nâng cấp mức cảnh báo rủi ro lên `HIGH` khi giá tăng nóng đi kèm trạng thái quá mua cực đại (`RSI >= 70`) hoặc có tín hiệu đảo chiều kỹ thuật (`test_eval_agent_with_technical_indicators` PASS).
+      - Cập nhật prompt template `eval_severity` (`v1.yaml` và `production.txt`) với biến `$technical_summary` để LLM đánh giá toàn diện cả kỹ thuật định lượng và tin tức doanh nghiệp.
+    - **Multi-source News Deduplication**:
+      - Xây dựng `MultiSourceNewsSource` tổng hợp từ nhiều nguồn cung cấp tin tức khác nhau (Vnstock API + RSS feeds), tự động khử trùng lặp (deduplication) dựa trên tiêu đề chuẩn hóa (`test_multi_source_news_deduplication` PASS).
+    - **AC-7 (Bảo toàn kiểm thử hồi quy)**:
+      - 38/38 tests trong `tests/test_agents.py` và `tests/test_guardrails.py` tiếp tục PASS 100%.
+      - 25/25 tests trong `tests/test_database.py` và `tests/test_api.py` tiếp tục PASS 100%.
+  - **What fails**: Không có ca test nào thất bại.
+  - **What was missing & was fixed**:
+    - Đã tạo mới module `src/backend/domain/indicators.py` đầy đủ dataclass `IndicatorSummary`.
+    - Mở rộng `MultiSourceNewsSource` trong `src/backend/infra/market_data/news_source.py` và re-export qua `src/backend/infra/market_data/__init__.py`.
+    - Tích hợp tính toán chỉ báo trực tiếp trong `eval_agent_node` để mọi luồng gọi `eval_agent` đều tự động có dữ liệu kỹ thuật mà không cần thay đổi interface các node khác.
+- **Phạm vi tuân thủ**:
+  - Chỉ tập trung triển khai các tính năng thuộc Phase 3.
+  - Không thêm bất kỳ tính năng ngoài scope nào.
+
+### File thay đổi
+| File | Thay đổi |
+| :--- | :--- |
+| `src/backend/domain/indicators.py` | Tạo mới module tính RSI, SMA(20), SMA(50), nhận diện Golden/Death Cross và Overbought/Oversold |
+| `src/backend/infra/market_data/news_source.py` | Bổ sung class `MultiSourceNewsSource` hợp nhất và deduplicate bài viết |
+| `src/backend/infra/market_data/__init__.py` | Export `MultiSourceNewsSource` |
+| `src/backend/agents/eval_agent/nodes.py` | Tích hợp `IndicatorSummary` vào `HeuristicEvalBrain`, `LlmEvalBrain` và `eval_agent_node` |
+| `resources/prompts/eval_severity/v1.yaml` | Bổ sung biến `$technical_summary` và chỉ dẫn đánh giá kỹ thuật |
+| `resources/prompts/eval_severity/production.txt` | Cập nhật file production prompt tương ứng |
+| `tests/test_agents.py` | Thêm 4 unit tests kiểm tra RSI, SMA, EvalAgent với indicators, deduplication news |
+| `specs/implementation-plan.md` | Đánh dấu hoàn thành toàn bộ checklist Phase 3 |
+| `specs/change-log.md` | Ghi nhận kết quả triển khai và review Phase 3 |
+
+---
+
+## 2026-09-30 — Phase 2: Portfolio P&L Service & API Endpoints [Review & Hoàn Thành 100%]
+
+### Tóm tắt Review Đối Chiếu Acceptance Criteria & Test Matrix
+- **Kết quả đối chiếu Spec**:
+  - **What passes (Đạt 100%)**:
+    - **AC-1 & MT-01, MT-02, MT-03 (Cô lập đa người dùng)**:
+      - Đã mở rộng dependency `get_current_user_id` hỗ trợ cả Header `X-User-ID` và query parameter `user_id` trên toàn bộ hệ thống API (`/watchlist`, `/approvals`, `/api/portfolio`, `/api/user/settings`).
+      - Dữ liệu giữa `user_a` và `user_b` hoàn toàn độc lập ở cả tầng Database và API: thêm mã FPT, HPG cho user_a thì user_b không nhìn thấy (`test_watchlist_multi_tenant_header_isolation` và `test_portfolio_multi_tenant_header_isolation` PASS).
+    - **AC-2 & PL-01, PL-02, PL-03 (Tính toán Lãi/Lỗ Danh Mục chính xác)**:
+      - Mua 1,000 FPT giá 100.0, thị giá 120.0 ➔ Lãi `+20,000,000 VND` (+20.0%).
+      - Mua 2,000 HPG giá 30.0, thị giá 27.0 ➔ Lỗ `-6,000,000 VND` (-10.0%).
+      - Tổng NAV: `174,000,000 VND`, Tổng Lãi: `+14,000,000 VND` (+8.75%) (`test_portfolio_holdings_crud_and_pnl_calculation` PASS).
+    - **PL-04 (Xử lý an toàn khi mất giá thị trường)**:
+      - Mã lỗi `XYZ` được đánh dấu `price_error = True`, giữ nguyên giá vốn, không gây crash toàn danh mục (`test_portfolio_price_error_graceful_fallback` PASS).
+    - **AC-7 (Bảo toàn hồi quy)**:
+      - 26/26 tests trong `tests/test_database.py` và `tests/test_api.py` tiếp tục PASS 100%.
+  - **What fails**: Không có ca test nào thất bại.
+  - **What was missing & was fixed**:
+    - Đã chuẩn hóa cơ chế nhận diện header `X-User-ID` xuyên suốt cho các endpoint `/watchlist` và `/approvals` (trước đó chỉ có trong `/api/portfolio`).
+    - Bổ sung test case tự động hóa `test_watchlist_multi_tenant_header_isolation` (MT-01).
+    - Đổi kiểu dữ liệu `id: str` (UUID) cho `HoldingOut` và `PortfolioItemOut`.
+- **Phạm vi tuân thủ**:
+  - Không thêm bất kỳ tính năng mới nào ngoài phạm vi Phase 2.
+
+### File thay đổi
+| File | Thay đổi |
+| :--- | :--- |
+| `src/backend/api/deps.py` | Bổ sung `get_current_user_id` dependency dùng chung |
+| `src/backend/api/routers/watchlist.py` | Hỗ trợ header `X-User-ID` đồng bộ |
+| `src/backend/main.py` | Áp dụng `get_current_user_id` cho `/watchlist` và `/approvals` |
+| `src/backend/api/routers/portfolio.py` | Chuẩn hóa `id: str` (UUID) cho holdings và tái sử dụng `get_current_user_id` |
+| `src/backend/application/portfolio_service.py` | Tạo mới `PortfolioService` tính P&L, NAV, lãi/lỗ chuẩn xác |
+| `tests/test_api.py` | Bổ sung 6 tests kiểm tra toàn bộ tiêu chí MT-01, MT-02, MT-03, PL-01..04 |
+| `specs/implementation-plan.md` | Đánh dấu hoàn thành toàn bộ checklist Phase 2 |
+| `specs/change-log.md` | Ghi nhận chi tiết kết quả Review Phase 2 |
+
+---
+
+## 2026-09-30 — Phase 1: Database Schema & Multi-tenant Models [Hoàn Thành]
+
+### Tóm tắt
+- **Triển khai hoàn tất Phase 1 theo Spec-Driven Development (SDD):**
+  - **Task 1.1 — Bảng `portfolio_holdings`**: Bổ sung bảng vào `SCHEMA_SQL` (`src/backend/database/connection.py`) với đầy đủ các trường: `id`, `user_id`, `symbol`, `quantity`, `avg_buy_price`, `purchase_date`, `created_at`, `updated_at`. Đánh index `idx_holdings_user_id` và `idx_holdings_user_symbol` để tối ưu truy vấn danh mục theo từng người dùng.
+  - **Task 1.2 — Multi-tenant Watchlist & User Settings**:
+    - Nâng cấp schema bảng `watchlist` hỗ trợ trường `user_id` (khóa chính kết hợp `(user_id, symbol)`).
+    - Thêm bảng `user_settings` (`user_id PRIMARY KEY`, `alert_threshold_pct REAL DEFAULT 3.0`, `updated_at`).
+    - Cơ chế migration tự động trong `init_db(conn)`: Sử dụng `PRAGMA table_info(watchlist)` tự động bổ sung cột `user_id` nếu làm việc với database SQLite cũ, đảm bảo backward compatibility tuyệt đối mà không cần xóa database.
+  - **Task 1.3 — Repositories & Data Models**:
+    - Định nghĩa dataclass `PortfolioHoldingRecord`, `UserSettingsRecord` và cập nhật `WatchlistRecord` trong `src/backend/database/repositories.py`.
+    - Xây dựng `PortfolioHoldingRepository` với các phương thức CRUD chuẩn: `create`, `get`, `list_by_user`, `update`, `delete`.
+    - Xây dựng `UserSettingsRepository` với: `get` (tự khởi tạo giá trị mặc định 3.0%), `set_threshold`.
+    - Nâng cấp `WatchlistRepository` hỗ trợ tham số `user_id` với giá trị mặc định `user_id="default"` cho tất cả các hàm (`list_all`, `add`, `remove`, `get`), giúp toàn bộ services/background scanners hiện tại hoạt động bình thường mà không bị vỡ giao tiếp.
+  - **Task 1.4 & Verification — Unit Tests**:
+    - Mở rộng `tests/test_database.py` bổ sung 3 test cases: `test_portfolio_holdings_crud`, `test_multi_tenant_watchlist_and_holdings_isolation`, `test_user_settings_repository_crud`.
+    - Toàn bộ 10/10 unit tests trong `tests/test_database.py` chạy thành công (10 passed in 0.32s).
+- **Phạm vi tuân thủ**:
+  - Không triển khai các tính năng kinh doanh (Business Services, P&L calculations, API Endpoints, v.v.). Các tính năng này sẽ được triển khai tuần tự trong Phase 2 theo kế hoạch.
+
+### File thay đổi
+| File | Thay đổi |
+| :--- | :--- |
+| `src/backend/database/connection.py` | Thêm bảng `portfolio_holdings`, `user_settings`, cập nhật `watchlist` và auto-migration |
+| `src/backend/database/repositories.py` | Thêm `PortfolioHoldingRepository`, `UserSettingsRepository`, nâng cấp `WatchlistRepository` |
+| `tests/test_database.py` | Bổ sung unit tests cho holdings CRUD, user isolation và user settings |
+| `specs/implementation-plan.md` | Đánh dấu hoàn thành toàn bộ checklist Phase 1 |
+| `specs/change-log.md` | Ghi nhận chi tiết kết quả Phase 1 |
+
+---
+
 ## 2026-09-30 — Spec-Driven Development: Portfolio Watch & Management (MVP 2.0 Specs Created) [Kế Hoạch & Tài Liệu Sẵn Sàng]
 
 ### Tóm tắt

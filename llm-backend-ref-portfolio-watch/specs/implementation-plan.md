@@ -14,76 +14,76 @@ Kế hoạch triển khai theo phương pháp **Spec-Driven Development** (SDD),
 
 ## Phase 1: Database Schema & Multi-tenant Models
 Mục tiêu: Mở rộng SQLite database để lưu trữ vị thế danh mục và cài đặt ngưỡng theo từng người dùng.
-- [ ] **Task 1.1:** Tạo bảng `portfolio_holdings` trong SQLite (`src/backend/database/schema.py`):
+- [x] **Task 1.1:** Tạo bảng `portfolio_holdings` trong SQLite (`src/backend/database/schema.py`):
   - Các trường: `id`, `user_id`, `symbol`, `quantity`, `avg_buy_price`, `purchase_date`, `created_at`, `updated_at`.
-- [ ] **Task 1.2:** Cập nhật bảng `watchlist` và thêm bảng `user_settings`:
+- [x] **Task 1.2:** Cập nhật bảng `watchlist` và thêm bảng `user_settings`:
   - `watchlist`: bổ sung trường `user_id` (mặc định `'default'`).
   - `user_settings`: lưu `user_id`, `alert_threshold_pct` (mặc định `3.0%`).
-- [ ] **Task 1.3:** Xây dựng `PortfolioHoldingRepository` và nâng cấp `WatchlistRepository` trong `src/backend/database/repositories.py`.
-- [ ] **Task 1.4:** Viết unit tests kiểm tra CRUD holdings và cô lập dữ liệu theo `user_id` trong `tests/test_database.py`.
-- [ ] **Verification:** Chạy `pytest tests/test_database.py -v` đảm bảo 100% tests PASS.
+- [x] **Task 1.3:** Xây dựng `PortfolioHoldingRepository` và nâng cấp `WatchlistRepository` trong `src/backend/database/repositories.py`.
+- [x] **Task 1.4:** Viết unit tests kiểm tra CRUD holdings và cô lập dữ liệu theo `user_id` trong `tests/test_database.py`.
+- [x] **Verification:** Chạy `pytest tests/test_database.py -v` đảm bảo 100% tests PASS (10/10 tests passed).
 
 ---
 
 ## Phase 2: Portfolio P&L Service & API Endpoints
 Mục tiêu: Tính toán lãi/lỗ danh mục tự động và cung cấp API REST cho frontend.
-- [ ] **Task 2.1:** Xây dựng `PortfolioService` (`src/backend/application/portfolio_service.py`):
+- [x] **Task 2.1:** Xây dựng `PortfolioService` (`src/backend/application/portfolio_service.py`):
   - Lấy danh sách vị thế nắm giữ của `user_id`.
   - Kết nối `PriceSource` lấy thị giá đóng cửa mới nhất từ Vnstock.
   - Tính toán: Market Value, Cost Basis, Unrealized P&L (VND), Tỷ suất lợi nhuận (%), Tổng NAV danh mục.
-- [ ] **Task 2.2:** Xây dựng Router API `src/backend/api/routers/portfolio.py`:
+- [x] **Task 2.2:** Xây dựng Router API `src/backend/api/routers/portfolio.py`:
   - `GET /api/portfolio`: Trả về tổng quan danh mục và chi tiết P&L từng mã theo `user_id`.
   - `POST /api/portfolio/holdings`: Thêm/cập nhật vị thế mua cổ phiếu.
   - `DELETE /api/portfolio/holdings/{id}`: Xóa vị thế khỏi danh mục.
   - `GET /api/user/settings` & `PUT /api/user/settings`: Lấy và cập nhật ngưỡng cảnh báo riêng của user.
-- [ ] **Task 2.3:** Hỗ trợ nhận diện người dùng MVP qua HTTP Header `X-User-ID` hoặc query param `user_id`.
-- [ ] **Task 2.4:** Viết unit tests cho các endpoint portfolio trong `tests/test_api.py`.
-- [ ] **Verification:** Chạy `pytest tests/test_api.py -v` đảm bảo các endpoint portfolio hoạt động chính xác.
+- [x] **Task 2.3:** Hỗ trợ nhận diện người dùng MVP qua HTTP Header `X-User-ID` hoặc query param `user_id`.
+- [x] **Task 2.4:** Viết unit tests cho các endpoint portfolio trong `tests/test_api.py`.
+- [x] **Verification:** Chạy `pytest tests/test_api.py -v` đảm bảo các endpoint portfolio hoạt động chính xác (15/15 passed).
 
 ---
 
 ## Phase 3: Technical Indicators & Multi-source News Cho EvalAgent
 Mục tiêu: Trang bị cho EvalAgent các chỉ báo kỹ thuật định lượng và tin tức đa nguồn để đánh giá bất thường chính xác.
-- [ ] **Task 3.1:** Xây dựng module tính toán chỉ báo kỹ thuật (`src/backend/domain/indicators.py`):
+- [x] **Task 3.1:** Xây dựng module tính toán chỉ báo kỹ thuật (`src/backend/domain/indicators.py`):
   - Hàm tính `compute_rsi(closes, period=14)`.
   - Hàm tính `compute_sma(closes, period=20)` và `compute_sma(closes, period=50)`.
   - Hàm phân tích trạng thái: Quá mua (`RSI > 70`), Quá bán (`RSI < 30`), Tín hiệu giao cắt MA (`Golden Cross` / `Death Cross`).
-- [ ] **Task 3.2:** Mở rộng `NewsSource` hỗ trợ tin tức đa nguồn (Vnstock News API + RSS CafeF/Vietstock).
-- [ ] **Task 3.3:** Nâng cấp `EvalAgent`:
+- [x] **Task 3.2:** Mở rộng `NewsSource` hỗ trợ tin tức đa nguồn (Vnstock News API + RSS CafeF/Vietstock).
+- [x] **Task 3.3:** Nâng cấp `EvalAgent`:
   - Nạp các thông số kỹ thuật (RSI, MA Cross, xu hướng) và tin tức đa nguồn vào input của `eval_agent`.
   - Cập nhật prompt template `eval_severity` để kết hợp phân tích kỹ thuật và tin tức doanh nghiệp khi đưa ra mức độ nghiêm trọng (`high`, `medium`, `low`, `none`).
-- [ ] **Task 3.4:** Viết unit tests kiểm tra tính chính xác của thuật toán RSI/MA và logic phân loại của `eval_agent` trong `tests/test_agents.py`.
-- [ ] **Verification:** Chạy `pytest tests/test_agents.py -k "indicator or eval"` đảm bảo PASS.
+- [x] **Task 3.4:** Viết unit tests kiểm tra tính chính xác của thuật toán RSI/MA và logic phân loại của `eval_agent` trong `tests/test_agents.py`.
+- [x] **Verification:** Chạy `pytest tests/test_agents.py -k "indicator or eval"` đảm bảo PASS.
 
 ---
 
 ## Phase 4: Rewrite & Query Decomposition Cho Đa Sub-query
 Mục tiêu: Nâng cao độ chính xác khi xử lý câu hỏi phức tạp bằng cách phân rã và điều phối xử lý trọn vẹn từng sub-query.
-- [ ] **Task 4.1:** Hoàn thiện Query Decomposition trong `rewrite_question`:
+- [x] **Task 4.1:** Hoàn thiện Query Decomposition trong `rewrite_question`:
   - Prompt chỉ dẫn phân rã rõ ràng: nếu câu hỏi chứa nhiều thực thể (so sánh 2–3 mã) hoặc nhiều yêu cầu (vừa hỏi giá vừa hỏi tin tức vừa hỏi kỹ thuật), phân rã thành 2–4 `sub_questions` độc lập, rõ nghĩa.
   - Đảm bảo mỗi sub-question đều có mã cổ phiếu và ý định cụ thể.
-- [ ] **Task 4.2:** Nâng cấp Supervisor Routing xử lý đa Sub-queries:
+- [x] **Task 4.2:** Nâng cấp Supervisor Routing xử lý đa Sub-queries:
   - Supervisor duyệt qua danh sách `sub_questions` và tổng hợp danh sách tất cả các agents cần gọi (`agents_to_call`), đảm bảo không bỏ sót bất kỳ worker nào.
   - Hỗ trợ gọi các worker song song (Fan-out) theo từng mã xuất hiện trong các sub-queries (ví dụ: `prices: [FPT, HPG]`, `news_list: [FPT, HPG]`).
-- [ ] **Task 4.3:** Nâng cấp AnswerComposer tổng hợp đa nguồn (Multi-evidence Synthesis):
+- [x] **Task 4.3:** Nâng cấp AnswerComposer tổng hợp đa nguồn (Multi-evidence Synthesis):
   - AnswerComposer nhận đầy đủ kết quả từ tất cả các sub-queries.
   - Trả lời có cấu trúc rõ ràng theo từng câu hỏi con (ví dụ: mục so sánh giá, mục so sánh tin tức), không bị thiên vị hay bỏ sót thông tin.
-- [ ] **Task 4.4:** Viết unit tests kiểm tra luồng phân rã câu hỏi và điều phối đa sub-query trong `tests/test_agents.py`.
-- [ ] **Verification:** Chạy `pytest tests/test_agents.py -k "sub_question or decompose"` đảm bảo PASS.
+- [x] **Task 4.4:** Viết unit tests kiểm tra luồng phân rã câu hỏi và điều phối đa sub-query trong `tests/test_agents.py`.
+- [x] **Verification:** Chạy `pytest tests/test_agents.py -k "sub_question or decompose"` đảm bảo PASS.
 
 ---
 
 ## Phase 5: Agent Evaluation Framework (`agent_eval.py`)
 Mục tiêu: Tái sử dụng và tích hợp framework đánh giá chất lượng agent từ `llm-backend-ref`.
-- [ ] **Task 5.1:** Tích hợp module `agent_eval.py` vào `src/backend/eval/agent_eval.py`.
-- [ ] **Task 5.2:** Xây dựng bộ tiêu chí đánh giá tự động (Evaluation Metrics):
+- [x] **Task 5.1:** Tích hợp module `agent_eval.py` vào `src/backend/eval/agent_eval.py`.
+- [x] **Task 5.2:** Xây dựng bộ tiêu chí đánh giá tự động (Evaluation Metrics):
   - **Routing Precision/Recall**: Supervisor phân phối đúng tác vụ tới các worker.
   - **Query Decomposition Quality**: Tách câu hỏi phức tạp thành các câu con rõ nghĩa, đầy đủ ngữ cảnh.
   - **Groundedness Score**: Câu trả lời của AnswerComposer bám sát facts từ Price, News, Indicators, không bịa đặt.
   - **Task Success Rate**: Tỷ lệ trả lời hoàn chỉnh câu hỏi của người dùng.
-- [ ] **Task 5.3:** Xây dựng script thực thi `scripts/run_agent_eval.py` xuất báo cáo tổng quan (JSON & Markdown format).
-- [ ] **Task 5.4:** Đưa kiểm tra đánh giá Agent vào cổng chất lượng `tests/test_eval.py`.
-- [ ] **Verification:** Chạy `python scripts/run_agent_eval.py --sample 5` kiểm tra benchmark chạy thông suốt.
+- [x] **Task 5.3:** Xây dựng script thực thi `scripts/run_agent_eval.py` xuất báo cáo tổng quan (JSON & Markdown format).
+- [x] **Task 5.4:** Đưa kiểm tra đánh giá Agent vào cổng chất lượng `tests/test_eval.py`.
+- [x] **Verification:** Chạy `python scripts/run_agent_eval.py --sample 5` kiểm tra benchmark chạy thông suốt.
 
 ---
 
