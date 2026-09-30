@@ -32,6 +32,10 @@ class RewriteOutput(BaseModel):
         default="price_lookup",
         description="Ý định tra cứu: price_lookup | news_lookup | explain | diagram | chart",
     )
+    sub_questions: list[str] = Field(
+        default_factory=list,
+        description="Danh sách câu hỏi con phân rã nếu câu hỏi phức tạp hoặc đa mã/đa ý định",
+    )
 
     @field_validator("symbol", mode="before")
     @classmethod
@@ -53,6 +57,13 @@ class RewriteOutput(BaseModel):
                 if s and s not in ("NONE", "NULL") and s not in out:
                     out.append(s)
         return out
+
+    @field_validator("sub_questions", mode="before")
+    @classmethod
+    def _clean_sub_questions(cls, v: Any) -> list[str]:
+        if not isinstance(v, list):
+            return []
+        return [str(x).strip() for x in v if str(x).strip()]
 
     @field_validator("intent", mode="before")
     @classmethod

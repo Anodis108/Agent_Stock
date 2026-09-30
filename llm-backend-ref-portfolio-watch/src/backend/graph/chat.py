@@ -64,7 +64,10 @@ from backend.domain.ports import (
 )
 from backend.graph.state import ChatState
 from backend.infra.monitoring.tracing import agent_span, mark_turn_guardrail
-from backend.infra.storage.memory_store import filter_conversation_history
+from backend.infra.storage.memory_store import (
+    apply_sliding_window_with_ttl_eviction,
+    filter_conversation_history,
+)
 from backend.shared.logging import get_logger
 from backend.shared.settings import settings
 
@@ -658,7 +661,7 @@ def run_chat_graph(
         conversation = memory_store.list_conversation(
             short_term_user_id, limit=effective_limit
         )
-    conversation = filter_conversation_history(
+    conversation = apply_sliding_window_with_ttl_eviction(
         conversation,
         limit=effective_limit,
         ttl_minutes=effective_ttl,

@@ -301,6 +301,7 @@ def build_evidence(
         evidence.append(f"level:{eval_result.severity.level.value}")
     if chart_path:
         evidence.append(f"chart_path:{chart_path}")
+        evidence.append("chart_status:đã_tạo_biểu_đồ_thành_công")
     # dedupe giữ thứ tự
     seen: set[str] = set()
     out: list[str] = []

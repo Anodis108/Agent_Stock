@@ -1088,7 +1088,7 @@ body {
 
 .inspector-io-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 0.5rem;
 }
 
@@ -1116,7 +1116,7 @@ body {
   font-size: 0.75rem;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   line-height: 1.35;
-  max-height: 120px;
+  max-height: 180px;
   overflow-y: auto;
   white-space: pre-wrap;
   word-break: break-all;

@@ -135,6 +135,46 @@ def test_rewrite_schema_valid():
     assert out.symbol == "FPT"
     assert out.symbols == ["FPT", "VNM"]
     assert out.intent == "price_lookup"
+    assert out.sub_questions == []
+
+
+def test_rewrite_schema_sub_questions():
+    """Kiểm tra schema RewriteOutput với danh sách sub_questions (Query Decomposition)."""
+    out = RewriteOutput(
+        rewritten="So sánh FPT và HPG",
+        symbol="FPT",
+        symbols=["FPT", "HPG"],
+        intent="explain",
+        sub_questions=["So sánh giá FPT và HPG", "Tin tức về FPT", "Tin tức về HPG"],
+    )
+    assert len(out.sub_questions) == 3
+    assert out.sub_questions[0] == "So sánh giá FPT và HPG"
+
+
+def test_action_inheritance_and_chart_followup():
+    """Kiểm tra Action Inheritance và kế thừa mã trong câu hỏi nối tiếp/vẽ biểu đồ."""
+    brain = HeuristicRewriteBrain()
+    # 1. Turn 1 hỏi vẽ biểu đồ FPT
+    conv1 = [
+        {"role": "user", "content": "Vẽ biểu đồ 10 phiên gần nhất FPT"},
+        {"role": "assistant", "content": "Đã tạo biểu đồ kỹ thuật cho cổ phiếu FPT."},
+    ]
+    # Turn 2: chỉ nêu mã mới dạng tỉnh lược -> kế thừa action chart
+    r2 = brain.rewrite("Còn VNM thì sao?", conv1)
+    assert r2.symbol == "VNM"
+    assert r2.intent == "chart"
+    assert "VNM" in r2.rewritten
+
+    # 2. Turn 1 hỏi giá FPT, Turn 2 hỏi vẽ biểu đồ 10 phiên gần nhất (thiếu mã) -> kế thừa mã FPT và giữ intent chart
+    conv2 = [
+        {"role": "user", "content": "Giá FPT hôm nay?"},
+        {"role": "assistant", "content": "Giá cổ phiếu FPT hôm nay là 63.1."},
+    ]
+    r3 = brain.rewrite("Vẽ biểu đồ 10 phiên gần nhất", conv2)
+    assert r3.symbol == "FPT"
+    assert r3.intent == "chart"
+    assert "FPT" in r3.rewritten
+    assert len(r3.sub_questions) >= 1
 
 
 def test_supervisor_schema_validation():

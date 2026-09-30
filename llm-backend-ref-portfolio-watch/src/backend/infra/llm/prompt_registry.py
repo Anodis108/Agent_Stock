@@ -101,8 +101,9 @@ class PromptRegistry:
             alias_file = self._root / name / "production.txt"
             try:
                 content = alias_file.read_text(encoding="utf-8").strip()
-                if content.isdigit():
-                    return int(content)
+                cleaned_ver = content.lstrip("vV") if content.lower().startswith("v") else content
+                if cleaned_ver.isdigit():
+                    return int(cleaned_ver)
                 # production.txt chứa template trực tiếp -> dùng v1 cho metadata
                 return 1
             except (FileNotFoundError, ValueError) as exc:
@@ -150,7 +151,8 @@ class PromptRegistry:
             alias_file = self._root / name / "production.txt"
             if alias_file.is_file():
                 raw = alias_file.read_text(encoding="utf-8").strip()
-                if not raw.isdigit() and raw:
+                cleaned_ver = raw.lstrip("vV") if raw.lower().startswith("v") else raw
+                if not cleaned_ver.isdigit() and raw:
                     return Prompt(
                         name=prompt.name,
                         version=prompt.version,

@@ -1,5 +1,104 @@
 # Change Log — Portfolio Watch
 
+## 2026-09-30 — Spec-Driven Development: Portfolio Watch & Management (MVP 2.0 Specs Created) [Kế Hoạch & Tài Liệu Sẵn Sàng]
+
+### Tóm tắt
+- **Hoàn thành hiển thị System Prompt / Thông tin tĩnh trên Live Graph (I/O Inspector):**
+  - Mở rộng model `ChatStep` trong `src/backend/api/routers/chat.py` bổ sung các trường: `input`, `output`, `static_info`, `system_prompt`, `prompt_template`, `duration_s`, `duration_ms` để không bị Pydantic lọc bỏ data khi trả về client.
+  - Gắn đầy đủ `static_info` từ Prompt Registry và mô tả kỹ thuật cho 100% các bước trong `src/backend/graph/steps.py` và `src/backend/application/answer_question.py` (`pre_rewrite_guardrail`, `rewrite_question`, `supervisor`, `price_agent`, `news_agent`, `eval_agent`, `chart_agent`, `diagram_agent`, `answer_composer`, `event_classifier`, `synthesis_agent`, `confidence_gate`).
+  - Cập nhật frontend `src/frontend/app.js` bổ sung bảng tra cứu `NODE_FALLBACK_PROMPTS` đảm bảo người dùng trỏ/hover hoặc click vào bất kỳ bước nào đều hiển thị đầy đủ thông tin tĩnh và System Prompt. Tăng chiều cao xem prompt trong `style.css` (`max-height: 180px`).
+- **Khởi tạo bộ tài liệu Spec-Driven Development cho MVP 2.0 (Portfolio Watch & Management):**
+  - Tuân thủ nguyên tắc Spec-Driven Development: viết và hoàn thiện toàn bộ đặc tả trước khi code tính năng mới, tập trung vào phạm vi MVP, không triển khai code sớm.
+  - Định hình 5 trụ cột nâng cấp sản phẩm:
+    1. **Đa người dùng (Multi-tenant Watchlist & Settings)**: Mỗi user sở hữu watchlist và ngưỡng cảnh báo riêng biệt (sử dụng User Switcher / header `X-User-ID` cho MVP).
+    2. **Theo dõi Lãi/Lỗ Danh Mục (Portfolio P&L Tracking)**: Quản lý số lượng nắm giữ, giá vốn mua vào, tính toán Unrealized P&L, % sinh lời và tổng giá trị danh mục (NAV).
+    3. **Nâng cấp EvalAgent với Chỉ Báo Kỹ Thuật & Đa Nguồn Tin**: Tích hợp RSI(14), SMA(20), SMA(50), Golden/Death Cross và tin tức đa nguồn (Vnstock News, CafeF, Vietstock) để đánh giá mức độ bất thường khách quan, định lượng.
+    4. **Rewrite & Query Decomposition (Multi-Subquery Processing)**: Tích hợp kỹ thuật phân rã câu hỏi vào Rewrite, hỗ trợ xử lý mượt mà các câu hỏi phức tạp, so sánh đa mã, câu hỏi đa ý bằng cách chia nhỏ thành danh sách `sub_questions` độc lập và điều phối các worker xử lý trọn vẹn, không bỏ sót thông tin.
+    5. **Tích hợp Agent Evaluation Framework (`agent_eval.py`)**: Tái sử dụng benchmark từ `llm-backend-ref` đo lường định lượng Routing Accuracy, Decompose Quality, Groundedness và Task Success.
+  - Tạo mới và cập nhật các file: `specs/product-spec.md`, `specs/implementation-plan.md`, `specs/test-plan.md`, `specs/change-log.md`, `AGENTS.md`, `README.md`.
+- **Kết quả kiểm thử:**
+  - 139/139 unit tests chạy thành công 100% (139 passed in 135s). Toàn bộ hệ thống ổn định, không có lỗi hồi quy.
+
+### File thay đổi
+| File | Thay đổi |
+| :--- | :--- |
+| `src/backend/api/routers/chat.py` | Mở rộng `ChatStep` hỗ trợ `static_info`, `input`, `output`, `duration` |
+| `src/backend/graph/steps.py` | Bổ sung `static_info` và system prompt từ registry cho toàn bộ các node |
+| `src/backend/application/answer_question.py` | Bổ sung `static_info` trong `build_chat_steps` |
+| `src/frontend/app.js` | Thêm `NODE_FALLBACK_PROMPTS`, đảm bảo luôn hiển thị prompt khi hover node |
+| `src/frontend/style.css` | Tăng `max-height: 180px` cho `.io-pre` giúp đọc prompt dễ dàng |
+| `specs/product-spec.md` | Đặc tả chi tiết mục tiêu, phạm vi in/out of scope, acceptance criteria MVP 2.0 |
+| `specs/implementation-plan.md` | Kế hoạch 6 Phase triển khai SDD bám sát MVP |
+| `specs/test-plan.md` | Ma trận test 3 lớp cho Multi-tenant, P&L, Indicators và Agent Eval |
+| `specs/change-log.md` | Ghi nhận chi tiết kết quả cập nhật |
+| `AGENTS.md` | Cập nhật quy tắc hành xử cho coding agent theo SDD |
+| `README.md` | Cập nhật tài liệu sản phẩm, hướng dẫn local, testing và demo ngrok |
+
+---
+
+## 2026-09-30 — SDD Review & Bug Fix: Zero-Shot Rewrite Question, Query Decomposition & Chart Follow-up Handling [Hoàn Thành]
+
+### Tóm tắt
+- **Loại bỏ Few-Shot Examples (Khắc phục triệt để Bias FPT/VNM):**
+  - Gỡ bỏ toàn bộ ví dụ cụ thể hardcoded (như FPT, VNM) trong `resources/prompts/rewrite_question/v1.yaml`, `v2.yaml` và `production.txt`. Chuyển sang cơ chế **Zero-Shot Instructions** trừu tượng, chính xác theo nguyên tắc logic.
+  - Bảo toàn 100% tính tương thích hợp đồng kiểm thử Phase 2 (`test_phase2_prompt_v2_load_metadata_and_render` và `test_phase2_production_still_points_to_v1`).
+- **Khắc phục lỗi thứ tự câu hỏi và nhầm lẫn Intent Vẽ biểu đồ thành Tra cứu giá:**
+  - **Phân định & Kế thừa hành động (Action Inheritance)**: Khi người dùng đổi mã nhưng hỏi tỉnh lược không có vị ngữ ("Còn VNM thì sao?"), hệ thống tự động kế thừa hành động của lượt người dùng trước đó (ví dụ: vẽ biểu đồ) và gán `intent: chart` thay vì mặc định rơi về `price_lookup`.
+  - **Kế thừa đối tượng (Ticker Inheritance)**: Khi câu hỏi lặp lại ("Vẽ biểu đồ 10 phiên gần nhất") thiếu mã, hệ thống quét cửa sổ trượt (Sliding Window Buffer) kế thừa ticker gần nhất và giữ vững `intent: chart`.
+  - **AnswerComposer & Chart Evidence Grounding**:
+    - Thêm `chart_status:đã_tạo_biểu_đồ_thành_công` vào evidence khi `chart_path` được sinh ra.
+    - Cập nhật prompt `answer_compose` (`v1.yaml`, `v2.yaml`, `production.txt`): Bổ sung hướng dẫn bắt buộc: khi có `chart_path` trong evidence hoặc câu hỏi yêu cầu vẽ biểu đồ, AnswerComposer phải xác nhận rõ ràng đã tạo biểu đồ kỹ thuật cho cổ phiếu, tóm tắt mức giá đóng cửa gần nhất và biến động so với phiên trước, và hướng dẫn người dùng xem biểu đồ hiển thị bên dưới. Tuyệt đối không hallucinate là biểu đồ không có sẵn.
+- **Tích hợp kỹ thuật Query Decomposition (theo mô hình `llm-engineer-demo`):**
+  - Mở rộng Pydantic model `RewriteOutput` (`src/backend/shared/schemas.py`) thêm trường `sub_questions: list[str]`.
+  - Cập nhật dataclass `RewrittenQuestion` (`src/backend/agents/supervisor_agent/nodes.py`) lưu trữ `sub_questions`.
+  - Bổ sung hàm `_decompose_query` và cập nhật prompt `rewrite_question`: tự động phân rã các câu hỏi phức tạp, so sánh đa mã hoặc đa khía cạnh thành 2-4 câu hỏi con độc lập kèm mã đầy đủ.
+- **Kết quả kiểm thử:**
+  - Bổ sung 2 unit test mới: `test_rewrite_schema_sub_questions` và `test_action_inheritance_and_chart_followup`.
+  - Toàn bộ test suite chạy thành công 100% (27/27 tests trong `test_agents.py`, 62/62 tests targeted).
+
+### File thay đổi
+| File | Thay đổi |
+| :--- | :--- |
+| `src/backend/shared/schemas.py` | Bổ sung trường `sub_questions: list[str]` vào `RewriteOutput` kèm validator |
+| `src/backend/agents/supervisor_agent/nodes.py` | Bổ sung `sub_questions` vào `RewrittenQuestion`, thêm `_is_actionless_followup`, `_get_prev_intent_and_action`, `_decompose_query` |
+| `src/backend/agents/answer_composer/nodes.py` | Bổ sung `chart_status` vào evidence khi sinh biểu đồ |
+| `resources/prompts/rewrite_question/v1.yaml` | Loại bỏ few-shot bias FPT, bổ sung hướng dẫn Query Decomposition (sub_questions) |
+| `resources/prompts/rewrite_question/production.txt` | Đồng bộ 100% template với `v1.yaml` theo tiêu chuẩn Phase 2 |
+| `resources/prompts/rewrite_question/v2.yaml` | Loại bỏ toàn bộ ví dụ FPT/VNM, áp dụng zero-shot cho Turn 2 action/ticker inheritance & decomposition |
+| `resources/prompts/answer_compose/v1.yaml` | Bổ sung chỉ dẫn xử lý biểu đồ khi có `chart_path` trong evidence |
+| `resources/prompts/answer_compose/production.txt` | Đồng bộ 100% template với `v1.yaml` theo tiêu chuẩn Phase 2 |
+| `resources/prompts/answer_compose/v2.yaml` | Bổ sung chỉ dẫn xác nhận biểu đồ kỹ thuật và grounding số liệu |
+| `tests/test_agents.py` | Thêm unit test `test_rewrite_schema_sub_questions` và `test_action_inheritance_and_chart_followup` |
+| `specs/change-log.md` | Ghi nhận chi tiết kết quả thực hiện và kiểm thử |
+
+---
+
+### Tóm tắt
+- **Review và chuẩn đoán lỗi Rewrite Question (toàn bộ câu hỏi lặp mã FPT):**
+  - **Nguyên nhân cốt lõi**:
+    1. Trong prompt gốc của `rewrite_question`, thiếu quy tắc "Action Inheritance" cho các câu hỏi đổi mã dạng tỉnh lược ("Còn VNM thì sao?", "SSI?"), đồng thời ví dụ giải thích về FPT khiến mô hình LLM có xu hướng gán mã FPT vào các câu hỏi Turn 2.
+    2. Trong `prompt_registry.py`, khi nạp alias version có tiền tố `v`/`V` (như `v1`, `v2`, `v3`) từ file `production.txt`, hàm `_resolve_version` kiểm tra `content.isdigit()` trả về `False` dẫn đến việc xử lý nhầm chuỗi version alias thành raw template nội dung, gây mất cấu trúc và sai lệch metadata.
+- **Biện pháp khắc phục đã triển khai (Fix only issues related to this feature):**
+  - **Prompt Registry (`src/backend/infra/llm/prompt_registry.py`)**: Chuẩn hóa việc phân giải số phiên bản khi đọc file alias `production.txt`, hỗ trợ bóc tách tiền tố chữ `v`/`V` trước khi kiểm tra số nguyên `isdigit()`.
+  - **Rewrite Question Prompts (`resources/prompts/rewrite_question/`)**:
+    - Chuẩn hóa quy tắc đa lượt: tách biệt rõ ràng 2 cơ chế:
+      1. *Kế thừa hành động (Action Inheritance)*: Áp dụng khi người dùng đổi mã nhưng hỏi tỉnh lược (ví dụ: Turn trước vẽ biểu đồ VNM -> Turn sau hỏi "Còn FPT thì sao?" => tự động sao chép hành động vẽ biểu đồ cho FPT).
+      2. *Kế thừa mã / thực thể (Entity/Ticker Inheritance)*: Áp dụng khi người dùng đổi hành động nhưng dùng đại từ hoặc hỏi nguyên nhân thiếu ticker ("Tại sao lại giảm?", "nó", "mã đó" => trích xuất ticker gần nhất từ lịch sử).
+    - Cảnh báo rõ ràng và nghiêm cấm việc tự ý bịa đặt hoặc mặc định gán mã FPT nếu câu hỏi và lịch sử không đề cập.
+    - Giữ trọn vẹn khả năng tương thích của `production.txt` và `v1.yaml` / `v2.yaml` theo tiêu chuẩn hợp đồng kiểm thử của Phase 2.
+- **Kết quả kiểm thử sau sửa lỗi (100% Green):**
+  - Chạy toàn bộ test suite dự án: `137 passed` (100% Passed).
+  - Không phát sinh lỗi hồi quy trên bất kỳ module nào (Memory, Chart, Market, Guardrails, Evaluation, Monitoring, System).
+
+### File thay đổi
+| File | Thay đổi |
+| :--- | :--- |
+| `src/backend/infra/llm/prompt_registry.py` | Sửa logic parse version alias từ `production.txt` hỗ trợ tiền tố `v`/`V` |
+| `resources/prompts/rewrite_question/v2.yaml` | Cập nhật cấu trúc phân định Action Inheritance & Entity Inheritance rõ ràng, chống hallucination mã FPT |
+| `specs/change-log.md` | Ghi nhận chi tiết kết quả Review và Fix lỗi của tính năng |
+
+---
+
 ## 2026-09-30 — SDD Phase 6.3: Public Ngrok Demo Automation [Hoàn Thành]
 
 ### Tóm tắt

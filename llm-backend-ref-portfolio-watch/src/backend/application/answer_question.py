@@ -64,12 +64,31 @@ def build_chat_steps(
     steps: list[dict] = []
     n = 1
 
+    try:
+        from backend.infra.llm.prompt_registry import registry
+        _reg = registry()
+    except Exception:
+        _reg = None
+
+    def _get_reg_prompt(name: str, fallback_desc: str) -> str:
+        if _reg:
+            try:
+                p_obj = _reg.get(name, "production")
+                return f"[{p_obj.name} v{p_obj.version} - Model: {p_obj.model}]\n\n{p_obj.template}"
+            except Exception:
+                pass
+        return fallback_desc
+
+    info_price_agent = "[Tool Worker] Vnstock API: Truy xuất dữ liệu thời gian thực (giá khớp lệnh, giá đóng cửa close, % biến động và lịch sử giá kỹ thuật)."
+    info_chart_agent = "[Visualization Worker] Chart Generator: Tạo biểu đồ nến kỹ thuật (candlestick) hoặc đường giá xu hướng lịch sử 10-30 phiên từ dữ liệu Vnstock."
+
     def add(
         name: str,
         status: str,
         detail: str | None = None,
         input_data: Any = None,
         output_data: Any = None,
+        static_info: Any = None,
     ) -> None:
         nonlocal n
         s: dict[str, Any] = {
@@ -81,6 +100,8 @@ def build_chat_steps(
             s["detail"] = detail
         if input_data is not None:
             s["input"] = input_data
+        if static_info is not None:
+            s["static_info"] = static_info
         if output_data is not None:
             s["output"] = output_data
         steps.append(s)
@@ -96,6 +117,10 @@ def build_chat_steps(
             "symbol": rewritten.symbol,
             "symbols": list(rewritten.symbols or []),
         },
+        static_info=_get_reg_prompt(
+            "rewrite_question",
+            "[Prompt] Chuẩn hóa câu hỏi, coreference resolution, trích xuất mã cổ phiếu và phân rã ý định.",
+        ),
     )
     route_str = str(getattr(routing.route, "value", routing.route))
     agents_list = list(routing.agents_to_call or [])
@@ -110,6 +135,10 @@ def build_chat_steps(
             "agents": agents_list,
             "reason": routing.reason or "",
         },
+        static_info=_get_reg_prompt(
+            "supervisor_routing",
+            "[Prompt] Phân tích câu hỏi người dùng và điều phối các worker agents (price, news, chart, eval, diagram).",
+        ),
     )
     if price is not None:
         add(
@@ -127,8 +156,13 @@ def build_chat_steps(
                 "change_pct": price.change_pct,
                 "error": price.error,
             },
+            static_info=info_price_agent,
         )
     if news is not None:
+        news_prompt = _get_reg_prompt(
+            "news_agent_react",
+            "[Tool Worker] Vnstock News API / ReAct: Thu thập tin tức doanh nghiệp, sự kiện tài chính, công bố thông tin gần nhất.",
+        )
         add(
             "news_agent",
             "error" if news.error else "done",
@@ -140,8 +174,13 @@ def build_chat_steps(
                 "items_count": len(news.items or []),
                 "error": news.error,
             },
+            static_info=news_prompt,
         )
     if eval_result is not None:
+        eval_prompt = _get_reg_prompt(
+            "eval_severity",
+            "[Risk Engine] Đánh giá mức độ nghiêm trọng (high/medium/low/none) của tin tức và biến động giá đối với doanh nghiệp.",
+        )
         add(
             "eval_agent",
             "done",
@@ -151,6 +190,7 @@ def build_chat_steps(
                 "severity": str(eval_result.severity),
                 "confidence": getattr(eval_result.severity, "confidence", None),
             },
+            static_info=eval_prompt,
         )
     if chart_result is not None:
         c_status = "done" if getattr(chart_result, "success", True) else "error"
@@ -168,6 +208,7 @@ def build_chat_steps(
                 "url": c_url,
                 "error": c_err,
             },
+            static_info=info_chart_agent,
         )
     compose_status = "error" if error else "done"
     in_syms = [price.symbol] if price else ([rewritten.symbol] if rewritten.symbol else [])
@@ -175,6 +216,10 @@ def build_chat_steps(
         "answer": (answer or error or "")[:300],
         "guardrail_violations": getattr(compose, "guardrail_violations", None) if compose else None,
     }
+    comp_prompt = _get_reg_prompt(
+        "answer_compose",
+        "[Prompt] Tổng hợp câu trả lời dựa trên facts thu thập từ các worker, tuân thủ guardrail tài chính.",
+    )
     if compose is not None and getattr(compose, "guardrail_violations", None):
         detail = answer[:200] if answer else None
         if compose.guardrail_violations:
@@ -187,6 +232,7 @@ def build_chat_steps(
             detail,
             input_data={"symbols": in_syms},
             output_data=out_compose,
+            static_info=comp_prompt,
         )
     else:
         add(
@@ -195,6 +241,7 @@ def build_chat_steps(
             (answer or error or "")[:200] or None,
             input_data={"symbols": in_syms},
             output_data=out_compose,
+            static_info=comp_prompt,
         )
     return steps
 

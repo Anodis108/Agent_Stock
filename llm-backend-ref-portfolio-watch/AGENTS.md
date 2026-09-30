@@ -1,21 +1,22 @@
 # AGENTS.md
 
-Dự án này tuân theo phương pháp **Spec-Driven Development** (SDD).
+Project này tuân theo **simple spec-driven development** (SDD).
 
 ## Nguyên Tắc Hoạt Động (Rules)
-
-1. **Always read the specs before coding**: Luôn đọc kỹ các file trong thư mục `specs/` (`product-spec.md`, `implementation-plan.md`, `test-plan.md`, `change-log.md`) trước khi viết hoặc sửa bất kỳ dòng code nào.
-2. **Implement only one phase or task at a time**: Chỉ tập trung triển khai duy nhất một phase hoặc một task tại một thời điểm; không làm lan man sang phase khác.
-3. **Keep the app simple**: Ưu tiên giải pháp đơn giản, rõ ràng, dễ bảo trì, tập trung vào mục tiêu MVP; tránh over-engineer.
-4. **Do not add unnecessary libraries**: Tận dụng tối đa các thư viện đã có trong dự án; không tự ý cài đặt thêm dependency mới nếu không thực sự cần thiết.
-5. **Do not change architecture unless the spec is updated**: Giữ nguyên kiến trúc và cấu trúc thư mục hiện tại (`src/`, `resources/`, `tests/`); không tự ý thay đổi trừ khi tài liệu spec đã được cập nhật trước.
-6. **After each implementation, update `specs/change-log.md`**: Sau mỗi lần hoàn thành triển khai code hoặc sửa lỗi, bắt buộc ghi chép chi tiết thay đổi vào `specs/change-log.md` và đánh dấu `[x]` tương ứng trong `specs/implementation-plan.md`.
-7. **After each implementation, explain how to test the change**: Luôn hướng dẫn rõ ràng các lệnh và bước kiểm thử (unit test, manual test, curl/smoke test) để người dùng có thể tự xác minh thay đổi.
+- **Always read the specs before coding**: Luôn đọc các file trong `specs/` trước khi viết code.
+- **Implement only one phase or task at a time**: Chỉ triển khai một phase hoặc một task tại một thời điểm theo yêu cầu.
+- **Keep the app simple**: Giữ giải pháp đơn giản, chuẩn MVP, tránh over-engineer.
+- **Do not add unnecessary libraries**: Tận dụng tối đa thư viện sẵn có, không thêm package không cần thiết.
+- **Do not change architecture unless the spec is updated**: Không thay đổi kiến trúc nếu spec chưa được cập nhật.
+- **After each implementation, update `specs/change-log.md`**: Cập nhật change-log và checklist ngay sau khi hoàn thành code.
+- **After each implementation, explain how to test the change**: Luôn giải thích rõ lệnh chạy và cách test thay đổi vừa thực hiện.
+- **Do not implement the app yet unless explicitly requested**: Không tự ý code tính năng mới khi chưa có chỉ định phase.
 
 ## Coding Style
-- Code súc tích, mạch lạc, dễ đọc.
-- Đặt tên hàm, biến, file phản ánh đúng chức năng nghiệp vụ.
-- Giữ số lượng file kiểm thử trong `tests/` không vượt quá 10 file.
+- Ưu tiên code đơn giản, dễ đọc, type hints đầy đủ.
+- Không over-engineer hay tạo abstraction thừa.
+- Bảo vệ test suite: Đảm bảo toàn bộ 139 unit tests hiện tại không bị lỗi hồi quy.
+- Giữ số lượng file kiểm thử cốt lõi $\le 10$ files trong `tests/`.
 
 <!-- vnai-bootstrap | auto-generated -->
 # Vnstock Vibe Onboarding

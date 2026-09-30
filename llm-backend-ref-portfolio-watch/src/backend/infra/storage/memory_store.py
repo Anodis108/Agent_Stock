@@ -37,14 +37,14 @@ def parse_timestamp(ts: Any) -> datetime | None:
     return None
 
 
-def filter_conversation_history(
+def apply_sliding_window_with_ttl_eviction(
     items: list[dict[str, Any]],
     *,
     limit: int | None = None,
     ttl_minutes: int | float | None = None,
     now: datetime | None = None,
 ) -> list[dict[str, Any]]:
-    """Lọc danh sách hội thoại theo TTL độ tươi và sliding window.
+    """Cắt cửa sổ trượt (Sliding Window Context Buffer) kết hợp loại bỏ tin nhắn hết hạn TTL (TTL-based Context Eviction).
 
     - Giữ thứ tự hội thoại (cũ -> mới).
     - Loại bỏ các message cũ hơn ttl_minutes khi có trường created_at hợp lệ.
@@ -86,6 +86,10 @@ def filter_conversation_history(
         fresh = fresh[-effective_limit:]
 
     return fresh
+
+
+# Backward compatibility alias
+filter_conversation_history = apply_sliding_window_with_ttl_eviction
 
 
 class SqliteMemoryStore:
@@ -209,7 +213,7 @@ class SqliteMemoryStore:
             for r in rows
         ]
         items.reverse()
-        return filter_conversation_history(
+        return apply_sliding_window_with_ttl_eviction(
             items,
             limit=effective_limit,
             ttl_minutes=effective_ttl,

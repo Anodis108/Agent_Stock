@@ -1,95 +1,94 @@
-# Test Plan — Testing & Verification (Portfolio Watch)
+# Test Plan — Portfolio Watch & Management (MVP 2.0)
 
-Kế hoạch kiểm thử toàn diện các chức năng và bộ câu hỏi nghiệp vụ của Portfolio Watch.
+Kế hoạch kiểm thử toàn diện các tính năng mới và ngăn ngừa lỗi hồi quy theo phương pháp **Spec-Driven Development** (SDD).
 
 ---
 
 ## 1. Chiến Lược Kiểm Thử (Testing Strategy)
 
-Ứng dụng áp dụng quy trình kiểm thử 3 cấp độ:
+Hệ thống áp dụng mô hình kiểm thử 3 lớp vững chắc:
 
 ```mermaid
 graph TD
-    L1[L1: Unit & Integration Tests] --> L2[L2: 40 Questions Golden v5 Evaluation]
-    L2 --> L3[L3: Regression Gate & Failure Hardening]
-    L3 --> Pass((Production Ready))
+    L1[Lớp 1: Unit & Integration Tests] --> L2[Lớp 2: Feature Acceptance Tests]
+    L2 --> L3[Lớp 3: Agent Evaluation & Regression Gate]
+    L3 --> Ready((Sẵn Sàng Triển Khai / Demo))
 ```
 
-1. **Lớp 1 (L1 - Unit / Integration Tests):**
-   - Đảm bảo tính toàn vẹn của logic cốt lõi (routing, guardrails, memory, cache, chart sinh ảnh, database SQLite).
-   - Mock LLM, thời gian chạy nhanh, không tốn chi phí API.
-2. **Lớp 2 (L2 - 40 Questions Golden Evaluation):**
-   - Chạy toàn bộ 40 ca kiểm thử thực tế đối với mô hình Swarm Agent.
-   - Sử dụng cơ chế kết hợp: **Rule-based Assertion** (kiểm tra từ khóa bắt buộc/cấm) + **LLM-as-a-Judge** (chấm điểm Correctness, Completeness, Grounding theo thang 1–5).
-3. **Lớp 3 (L3 - Regression Gate & Fix Verification):**
-   - Ngăn chặn lỗi hồi quy khi cập nhật prompt hoặc sửa code agent.
-   - Chốt chặn Zero-Tolerance: slice `injection` và `out_of_scope` bắt buộc đạt **100%**.
+1. **Lớp 1 (Unit & Integration Tests - Chạy nhanh, Mock dữ liệu):**
+   - Đảm bảo các hàm tính toán toán học (RSI, SMA, P&L), truy vấn database SQLite (Holdings, Multi-tenant Watchlist), schema phân rã sub-questions và các API routers hoạt động chính xác.
+   - Thời gian thực thi nhanh (< 2 phút), độc lập với internet/API bên ngoài.
+2. **Lớp 2 (Feature Acceptance Tests - Kiểm thử luồng tính năng):**
+   - Kiểm tra cô lập dữ liệu giữa nhiều người dùng: User A không thấy dữ liệu của User B.
+   - Kiểm tra tính toán lãi/lỗ theo biến động giá thực tế của thị trường.
+   - Kiểm tra EvalAgent kết hợp tin tức đa nguồn và chỉ báo kỹ thuật.
+   - Kiểm tra khả năng xử lý câu hỏi phức tạp / đa sub-query: không bỏ sót mã hoặc khía cạnh được hỏi.
+3. **Lớp 3 (Agent Evaluation & Regression Gate):**
+   - Sử dụng công cụ `agent_eval.py` để chấm điểm tự động chất lượng hội thoại và suy luận của Agent Swarm.
+   - Chốt chặn Zero-Tolerance: 100% câu hỏi Prompt Injection và Out-of-scope tiếp tục bị chặn triệt để.
 
 ---
 
-## 2. Danh Mục Unit Tests Cốt Lõi (`tests/` $\le$ 10 files)
+## 2. Ma Trận Kiểm Thử Chi Tiết (Test Matrix)
 
-| File Test | Phạm Vi Kiểm Thử | Tiêu Chí Pass |
-| :--- | :--- | :--- |
-| `tests/conftest.py` | Fixtures dùng chung, mock database, mock prompt registry | Khởi tạo môi trường test thành công |
-| `tests/test_agents.py` | Khởi tạo agent nodes, load prompt từ registry | Các node agent khởi tạo đúng schema |
-| `tests/test_guardrails.py` | Chặn prompt injection và câu hỏi ngoài phạm vi | 100% câu hỏi vi phạm bị chặn fail-closed |
-| `tests/test_memory.py` | Quản lý hội thoại nhiều lượt (Turn 1 ➔ Turn 2) | Kế thừa đúng mã cổ phiếu trong session |
-| `tests/test_market.py` | Dữ liệu ma trận giá 10 mã cổ phiếu × 10 phiên | Trả về đúng format và số liệu nhất quán |
-| `tests/test_chart.py` | Agent sinh ảnh biểu đồ kỹ thuật | File ảnh `.png` sinh hợp lệ trong `resources/data/charts/` |
-| `tests/test_api.py` | Các endpoints FastAPI, streaming SSE, HTTP status codes | 200 OK, 422 lỗi tham số, SSE streams hợp lệ |
-| `tests/test_database.py` | Khởi tạo SQLite, CRUD sessions, messages, feedback | Ghi và đọc dữ liệu DB chính xác |
-| `tests/test_eval.py` | Cơ chế loader bộ test dataset, prompt linter, eval gate | Gate phát hiện regression khi có điểm tụt |
-| `tests/test_system.py` | Kiểm tra Dockerfile, biến môi trường, tài nguyên root | Hệ thống sẵn sàng đóng gói và triển khai |
+### 2.1. Ma Trận Kiểm Thử Đa Người Dùng (Multi-tenant Isolation)
+| Mã Ca Test | Kịch Bản Kiểm Thử | Dữ Liệu Đầu Vào | Kết Quả Kỳ Vọng |
+| :--- | :--- | :--- | :--- |
+| `MT-01` | Tạo watchlist cho User A và User B | User A: `["FPT", "HPG"]`<br>User B: `["VNM", "TCB"]` | Watchlist của User A chỉ trả về FPT, HPG; User B chỉ trả về VNM, TCB. |
+| `MT-02` | Cài đặt ngưỡng cảnh báo riêng biệt | User A: `2.0%`<br>User B: `5.0%` | Cảnh báo biến động của User A kích hoạt ở mức 2.5%, User B không bị làm phiền. |
+| `MT-03` | Cô lập danh mục nắm giữ (Holdings) | User A thêm 1,000 FPT<br>User B thêm 500 VNM | `GET /api/portfolio` với header `X-User-ID: user_a` chỉ thấy FPT, không thấy VNM. |
 
-**Lệnh chạy unit test:**
-```bash
-pytest tests/ -v
-```
+### 2.2. Ma Trận Kiểm Thử Tính Toán Lãi/Lỗ Danh Mục (Portfolio P&L)
+| Mã Ca Test | Kịch Bản Kiểm Thử | Dữ Liệu Đầu Vào | Kết Quả Kỳ Vọng |
+| :--- | :--- | :--- | :--- |
+| `PL-01` | Tính Unrealized P&L có lãi | Mua 1,000 FPT giá 100.0, thị giá hiện tại 120.0 | Lãi = `+20,000,000 VND` (+20.0%). Giá trị = `120,000,000 VND`. |
+| `PL-02` | Tính Unrealized P&L bị lỗ | Mua 2,000 HPG giá 30.0, thị giá hiện tại 27.0 | Lỗ = `-6,000,000 VND` (-10.0%). Giá trị = `54,000,000 VND`. |
+| `PL-03` | Tính Tổng Giá Trị Danh Mục (NAV) | Danh mục gồm FPT (120tr) và HPG (54tr) | Tổng NAV = `174,000,000 VND`. Tổng P&L = `+14,000,000 VND` (+8.75%). |
+| `PL-04` | Xử lý mã không tồn tại / lỗi giá | Mua mã không hợp lệ `XYZ123` | Xử lý lỗi an toàn, đánh dấu `price_error`, không làm crash toàn danh mục. |
 
----
+### 2.3. Ma Trận Kiểm Thử Chỉ Báo Kỹ Thuật & EvalAgent (Technical Indicators)
+| Mã Ca Test | Kịch Bản Kiểm Thử | Dữ Liệu Đầu Vào | Kết Quả Kỳ Vọng |
+| :--- | :--- | :--- | :--- |
+| `IND-01` | Tính RSI (14 phiên) chuẩn xác | Chuỗi giá đóng cửa 30 phiên giả lập tăng liên tục | RSI trả về giá trị trong khoảng [0, 100], phát hiện vùng Quá mua (`RSI > 70`). |
+| `IND-02` | Tính SMA(20) và SMA(50) | Chuỗi 60 phiên giá thực tế | Trả về đúng trung bình động trượt của 20 và 50 phiên gần nhất. |
+| `IND-03` | Phát hiện Golden Cross / Death Cross | SMA20 cắt lên trên SMA50 | Nhận diện trạng thái `golden_cross` (tín hiệu xu hướng tăng trung hạn). |
+| `EV-01` | EvalAgent kết hợp chỉ báo + tin tức | Giá tăng mạnh + RSI > 80 (quá mua cực đại) + Tin chấp thuận dự án lớn | Đánh giá `severity: high`, nhận định có rủi ro điều chỉnh kỹ thuật ngắn hạn. |
 
-## 3. Ma Trận Đánh Giá 40 Câu Hỏi (Golden Dataset v5)
+### 2.4. Ma Trận Kiểm Thử Query Decomposition (Multi-Subquery Processing)
+| Mã Ca Test | Kịch Bản Kiểm Thử | Dữ Liệu Đầu Vào | Kết Quả Kỳ Vọng |
+| :--- | :--- | :--- | :--- |
+| `DEC-01` | Phân rã câu hỏi so sánh đa mã | *"So sánh FPT và HPG về biến động giá và tin tức gần đây"* | `sub_questions` gồm ít nhất 2 câu hỏi con riêng biệt cho FPT và HPG; `symbols = ["FPT", "HPG"]`. |
+| `DEC-02` | Phân rã câu hỏi đa ý trên 1 mã | *"Giá VNM hiện tại bao nhiêu và có tin tức gì giải thích vì sao giảm?"* | Tách thành 2 sub-queries: (1) Giá & biến động VNM, (2) Tin tức và sự kiện VNM. |
+| `DEC-03` | Bảo toàn câu hỏi đơn giản | *"Giá FPT hôm nay"* | `sub_questions` có đúng 1 phần tử là chính câu hỏi đã chuẩn hóa, không phân rã dư thừa. |
+| `DEC-04` | Kế thừa ngữ cảnh vào sub-queries | Turn 1: *"FPT hôm nay thế nào?"*<br>Turn 2: *"So sánh với HPG về giá và tin tức"* | Sub-queries tự động bổ sung đầy đủ mã FPT và HPG, không mất dấu ngữ cảnh. |
+| `DEC-05` | Supervisor điều phối đa Sub-queries | Input có 4 sub-queries (Price & News của 2 mã) | Supervisor kích hoạt cả `price_agent` và `news_agent` cho cả 2 mã, không bị sót tác vụ. |
 
-Tập dữ liệu: `resources/eval/golden_v5.yaml` gồm 40 câu hỏi chia thành 7 lát cắt:
-
-| Phân Nhóm (Slice) | Số Lượng | Ngưỡng Pass Tối Thiểu | Trọng Tâm Nghiệm Thu |
-| :--- | :---: | :---: | :--- |
-| `lookup` | 12 | $\ge 80\%$ | Tra cứu giá, biến động, tin tức đơn lẻ (FPT, VNM, HPG) |
-| `comparison` | 8 | $\ge 80\%$ | So sánh giá, mức độ biến động giữa 2–3 mã cổ phiếu |
-| `explain_why` | 6 | $\ge 85\%$ | Giải thích nguyên nhân tăng/giảm dựa trên tin tức |
-| `charting_diagram` | 4 | $\ge 80\%$ | Trả về đường dẫn ảnh chart hoặc cú pháp Mermaid hợp lệ |
-| `session_memory` | 3 | $100\%$ | Nhớ mã cổ phiếu đã hỏi ở lượt trước mà không cần nhắc lại |
-| `out_of_scope` | 4 | **100% (Zero-Tolerance)** | Từ chối lịch sự câu hỏi ngoài phạm vi (cổ phiếu Mỹ, thời tiết, tư vấn mua bán) |
-| `injection` | 3 | **100% (Zero-Tolerance)** | Chặn các hành vi bẻ khóa hệ thống (Jailbreak / System Override) |
-| **Tổng cộng** | **40** | **$\ge 85\%$** | **Tổng thể hệ thống đạt chuẩn** |
-
----
-
-## 4. Danh Sách Các Vấn Đề Cần Sửa (Identified Issues to Fix)
-
-Dựa trên kết quả chạy đánh giá gần nhất:
-1. **Case `lookup_04` (Tin gần đây về FPT):**
-   - *Hiện tượng:* Hệ thống phản hồi "không có thông tin cụ thể", điểm Judge 2.7/5.
-   - *Cách khắc phục:* Đảm bảo `news_agent` lấy tin tức mới nhất từ công cụ nguồn hoặc cache hợp lệ, `answer_composer` tổng hợp đầy đủ nội dung.
-2. **Case `lookup_08` (Giá đóng cửa gần nhất của VNM):**
-   - *Hiện tượng:* Phản hồi giá không khớp phiên giao dịch thực tế gần nhất, điểm Judge 1.3/5.
-   - *Cách khắc phục:* Kiểm tra hàm tính toán ngày giao dịch gần nhất của `price_agent`.
-3. **Case `lookup_10` (FPT có tin tiêu cực nào gần đây không?):**
-   - *Hiện tượng:* Trả lời đúng là không có tin tiêu cực nhưng câu trả lời quá ngắn, thiếu thông tin bối cảnh.
-   - *Cách khắc phục:* Tinh chỉnh prompt hướng dẫn `answer_composer` cung cấp thêm bối cảnh tích cực/trung lập liên quan.
+### 2.5. Ma Trận Đánh Giá Agent Swarm (`agent_eval.py`)
+| Tiêu Chí Đánh Giá | Mô Tả Cách Thức Chấm | Ngưỡng Đạt Chuẩn |
+| :--- | :--- | :---: |
+| **Routing Accuracy** | Supervisor gọi đúng worker cần thiết theo câu hỏi | $\ge 90\%$ |
+| **Query Decomposition Quality** | Câu hỏi phức tạp được tách thành các sub-questions độc lập | $\ge 90\%$ |
+| **Groundedness / Faithfulness** | Câu trả lời không chứa số liệu bịa đặt ngoài facts | $\ge 95\%$ |
+| **Zero-Tolerance Guardrails** | 100% Prompt Injection và Out-of-scope bị chặn fail-closed | **100% (Bắt buộc)** |
 
 ---
 
-## 5. Lệnh Thực Thi Kiểm Thử
+## 3. Quy Trình Kiểm Thử Hồi Quy (Regression Gates)
 
-```bash
-# 1. Chạy unit tests:
-pytest tests/ -v
+Mỗi lần hoàn thành một phase hoặc task trong `specs/implementation-plan.md`, bắt buộc thực hiện kiểm tra:
 
-# 2. Chạy đánh giá toàn diện 40 câu hỏi:
-PYTHONPATH=src python scripts/run_golden_v5_eval_bundle.py --skip-agent-eval
-
-# 3. Chạy kiểm tra cổng an toàn Gate:
-python -m backend.eval.gate --run specs/eval/v5_baseline.json
-```
+1. **Unit Test Gate:**
+   ```bash
+   pytest tests/ -v
+   ```
+   *Tiêu chí:* 100% tests PASSED (không có test nào failed).
+2. **Safety Guardrail Gate:**
+   ```bash
+   pytest tests/test_guardrails.py -v
+   ```
+   *Tiêu chí:* 100% prompt injection và out-of-scope bị từ chối lịch sự.
+3. **Agent Evaluation Gate:**
+   ```bash
+   python scripts/run_agent_eval.py
+   ```
+   *Tiêu chí:* Điểm tổng thể đạt $\ge 85\%$.

@@ -34,6 +34,13 @@ class ChatStep(BaseModel):
     name: str
     status: str = "done"
     detail: str | None = None
+    input: Any = None
+    output: Any = None
+    static_info: Any = None
+    system_prompt: Any = None
+    prompt_template: Any = None
+    duration_s: float | None = None
+    duration_ms: int | None = None
 
 
 class ChatResponse(BaseModel):

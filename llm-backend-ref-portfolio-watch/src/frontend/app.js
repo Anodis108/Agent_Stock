@@ -137,6 +137,9 @@
       if (item.input !== undefined && item.input !== null) {
         step.input = item.input;
       }
+      if (item.static_info !== undefined && item.static_info !== null) {
+        step.static_info = item.static_info;
+      }
       if (item.output !== undefined && item.output !== null) {
         step.output = item.output;
       }
@@ -187,6 +190,22 @@
     return String(val);
   }
 
+  var NODE_FALLBACK_PROMPTS = {
+    "pre_rewrite_guardrail": "[Rule Engine] Regex & Zero-Tolerance Policy:\nChặn Prompt Injection, Out-of-scope, vi phạm an ninh tài chính.",
+    "guardrail_refusal": "[Safety Fallback Engine]:\nPhản hồi từ chối chuẩn mực khi câu hỏi vi phạm chính sách an toàn hoặc ngoài phạm vi chứng khoán VN.",
+    "rewrite_question": "[System Prompt: rewrite_question]\nChuẩn hóa câu hỏi hội thoại, coreference resolution, trích xuất mã cổ phiếu và phân rã các ý định/sub-questions.",
+    "supervisor": "[System Prompt: supervisor_routing]\nPhân tích câu hỏi người dùng, quyết định lộ trình và điều phối danh sách workers (price, news, chart, eval, diagram).",
+    "price_agent": "[Tool Worker: price_agent]\nVnstock API: Truy xuất dữ liệu thời gian thực (giá khớp lệnh, giá đóng cửa close, % biến động và lịch sử giá kỹ thuật).",
+    "news_agent": "[System Prompt: news_agent_react]\nVnstock News API / ReAct Loop: Thu thập tin tức doanh nghiệp, sự kiện tài chính, công bố thông tin gần nhất.",
+    "eval_agent": "[System Prompt: eval_severity]\nRisk Assessment Engine: Đánh giá mức độ nghiêm trọng (high/medium/low/none) của tin tức và biến động giá.",
+    "chart_agent": "[Visualization Worker: chart_agent]\nMatplotlib / Chart Engine: Tạo biểu đồ nến kỹ thuật (candlestick) hoặc đường giá xu hướng lịch sử 10-30 phiên từ dữ liệu Vnstock.",
+    "diagram_agent": "[System Prompt: diagram_plan]\nMermaid Diagram Planner: Lập kế hoạch và tạo mã Mermaid biểu diễn luồng quan hệ doanh nghiệp hoặc dữ liệu.",
+    "answer_composer": "[System Prompt: answer_compose]\nTổng hợp câu trả lời dựa trên facts thu thập từ các worker, tuân thủ guardrail tài chính.",
+    "event_classifier": "[System Prompt: event_classification]\nPhân loại sự kiện định lượng / định tính từ dữ liệu quét biến động thị trường.",
+    "synthesis_agent": "[System Prompt: synthesis_alert]\nTổng hợp thông tin từ Price/News/Eval để soạn thảo cảnh báo danh mục đầu tư.",
+    "confidence_gate": "[Human-in-the-Loop & Confidence Gate]:\nĐánh giá ngưỡng tin cậy (Threshold >= 0.70) để tự động duyệt phát cảnh báo hoặc chuyển vào hàng đợi phê duyệt."
+  };
+
   function showNodeInspector(step, isPinned) {
     var inspector = document.getElementById("graph-node-inspector");
     if (!inspector || !step) return;
@@ -201,6 +220,8 @@
     var badgeEl = document.getElementById("inspector-node-badge");
     var detailEl = document.getElementById("inspector-node-detail");
     var inPre = document.getElementById("inspector-input-content");
+    var staticCol = document.getElementById("inspector-static-col");
+    var staticPre = document.getElementById("inspector-static-content");
     var outPre = document.getElementById("inspector-output-content");
 
     if (nameEl) nameEl.textContent = step.name || "?";
@@ -213,6 +234,17 @@
       detailEl.textContent = (step.detail ? "Chi tiết: " + step.detail : "") + durInfo;
     }
     if (inPre) inPre.textContent = formatIO(step.input);
+
+    var staticVal = step.static_info || step.system_prompt || step.prompt_template || (step.input && step.input.static_info) || NODE_FALLBACK_PROMPTS[step.name];
+    if (staticCol && staticPre) {
+      if (staticVal) {
+        staticPre.textContent = typeof staticVal === "object" ? formatIO(staticVal) : String(staticVal);
+        staticCol.style.display = "flex";
+      } else {
+        staticCol.style.display = "none";
+      }
+    }
+
     if (outPre) outPre.textContent = formatIO(step.output);
 
     inspector.style.display = "block";
@@ -893,9 +925,6 @@
   }
 
   async function deleteSession(sessionId) {
-    if (!window.confirm("Bạn có chắc muốn xóa cuộc trò chuyện này?")) {
-      return;
-    }
     try {
       await api("DELETE", "/api/sessions/" + encodeURIComponent(sessionId));
       if (currentSessionId === sessionId) {

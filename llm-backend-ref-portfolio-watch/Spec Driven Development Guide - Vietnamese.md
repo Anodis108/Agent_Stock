@@ -213,6 +213,7 @@ The agent should follow these rules:
 - Do not change architecture unless the spec is updated.
 - After each implementation, update specs/change-log.md.
 - After each implementation, explain how to test the change.
+...
 
 Keep AGENTS.md short and practical.
 ```

@@ -59,8 +59,30 @@ CREATE TABLE IF NOT EXISTS hitl_evaluations (
 CREATE INDEX IF NOT EXISTS idx_hitl_session_id ON hitl_evaluations(session_id);
 
 CREATE TABLE IF NOT EXISTS watchlist (
-    symbol TEXT PRIMARY KEY,
+    symbol TEXT NOT NULL,
+    user_id TEXT NOT NULL DEFAULT 'default',
     threshold_pct REAL NOT NULL DEFAULT 3.0 CHECK (threshold_pct >= 0),
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, symbol)
+);
+CREATE INDEX IF NOT EXISTS idx_watchlist_user_id ON watchlist(user_id);
+
+CREATE TABLE IF NOT EXISTS portfolio_holdings (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL DEFAULT 'default',
+    symbol TEXT NOT NULL,
+    quantity REAL NOT NULL CHECK (quantity > 0),
+    avg_buy_price REAL NOT NULL CHECK (avg_buy_price >= 0),
+    purchase_date TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_holdings_user_id ON portfolio_holdings(user_id);
+CREATE INDEX IF NOT EXISTS idx_holdings_user_symbol ON portfolio_holdings(user_id, symbol);
+
+CREATE TABLE IF NOT EXISTS user_settings (
+    user_id TEXT PRIMARY KEY,
+    alert_threshold_pct REAL NOT NULL DEFAULT 3.0 CHECK (alert_threshold_pct >= 0),
     updated_at TEXT NOT NULL
 );
 """
@@ -102,12 +124,23 @@ def init_db(conn: sqlite3.Connection) -> None:
     try:
         cursor = conn.execute("PRAGMA table_info(hitl_evaluations)")
         columns = [row["name"] for row in cursor.fetchall()]
-        if "reason" not in columns:
-            conn.execute("ALTER TABLE hitl_evaluations ADD COLUMN reason TEXT")
-        if "question" not in columns:
-            conn.execute("ALTER TABLE hitl_evaluations ADD COLUMN question TEXT")
-        if "answer" not in columns:
-            conn.execute("ALTER TABLE hitl_evaluations ADD COLUMN answer TEXT")
+        if columns:
+            if "reason" not in columns:
+                conn.execute("ALTER TABLE hitl_evaluations ADD COLUMN reason TEXT")
+            if "question" not in columns:
+                conn.execute("ALTER TABLE hitl_evaluations ADD COLUMN question TEXT")
+            if "answer" not in columns:
+                conn.execute("ALTER TABLE hitl_evaluations ADD COLUMN answer TEXT")
+    except Exception:
+        pass
+
+    # Check if user_id column exists in watchlist for multi-tenant migration
+    try:
+        cursor = conn.execute("PRAGMA table_info(watchlist)")
+        columns = [row["name"] for row in cursor.fetchall()]
+        if columns and "user_id" not in columns:
+            conn.execute("ALTER TABLE watchlist ADD COLUMN user_id TEXT NOT NULL DEFAULT 'default'")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_watchlist_user_id ON watchlist(user_id)")
     except Exception:
         pass
     conn.commit()
