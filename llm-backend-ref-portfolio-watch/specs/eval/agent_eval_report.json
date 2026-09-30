@@ -1,0 +1,143 @@
+{
+  "total_cases": 5,
+  "passed_cases": 4,
+  "overall_pass_rate": 80.0,
+  "avg_routing_accuracy": 100.0,
+  "avg_routing_precision": 80.0,
+  "avg_routing_recall": 100.0,
+  "avg_decomposition_quality": 96.0,
+  "avg_groundedness_score": 100.0,
+  "avg_task_success_rate": 90.0,
+  "guardrails_pass_rate": 100.0,
+  "overall_score": 96.2,
+  "slice_scores": {
+    "lookup": 100.0,
+    "comparison": 0.0,
+    "explain_why": 100.0,
+    "charting_diagram": 100.0,
+    "session_memory": 100.0
+  },
+  "details": [
+    {
+      "case_id": "lookup_01",
+      "question": "Giá FPT hôm nay bao nhiêu?",
+      "slice_type": "lookup",
+      "passed": true,
+      "routing_accuracy": 1.0,
+      "routing_precision": 0.5,
+      "routing_recall": 1.0,
+      "decomposition_quality": 0.8,
+      "groundedness_score": 1.0,
+      "task_success": 1.0,
+      "actual_agents": [
+        "price",
+        "news"
+      ],
+      "expected_agents": [],
+      "sub_questions": [
+        "Giá cổ phiếu FPT hôm nay là bao nhiêu?",
+        "Có tin tức gì đáng chú ý liên quan đến cổ phiếu FPT không?"
+      ],
+      "answer": "**Giá cổ phiếu FPT:**\n- Giá đóng cửa gần nhất: 63.0\n- Biến động so với phiên trước: -0.32% **Tin tức đáng chú ý liên quan đến cổ phiếu FPT:**\n1. Sau màn hát “Tái sinh” của ông Trương Gia Bình, mỗi tháng FPT có thêm 6.000 cổ đông mới, sân vận động lớn nhất thế giới và Mỹ Đình cộng lại không đủ sức chứa.\n2. Báo cáo kết quả đợt phát hành cổ phiếu để tăng vốn cổ phần từ nguồn vốn chủ sở hữu.\n3. Thông báo thay đổi số lượng cổ phiếu có quyền biểu quyết đang lưu hành.\n. FPT viết code bằng AI nhanh hơn 30% nhưng năng suất dự án chỉ tăng 10% Thông tin tham khảo, không phải lời khuyên đầu tư.",
+      "issues": []
+    },
+    {
+      "case_id": "comparison_01",
+      "question": "So sánh VNM và HPG tuần này",
+      "slice_type": "comparison",
+      "passed": false,
+      "routing_accuracy": 1.0,
+      "routing_precision": 1.0,
+      "routing_recall": 1.0,
+      "decomposition_quality": 1.0,
+      "groundedness_score": 1.0,
+      "task_success": 0.5,
+      "actual_agents": [
+        "price",
+        "news",
+        "eval"
+      ],
+      "expected_agents": [],
+      "sub_questions": [
+        "Giá cổ phiếu FPT trong tuần này là bao nhiêu và biến động giá ra sao?",
+        "Giá cổ phiếu HPG trong tuần này là bao nhiêu và biến động giá ra sao?",
+        "Có tin tức gì đáng chú ý liên quan đến cổ phiếu FPT trong tuần này?",
+        "Có tin tức gì đáng chú ý liên quan đến cổ phiếu HPG trong tuần này?"
+      ],
+      "answer": "**So sánh giá cổ phiếu FPT và HPG trong tuần này:**\n\n**1. Giá cổ phiếu:**\n- **FPT:** \n  - Giá đóng cửa: 63.0\n  - Biến động giá: -0.32%\n- **HPG:** \n  - Giá đóng cửa: 20.15\n  - Biến động giá: -0.74%\n\n**2. Thông tin/tin tức sự kiện:**\n- **FPT:**\n  - Sau màn hát “Tái sinh” của ông Trương Gia Bình, mỗi tháng FPT có thêm 6.000 cổ đông mới, sân vận động lớn nhất thế giới và Mỹ Đình cộng lại không đủ sức chứa.\n  - Báo cáo kết quả đợt phát hành cổ phiếu để tăng vốn cổ phần từ nguồn vốn chủ sở hữu.\n  - Thông báo thay đổi số lượng cổ phiếu có quyền biểu quyết đang lưu hành.\n  \n- **HPG:**\n  - Tỷ phú Trần Đình Long trực tiếp xuất hiện, làm việc với tỉnh Đắk Lắk về “mảnh đất đẹp cuối cùng để làm thép tại Việt Nam”.\n  - Doanh nghiệp của tỷ phú Trần Đình Long đặt đóng tàu 65.000 DWT thuộc loại lớn nhất từng được kỹ sư, công nhân Việt Nam trực tiếp đóng mới.\n  - Nỗi lo quý 3 của tỷ phú Trần Đình Long.\n\n**Đánh giá chung:**\nMức giảm giá của FPT là -0.32%, không đáng kể, trong khi HPG giảm -0.74%. Tin tức về sự gia tăng cổ đông mới của FPT có thể hỗ trợ giá trong tương lai.",
+      "issues": [
+        "Thiếu các từ bắt buộc: ['VNM']"
+      ]
+    },
+    {
+      "case_id": "explain_why_01",
+      "question": "Tại sao giá FPT giảm hôm nay?",
+      "slice_type": "explain_why",
+      "passed": true,
+      "routing_accuracy": 1.0,
+      "routing_precision": 1.0,
+      "routing_recall": 1.0,
+      "decomposition_quality": 1.0,
+      "groundedness_score": 1.0,
+      "task_success": 1.0,
+      "actual_agents": [
+        "price",
+        "news",
+        "eval"
+      ],
+      "expected_agents": [],
+      "sub_questions": [
+        "Giá và biến động hiện tại của cổ phiếu FPT là bao nhiêu?",
+        "Tin tức và nguyên nhân tác động đến biến động giá cổ phiếu FPT gần đây là gì?"
+      ],
+      "answer": "Giá cổ phiếu FPT giảm hôm nay do mức giảm nhẹ -0.32%, với giá đóng cửa gần nhất là 63.0, giảm từ 63.2 của phiên trước. \n\nTin tức liên quan bao gồm:\n- \"Sau màn hát “Tái sinh” của ông Trương Gia Bình, mỗi tháng FPT có thêm 6.000 cổ đông mới, sân vận động lớn nhất thế giới và Mỹ Đình cộng lại không đủ sức chứa.\"\n- \"Báo cáo kết quả đợt phát hành cổ phiếu để tăng vốn cổ phần từ nguồn vốn chủ sở hữu.\"\n- \"Thông báo thay đổi số lượng cổ phiếu có quyền biểu quyết đang lưu hành.\"\n\nĐánh giá cho thấy mức giảm này không nghiêm trọng, với RSI ở mức trung tính 52.1, cho thấy không có áp lực mua hoặc bán mạnh. Tin tức về sự gia tăng cổ đông mới có thể hỗ trợ tích cực cho cổ phiếu trong tương lai.",
+      "issues": []
+    },
+    {
+      "case_id": "charting_diagram_01",
+      "question": "Vẽ biểu đồ giá cổ phiếu FPT 10 phiên gần nhất",
+      "slice_type": "charting_diagram",
+      "passed": true,
+      "routing_accuracy": 1.0,
+      "routing_precision": 1.0,
+      "routing_recall": 1.0,
+      "decomposition_quality": 1.0,
+      "groundedness_score": 1.0,
+      "task_success": 1.0,
+      "actual_agents": [
+        "price",
+        "chart"
+      ],
+      "expected_agents": [],
+      "sub_questions": [
+        "Vẽ biểu đồ giá cổ phiếu FPT trong 10 phiên giao dịch gần nhất."
+      ],
+      "answer": "Đã tạo biểu đồ kỹ thuật cho cổ phiếu FPT. Giá đóng cửa gần nhất của FPT là 63.0, giảm 0.32% so với phiên trước (63.2). Biểu đồ hiển thị bên dưới.\n\n![Biểu đồ giá cổ phiếu FPT](chart_path:/charts/chart_FPT_77938ec8.png)",
+      "issues": []
+    },
+    {
+      "case_id": "session_memory_01",
+      "question": "Tôi đang quan tâm đến FPT. Cổ phiếu này gần đây có tin tức và biến động gì đáng chú ý không?",
+      "slice_type": "session_memory",
+      "passed": true,
+      "routing_accuracy": 1.0,
+      "routing_precision": 0.5,
+      "routing_recall": 1.0,
+      "decomposition_quality": 1.0,
+      "groundedness_score": 1.0,
+      "task_success": 1.0,
+      "actual_agents": [
+        "price",
+        "news"
+      ],
+      "expected_agents": [],
+      "sub_questions": [
+        "Cổ phiếu FPT gần đây có tin tức gì đáng chú ý không?",
+        "Cổ phiếu FPT gần đây có biến động gì không?"
+      ],
+      "answer": "**Cổ phiếu FPT**\n\n**1. Giá cổ phiếu:**\n- Giá đóng cửa gần nhất: 63.0\n- Biến động: Giảm 0.32% so với phiên trước (63.2).\n\n**2. Tin tức và sự kiện:**\n- Sau màn hát “Tái sinh” của ông Trương Gia Bình, mỗi tháng FPT có thêm 6.000 cổ đông mới, sân vận động lớn nhất thế giới và Mỹ Đình cộng lại không đủ sức chứa.\n- FPT đã báo cáo kết quả đợt phát hành cổ phiếu để tăng vốn cổ phần từ nguồn vốn chủ sở hữu.\n- FPT thông báo thay đổi số lượng cổ phiếu có quyền biểu quyết đang lưu hành.\n- FPT viết code bằng AI nhanh hơn 30% nhưng năng suất dự án chỉ tăng 10%. \n\nNếu bạn cần thêm thông tin, hãy cho tôi biết!",
+      "issues": []
+    }
+  ],
+  "timestamp": "2026-09-30T09:17:34.799846+00:00"
+}

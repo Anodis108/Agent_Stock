@@ -132,3 +132,45 @@ class CafefNewsSource:
         with urllib.request.urlopen(req, timeout=self.timeout_seconds) as resp:
             raw = resp.read()
         return raw.decode("utf-8", errors="replace")
+
+
+class MultiSourceNewsSource:
+    """Nguồn tin tức đa nguồn kết hợp (CafeF, Vnstock, RSS...) kèm cơ chế tự động khử trùng lặp."""
+
+    def __init__(self, sources: list[Any] | None = None) -> None:
+        self.sources = sources if sources is not None else [CafefNewsSource()]
+
+    @staticmethod
+    def _normalize_title_key(title: str) -> str:
+        """Chuẩn hóa tiêu đề để phát hiện tin trùng lặp giữa các nguồn."""
+        cleaned = re.sub(r"[^\w\s]", "", title.lower())
+        return " ".join(cleaned.split())
+
+    def fetch_news(
+        self,
+        symbol: str,
+        query: str | None = None,
+        *,
+        days: int | None = None,
+    ) -> list[NewsItem]:
+        sym = (symbol or "").strip().upper()
+        if not sym:
+            return []
+
+        all_items: list[NewsItem] = []
+        seen_titles: set[str] = set()
+
+        for src in self.sources:
+            try:
+                items = src.fetch_news(sym, query=query, days=days)
+                for item in items:
+                    norm_title = self._normalize_title_key(item.title)
+                    if norm_title and norm_title not in seen_titles:
+                        seen_titles.add(norm_title)
+                        all_items.append(item)
+            except Exception:
+                # Chịu lỗi: một nguồn sập không làm hỏng toàn bộ tin tức
+                continue
+
+        return all_items
+

@@ -20,8 +20,12 @@ from backend.database.repositories import (
     MarketHistoryRepository,
     MessageRecord,
     MessageRepository,
+    PortfolioHoldingRecord,
+    PortfolioHoldingRepository,
     SessionRecord,
     SessionRepository,
+    UserSettingsRecord,
+    UserSettingsRepository,
     WatchlistRecord,
     WatchlistRepository,
 )
@@ -60,6 +64,8 @@ def test_schema_initialization_and_foreign_keys(db_conn: sqlite3.Connection):
         "market_history_10d",
         "hitl_evaluations",
         "watchlist",
+        "portfolio_holdings",
+        "user_settings",
     }
     assert required_tables.issubset(tables), f"Missing tables: {required_tables - tables}"
 
@@ -376,3 +382,111 @@ def test_data_persistence_across_connections(temp_db_path: Path):
 
     finally:
         conn2.close()
+
+
+def test_portfolio_holdings_crud(db_conn: sqlite3.Connection):
+    """Test PortfolioHolding creation, retrieval, listing by user, updating, and deletion."""
+    repo = PortfolioHoldingRepository(db_conn)
+
+    # 1. Create holdings
+    h1 = repo.create("FPT", quantity=1000.0, avg_buy_price=105.5, user_id="user_test")
+    assert h1.id is not None
+    assert h1.symbol == "FPT"
+    assert h1.quantity == 1000.0
+    assert h1.avg_buy_price == 105.5
+    assert h1.user_id == "user_test"
+
+    h2 = repo.create("HPG", quantity=2500.0, avg_buy_price=28.0, user_id="user_test")
+    assert h2.id != h1.id
+
+    # 2. Get holding
+    fetched = repo.get(h1.id)
+    assert fetched is not None
+    assert fetched.id == h1.id
+    assert fetched.symbol == "FPT"
+
+    assert repo.get("non-existent-holding") is None
+
+    # 3. List by user
+    user_holdings = repo.list_by_user("user_test")
+    assert len(user_holdings) == 2
+    syms = [h.symbol for h in user_holdings]
+    assert "FPT" in syms and "HPG" in syms
+
+    # Other user has empty holdings
+    assert len(repo.list_by_user("user_other")) == 0
+
+    # 4. Update holding
+    updated = repo.update(h1.id, quantity=1500.0, avg_buy_price=108.0)
+    assert updated is True
+    h1_after = repo.get(h1.id)
+    assert h1_after.quantity == 1500.0
+    assert h1_after.avg_buy_price == 108.0
+
+    # 5. Delete holding
+    deleted = repo.delete(h1.id, user_id="user_test")
+    assert deleted is True
+    assert repo.get(h1.id) is None
+    assert len(repo.list_by_user("user_test")) == 1
+
+
+def test_multi_tenant_watchlist_and_holdings_isolation(db_conn: sqlite3.Connection):
+    """Verify complete isolation between User A and User B for both watchlist and holdings."""
+    w_repo = WatchlistRepository(db_conn)
+    h_repo = PortfolioHoldingRepository(db_conn)
+
+    # User A adds FPT and SSI
+    w_repo.upsert("FPT", threshold_pct=2.0, user_id="alice")
+    w_repo.upsert("SSI", threshold_pct=3.0, user_id="alice")
+    h_repo.create("FPT", quantity=500.0, avg_buy_price=100.0, user_id="alice")
+
+    # User B adds VNM and HPG
+    w_repo.upsert("VNM", threshold_pct=4.0, user_id="bob")
+    w_repo.upsert("HPG", threshold_pct=5.0, user_id="bob")
+    h_repo.create("VNM", quantity=1000.0, avg_buy_price=65.0, user_id="bob")
+
+    # Verify Alice's watchlist
+    alice_watchlist = w_repo.list_all(user_id="alice")
+    alice_syms = [item.symbol for item in alice_watchlist]
+    assert "FPT" in alice_syms and "SSI" in alice_syms
+    assert "VNM" not in alice_syms and "HPG" not in alice_syms
+
+    # Verify Bob's watchlist
+    bob_watchlist = w_repo.list_all(user_id="bob")
+    bob_syms = [item.symbol for item in bob_watchlist]
+    assert "VNM" in bob_syms and "HPG" in bob_syms
+    assert "FPT" not in bob_syms and "SSI" not in bob_syms
+
+    # Verify Holdings isolation
+    alice_holdings = h_repo.list_by_user("alice")
+    assert len(alice_holdings) == 1
+    assert alice_holdings[0].symbol == "FPT"
+
+    bob_holdings = h_repo.list_by_user("bob")
+    assert len(bob_holdings) == 1
+    assert bob_holdings[0].symbol == "VNM"
+
+
+def test_user_settings_repository_crud(db_conn: sqlite3.Connection):
+    """Test UserSettings get, defaults, and set_threshold."""
+    repo = UserSettingsRepository(db_conn)
+
+    # 1. Default settings for unconfigured user
+    default_settings = repo.get("new_user")
+    assert default_settings.user_id == "new_user"
+    assert default_settings.alert_threshold_pct == 3.0
+
+    # 2. Set custom threshold
+    saved = repo.set_threshold("alice", alert_threshold_pct=2.5)
+    assert saved.user_id == "alice"
+    assert saved.alert_threshold_pct == 2.5
+
+    # 3. Retrieve updated settings
+    fetched = repo.get("alice")
+    assert fetched.alert_threshold_pct == 2.5
+
+    # 4. Independent user settings
+    repo.set_threshold("bob", alert_threshold_pct=5.0)
+    assert repo.get("bob").alert_threshold_pct == 5.0
+    assert repo.get("alice").alert_threshold_pct == 2.5
+

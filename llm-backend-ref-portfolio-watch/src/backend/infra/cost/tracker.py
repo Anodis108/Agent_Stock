@@ -148,6 +148,29 @@ def record_cost(
     )
 
 
+class BudgetExceededError(Exception):
+    """Chi phí vượt ngưỡng daily budget — chặn LLM call tiếp theo."""
+
+
+def check_budget_or_raise() -> None:
+    """Kiểm tra ngân sách trước mỗi LLM request (0 = không giới hạn)."""
+    from backend.shared.settings import settings
+
+    limit = settings.cost_daily_limit_usd
+    if limit <= 0:
+        return
+    if _tracker.total_cost_usd >= limit:
+        raise BudgetExceededError(
+            f"Daily cost budget exceeded: ${_tracker.total_cost_usd:.4f} >= ${limit:.4f}"
+        )
+
+
+def is_over_alert_threshold() -> bool:
+    from backend.shared.settings import settings
+
+    return _tracker.total_cost_usd >= settings.cost_alert_threshold_usd
+
+
 def record_completion_usage(
     *,
     model: str,

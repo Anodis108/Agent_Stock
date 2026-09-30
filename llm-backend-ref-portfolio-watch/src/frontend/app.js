@@ -1,7 +1,34 @@
 /* Portfolio Watch frontend — Phase 10: Claude-like Chat UI + Backend API */
 (function () {
   const STATUSES = ["pending", "running", "done", "error"];
-  const USER_ID = "default";
+  var currentUserId = (function () {
+    try {
+      return localStorage.getItem("PW_CURRENT_USER_ID") || "default";
+    } catch (_e) {
+      return "default";
+    }
+  })();
+
+  function getCurrentUserId() {
+    return currentUserId || "default";
+  }
+
+  function setCurrentUserId(newId) {
+    currentUserId = (newId || "default").trim();
+    try {
+      localStorage.setItem("PW_CURRENT_USER_ID", currentUserId);
+    } catch (_e) {}
+    var select = document.getElementById("user-switcher-select");
+    if (select && select.value !== currentUserId) {
+      select.value = currentUserId;
+    }
+    var badge = document.getElementById("portfolio-user-badge");
+    if (badge) {
+      badge.textContent = "user: " + currentUserId;
+    }
+  }
+
+  const USER_ID = getCurrentUserId();
 
   function backendBase() {
     if (typeof window.PW_getBackendBaseUrl === "function") {
@@ -45,7 +72,10 @@
   async function api(method, path, body) {
     var opts = {
       method: method,
-      headers: { Accept: "application/json" },
+      headers: {
+        Accept: "application/json",
+        "X-User-ID": getCurrentUserId(),
+      },
     };
     if (body !== undefined) {
       opts.headers["Content-Type"] = "application/json";
@@ -137,6 +167,9 @@
       if (item.input !== undefined && item.input !== null) {
         step.input = item.input;
       }
+      if (item.static_info !== undefined && item.static_info !== null) {
+        step.static_info = item.static_info;
+      }
       if (item.output !== undefined && item.output !== null) {
         step.output = item.output;
       }
@@ -187,6 +220,22 @@
     return String(val);
   }
 
+  var NODE_FALLBACK_PROMPTS = {
+    "pre_rewrite_guardrail": "[Rule Engine] Regex & Zero-Tolerance Policy:\nChặn Prompt Injection, Out-of-scope, vi phạm an ninh tài chính.",
+    "guardrail_refusal": "[Safety Fallback Engine]:\nPhản hồi từ chối chuẩn mực khi câu hỏi vi phạm chính sách an toàn hoặc ngoài phạm vi chứng khoán VN.",
+    "rewrite_question": "[System Prompt: rewrite_question]\nChuẩn hóa câu hỏi hội thoại, coreference resolution, trích xuất mã cổ phiếu và phân rã các ý định/sub-questions.",
+    "supervisor": "[System Prompt: supervisor_routing]\nPhân tích câu hỏi người dùng, quyết định lộ trình và điều phối danh sách workers (price, news, chart, eval, diagram).",
+    "price_agent": "[Tool Worker: price_agent]\nVnstock API: Truy xuất dữ liệu thời gian thực (giá khớp lệnh, giá đóng cửa close, % biến động và lịch sử giá kỹ thuật).",
+    "news_agent": "[System Prompt: news_agent_react]\nVnstock News API / ReAct Loop: Thu thập tin tức doanh nghiệp, sự kiện tài chính, công bố thông tin gần nhất.",
+    "eval_agent": "[System Prompt: eval_severity]\nRisk Assessment Engine: Đánh giá mức độ nghiêm trọng (high/medium/low/none) của tin tức và biến động giá.",
+    "chart_agent": "[Visualization Worker: chart_agent]\nMatplotlib / Chart Engine: Tạo biểu đồ nến kỹ thuật (candlestick) hoặc đường giá xu hướng lịch sử 10-30 phiên từ dữ liệu Vnstock.",
+    "diagram_agent": "[System Prompt: diagram_plan]\nMermaid Diagram Planner: Lập kế hoạch và tạo mã Mermaid biểu diễn luồng quan hệ doanh nghiệp hoặc dữ liệu.",
+    "answer_composer": "[System Prompt: answer_compose]\nTổng hợp câu trả lời dựa trên facts thu thập từ các worker, tuân thủ guardrail tài chính.",
+    "event_classifier": "[System Prompt: event_classification]\nPhân loại sự kiện định lượng / định tính từ dữ liệu quét biến động thị trường.",
+    "synthesis_agent": "[System Prompt: synthesis_alert]\nTổng hợp thông tin từ Price/News/Eval để soạn thảo cảnh báo danh mục đầu tư.",
+    "confidence_gate": "[Human-in-the-Loop & Confidence Gate]:\nĐánh giá ngưỡng tin cậy (Threshold >= 0.70) để tự động duyệt phát cảnh báo hoặc chuyển vào hàng đợi phê duyệt."
+  };
+
   function showNodeInspector(step, isPinned) {
     var inspector = document.getElementById("graph-node-inspector");
     if (!inspector || !step) return;
@@ -201,6 +250,8 @@
     var badgeEl = document.getElementById("inspector-node-badge");
     var detailEl = document.getElementById("inspector-node-detail");
     var inPre = document.getElementById("inspector-input-content");
+    var staticCol = document.getElementById("inspector-static-col");
+    var staticPre = document.getElementById("inspector-static-content");
     var outPre = document.getElementById("inspector-output-content");
 
     if (nameEl) nameEl.textContent = step.name || "?";
@@ -213,7 +264,36 @@
       detailEl.textContent = (step.detail ? "Chi tiết: " + step.detail : "") + durInfo;
     }
     if (inPre) inPre.textContent = formatIO(step.input);
-    if (outPre) outPre.textContent = formatIO(step.output);
+
+    var staticVal = step.static_info || step.system_prompt || step.prompt_template || (step.input && step.input.static_info) || NODE_FALLBACK_PROMPTS[step.name];
+    if (staticCol && staticPre) {
+      if (staticVal) {
+        staticPre.textContent = typeof staticVal === "object" ? formatIO(staticVal) : String(staticVal);
+        staticCol.style.display = "flex";
+      } else {
+        staticCol.style.display = "none";
+      }
+    }
+
+    var outContent = formatIO(step.output);
+    if (step.name === "rewrite_question" && step.output && typeof step.output === "object") {
+      var sqs = step.output.sub_questions;
+      if (Array.isArray(sqs) && sqs.length) {
+        outContent += "\n\n📋 Danh sách Sub-questions (" + sqs.length + " câu):\n" +
+          sqs.map(function (q, idx) { return "  " + (idx + 1) + ". " + q; }).join("\n");
+      }
+    } else if (step.name === "eval_agent" && step.output && typeof step.output === "object") {
+      var indList = [];
+      if (step.output.rsi != null) indList.push("  - RSI(14): " + (typeof step.output.rsi === "number" ? step.output.rsi.toFixed(2) : step.output.rsi));
+      if (step.output.ma20 != null) indList.push("  - MA(20): " + (typeof step.output.ma20 === "number" ? step.output.ma20.toFixed(2) : step.output.ma20));
+      if (step.output.ma50 != null) indList.push("  - MA(50): " + (typeof step.output.ma50 === "number" ? step.output.ma50.toFixed(2) : step.output.ma50));
+      if (step.output.signal != null) indList.push("  - Tín hiệu: " + step.output.signal);
+      if (indList.length) {
+        outContent += "\n\n📊 Chỉ báo kỹ thuật (Technical Indicators):\n" + indList.join("\n");
+      }
+    }
+
+    if (outPre) outPre.textContent = outContent;
 
     inspector.style.display = "block";
 
@@ -893,9 +973,6 @@
   }
 
   async function deleteSession(sessionId) {
-    if (!window.confirm("Bạn có chắc muốn xóa cuộc trò chuyện này?")) {
-      return;
-    }
     try {
       await api("DELETE", "/api/sessions/" + encodeURIComponent(sessionId));
       if (currentSessionId === sessionId) {
@@ -1552,6 +1629,191 @@
     }
   }
 
+  /* --------------------------------------------------------------------------
+     Phase 6: Multi-tenant User Switcher & Portfolio Management (P&L)
+     -------------------------------------------------------------------------- */
+
+  function showPortfolioError(msg) {
+    var el = document.getElementById("portfolio-error");
+    if (!el) return;
+    el.textContent = msg || "";
+    el.style.display = msg ? "block" : "none";
+  }
+
+  function hidePortfolioError() {
+    showPortfolioError("");
+  }
+
+  async function loadPortfolio() {
+    hidePortfolioError();
+    var tbody = document.getElementById("portfolio-body");
+    var totalNavEl = document.getElementById("pnl-total-nav");
+    var totalPnlEl = document.getElementById("pnl-total-pnl");
+    var totalPctEl = document.getElementById("pnl-total-pct");
+    var userBadgeEl = document.getElementById("portfolio-user-badge");
+
+    if (userBadgeEl) userBadgeEl.textContent = "user: " + getCurrentUserId();
+
+    try {
+      var data = await api("GET", "/api/portfolio");
+      if (!data) return;
+
+      var nav = typeof data.total_nav === "number" ? data.total_nav : 0;
+      var pnl = typeof data.total_unrealized_pnl === "number" ? data.total_unrealized_pnl : 0;
+      var pct = typeof data.total_pnl_pct === "number" ? data.total_pnl_pct : 0;
+
+      if (totalNavEl) totalNavEl.textContent = nav.toLocaleString("vi-VN") + " ₫";
+      if (totalPnlEl) {
+        var pnlSign = pnl > 0 ? "+" : "";
+        totalPnlEl.textContent = pnlSign + pnl.toLocaleString("vi-VN") + " ₫";
+        totalPnlEl.className = "pnl-card-val " + (pnl > 0 ? "pnl-up" : pnl < 0 ? "pnl-down" : "pnl-ref");
+      }
+      if (totalPctEl) {
+        var pctSign = pct > 0 ? "+" : "";
+        totalPctEl.textContent = pctSign + pct.toFixed(2) + "%";
+        totalPctEl.className = "pnl-card-val " + (pct > 0 ? "pnl-up" : pct < 0 ? "pnl-down" : "pnl-ref");
+      }
+
+      var items = data.items || [];
+      if (!tbody) return;
+
+      if (!items.length) {
+        tbody.innerHTML = '<tr><td colspan="7" class="placeholder"><em>Danh mục đang trống. Hãy thêm mã cổ phiếu đầu tiên của bạn!</em></td></tr>';
+        return;
+      }
+
+      var html = "";
+      for (var i = 0; i < items.length; i++) {
+        var item = items[i];
+        var itemPnl = typeof item.unrealized_pnl === "number" ? item.unrealized_pnl : 0;
+        var itemPct = typeof item.pnl_pct === "number" ? item.pnl_pct : 0;
+        var pnlClass = itemPnl > 0 ? "pnl-up" : itemPnl < 0 ? "pnl-down" : "pnl-ref";
+        var pnlSign = itemPnl > 0 ? "+" : "";
+        var pctSign = itemPct > 0 ? "+" : "";
+
+        var curPriceStr = item.price_error
+          ? '<span style="color:#dc2626;" title="Chưa có dữ liệu giá thị trường">⚠️ Lỗi giá</span>'
+          : (item.current_price != null ? item.current_price.toLocaleString("vi-VN") : "---");
+
+        html += '<tr data-holding-id="' + item.id + '">' +
+          '<td><strong>' + (item.symbol || "") + '</strong></td>' +
+          '<td>' + (item.quantity != null ? item.quantity.toLocaleString("vi-VN") : 0) + '</td>' +
+          '<td>' + (item.avg_buy_price != null ? item.avg_buy_price.toLocaleString("vi-VN") : 0) + '</td>' +
+          '<td>' + curPriceStr + '</td>' +
+          '<td class="' + pnlClass + '"><strong>' + pnlSign + itemPnl.toLocaleString("vi-VN") + '</strong></td>' +
+          '<td class="' + pnlClass + '">' + pctSign + itemPct.toFixed(2) + '%</td>' +
+          '<td><button type="button" class="btn-delete-holding" data-holding-id="' + item.id + '" title="Xóa ' + item.symbol + ' khỏi danh mục">🗑️</button></td>' +
+          '</tr>';
+      }
+      tbody.innerHTML = html;
+
+      // Gắn sự kiện xóa
+      var delBtns = tbody.querySelectorAll(".btn-delete-holding");
+      delBtns.forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var hid = btn.getAttribute("data-holding-id");
+          if (!hid) return;
+          doDeleteHolding(hid).catch(function () {});
+        });
+      });
+    } catch (err) {
+      console.error("loadPortfolio error:", err);
+      showPortfolioError("Tải danh mục lỗi: " + formatApiError(err));
+      if (tbody) {
+        tbody.innerHTML = '<tr><td colspan="7" class="placeholder"><em>(Lỗi tải danh mục)</em></td></tr>';
+      }
+    }
+  }
+
+  async function doAddHolding(symbol, quantity, avgBuyPrice) {
+    hidePortfolioError();
+    try {
+      await api("POST", "/api/portfolio/holdings", {
+        symbol: symbol,
+        quantity: quantity,
+        avg_buy_price: avgBuyPrice,
+      });
+      showToast("Đã thêm " + symbol + " vào danh mục của " + getCurrentUserId(), "success");
+      await loadPortfolio();
+    } catch (err) {
+      var msg = formatApiError(err);
+      showPortfolioError("Thêm mã thất bại: " + msg);
+      showToast("Lỗi: " + msg, "error");
+      throw err;
+    }
+  }
+
+  async function doDeleteHolding(holdingId) {
+    hidePortfolioError();
+    try {
+      await api("DELETE", "/api/portfolio/holdings/" + encodeURIComponent(holdingId));
+      showToast("Đã xóa vị thế khỏi danh mục", "info");
+      await loadPortfolio();
+    } catch (err) {
+      var msg = formatApiError(err);
+      showPortfolioError("Xóa vị thế thất bại: " + msg);
+      showToast("Lỗi: " + msg, "error");
+      throw err;
+    }
+  }
+
+  function initPortfolio() {
+    var form = document.getElementById("portfolio-add-form");
+    if (form) {
+      form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        var symEl = document.getElementById("portfolio-symbol");
+        var qtyEl = document.getElementById("portfolio-quantity");
+        var priceEl = document.getElementById("portfolio-price");
+
+        var sym = symEl && symEl.value ? symEl.value.trim().toUpperCase() : "";
+        var qty = qtyEl && qtyEl.value ? parseInt(qtyEl.value, 10) : 0;
+        var price = priceEl && priceEl.value ? parseFloat(priceEl.value) : 0;
+
+        if (!sym || qty <= 0 || price <= 0) {
+          showPortfolioError("Vui lòng nhập đầy đủ mã, số lượng (>0) và giá mua (>0).");
+          return;
+        }
+
+        doAddHolding(sym, qty, price)
+          .then(function () {
+            if (symEl) symEl.value = "";
+            if (qtyEl) qtyEl.value = "";
+            if (priceEl) priceEl.value = "";
+            if (symEl) symEl.focus();
+          })
+          .catch(function () {});
+      });
+    }
+
+    var refreshBtn = document.getElementById("btn-refresh-portfolio");
+    if (refreshBtn) {
+      refreshBtn.addEventListener("click", function () {
+        loadPortfolio().catch(function () {});
+      });
+    }
+  }
+
+  function initUserSwitcher() {
+    var select = document.getElementById("user-switcher-select");
+    if (!select) return;
+    select.value = getCurrentUserId();
+
+    select.addEventListener("change", function () {
+      var nextUser = (select.value || "default").trim();
+      setCurrentUserId(nextUser);
+      showToast("Đã chuyển sang người dùng: " + nextUser, "info");
+      setBoot("Người dùng hiện tại: " + nextUser);
+
+      // Tải lại toàn bộ dữ liệu của người dùng mới
+      loadSessions(true).catch(function () {});
+      loadWatchlist().catch(function () {});
+      loadMarket().catch(function () {});
+      loadApprovals().catch(function () {});
+      loadPortfolio().catch(function () {});
+    });
+  }
+
   function initTabs() {
     var tabBtns = document.querySelectorAll(".tab-btn");
     var tabPanes = document.querySelectorAll(".tab-pane");
@@ -1571,6 +1833,8 @@
         if (targetPane) targetPane.classList.add("active");
         if (targetId === "market") {
           loadMarket().catch(function () {});
+        } else if (targetId === "portfolio") {
+          loadPortfolio().catch(function () {});
         }
       });
     });
@@ -1897,21 +2161,23 @@
   initHints();
   initChartModal();
   initHeaderNav();
+  initUserSwitcher();
+  initPortfolio();
   renderTimeline([]);
   renderLiveGraphNodes([]);
   setGraphStatus("Sẵn sàng", "idle");
-  setBoot("API=" + baseLabel + " · đang tải watchlist/market/approvals…");
+  setBoot("API=" + baseLabel + " · đang tải watchlist/market/portfolio…");
   loadSessions(true).catch(function () {});
   
   if (typeof Promise.allSettled === 'function') {
-    Promise.allSettled([loadWatchlist(), loadMarket(), loadApprovals()])
+    Promise.allSettled([loadWatchlist(), loadMarket(), loadApprovals(), loadPortfolio()])
       .then(function (results) {
         var fails = 0;
         for (var i = 0; i < results.length; i++) {
           if (results[i].status === "rejected") fails++;
         }
         if (fails > 0) {
-          setBoot("API=" + baseLabel + " · đã nối Backend (tải lỗi " + fails + "/3)", true);
+          setBoot("API=" + baseLabel + " · đã nối Backend (tải lỗi " + fails + "/4)", true);
         } else {
           setBoot("API=" + baseLabel + " · đã nối Backend");
         }
@@ -1921,12 +2187,13 @@
     var ps = [
       loadWatchlist().catch(function(e) { return e; }), 
       loadMarket().catch(function(e) { return e; }), 
-      loadApprovals().catch(function(e) { return e; })
+      loadApprovals().catch(function(e) { return e; }),
+      loadPortfolio().catch(function(e) { return e; })
     ];
     Promise.all(ps).then(function(results) {
       var fails = results.filter(function(r) { return r instanceof Error; }).length;
       if (fails > 0) {
-        setBoot("API=" + baseLabel + " · đã nối Backend (tải lỗi " + fails + "/3)", true);
+        setBoot("API=" + baseLabel + " · đã nối Backend (tải lỗi " + fails + "/4)", true);
       } else {
         setBoot("API=" + baseLabel + " · đã nối Backend");
       }
@@ -2208,4 +2475,9 @@
   window.PW_sendHitlFeedback = sendHitlFeedback;
   window.PW_showToast = showToast;
   window.PW_createHitlFeedbackComponent = createHitlFeedbackComponent;
+  window.PW_loadPortfolio = loadPortfolio;
+  window.PW_doAddHolding = doAddHolding;
+  window.PW_doDeleteHolding = doDeleteHolding;
+  window.PW_getCurrentUserId = getCurrentUserId;
+  window.PW_setCurrentUserId = setCurrentUserId;
 })();

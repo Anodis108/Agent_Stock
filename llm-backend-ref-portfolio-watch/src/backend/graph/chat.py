@@ -64,7 +64,10 @@ from backend.domain.ports import (
 )
 from backend.graph.state import ChatState
 from backend.infra.monitoring.tracing import agent_span, mark_turn_guardrail
-from backend.infra.storage.memory_store import filter_conversation_history
+from backend.infra.storage.memory_store import (
+    apply_sliding_window_with_ttl_eviction,
+    filter_conversation_history,
+)
 from backend.shared.logging import get_logger
 from backend.shared.settings import settings
 
@@ -199,6 +202,7 @@ def rewrite_node(state: ChatState, config: RunnableConfig) -> dict[str, Any]:
             "rewritten": rewritten.rewritten,
             "symbol": rewritten.symbol,
             "symbols": list(rewritten.symbols or []),
+            "sub_questions": list(rewritten.sub_questions or []),
         }
     symbols = list(rewritten.symbols) if rewritten.symbols else []
     if not symbols and rewritten.symbol:
@@ -467,10 +471,15 @@ def workers_node(state: ChatState, config: RunnableConfig) -> dict[str, Any]:
                 eval_result = run_eval_agent(
                     price, news, history_store, brain=eval_brain, turn=turn
                 )
+                ind = getattr(eval_result, "indicators", None)
                 box["output"] = {
                     "symbol": symbol,
                     "severity": str(eval_result.severity),
                     "confidence": eval_result.severity.confidence,
+                    "rsi": getattr(ind, "rsi", None),
+                    "ma20": getattr(ind, "ma20", None),
+                    "ma50": getattr(ind, "ma50", None),
+                    "signal": getattr(ind, "signal", None),
                 }
             dur = round(time.perf_counter() - t0, 3)
             emit_agent_event("node_finish", {"node": "eval_agent", "symbol": symbol, "duration_s": dur, "duration_ms": int(dur * 1000)})
@@ -658,7 +667,7 @@ def run_chat_graph(
         conversation = memory_store.list_conversation(
             short_term_user_id, limit=effective_limit
         )
-    conversation = filter_conversation_history(
+    conversation = apply_sliding_window_with_ttl_eviction(
         conversation,
         limit=effective_limit,
         ttl_minutes=effective_ttl,

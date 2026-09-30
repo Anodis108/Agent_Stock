@@ -1,69 +1,71 @@
-# Product Spec
+# Product Spec — Portfolio Watch & Management (MVP 2.0)
 
 ## App Name
-**Portfolio Watch — Multi-Agent Stock Assistant (Testing & Self-Correction MVP)**
+**Portfolio Watch & Management — Multi-Agent Stock Assistant (MVP 2.0)**
 
 ---
 
-## Goal
-Xây dựng và hoàn thiện ứng dụng web MVP cho phép theo dõi, tra cứu cổ phiếu Việt Nam qua **Multi-Agent Swarm**, đồng thời **thực hiện kiểm thử toàn bộ 40 câu hỏi và chức năng hiện tại của ứng dụng, phát hiện và sửa chữa tận gốc các lỗi phát sinh**.
-
-- **Cho người dùng:** Nhận câu trả lời streaming nhanh chóng, chính xác về giá, tin tức, phân tích biến động và biểu đồ cổ phiếu; đảm bảo an toàn thông tin (chặn câu hỏi ngoài phạm vi và bẻ khóa).
-- **Cho hệ thống kiểm thử & QA:** Tự động hóa đánh giá toàn bộ 40 câu hỏi chuẩn hóa (Golden Dataset v5), phát hiện các ca thất bại và tiến hành sửa lỗi trong logic agent/prompt để đạt tỷ lệ hoàn thành cao nhất.
-
----
-
-## Target Users
-1. **Nhà đầu tư cá nhân:**
-   - Tra cứu nhanh thị giá, biến động, tin tức doanh nghiệp niêm yết (FPT, VNM, HPG, SSI, ...).
-   - Hỏi nối tiếp theo ngữ cảnh tự nhiên (Turn 1 ➔ Turn 2).
-   - Xem biểu đồ kỹ thuật 10 phiên và sơ đồ phân tích.
-2. **Kỹ sư AI / Kiểm thử viên (Tester & Developer):**
-   - Chạy kiểm thử tự động toàn diện trên bộ câu hỏi chuẩn.
-   - Theo dõi luồng xử lý (trace nodes) của từng Agent.
-   - Đảm bảo hệ thống đạt chuẩn chất lượng trước khi bàn giao.
+## 1. App Goal
+Xây dựng trợ lý phân tích và quản lý danh mục cổ phiếu Việt Nam (MVP) bằng hệ thống Swarm Multi-Agent:
+- **Quản lý danh mục & Lãi/Lỗ thực tế (P&L):** Theo dõi số lượng cổ phiếu nắm giữ, giá vốn mua vào, tính toán Unrealized P&L, % sinh lời và tổng tài sản ròng (NAV).
+- **Hỗ trợ đa người dùng (Multi-tenant):** Mỗi người dùng sở hữu danh mục theo dõi (Watchlist) và ngưỡng cảnh báo biến động (`alert_threshold_pct`) riêng biệt trong SQLite.
+- **Đánh giá bất thường đáng tin cậy (EvalAgent):** Kết hợp phân tích kỹ thuật định lượng (RSI 14, SMA 20/50, Golden/Death Cross) cùng tin tức đa nguồn (Vnstock News, CafeF/Vietstock).
+- **Xử lý câu hỏi phức tạp (Query Decomposition):** Phân rã các câu hỏi multihop, so sánh đa mã hoặc đa ý hỏi thành các sub-queries độc lập để các Agent xử lý trọn vẹn, không bỏ sót thông tin.
+- **Đo lường định lượng chất lượng Agent (Agent Evaluation):** Tích hợp công cụ benchmark tự động (`agent_eval.py`) đo lường Routing, Decomposition, Groundedness và Task Success.
 
 ---
 
-## Core User Flow
-1. **Mở ứng dụng:** Người dùng truy cập giao diện web (`http://localhost:3000` hoặc `:8000`).
-2. **Tra cứu thông tin (Turn 1):** Người dùng nhập câu hỏi (ví dụ: *"Giá FPT hôm nay bao nhiêu?"*).
-   - Hệ thống kiểm tra an toàn qua Guardrail.
-   - Điều phối dữ liệu qua Price/News/Chart Agent.
-   - Trả lời streaming từng token theo thời gian thực (SSE).
-3. **Hỏi tiếp ngữ cảnh (Turn 2):** Người dùng hỏi tiếp (ví dụ: *"Tại sao lại giảm?"* hoặc *"Vẽ biểu đồ 10 phiên"*).
-   - Hệ thống tự động ghi nhớ mã cổ phiếu từ lượt trước để trả lời chính xác.
-4. **Kiểm thử tự động & Sửa lỗi (QA Flow):**
-   - Developer/Tester chạy kịch bản đánh giá 40 câu hỏi.
-   - Hệ thống chỉ ra các câu hỏi bị lỗi (ví dụ: thiếu tin tức FPT, sai phiên giá VNM).
-   - Tiến hành sửa logic/prompt và kiểm thử lại cho đến khi vượt qua các tiêu chí nghiệm thu.
+## 2. Target Users
+1. **Nhà đầu tư cá nhân tại thị trường chứng khoán Việt Nam:**
+   - Theo dõi lãi/lỗ danh mục thực tế hằng ngày và nhận cảnh báo rủi ro biến động giá.
+   - Đặt câu hỏi tự nhiên (câu đơn lẻ hoặc câu hỏi so sánh phức tạp) và nhận câu trả lời streaming nhanh chóng, có căn cứ kỹ thuật và tin tức.
+2. **Kỹ sư AI / Nhà phát triển Agent:**
+   - Đánh giá định lượng chất lượng của Swarm Agent và ngăn ngừa lỗi suy giảm chất lượng (regression) khi cập nhật prompt hoặc code.
 
 ---
 
-## Features In Scope
-- **Chat Streaming SSE:** Phản hồi câu trả lời trực tiếp từng token kèm hiển thị trace các agent đang thực thi.
-- **Hệ thống Multi-Agent:** Phân luồng xử lý chuyên biệt gồm Guardrail, Supervisor, Price Agent, News Agent, Chart Agent, Diagram Agent, Composer.
-- **Bộ nhớ ngữ cảnh (Session Memory):** Duy trì ngữ cảnh hội thoại nhiều lượt qua SQLite.
-- **Bảo vệ an toàn (Guardrail):** Chặn 100% câu hỏi ngoài phạm vi (cổ phiếu quốc tế, thời tiết, tư vấn mua bán) và cố tình can thiệp hệ thống (prompt injection).
-- **Bộ kiểm thử tự động 40 câu hỏi:** Chạy tự động toàn bộ 40 câu hỏi thuộc 7 lát cắt nghiệp vụ (`lookup`, `comparison`, `explain_why`, `charting_diagram`, `session_memory`, `out_of_scope`, `injection`).
-- **Sửa lỗi đã định danh:** Khắc phục triệt để các ca kiểm thử chưa đạt (`lookup_04`, `lookup_08`, `lookup_10`).
+## 3. Core User Flow
+1. **Chọn người dùng:** Người dùng chọn tài khoản trên giao diện (ví dụ: `User A`, `User B`, `Default`). Hệ thống tải danh mục, watchlist và cài đặt ngưỡng riêng của user đó.
+2. **Quản lý danh mục & Xem P&L:** Người dùng mở bảng Danh mục để xem số lượng, giá vốn, thị giá hiện tại, Lãi/Lỗ (VND) và % Tỷ suất sinh lời. Người dùng có thể thêm hoặc xóa vị thế nắm giữ.
+3. **Chat tra cứu & Phân tích:**
+   - Người dùng hỏi câu hỏi đơn (*"Giá FPT hôm nay"*) hoặc phức tạp (*"So sánh biến động và tin tức FPT với HPG"*).
+   - Guardrail lọc an toàn ➔ Rewrite chuẩn hóa ngữ cảnh và phân rã thành các sub-queries (nếu phức tạp) ➔ Supervisor điều phối worker agents tương ứng (Price, News, Indicator, Chart) ➔ EvalAgent kết hợp chỉ báo kỹ thuật & tin tức đánh giá rủi ro ➔ AnswerComposer trả lời streaming (SSE).
+4. **Đánh giá chất lượng hệ thống:** Kỹ sư chạy lệnh `python scripts/run_agent_eval.py` để chấm điểm tự động toàn diện hệ thống.
 
 ---
 
-## Features Out of Scope
-- Đặt lệnh giao dịch mua/bán thực tế (không tích hợp tài khoản chứng khoán).
-- Dữ liệu realtime tick-by-tick (chỉ sử dụng dữ liệu nến ngày 1D và tin tức gần nhất).
-- Đăng nhập tài khoản phức tạp, phân quyền người dùng (RBAC), thanh toán.
-- Huấn luyện / fine-tune mô hình nền tảng mới (chỉ dùng prompt engineering và tool integration).
+## 4. Features In Scope (MVP Focus)
+- **Multi-tenant Isolation:** Phân tách Watchlist, Holdings và User Settings theo `user_id` trong SQLite. Nhận diện user qua header `X-User-ID` hoặc User Switcher trên UI.
+- **Portfolio P&L Tracking:**
+  - Lưu trữ: `symbol`, `quantity`, `avg_buy_price`, `purchase_date`.
+  - Tự động tính: Giá trị vốn, Thị giá hiện tại, Lãi/Lỗ chưa thực hiện (VND), Tỷ suất (%), Tổng NAV danh mục.
+- **Technical Indicators & Multi-source News Cho EvalAgent:**
+  - Tính toán: RSI (14), SMA (20), SMA (50), Golden Cross / Death Cross.
+  - Tổng hợp tin tức từ Vnstock News API và nguồn bổ trợ.
+  - Cung cấp dữ liệu chỉ báo kỹ thuật cho EvalAgent để xác định mức độ bất thường (`high`, `medium`, `low`, `none`).
+- **Rewrite & Query Decomposition (Multi-Subquery):**
+  - Tự động phân rã câu hỏi phức tạp thành 2–4 `sub_questions` độc lập kèm mã đầy đủ.
+  - Supervisor điều phối thu thập đầy đủ dữ liệu cho từng sub-query (không bỏ sót mã hoặc khía cạnh được hỏi).
+- **Agent Evaluation Framework (`agent_eval.py`):**
+  - Benchmark tự động chấm 4 chỉ số: Routing Accuracy, Decomposition Quality, Groundedness (chống hallucination) và Task Success Rate.
+- **Nền tảng sẵn có:** Chat Streaming SSE, hiển thị System Prompt/Static info khi hover node trên Live Graph, vẽ biểu đồ Matplotlib, Guardrails Zero-Tolerance.
 
 ---
 
-## Acceptance Criteria
-- [x] **Chạy được local:** Ứng dụng chạy mượt mà trên môi trường cục bộ (`localhost:8000`), endpoints `/health` và Session CRUD hoạt động chính xác.
-- [x] **Hoàn thành flow chính:** Người dùng gửi câu hỏi và nhận phản hồi streaming SSE (trace agents, tokens) kèm sinh biểu đồ/sơ đồ và lưu trữ SQLite đầy đủ.
-- [x] **Bảo vệ an toàn tuyệt đối:** 100% các câu hỏi thuộc nhóm `injection` và `out_of_scope` bị từ chối lịch sự, không trả lời sai lệch (đạt 7/7 ca 100%).
-- [x] **Kiểm thử 40 câu hỏi đạt chuẩn:** Toàn bộ 40 câu hỏi trong Golden Dataset v5 được chạy kiểm thử với tỷ lệ Đạt (Pass) $\ge 90\%$ (đạt **40/40 ~ 100.0%** sau Phase 5 Regression).
-- [x] **Sửa chữa thành công các ca lỗi:** Các case `lookup_04`, `lookup_08`, `lookup_10` được phân tích nguyên nhân và khắc phục đạt điểm chuẩn (cả 3 ca đều đạt PASS).
-- [x] **Unit tests vượt qua 100%:** Toàn bộ 10 file kiểm thử trong thư mục `tests/` chạy pass không có lỗi hồi quy (137/137 tests passed).
-- [x] **Sẵn sàng demo ngrok:** Ứng dụng tích hợp công cụ `scripts/start_ngrok_demo.py` sẵn sàng expose public qua ngrok để demo trực tiếp.
+## 5. Features Out of Scope
+- Hệ thống Authentication đầy đủ (JWT, OAuth2, Email confirmation, đổi mật khẩu) — dùng User Switcher / Header `X-User-ID` cho MVP.
+- Tích hợp tài khoản giao dịch tại các công ty chứng khoán để đặt lệnh mua/bán thật.
+- Dữ liệu Realtime WebSocket tick-by-tick (vẫn sử dụng dữ liệu nến ngày 1D và giá khớp lệnh gần nhất).
+- Quản lý margin, tính thuế TNCN, phí giao dịch chi tiết và phân bổ cổ tức.
 
+---
+
+## 6. Acceptance Criteria
+- [x] **AC-1 (Cô lập đa người dùng):** Thao tác thêm/xóa mã trong Watchlist, Holdings và thay đổi ngưỡng của `user_a` không làm thay đổi dữ liệu của `user_b`.
+- [x] **AC-2 (Tính P&L chính xác):** Với 1,000 FPT mua giá 100.0 khi thị giá là 120.0, bảng hiển thị đúng Lãi `+20,000,000 VND` (+20.0%) và tính đúng tổng NAV danh mục.
+- [x] **AC-3 (EvalAgent có chỉ báo kỹ thuật):** Khi phân tích cổ phiếu có biến động mạnh, EvalAgent nhận được RSI(14) và trạng thái MA20/MA50 trong context để đưa ra lý giải định lượng, thuyết phục.
+- [x] **AC-4 (Xử lý đa sub-query hoàn chỉnh):** Khi hỏi câu hỏi so sánh hoặc đa ý (ví dụ: *"So sánh giá và tin tức của FPT và HPG"*), hệ thống phân rã thành các câu hỏi con, Supervisor gọi đầy đủ worker cho cả 2 mã và câu trả lời bao quát trọn vẹn cả 2 khía cạnh.
+- [x] **AC-5 (Agent Evaluation hoạt động):** Chạy `agent_eval.py` thành công và xuất báo cáo chấm điểm chi tiết đạt chuẩn $\ge 85\%$.
+- [x] **AC-6 (Bảo vệ an toàn 100%):** 100% câu hỏi Prompt Injection và Out-of-scope bị chặn fail-closed lịch sự.
+- [x] **AC-7 (Không lỗi hồi quy):** Toàn bộ 176 unit tests hiện tại tiếp tục PASS 100%.
+- [x] **AC-8 (Giao diện trực quan):** Web UI có thanh chuyển đổi người dùng (User Switcher) và tab hiển thị bảng danh mục P&L rõ ràng.

@@ -25,6 +25,7 @@ def build_steps_from_chunks(
         input_data: Any = None,
         output_data: Any = None,
         duration_s: float | None = None,
+        static_info: Any = None,
     ) -> None:
         nonlocal n
         step: dict[str, Any] = {"id": str(n), "name": name, "status": status}
@@ -35,10 +36,33 @@ def build_steps_from_chunks(
             step["detail"] = detail
         if input_data is not None:
             step["input"] = input_data
+        if static_info is not None:
+            step["static_info"] = static_info
         if output_data is not None:
             step["output"] = output_data
         steps.append(step)
         n += 1
+
+    try:
+        from backend.infra.llm.prompt_registry import registry
+        _reg = registry()
+    except Exception:
+        _reg = None
+
+    def _get_reg_prompt(name: str, fallback_desc: str) -> str:
+        if _reg:
+            try:
+                p_obj = _reg.get(name, "production")
+                return f"[{p_obj.name} v{p_obj.version} - Model: {p_obj.model}]\n\n{p_obj.template}"
+            except Exception:
+                pass
+        return fallback_desc
+
+    info_guardrail_rule = "[Rule Engine] Regex & Zero-Tolerance Policy: Chặn Prompt Injection, Out-of-scope, Cổ phiếu quốc tế."
+    info_guardrail_refusal = "[Safety Fallback Engine] Phản hồi từ chối chuẩn mực khi câu hỏi vi phạm chính sách an toàn hoặc nằm ngoài phạm vi chứng khoán VN."
+    info_price_agent = "[Tool Worker] Vnstock API: Truy xuất dữ liệu thời gian thực (giá khớp lệnh, giá đóng cửa close, % biến động và lịch sử giá kỹ thuật)."
+    info_chart_agent = "[Visualization Worker] Chart Generator: Tạo biểu đồ nến kỹ thuật (candlestick) hoặc đường giá xu hướng lịch sử 10-30 phiên từ dữ liệu Vnstock."
+    info_gate = "[Human-in-the-Loop & Confidence Gate] Đánh giá ngưỡng tin cậy (Threshold >= 0.70) để tự động duyệt phát cảnh báo hoặc chuyển vào hàng đợi phê duyệt."
 
     for chunk in chunks:
         for node_name, output in chunk.items():
@@ -55,6 +79,7 @@ def build_steps_from_chunks(
                     input_data={"question": output.get("question", "")},
                     output_data={"is_safe": is_safe, "category": category, "reason": reason},
                     duration_s=node_timings.get("pre_rewrite_guardrail"),
+                    static_info=info_guardrail_rule,
                 )
 
             elif node_name == "guardrail_refusal":
@@ -64,6 +89,7 @@ def build_steps_from_chunks(
                     output.get("answer", ""),
                     output_data={"answer": output.get("answer", "")},
                     duration_s=node_timings.get("guardrail_refusal"),
+                    static_info=info_guardrail_refusal,
                 )
 
             elif node_name == "rewrite_question":
@@ -78,6 +104,10 @@ def build_steps_from_chunks(
                         "symbol": rewritten.symbol,
                         "symbols": list(rewritten.symbols or []),
                     }
+                    rw_prompt = _get_reg_prompt(
+                        "rewrite_question",
+                        "[Prompt] Chuẩn hóa câu hỏi, coreference resolution, trích xuất mã cổ phiếu và phân rã ý định.",
+                    )
                     add(
                         "rewrite_question",
                         "done",
@@ -85,6 +115,7 @@ def build_steps_from_chunks(
                         input_data=in_val,
                         output_data=out_val,
                         duration_s=node_timings.get("rewrite_question"),
+                        static_info=rw_prompt,
                     )
 
             elif node_name == "supervisor":
@@ -103,6 +134,10 @@ def build_steps_from_chunks(
                         "agents": agents,
                         "reason": routing.reason or "",
                     }
+                    sv_prompt = _get_reg_prompt(
+                        "supervisor_routing",
+                        "[Prompt] Phân tích câu hỏi người dùng và điều phối các worker agents (price, news, chart, eval, diagram).",
+                    )
                     add(
                         "supervisor",
                         "done",
@@ -110,11 +145,16 @@ def build_steps_from_chunks(
                         input_data=in_val,
                         output_data=out_val,
                         duration_s=node_timings.get("supervisor"),
+                        static_info=sv_prompt,
                     )
 
             elif node_name == "diagram_agent":
                 diagram_res = output.get("diagram_result")
                 if diagram_res:
+                    diag_prompt = _get_reg_prompt(
+                        "diagram_plan",
+                        "[Diagram Engine] Lên kế hoạch và tạo mã Mermaid biểu diễn luồng quan hệ doanh nghiệp hoặc dữ liệu.",
+                    )
                     add(
                         "diagram_agent",
                         "done",
@@ -126,6 +166,7 @@ def build_steps_from_chunks(
                             "graph_json": getattr(diagram_res, "graph_json", None),
                         },
                         duration_s=node_timings.get("diagram_agent"),
+                        static_info=diag_prompt,
                     )
 
             elif node_name == "workers":
@@ -154,8 +195,13 @@ def build_steps_from_chunks(
                             input_data=in_val,
                             output_data=out_val,
                             duration_s=w_dur,
+                            static_info=info_price_agent,
                         )
 
+                news_prompt = _get_reg_prompt(
+                    "news_agent_react",
+                    "[Tool Worker] Vnstock News API / ReAct: Thu thập tin tức doanh nghiệp, sự kiện tài chính, công bố thông tin gần nhất.",
+                )
                 for n_item in news_list:
                     if n_item is not None:
                         status = "error" if n_item.error else "done"
@@ -174,6 +220,7 @@ def build_steps_from_chunks(
                             input_data=in_val,
                             output_data=out_val,
                             duration_s=w_dur,
+                            static_info=news_prompt,
                         )
 
                 if eval_result is not None:
@@ -187,6 +234,10 @@ def build_steps_from_chunks(
                         "severity": str(eval_result.severity),
                         "confidence": getattr(eval_result.severity, "confidence", None),
                     }
+                    eval_prompt = _get_reg_prompt(
+                        "eval_severity",
+                        "[Risk Engine] Đánh giá mức độ nghiêm trọng (high/medium/low/none) của tin tức và biến động giá đối với doanh nghiệp.",
+                    )
                     add(
                         "eval_agent",
                         "done",
@@ -194,6 +245,7 @@ def build_steps_from_chunks(
                         input_data=in_val,
                         output_data=out_val,
                         duration_s=w_dur,
+                        static_info=eval_prompt,
                     )
 
                 chart_res = output.get("chart_result")
@@ -218,6 +270,7 @@ def build_steps_from_chunks(
                             "error": c_err,
                         },
                         duration_s=w_dur,
+                        static_info=info_chart_agent,
                     )
 
             elif node_name == "answer_composer":
@@ -236,6 +289,10 @@ def build_steps_from_chunks(
                         "answer": ans[:300] if ans else "",
                         "guardrail_violations": getattr(compose, "guardrail_violations", None),
                     }
+                    comp_prompt = _get_reg_prompt(
+                        "answer_compose",
+                        "[Prompt] Tổng hợp câu trả lời dựa trên facts thu thập từ các worker, tuân thủ guardrail tài chính.",
+                    )
                     add(
                         "answer_composer",
                         "done",
@@ -243,6 +300,7 @@ def build_steps_from_chunks(
                         input_data=in_val,
                         output_data=out_val,
                         duration_s=node_timings.get("answer_composer"),
+                        static_info=comp_prompt,
                     )
 
             elif node_name == "fetch":
@@ -267,6 +325,7 @@ def build_steps_from_chunks(
                         input_data=in_val,
                         output_data=out_val,
                         duration_s=f_dur,
+                        static_info=info_price_agent,
                     )
 
                 if news is not None:
@@ -278,6 +337,10 @@ def build_steps_from_chunks(
                         "items_count": len(news.items or []),
                         "error": news.error,
                     }
+                    news_prompt = _get_reg_prompt(
+                        "news_agent_react",
+                        "[Tool Worker] Vnstock News API / ReAct: Thu thập tin tức doanh nghiệp, sự kiện tài chính, công bố thông tin gần nhất.",
+                    )
                     add(
                         "news_agent",
                         status,
@@ -285,6 +348,7 @@ def build_steps_from_chunks(
                         input_data=in_val,
                         output_data=out_val,
                         duration_s=f_dur,
+                        static_info=news_prompt,
                     )
 
             elif node_name == "event_classifier":
@@ -297,6 +361,10 @@ def build_steps_from_chunks(
                         "route": route,
                         "reason": routing.reason or "",
                     }
+                    event_prompt = _get_reg_prompt(
+                        "event_classification",
+                        "[Event Classifier] Phân loại sự kiện định lượng / định tính từ dữ liệu quét biến động thị trường.",
+                    )
                     add(
                         "event_classifier",
                         "done",
@@ -304,6 +372,7 @@ def build_steps_from_chunks(
                         input_data=in_val,
                         output_data=out_val,
                         duration_s=node_timings.get("event_classifier"),
+                        static_info=event_prompt,
                     )
 
             elif node_name == "eval_agent":
@@ -311,6 +380,10 @@ def build_steps_from_chunks(
                 if severity:
                     in_val = {"symbol": output.get("symbol") or ""}
                     out_val = {"severity": str(severity)}
+                    eval_prompt = _get_reg_prompt(
+                        "eval_severity",
+                        "[Risk Engine] Đánh giá mức độ nghiêm trọng (high/medium/low/none) của tin tức và biến động giá đối với doanh nghiệp.",
+                    )
                     add(
                         "eval_agent",
                         "done",
@@ -318,6 +391,7 @@ def build_steps_from_chunks(
                         input_data=in_val,
                         output_data=out_val,
                         duration_s=node_timings.get("eval_agent"),
+                        static_info=eval_prompt,
                     )
 
             elif node_name == "synthesis_agent":
@@ -329,6 +403,10 @@ def build_steps_from_chunks(
                         "title": getattr(alert, "title", ""),
                         "status": str(getattr(alert, "status", "")),
                     }
+                    synth_prompt = _get_reg_prompt(
+                        "synthesis_alert",
+                        "[Synthesis Engine] Tổng hợp thông tin từ Price/News/Eval để soạn thảo cảnh báo danh mục đầu tư.",
+                    )
                     add(
                         "synthesis_agent",
                         "done",
@@ -336,6 +414,7 @@ def build_steps_from_chunks(
                         input_data=in_val,
                         output_data=out_val,
                         duration_s=node_timings.get("synthesis_agent"),
+                        static_info=synth_prompt,
                     )
 
             elif node_name == "gate2":
@@ -350,6 +429,7 @@ def build_steps_from_chunks(
                         input_data=in_val,
                         output_data=out_val,
                         duration_s=node_timings.get("gate2"),
+                        static_info=info_gate,
                     )
 
             elif node_name in ("gate1_auto", "gate1_pending"):
@@ -364,7 +444,9 @@ def build_steps_from_chunks(
                         input_data=in_val,
                         output_data=out_val,
                         duration_s=node_timings.get(node_name),
+                        static_info=info_gate,
                     )
+
 
     if final_error:
         is_scan = any("fetch" in c for c in chunks if isinstance(c, dict))

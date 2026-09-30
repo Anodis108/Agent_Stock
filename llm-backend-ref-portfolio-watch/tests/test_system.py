@@ -53,7 +53,7 @@ def test_dockerfile_and_frontend_dockerfile():
     df_path = ROOT / "src" / "backend" / "Dockerfile" if (ROOT / "src" / "backend" / "Dockerfile").is_file() else ROOT / "Dockerfile"
     df = df_path.read_text(encoding="utf-8")
     assert ("backend.main:app" in df) or ("backend.backend.main:app" in df)
-    assert "USER appuser" in df
+    assert ("USER appuser" in df) or ("gosu appuser" in df)
     assert "HEALTHCHECK" in df
 
     fe_df_path = ROOT / "src" / "frontend" / "Dockerfile" if (ROOT / "src" / "frontend" / "Dockerfile").is_file() else ROOT / "frontend" / "Dockerfile"

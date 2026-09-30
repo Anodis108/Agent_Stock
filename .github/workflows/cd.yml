@@ -1,0 +1,99 @@
+# M3-B6 — CD: build Docker + smoke test + rollback (Module III, Bài 6)
+# MVP: build & smoke on GitHub runner (no GCP deploy). LKG SHA cached for rollback drill.
+name: CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "llm-backend-ref-portfolio-watch/**"
+      - ".github/workflows/cd.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: cd-main
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: llm-backend-ref-portfolio-watch
+
+jobs:
+  deploy:
+    name: build-smoke-lkg
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Restore last-known-good SHA
+        id: lkg-cache
+        uses: actions/cache@v4
+        with:
+          path: deploy/lkg
+          key: portfolio-watch-lkg-sha
+          restore-keys: |
+            portfolio-watch-lkg-sha
+
+      - name: Prepare environment file
+        run: |
+          cp .env.example .env
+          echo "MONITORING_ENABLED=false" >> .env
+
+      - name: Build backend image
+        run: docker compose build backend
+
+      - name: Start backend
+        run: docker compose up -d backend
+
+      - name: Wait for healthy backend
+        run: |
+          for i in $(seq 1 45); do
+            if curl -sf http://localhost:8000/health >/dev/null; then
+              echo "Backend healthy after ${i} attempts"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::Backend did not become healthy in time"
+          docker compose logs backend
+          exit 1
+
+      - name: Smoke test
+        id: smoke
+        run: python deploy/smoke.py --url http://localhost:8000
+
+      - name: Save last-known-good SHA
+        if: success()
+        run: |
+          mkdir -p deploy/lkg
+          echo "${{ github.sha }}" > deploy/lkg/sha.txt
+          echo "Saved LKG: ${{ github.sha }}"
+
+      - name: Rollback to last-known-good on failure
+        if: failure() && steps.lkg-cache.outputs.cache-hit == 'true' && steps.smoke.outcome == 'failure'
+        run: |
+          set -euo pipefail
+          LKG=$(cat deploy/lkg/sha.txt)
+          echo "Rolling back to LKG commit: ${LKG}"
+          git checkout "${LKG}" -- .
+          cp .env.example .env
+          echo "MONITORING_ENABLED=false" >> .env
+          docker compose down || true
+          docker compose build backend
+          docker compose up -d backend
+          for i in $(seq 1 45); do
+            if curl -sf http://localhost:8000/health >/dev/null; then
+              break
+            fi
+            sleep 2
+          done
+          python deploy/smoke.py --url http://localhost:8000
+          echo "::warning::Deploy of ${{ github.sha }} failed; rolled back to ${LKG}"
+
+      - name: Tear down containers
+        if: always()
+        run: docker compose down -v || true

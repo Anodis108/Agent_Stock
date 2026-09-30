@@ -27,6 +27,9 @@ FROM python:3.12-slim AS runner
 
 WORKDIR /app
 
+RUN apt-get update && apt-get install -y --no-install-recommends gosu \
+    && rm -rf /var/lib/apt/lists/*
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:$PATH" \
@@ -52,11 +55,14 @@ RUN mkdir -p /app/data /app/data/charts \
     && useradd -r -g appuser --uid 10001 --home-dir /app --shell /usr/sbin/nologin appuser \
     && chown -R appuser:appuser /app
 
-USER appuser
+# USER appuser (chạy qua gosu appuser trong docker-entrypoint.sh để sửa quyền /app/data)
+COPY src/backend/docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
 
 EXPOSE 8000
 
 HEALTHCHECK --interval=15s --timeout=5s --retries=3 --start-period=10s \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"
 
+ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]

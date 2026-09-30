@@ -19,6 +19,13 @@ except ImportError:
     print("Vui lòng cài đặt pyngrok: pip install pyngrok")
     sys.exit(1)
 
+# Đảm bảo in UTF-8 an toàn trên Windows console
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 
 def check_backend_running(port: int = 8000) -> bool:
     try:

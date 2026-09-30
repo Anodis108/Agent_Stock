@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from backend.api.deps import AppDeps, get_app_deps
+from backend.api.deps import AppDeps, get_app_deps, get_current_user_id
 from backend.api.helpers.validation import (
     normalize_symbol,
     validate_threshold_pct,
@@ -50,7 +50,7 @@ def _to_out(item: WatchlistItem) -> WatchlistItemOut:
 
 @router.get("/watchlist", response_model=WatchlistListResponse)
 def get_watchlist(
-    user_id: str = Query(default="default"),
+    user_id: str = Depends(get_current_user_id),
     deps: AppDeps = Depends(get_app_deps),
 ) -> WatchlistListResponse:
     items = [_to_out(i) for i in deps.watchlist_store.list_items(user_id)]
@@ -60,17 +60,19 @@ def get_watchlist(
 @router.post("/watchlist", response_model=WatchlistItemOut)
 def post_watchlist(
     body: CreateWatchlistRequest,
+    current_user: str = Depends(get_current_user_id),
     deps: AppDeps = Depends(get_app_deps),
 ) -> WatchlistItemOut:
     symbol = normalize_symbol(body.symbol)
     thr = validate_threshold_pct(body.threshold_pct)
     if thr is None:
         thr = float(settings.default_alert_threshold_pct)
+    effective_user = body.user_id if body.user_id != "default" else current_user
     saved = deps.watchlist_store.upsert(
         WatchlistItem(
             symbol=symbol,
             threshold_pct=thr,
-            user_id=body.user_id or "default",
+            user_id=effective_user,
         )
     )
     return _to_out(saved)
@@ -80,10 +82,11 @@ def post_watchlist(
 def patch_watchlist(
     symbol: str,
     body: UpdateWatchlistRequest,
+    current_user: str = Depends(get_current_user_id),
     deps: AppDeps = Depends(get_app_deps),
 ) -> WatchlistItemOut:
     sym = normalize_symbol(symbol)
-    user_id = body.user_id or "default"
+    user_id = body.user_id if body.user_id != "default" else current_user
     existing = deps.watchlist_store.get(user_id, sym)
     if existing is None:
         raise HTTPException(status_code=404, detail="không tìm thấy mã trong watchlist")
@@ -102,7 +105,7 @@ def patch_watchlist(
 @router.delete("/watchlist/{symbol}")
 def delete_watchlist(
     symbol: str,
-    user_id: str = Query(default="default"),
+    user_id: str = Depends(get_current_user_id),
     deps: AppDeps = Depends(get_app_deps),
 ) -> dict[str, object]:
     sym = normalize_symbol(symbol)

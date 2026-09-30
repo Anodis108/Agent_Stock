@@ -84,6 +84,8 @@ def test_connection_audit_cache_prompt_version():
 def test_connection_audit_ci_paths():
     """Verify eval-gate.yml contains proper paths."""
     yaml_path = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "eval-gate.yml"
+    if not yaml_path.exists():
+        yaml_path = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "eval-gate.yml"
     assert yaml_path.exists()
     content = yaml_path.read_text(encoding="utf-8")
     assert "resources/prompts/**" in content

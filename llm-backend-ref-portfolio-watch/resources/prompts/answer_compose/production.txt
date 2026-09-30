@@ -10,9 +10,10 @@ Vi phạm guardrail lần trước: $violations
 
 Yêu cầu:
 - Tiếng Việt, ngắn gọn, chỉ dùng số liệu/tin trong evidence (thiếu nói thiếu).
-- Nếu hỏi nhiều mã, nêu đủ từng mã được hỏi.
+- Nếu hỏi nhiều mã hoặc có nhiều khía cạnh (giá, tin tức): trình bày có cấu trúc rõ ràng theo từng mục (mục so sánh giá, mục thông tin/tin tức sự kiện từng mã), nêu đủ từng mã được hỏi, không bị thiên vị hay bỏ sót.
 - Chỉ nêu % khi evidence có change_pct; không bịa số liệu.
 - Câu "tại sao tăng/giảm" trích tiêu đề tin từ evidence.
+- Khi có chart_path trong evidence hoặc câu hỏi yêu cầu vẽ biểu đồ: xác nhận rõ ràng đã tạo biểu đồ kỹ thuật cho cổ phiếu, tóm tắt mức giá đóng cửa gần nhất và biến động so với phiên trước, và thông báo biểu đồ hiển thị bên dưới. Tuyệt đối KHÔNG bảo là biểu đồ không có sẵn.
 - Khắc phục các vi phạm trong $violations nhưng giữ nguyên số liệu/tin trong evidence.
 - CẤM mọi lời khuyên mua/bán hoặc khuyến nghị đầu tư chắc chắn.
 

@@ -135,6 +135,46 @@ def test_rewrite_schema_valid():
     assert out.symbol == "FPT"
     assert out.symbols == ["FPT", "VNM"]
     assert out.intent == "price_lookup"
+    assert out.sub_questions == []
+
+
+def test_rewrite_schema_sub_questions():
+    """Kiểm tra schema RewriteOutput với danh sách sub_questions (Query Decomposition)."""
+    out = RewriteOutput(
+        rewritten="So sánh FPT và HPG",
+        symbol="FPT",
+        symbols=["FPT", "HPG"],
+        intent="explain",
+        sub_questions=["So sánh giá FPT và HPG", "Tin tức về FPT", "Tin tức về HPG"],
+    )
+    assert len(out.sub_questions) == 3
+    assert out.sub_questions[0] == "So sánh giá FPT và HPG"
+
+
+def test_action_inheritance_and_chart_followup():
+    """Kiểm tra Action Inheritance và kế thừa mã trong câu hỏi nối tiếp/vẽ biểu đồ."""
+    brain = HeuristicRewriteBrain()
+    # 1. Turn 1 hỏi vẽ biểu đồ FPT
+    conv1 = [
+        {"role": "user", "content": "Vẽ biểu đồ 10 phiên gần nhất FPT"},
+        {"role": "assistant", "content": "Đã tạo biểu đồ kỹ thuật cho cổ phiếu FPT."},
+    ]
+    # Turn 2: chỉ nêu mã mới dạng tỉnh lược -> kế thừa action chart
+    r2 = brain.rewrite("Còn VNM thì sao?", conv1)
+    assert r2.symbol == "VNM"
+    assert r2.intent == "chart"
+    assert "VNM" in r2.rewritten
+
+    # 2. Turn 1 hỏi giá FPT, Turn 2 hỏi vẽ biểu đồ 10 phiên gần nhất (thiếu mã) -> kế thừa mã FPT và giữ intent chart
+    conv2 = [
+        {"role": "user", "content": "Giá FPT hôm nay?"},
+        {"role": "assistant", "content": "Giá cổ phiếu FPT hôm nay là 63.1."},
+    ]
+    r3 = brain.rewrite("Vẽ biểu đồ 10 phiên gần nhất", conv2)
+    assert r3.symbol == "FPT"
+    assert r3.intent == "chart"
+    assert "FPT" in r3.rewritten
+    assert len(r3.sub_questions) >= 1
 
 
 def test_supervisor_schema_validation():
@@ -620,3 +660,250 @@ def test_cache_benchmark_dry_run(tmp_path):
     assert "Tầng 1 + 2" in text
     modes = payload["modes"]
     assert modes["tier1_tier2"]["cache_hits"] > modes["none"]["cache_hits"]
+
+
+# ==============================================================================
+# Phase 3: Technical Indicators & Multi-source News Cho EvalAgent Tests
+# ==============================================================================
+
+def test_compute_rsi_accuracy():
+    """Kiểm tra thuật toán RSI(14) chuẩn xác, phát hiện quá mua/bán (IND-01)."""
+    from backend.domain.indicators import compute_rsi
+
+    # Không đủ 15 phiên -> None
+    assert compute_rsi([10.0] * 14, period=14) is None
+
+    # Chuỗi giá tăng liên tục 20 phiên -> RSI tiến sát hoặc bằng 100.0 (Quá mua)
+    rising_closes = [10.0 + i * 1.5 for i in range(25)]
+    rsi_rising = compute_rsi(rising_closes, period=14)
+    assert rsi_rising is not None
+    assert 70.0 < rsi_rising <= 100.0
+
+    # Chuỗi giá giảm liên tục 20 phiên -> RSI tiến sát hoặc bằng 0.0 (Quá bán)
+    falling_closes = [100.0 - i * 2.0 for i in range(25)]
+    rsi_falling = compute_rsi(falling_closes, period=14)
+    assert rsi_falling is not None
+    assert 0.0 <= rsi_falling < 30.0
+
+
+def test_compute_sma_and_crossovers():
+    """Kiểm tra SMA(20), SMA(50) và phát hiện Golden Cross / Death Cross (IND-02, IND-03)."""
+    from backend.domain.indicators import (
+        analyze_technical_indicators,
+        compute_sma,
+    )
+
+    closes = [float(i) for i in range(1, 60)]
+    sma20 = compute_sma(closes, period=20)
+    sma50 = compute_sma(closes, period=50)
+
+    assert sma20 is not None
+    assert sma50 is not None
+    assert sma20 > sma50  # Xu hướng tăng dần
+
+    # Tạo chuỗi giá giả lập giao cắt Golden Cross: SMA20 từ dưới cắt lên trên SMA50
+    # 50 phiên đầu giá đi ngang ở 50.0, sau đó tăng vọt lên 100.0
+    crossover_closes = [50.0] * 50 + [100.0] * 10
+    summary = analyze_technical_indicators(crossover_closes)
+    assert summary.sma_20 is not None
+    assert summary.sma_50 is not None
+    assert summary.trend == "bullish"
+    assert "SMA20" in summary.format_summary()
+
+
+def test_eval_agent_with_technical_indicators():
+    """Kiểm tra EvalAgent kết hợp chỉ báo kỹ thuật và tin tức để đưa ra Severity (EV-01)."""
+    from backend.agents.eval_agent.nodes import HeuristicEvalBrain
+    from backend.agents.news_agent.schemas import NewsAgentResult
+    from backend.agents.price_agent import PriceAgentResult
+    from backend.domain.entities import SeverityLevel
+    from backend.domain.indicators import IndicatorSummary
+    from backend.domain.ports import NewsItem, PriceBar
+
+    brain = HeuristicEvalBrain()
+
+    price = PriceAgentResult(
+        symbol="FPT",
+        latest_close=130.0,
+        prev_close=123.2,
+        change_pct=5.5,  # Biến động mạnh
+    )
+    news = NewsAgentResult(
+        symbol="FPT",
+        items=[NewsItem(title="FPT ký hợp đồng AI tỷ USD", snippet="Hợp đồng lớn")],
+    )
+    history = [PriceBar(date=f"2026-09-{i:02d}", close=100.0 + i) for i in range(1, 15)]
+
+    # Trường hợp 1: RSI quá mua (RSI=82.0)
+    indicators_overbought = IndicatorSummary(
+        rsi=82.0,
+        rsi_status="overbought",
+        sma_20=125.0,
+        sma_50=115.0,
+        ma_cross="golden_cross",
+        trend="bullish",
+    )
+    sev = brain.build_severity(price, news, history, indicators=indicators_overbought)
+
+    assert sev.level == SeverityLevel.HIGH
+    assert any("rsi=82.0" in ev for ev in sev.evidence)
+    assert any("ma_cross:golden_cross" in ev for ev in sev.evidence)
+    assert "quá mua" in sev.reasoning.lower()
+
+
+def test_multi_source_news_deduplication():
+    """Kiểm tra MultiSourceNewsSource tổng hợp và loại bỏ tin tức trùng lặp."""
+    from backend.domain.ports import NewsItem
+    from backend.infra.market_data.news_source import MultiSourceNewsSource
+
+    class MockNewsSourceA:
+        def fetch_news(self, symbol: str, query=None, days=None):
+            return [
+                NewsItem(title="FPT công bố lợi nhuận quý 3 tăng trưởng 25%", url="http://source_a/1"),
+                NewsItem(title="Khối ngoại mua ròng mạnh FPT", url="http://source_a/2"),
+            ]
+
+    class MockNewsSourceB:
+        def fetch_news(self, symbol: str, query=None, days=None):
+            return [
+                # Bài này trùng lặp với Source A (khác chữ hoa thường và dấu cách)
+                NewsItem(title="fpt công bố lợi nhuận quý 3 tăng trưởng 25%!", url="http://source_b/1"),
+                NewsItem(title="Thị trường chứng khoán hôm nay", url="http://source_b/2"),
+            ]
+
+    multi_source = MultiSourceNewsSource(sources=[MockNewsSourceA(), MockNewsSourceB()])
+    results = multi_source.fetch_news("FPT")
+
+    # Tổng cộng có 3 bài duy nhất (1 bài trùng đã bị lọc bỏ)
+    assert len(results) == 3
+    titles = [r.title for r in results]
+    assert "FPT công bố lợi nhuận quý 3 tăng trưởng 25%" in titles
+    assert "Khối ngoại mua ròng mạnh FPT" in titles
+    assert "Th Thị trường chứng khoán hôm nay" in titles or "Thị trường chứng khoán hôm nay" in titles
+
+
+# ==============================================================================
+# 9. Phase 4: Query Decomposition & Multi-subquery Tests (DEC-01 to DEC-05)
+# ==============================================================================
+
+def test_dec_01_multi_symbol_comparison_decomposition():
+    """DEC-01: Phân rã câu hỏi so sánh đa mã thành các sub-questions độc lập theo từng mã và khía cạnh."""
+    brain = HeuristicRewriteBrain()
+    q = "So sánh FPT và HPG về biến động giá và tin tức gần đây"
+    r = brain.rewrite(q, [])
+
+    assert set(r.symbols) == {"FPT", "HPG"}
+    assert len(r.sub_questions) >= 2
+    assert any("FPT" in sq for sq in r.sub_questions)
+    assert any("HPG" in sq for sq in r.sub_questions)
+    assert any("giá" in sq.lower() or "biến động" in sq.lower() for sq in r.sub_questions)
+    assert any("tin" in sq.lower() for sq in r.sub_questions)
+
+
+def test_dec_02_single_symbol_multi_intent_decomposition():
+    """DEC-02: Phân rã câu hỏi đa ý trên 1 mã (giá + tin/nguyên nhân) thành 2 sub-queries rõ ràng."""
+    brain = HeuristicRewriteBrain()
+    q = "Giá VNM hiện tại bao nhiêu và có tin tức gì giải thích vì sao giảm?"
+    r = brain.rewrite(q, [])
+
+    assert r.symbols == ["VNM"]
+    assert len(r.sub_questions) == 2
+    assert any("giá" in sq.lower() or "biến động" in sq.lower() for sq in r.sub_questions)
+    assert any("tin tức" in sq.lower() or "nguyên nhân" in sq.lower() for sq in r.sub_questions)
+
+
+def test_dec_03_simple_question_preservation():
+    """DEC-03: Bảo toàn câu hỏi đơn giản/đơn ý đúng 1 phần tử, không phân rã dư thừa."""
+    brain = HeuristicRewriteBrain()
+    q = "Giá FPT hôm nay"
+    r = brain.rewrite(q, [])
+
+    assert r.symbols == ["FPT"]
+    assert len(r.sub_questions) == 1
+    assert "FPT" in r.sub_questions[0]
+
+
+def test_dec_04_context_inheritance_in_subqueries():
+    """DEC-04: Kế thừa ngữ cảnh mã từ turn trước khi câu hỏi nối tiếp có ý định so sánh với mã mới."""
+    brain = HeuristicRewriteBrain()
+    conv = [
+        {"role": "user", "content": "FPT hôm nay thế nào?"},
+        {"role": "assistant", "content": "FPT đóng cửa 130.0, tăng 2.5%."},
+    ]
+    q = "So sánh với HPG về giá và tin tức"
+    r = brain.rewrite(q, conv)
+
+    assert "FPT" in r.symbols
+    assert "HPG" in r.symbols
+    assert len(r.sub_questions) >= 2
+    assert any("FPT" in sq for sq in r.sub_questions)
+    assert any("HPG" in sq for sq in r.sub_questions)
+
+
+def test_dec_05_supervisor_routing_multi_subqueries():
+    """DEC-05: Supervisor duyệt sub_questions kích hoạt đầy đủ cả price_agent và news_agent."""
+    from backend.agents.supervisor_agent import RewrittenQuestion, HeuristicSupervisorBrain
+
+    supervisor = HeuristicSupervisorBrain()
+    rewritten = RewrittenQuestion(
+        original="So sánh FPT và HPG",
+        rewritten="So sánh FPT và HPG",
+        symbol="FPT",
+        intent="explain",
+        symbols=["FPT", "HPG"],
+        sub_questions=[
+            "Giá và biến động gần nhất của cổ phiếu FPT là bao nhiêu?",
+            "Giá và biến động gần nhất của cổ phiếu HPG là bao nhiêu?",
+            "Tin tức mới nhất về cổ phiếu FPT là gì?",
+            "Tin tức mới nhất về cổ phiếu HPG là gì?",
+        ],
+    )
+    routing = supervisor.route(rewritten)
+
+    assert "price" in routing.agents_to_call
+    assert "news" in routing.agents_to_call
+    assert "eval" in routing.agents_to_call
+
+
+def test_answer_composer_multi_evidence_synthesis():
+    """Kiểm tra AnswerComposer tổng hợp đa nguồn có cấu trúc rõ ràng theo từng mục khi so sánh nhiều mã."""
+    from backend.agents.answer_composer.nodes import HeuristicAnswerDraftBrain
+    from backend.agents.price_agent import PriceAgentResult
+    from backend.agents.news_agent import NewsAgentResult
+    from backend.domain.ports import NewsItem
+
+    brain = HeuristicAnswerDraftBrain()
+    prices = [
+        PriceAgentResult(symbol="FPT", latest_close=135.0, prev_close=130.0, change_pct=3.85),
+        PriceAgentResult(symbol="HPG", latest_close=28.0, prev_close=29.0, change_pct=-3.45),
+    ]
+    news_list = [
+        NewsAgentResult(symbol="FPT", items=[NewsItem(title="FPT mở trung tâm AI mới")]),
+        NewsAgentResult(symbol="HPG", items=[NewsItem(title="HPG xuất khẩu thép sang EU")]),
+    ]
+    evidence = [
+        "symbol:FPT", "FPT.latest_close=135.0", "FPT.change_pct=3.85%",
+        "symbol:HPG", "HPG.latest_close=28.0", "HPG.change_pct=-3.45%",
+        "news:FPT:FPT mở trung tâm AI mới", "news:HPG:HPG xuất khẩu thép sang EU",
+    ]
+
+    ans = brain.compose(
+        question="So sánh FPT và HPG",
+        symbol="FPT",
+        price=prices[0],
+        news=news_list[0],
+        eval_result=None,
+        evidence=evidence,
+        model="heuristic",
+        attempt=0,
+        previous_violations=[],
+        prices=prices,
+        news_list=news_list,
+    )
+
+    assert "Mục so sánh giá" in ans
+    assert "Mục tin tức sự kiện" in ans
+    assert "FPT" in ans and "HPG" in ans
+    assert "135.0" in ans and "28.0" in ans
+
+

@@ -24,8 +24,9 @@ def _resolve_base_url(default_base_url: str) -> str | None:
     return default_base_url or None
 
 
-def get_client() -> OpenAI:
-    backend = get_backend(settings.llm_backend)
+def get_client(backend_name: str | None = None) -> OpenAI:
+    name = (backend_name or settings.llm_backend).strip().lower()
+    backend = get_backend(name)
     base_url = _resolve_base_url(backend.default_base_url)
     api_key = _get_pool().get_key() if backend.requires_real_key else backend.dummy_key
     return OpenAI(api_key=api_key, base_url=base_url)

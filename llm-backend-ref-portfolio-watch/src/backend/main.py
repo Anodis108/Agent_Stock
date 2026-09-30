@@ -26,7 +26,7 @@ from pydantic import BaseModel, Field
 
 from backend.agents.chart_agent import get_charts_dir
 from backend.ai_client import AiClientError, ai_chat, ai_scan
-from backend.api.deps import AppDeps, get_app_deps
+from backend.api.deps import AppDeps, get_app_deps, get_current_user_id
 from backend.api.routers.chat import stream_chat_generator_async
 from backend.api.routers.hitl import (
     alias_router as alias_hitl_router,
@@ -38,6 +38,7 @@ from backend.api.routers.market import (
     direct_router as direct_market_router,
     router as market_router,
 )
+from backend.api.routers.portfolio import router as portfolio_router
 from backend.api.routers.sessions import alias_router as alias_sessions_router
 from backend.api.routers.sessions import router as sessions_router
 from backend.cors_util import resolve_cors_origins
@@ -103,6 +104,7 @@ app.include_router(direct_market_router)
 app.include_router(hitl_router)
 app.include_router(alias_hitl_router)
 app.include_router(direct_hitl_router)
+app.include_router(portfolio_router)
 
 
 # ==============================================================================
@@ -234,7 +236,7 @@ def health() -> dict[str, str]:
 
 
 @app.get("/watchlist", response_model=WatchlistListResponse)
-def get_watchlist(user_id: str = Query(default="default")) -> WatchlistListResponse:
+def get_watchlist(user_id: str = Depends(get_current_user_id)) -> WatchlistListResponse:
     """Lấy danh sách mã theo dõi trong danh mục của người dùng."""
     items = [
         WatchlistItemOut(
@@ -246,7 +248,10 @@ def get_watchlist(user_id: str = Query(default="default")) -> WatchlistListRespo
 
 
 @app.post("/watchlist", response_model=WatchlistItemOut)
-def post_watchlist(body: CreateWatchlistRequest) -> WatchlistItemOut:
+def post_watchlist(
+    body: CreateWatchlistRequest,
+    current_user: str = Depends(get_current_user_id),
+) -> WatchlistItemOut:
     """Thêm mã cổ phiếu mới vào danh mục theo dõi."""
     sym = _norm_symbol(body.symbol)
     thr = (
@@ -255,9 +260,10 @@ def post_watchlist(body: CreateWatchlistRequest) -> WatchlistItemOut:
         else DEFAULT_THRESHOLD
     )
     assert thr is not None
+    effective_user = body.user_id if body.user_id != "default" else current_user
     saved = store.upsert_watchlist(
         WatchlistItem(
-            symbol=sym, threshold_pct=float(thr), user_id=body.user_id or "default"
+            symbol=sym, threshold_pct=float(thr), user_id=effective_user
         )
     )
     return WatchlistItemOut(
@@ -268,10 +274,14 @@ def post_watchlist(body: CreateWatchlistRequest) -> WatchlistItemOut:
 
 
 @app.patch("/watchlist/{symbol}", response_model=WatchlistItemOut)
-def patch_watchlist(symbol: str, body: UpdateWatchlistRequest) -> WatchlistItemOut:
+def patch_watchlist(
+    symbol: str,
+    body: UpdateWatchlistRequest,
+    current_user: str = Depends(get_current_user_id),
+) -> WatchlistItemOut:
     """Cập nhật ngưỡng cảnh báo biến động cho một mã trong danh mục."""
     sym = _norm_symbol(symbol)
-    user_id = body.user_id or "default"
+    user_id = body.user_id if body.user_id != "default" else current_user
     existing = store.get_watchlist(user_id, sym)
     if existing is None:
         raise HTTPException(status_code=404, detail="không tìm thấy mã trong watchlist")
@@ -291,7 +301,8 @@ def patch_watchlist(symbol: str, body: UpdateWatchlistRequest) -> WatchlistItemO
 
 @app.delete("/watchlist/{symbol}")
 def delete_watchlist(
-    symbol: str, user_id: str = Query(default="default")
+    symbol: str,
+    user_id: str = Depends(get_current_user_id),
 ) -> dict[str, object]:
     """Xóa mã cổ phiếu khỏi danh mục theo dõi."""
     sym = _norm_symbol(symbol)
@@ -305,7 +316,7 @@ def delete_watchlist(
 # ==============================================================================
 
 @app.get("/approvals")
-def get_approvals(user_id: str = Query(default="default")) -> dict[str, Any]:
+def get_approvals(user_id: str = Depends(get_current_user_id)) -> dict[str, Any]:
     """Lấy danh sách các yêu cầu cảnh báo đang chờ người dùng phê duyệt."""
     items = [a.as_dict() for a in store.list_pending(user_id)]
     return {"items": items, "count": len(items)}

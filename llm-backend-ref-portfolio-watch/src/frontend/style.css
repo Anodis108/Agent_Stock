@@ -1088,7 +1088,7 @@ body {
 
 .inspector-io-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 0.5rem;
 }
 
@@ -1116,7 +1116,7 @@ body {
   font-size: 0.75rem;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   line-height: 1.35;
-  max-height: 120px;
+  max-height: 180px;
   overflow-y: auto;
   white-space: pre-wrap;
   word-break: break-all;
@@ -2076,5 +2076,204 @@ body {
   0%, 100% { opacity: 1; }
   50% { opacity: 0; }
 }
+
+/* --------------------------------------------------------------------------
+   Phase 6: Multi-tenant User Switcher & Portfolio P&L Tab Styles
+   -------------------------------------------------------------------------- */
+
+.header-user-switcher {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 0.25rem 0.55rem;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  margin-right: 0.5rem;
+}
+
+.user-switcher-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #e2e8f0;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  white-space: nowrap;
+}
+
+.user-switcher-select {
+  background: #1e293b;
+  color: #f8fafc;
+  border: 1px solid #475569;
+  border-radius: 4px;
+  padding: 0.22rem 0.45rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+}
+
+.user-switcher-select:focus {
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.25);
+}
+
+/* Portfolio Pane Header & Cards */
+.portfolio-pane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.6rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.portfolio-pane-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.user-badge {
+  font-size: 0.7rem;
+  background: #0284c7;
+  color: #ffffff;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  font-family: monospace;
+}
+
+.btn-refresh-sm {
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  color: #334155;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.btn-refresh-sm:hover {
+  background: #e2e8f0;
+}
+
+/* 3 Summary Cards */
+.portfolio-summary-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.pnl-card {
+  background: var(--panel-bg, #ffffff);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 6px;
+  padding: 0.5rem 0.6rem;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+
+.pnl-card-label {
+  font-size: 0.72rem;
+  color: var(--muted, #64748b);
+  text-transform: uppercase;
+  font-weight: 650;
+  margin-bottom: 0.2rem;
+}
+
+.pnl-card-val {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text, #0f172a);
+}
+
+.pnl-up {
+  color: #059669 !important;
+}
+
+.pnl-down {
+  color: #dc2626 !important;
+}
+
+.pnl-ref {
+  color: #64748b !important;
+}
+
+/* Portfolio Form & Table */
+.portfolio-actions {
+  margin-bottom: 0.6rem;
+}
+
+.portfolio-form {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1.2fr auto;
+  gap: 0.35rem;
+}
+
+.portfolio-form input {
+  padding: 0.35rem 0.45rem;
+  font-size: 0.8rem;
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: 4px;
+}
+
+.portfolio-form button {
+  padding: 0.35rem 0.65rem;
+  background: #0284c7;
+  color: #ffffff;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.portfolio-form button:hover {
+  background: #0369a1;
+}
+
+.portfolio-table {
+  font-size: 0.8rem;
+}
+
+.portfolio-table th {
+  padding: 0.4rem 0.35rem;
+  background: #f8fafc;
+  font-size: 0.75rem;
+}
+
+.portfolio-table td {
+  padding: 0.4rem 0.35rem;
+}
+
+.btn-delete-holding {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+  opacity: 0.7;
+}
+
+.btn-delete-holding:hover {
+  opacity: 1;
+  background: #fee2e2;
+}
+
+.portfolio-error {
+  padding: 0.35rem 0.5rem;
+  background: #fef2f2;
+  border: 1px solid #f87171;
+  color: #b91c1c;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  margin-bottom: 0.4rem;
+}
+
 
 

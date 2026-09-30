@@ -26,6 +26,7 @@ from backend.database.repositories import MessageRepository, SessionRepository
 from backend.graph.chat import run_chat_graph
 from backend.infra.storage.memory_store import (
     SqliteMemoryStore,
+    apply_sliding_window_with_ttl_eviction,
     filter_conversation_history,
     parse_timestamp,
 )
@@ -44,20 +45,24 @@ def test_parse_timestamp_formats():
     assert parse_timestamp("2026-09-25 10:00:00") is not None
 
 
-def test_filter_conversation_history_sliding_window():
-    """Kiểm tra cửa sổ trượt chỉ giữ lại N tin nhắn gần nhất."""
+def test_apply_sliding_window_with_ttl_eviction_sliding_window():
+    """Kiểm tra cửa sổ trượt (Sliding Window Context Buffer) chỉ giữ lại N tin nhắn gần nhất."""
     history = [
         {"role": "user", "content": f"msg {i}", "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat()}
         for i in range(10)
     ]
-    filtered = filter_conversation_history(history, limit=4, ttl_minutes=60)
+    filtered = apply_sliding_window_with_ttl_eviction(history, limit=4, ttl_minutes=60)
     assert len(filtered) == 4
     assert filtered[-1]["content"] == "msg 9"
     assert filtered[0]["content"] == "msg 6"
 
+    # Kiểm tra tính tương thích ngược của alias
+    legacy = filter_conversation_history(history, limit=4, ttl_minutes=60)
+    assert legacy == filtered
 
-def test_filter_conversation_history_ttl_expiry():
-    """Kiểm tra các tin nhắn quá hạn TTL (> 30 phút) bị loại bỏ khỏi ngữ cảnh."""
+
+def test_apply_sliding_window_with_ttl_eviction_ttl_expiry():
+    """Kiểm tra loại bỏ tin nhắn hết hạn TTL (TTL-based Context Eviction)."""
     now = datetime.datetime.now(datetime.timezone.utc)
     old_time = (now - datetime.timedelta(minutes=45)).isoformat()
     new_time = (now - datetime.timedelta(minutes=5)).isoformat()
@@ -66,7 +71,7 @@ def test_filter_conversation_history_ttl_expiry():
         {"role": "user", "content": "Tin nhắn cũ hết hạn", "created_at": old_time},
         {"role": "user", "content": "Tin nhắn mới còn hạn", "created_at": new_time},
     ]
-    filtered = filter_conversation_history(history, limit=10, ttl_minutes=30)
+    filtered = apply_sliding_window_with_ttl_eviction(history, limit=10, ttl_minutes=30)
     assert len(filtered) == 1
     assert filtered[0]["content"] == "Tin nhắn mới còn hạn"
 

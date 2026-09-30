@@ -6,6 +6,7 @@ from backend.infra.storage.long_term_memory import (
 )
 from backend.infra.storage.memory_store import (
     SqliteMemoryStore,
+    apply_sliding_window_with_ttl_eviction,
     filter_conversation_history,
     parse_timestamp,
 )
@@ -16,6 +17,7 @@ __all__ = [
     "SqliteMemoryStore",
     "SqlitePriceHistoryStore",
     "SqliteWatchlistStore",
+    "apply_sliding_window_with_ttl_eviction",
     "clear_long_term_fallback",
     "filter_conversation_history",
     "get_qdrant_client",

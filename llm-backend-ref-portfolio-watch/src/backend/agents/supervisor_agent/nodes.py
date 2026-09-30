@@ -60,6 +60,11 @@ _TICKER_STOPWORDS = frozenset(
         "BAO",  # «bao nhiêu» — không phải mã
         "ATC",  # Lệnh ATC — không phải mã
         "ATO",  # Lệnh ATO — không phải mã
+        "GIA",  # «giá» — không phải mã
+        "TAI",  # «tại» — không phải mã
+        "TIA",  # typo «tịa» — không phải mã
+        "HIEN",  # «hiện» — không phải mã
+        "TOI",  # «tôi» — không phải mã
     }
 )
 _REF_PREV_RE = re.compile(
@@ -148,6 +153,7 @@ class RewrittenQuestion:
     intent: str  # price_lookup | news_lookup | explain
     # So sánh đa mã (VNM+HPG…); symbol = mã chính (phần tử đầu).
     symbols: list[str] = field(default_factory=list)
+    sub_questions: list[str] = field(default_factory=list)
 
 
 class RewriteBrain(Protocol):
@@ -183,14 +189,35 @@ def _extract_symbol(text: str) -> str | None:
     return syms[0] if syms else None
 
 
+def _symbols_from_original_question(q: str) -> list[str]:
+    """Mã trích từ câu hỏi gốc — không dùng rewritten (tránh «xin vui» → XIN/VUI)."""
+    return _extract_symbols(q)
+
+
+def _restrict_symbols_to_original(q: str, symbols: list[str]) -> list[str]:
+    """Giữ mã có trong câu gốc; nếu gốc không có mã thì giữ nguyên (follow-up/memory)."""
+    q_syms = _symbols_from_original_question(q)
+    if not q_syms:
+        return symbols
+    allowed = set(q_syms)
+    return [s for s in symbols if s in allowed]
+
+
 def _normalize_symbols(
     *,
     primary: str | None,
     from_text: list[str],
     from_llm: list[str] | None = None,
 ) -> tuple[str | None, list[str]]:
+    text_set = {(s or "").strip().upper() for s in from_text if (s or "").strip()}
+    llm_syms = list(from_llm or [])
+    # Bỏ mã LLM bịa không xuất hiện trong câu hỏi khi đã trích được mã từ text.
+    if text_set and llm_syms:
+        llm_syms = [
+            s for s in llm_syms if (s or "").strip().upper() in text_set
+        ]
     ordered: list[str] = []
-    for sym in list(from_llm or []) + ([primary] if primary else []) + list(from_text):
+    for sym in llm_syms + ([primary] if primary else []) + list(from_text):
         s = (sym or "").strip().upper()
         if s and s not in ordered:
             ordered.append(s)
@@ -277,11 +304,117 @@ def _has_chart_intent(lower: str) -> bool:
     return any(h in lower for h in _CHART_PHRASES)
 
 
+def _is_actionless_followup(q: str) -> bool:
+    """Kiểm tra câu hỏi tỉnh lược hành động (chỉ nêu mã hoặc hỏi lửng lơ: 'Còn VNM thì sao?')."""
+    q_lower = (q or "").strip().lower()
+    patterns = (
+        "thì sao", "thi sao", "thế nào", "the nao", "sao rồi", "sao roi", "còn ", "con ", "thế còn", "the con"
+    )
+    has_followup_pattern = any(p in q_lower for p in patterns)
+    has_explicit_action = (
+        _has_chart_intent(q_lower)
+        or _has_diagram_intent(q_lower)
+        or any(h in q_lower for h in _EXPLAIN_HINTS)
+        or _has_news_intent(q_lower)
+        or any(k in q_lower for k in ("giá bao nhiêu", "gia bao nhieu", "đóng cửa", "dong cua"))
+    )
+    return has_followup_pattern and not has_explicit_action
+
+
+def _get_prev_intent_and_action(conversation: list[dict]) -> tuple[str | None, str | None]:
+    """Lấy intent và hành động của lượt người dùng liền trước trong hội thoại."""
+    for turn in reversed(conversation or []):
+        if turn.get("role") == "user":
+            content = str(turn.get("content") or "").strip()
+            c_lower = content.lower()
+            if _has_chart_intent(c_lower):
+                return "chart", "Vẽ biểu đồ giá"
+            if _has_diagram_intent(c_lower):
+                return "diagram", "Vẽ sơ đồ"
+            if any(h in c_lower for h in _EXPLAIN_HINTS):
+                return "explain", "Giải thích biến động"
+            if _has_news_intent(c_lower):
+                return "news_lookup", "Tra cứu tin tức"
+            if any(k in c_lower for k in ("giá", "gia")):
+                return "price_lookup", "Tra cứu giá"
+    return None, None
+
+
+def _decompose_query(
+    question: str,
+    rewritten: str,
+    symbols: list[str],
+    intent: str,
+    llm_sub_questions: list[str] | None = None,
+) -> list[str]:
+    """Phân rã câu hỏi phức tạp / đa mã thành các sub-questions độc lập (Query Decomposition).
+    
+    Hỗ trợ cơ chế Fallback an toàn (Task 7.3): Nếu câu hỏi không thể phân rã hoặc gặp lỗi,
+    hệ thống tự động quay về chính câu hỏi gốc/câu viết lại để tiếp tục chu trình xử lý.
+    """
+    q_main = (rewritten or question or "").strip()
+    try:
+        if llm_sub_questions and len(llm_sub_questions) > 1:
+            return [sq.strip() for sq in llm_sub_questions if sq.strip()]
+
+        combined_text = f"{question} {rewritten}".lower()
+        has_news = _has_news_intent(combined_text) or "tin tức" in combined_text or "tin" in combined_text
+        has_price = any(k in combined_text for k in ("giá", "gia", "thị giá", "biến động", "đóng cửa")) or intent == "price_lookup"
+
+        # 1. Câu hỏi so sánh hoặc chứa nhiều mã cổ phiếu (DEC-01, DEC-04)
+        if len(symbols) > 1:
+            sub_qs: list[str] = []
+            is_comparison = any(k in combined_text for k in ("so sánh", "so sanh", "so với", "so voi", "khác nhau"))
+            if (has_news and has_price) or is_comparison or intent == "explain":
+                for s in symbols:
+                    sub_qs.append(f"Giá và biến động gần nhất của cổ phiếu {s} là bao nhiêu?")
+                for s in symbols:
+                    sub_qs.append(f"Tin tức và sự kiện gần đây về cổ phiếu {s} là gì?")
+                return sub_qs
+            elif intent == "chart":
+                for s in symbols:
+                    sub_qs.append(f"Vẽ biểu đồ kỹ thuật cho cổ phiếu {s}")
+                return sub_qs
+            elif intent == "news_lookup" or has_news:
+                for s in symbols:
+                    sub_qs.append(f"Tin tức mới nhất về cổ phiếu {s}")
+                return sub_qs
+            else:
+                for s in symbols:
+                    sub_qs.append(f"Giá cổ phiếu {s} hôm nay là bao nhiêu?")
+                return sub_qs
+
+        # 2. Câu hỏi đa ý trên 1 mã (DEC-02: vừa hỏi giá vừa hỏi tin tức hoặc nguyên nhân)
+        if len(symbols) == 1:
+            sym = symbols[0]
+            has_explain_cause = any(
+                h in combined_text
+                for h in ("tại sao", "tai sao", "vì sao", "vi sao", "lý do", "ly do", "nguyên nhân", "nguyen nhan", "giải thích", "giai thich")
+            )
+            if (has_price and has_news) or (has_price and has_explain_cause) or (intent == "explain" and has_explain_cause):
+                return [
+                    f"Giá và biến động hiện tại của cổ phiếu {sym} là bao nhiêu?",
+                    f"Tin tức và nguyên nhân tác động đến biến động giá cổ phiếu {sym} gần đây là gì?",
+                ]
+
+        if llm_sub_questions and len(llm_sub_questions) == 1 and llm_sub_questions[0].strip():
+            return [llm_sub_questions[0].strip()]
+
+        # 3. Câu hỏi đơn giản hoặc không thể phân tách thêm (DEC-03)
+        return [q_main] if q_main else [question.strip()]
+    except Exception as exc:
+        _logger.warning("Lỗi phân rã câu hỏi: %s. Fallback an toàn về câu hỏi gốc.", exc)
+        return [q_main] if q_main else [question.strip()]
+
+
 def _needs_memory_symbol(question: str, symbol: str | None) -> bool:
     """Xác định câu hỏi có cần bổ sung mã cổ phiếu từ bộ nhớ hội thoại không."""
     q_lower = (question or "").lower()
     # Đại từ luôn resolve từ hội thoại (kể cả khi extract nhầm ticker).
     if _REF_PREV_RE.search(question):
+        return True
+    # Câu hỏi so sánh với mã mới nhưng kế thừa mã trước ("So sánh với HPG...")
+    if re.search(r"\b(?:so sánh với|so sanh voi|so với|so voi|còn\s+\w+\s+thì\s+sao\s+so\s+với)\b", q_lower):
         return True
     if symbol is not None:
         return False
@@ -327,12 +460,18 @@ class HeuristicRewriteBrain:
             intent = "explain"
         elif _has_news_intent(lower):
             intent = "news_lookup"
+        elif _is_actionless_followup(q):
+            prev_intent, _ = _get_prev_intent_and_action(conversation)
+            if prev_intent:
+                intent = prev_intent
 
         symbol, symbols = _normalize_symbols(primary=symbol, from_text=symbols)
 
-        # Nếu câu hỏi dạng nguyên nhân 'tại sao lại giảm/tăng' không có ticker, chuẩn hoá câu hỏi tự nhiên
+        # Nếu câu hỏi dạng so sánh hoặc nguyên nhân 'tại sao lại giảm/tăng' không có ticker, chuẩn hoá câu hỏi tự nhiên
         rewritten_candidate = q
-        if symbol and symbol not in _extract_symbols(q):
+        if len(symbols) >= 2 and re.search(r"\b(?:so sánh với|so sanh voi|so với|so voi)\b", lower):
+            rewritten_candidate = f"So sánh cổ phiếu {symbols[0]} và {symbols[1]} về biến động giá và tin tức gần đây."
+        elif symbol and symbol not in _extract_symbols(q):
             if re.search(
                 r"(?:tại sao|tai sao|vì sao|vi sao|sao lại|sao lai|lý do|ly do|nguyên nhân|nguyen nhan)\s+(?:lại\s+)?giảm",
                 lower,
@@ -343,19 +482,32 @@ class HeuristicRewriteBrain:
                 lower,
             ):
                 rewritten_candidate = f"Tại sao giá cổ phiếu {symbol} lại tăng hôm nay?"
+            elif _has_chart_intent(lower):
+                rewritten_candidate = f"{q} của cổ phiếu {symbol}"
+            elif _is_actionless_followup(q):
+                prev_intent, prev_action = _get_prev_intent_and_action(conversation)
+                if prev_action:
+                    rewritten_candidate = f"{prev_action} cổ phiếu {symbol}."
 
         rewritten = _ground_rewritten(q, symbols, rewritten_candidate)
+        sub_questions = _decompose_query(
+            question=q,
+            rewritten=rewritten,
+            symbols=symbols,
+            intent=intent,
+        )
         return RewrittenQuestion(
             original=q,
             rewritten=rewritten,
             symbol=symbol,
             intent=intent,
             symbols=symbols,
+            sub_questions=sub_questions,
         )
 
 
 class HeuristicSupervisorBrain:
-    """Routing heuristic: price-only / +news / +eval theo intent."""
+    """Routing heuristic: price-only / +news / +eval theo intent và sub_questions."""
 
     def route(self, rewritten: RewrittenQuestion) -> RoutingDecision:
         intent = rewritten.intent or "price_lookup"
@@ -378,6 +530,21 @@ class HeuristicSupervisorBrain:
         else:
             agents = ["price"]
             reason = "tra cứu giá → chỉ PriceAgent"
+
+        # Quét qua toàn bộ sub_questions để không bỏ sót worker nào (DEC-05)
+        for sq in (rewritten.sub_questions or []):
+            sq_lower = sq.lower()
+            if any(k in sq_lower for k in ("tin", "tin tức", "sự kiện", "báo chí")) and "news" not in agents:
+                agents.append("news")
+            if any(k in sq_lower for k in ("giá", "thị giá", "biến động", "đóng cửa")) and "price" not in agents:
+                agents.insert(0, "price")
+            if any(k in sq_lower for k in ("nguyên nhân", "tại sao", "vì sao", "lý do", "đánh giá", "rủi ro", "so sánh")) and "eval" not in agents:
+                agents.append("eval")
+            if any(k in sq_lower for k in ("biểu đồ", "đồ thị", "chart")) and "chart" not in agents:
+                agents.append("chart")
+            if any(k in sq_lower for k in ("sơ đồ", "lưu đồ", "diagram")) and "diagram" not in agents:
+                agents.append("diagram")
+
         return RoutingDecision(
             route=intent,
             reason=reason,
@@ -454,6 +621,8 @@ class LlmRewriteBrain:
             from_text=_extract_symbols(f"{q} {rewritten}"),
             from_llm=llm_syms,
         )
+        symbols = _restrict_symbols_to_original(q, symbols)
+        symbol = symbols[0] if symbols else symbol
         # Đại từ / follow-up không có ticker → lấy mã từ conversation hoặc long-term memory.
         symbol, symbols = _apply_memory_symbol(
             q,
@@ -464,7 +633,13 @@ class LlmRewriteBrain:
         )
         symbol, symbols = _normalize_symbols(primary=symbol, from_text=symbols)
         rewritten = _ground_rewritten(q, symbols, rewritten)
-        # Đa mã / từ khóa so sánh → explain (price+news+eval).
+        # Action inheritance: nếu câu hỏi tỉnh lược mã mới không có action, kế thừa action lượt trước
+        if _is_actionless_followup(q):
+            prev_intent, _ = _get_prev_intent_and_action(conversation)
+            if prev_intent and intent == "price_lookup":
+                intent = prev_intent
+
+        # Đa mã / từ khóa trực tiếp từ blob câu hỏi -> chart, diagram, explain
         blob = f"{q} {rewritten}".lower()
         if _has_chart_intent(blob):
             intent = "chart"
@@ -473,12 +648,21 @@ class LlmRewriteBrain:
         elif len(symbols) > 1 or any(h in blob for h in _EXPLAIN_HINTS):
             if intent == "price_lookup":
                 intent = "explain"
+
+        sub_questions = _decompose_query(
+            question=q,
+            rewritten=rewritten,
+            symbols=symbols,
+            intent=intent,
+            llm_sub_questions=getattr(output, "sub_questions", None),
+        )
         return RewrittenQuestion(
             original=q,
             rewritten=rewritten,
             symbol=symbol,
             intent=intent,
             symbols=symbols,
+            sub_questions=sub_questions,
         )
 
 
@@ -550,6 +734,21 @@ class LlmSupervisorBrain:
                 agents.append("chart")
             if "price" not in agents:
                 agents.insert(0, "price")
+
+        # Quét qua sub_questions để không bỏ sót worker nào (DEC-05)
+        for sq in (rewritten.sub_questions or []):
+            sq_lower = sq.lower()
+            if any(k in sq_lower for k in ("tin", "tin tức", "sự kiện", "báo chí")) and "news" not in agents:
+                agents.append("news")
+            if any(k in sq_lower for k in ("giá", "thị giá", "biến động", "đóng cửa")) and "price" not in agents:
+                agents.insert(0, "price")
+            if any(k in sq_lower for k in ("nguyên nhân", "tại sao", "vì sao", "lý do", "đánh giá", "rủi ro", "so sánh")) and "eval" not in agents:
+                agents.append("eval")
+            if any(k in sq_lower for k in ("biểu đồ", "đồ thị", "chart")) and "chart" not in agents:
+                agents.append("chart")
+            if any(k in sq_lower for k in ("sơ đồ", "lưu đồ", "diagram")) and "diagram" not in agents:
+                agents.append("diagram")
+
         if not agents:
             agents = ["price"]
         reason = str(output.reason or "").strip() or "llm routing"
@@ -591,6 +790,7 @@ def rewrite_question(
                 "rewritten": res.rewritten,
                 "symbol": res.symbol,
                 "symbols": list(res.symbols or []),
+                "sub_questions": list(res.sub_questions or []),
             }
             return res
     except Exception:  # noqa: BLE001
@@ -604,6 +804,7 @@ def rewrite_question(
             symbol=symbol,
             intent="price_lookup",
             symbols=symbols,
+            sub_questions=[q] if q else [],
         )
 
 

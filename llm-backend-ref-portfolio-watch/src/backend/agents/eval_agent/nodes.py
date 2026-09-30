@@ -15,6 +15,10 @@ from backend.agents.eval_agent.tools import read_price_history
 from backend.agents.news_agent import NewsAgentResult
 from backend.agents.price_agent import PriceAgentResult
 from backend.domain.entities import Severity, SeverityLevel
+from backend.domain.indicators import (
+    IndicatorSummary,
+    analyze_technical_indicators,
+)
 from backend.domain.ports import PriceBar, PriceHistoryStore
 from backend.infra.llm.params import DETERMINISTIC
 from backend.infra.llm.prompt_registry import registry
@@ -41,6 +45,7 @@ class EvalAgentBrain(Protocol):
         price: PriceAgentResult,
         news: NewsAgentResult,
         history: list[PriceBar],
+        indicators: IndicatorSummary | None = None,
     ) -> Severity:
         ...
 
@@ -72,6 +77,7 @@ class HeuristicEvalBrain:
         price: PriceAgentResult,
         news: NewsAgentResult,
         history: list[PriceBar],
+        indicators: IndicatorSummary | None = None,
     ) -> Severity:
         evidence: list[str] = []
         change = price.change_pct
@@ -82,6 +88,16 @@ class HeuristicEvalBrain:
             evidence.append(f"latest_close={price.latest_close}")
         for item in (news.items or [])[:3]:
             evidence.append(f"news:{item.title}")
+
+        if indicators is not None:
+            if indicators.rsi is not None:
+                evidence.append(f"rsi={indicators.rsi}")
+            if indicators.sma_20 is not None:
+                evidence.append(f"sma20={indicators.sma_20}")
+            if indicators.sma_50 is not None:
+                evidence.append(f"sma50={indicators.sma_50}")
+            if indicators.ma_cross != "none":
+                evidence.append(f"ma_cross:{indicators.ma_cross}")
 
         # Phase 3c: không so sánh % khi thiếu evidence giá
         if change is None or price.error:
@@ -118,21 +134,39 @@ class HeuristicEvalBrain:
             if level == SeverityLevel.LOW:
                 level = SeverityLevel.MEDIUM
 
+        # Nâng cao đánh giá rủi ro định lượng qua chỉ báo kỹ thuật (Phase 3)
+        tech_note = ""
+        if indicators is not None:
+            if indicators.rsi is not None:
+                if indicators.rsi >= 70.0:
+                    tech_note += f" Cảnh báo: RSI={indicators.rsi:.1f} vùng quá mua (rủi ro điều chỉnh kỹ thuật)."
+                    if change is not None and change >= 3.0:
+                        level = SeverityLevel.HIGH
+                        confidence = min(1.0, confidence + 0.1)
+                elif indicators.rsi <= 30.0:
+                    tech_note += f" Cảnh báo: RSI={indicators.rsi:.1f} vùng quá bán (xuất hiện áp lực bán tháo/quá đà)."
+            if indicators.ma_cross == "golden_cross":
+                tech_note += " Xuất hiện tín hiệu Golden Cross (SMA20 cắt lên SMA50)."
+            elif indicators.ma_cross == "death_cross":
+                tech_note += " Xuất hiện tín hiệu Death Cross (SMA20 cắt xuống SMA50)."
+                if level != SeverityLevel.HIGH:
+                    level = SeverityLevel.MEDIUM
+
         history_supports = _history_supports(change, history)
         if history:
             evidence.append(f"history_bars={len(history)}")
             if history_supports is False:
                 confidence = min(confidence, 0.45)
                 reasoning = (
-                    "Dữ liệu ban đầu mập mờ; lịch sử giá không ủng hộ kết luận mạnh."
+                    "Dữ liệu ban đầu mập mờ; lịch sử giá không ủng hộ kết luận mạnh." + tech_note
                 )
             elif history_supports is True:
                 confidence = min(1.0, max(confidence, 0.7))
-                reasoning = "Đã bổ sung lịch sử giá; xu hướng khớp biến động hiện tại."
+                reasoning = "Đã bổ sung lịch sử giá; xu hướng khớp biến động hiện tại." + tech_note
             else:
-                reasoning = "Đã đọc lịch sử giá nhưng tín hiệu trung tính."
+                reasoning = "Đã đọc lịch sử giá nhưng tín hiệu trung tính." + tech_note
         else:
-            reasoning = "Đủ tín hiệu giá/tin để đánh giá mức độ nghiêm trọng."
+            reasoning = "Đủ tín hiệu giá/tin để đánh giá mức độ nghiêm trọng." + tech_note
 
         # Đề xuất ngưỡng khi biến động lớn (Gate 2 downstream)
         proposed_thr: float | None = None
@@ -142,7 +176,7 @@ class HeuristicEvalBrain:
         return Severity(
             level=level,
             confidence=confidence,
-            reasoning=reasoning,
+            reasoning=reasoning.strip(),
             evidence=evidence,
             proposed_threshold_pct=proposed_thr,
         )
@@ -203,8 +237,14 @@ class LlmEvalBrain:
         price: PriceAgentResult,
         news: NewsAgentResult,
         history: list[PriceBar],
+        indicators: IndicatorSummary | None = None,
     ) -> EvalSeverityOutput:
         change = price.change_pct
+        tech_summary = (
+            indicators.format_summary()
+            if indicators is not None
+            else "(chưa có chỉ báo kỹ thuật)"
+        )
         prompt_text = registry().render(
             "eval_severity",
             version=self._prompt_version,
@@ -212,6 +252,7 @@ class LlmEvalBrain:
             change_pct=f"{change:.4f}" if change is not None else "N/A",
             news_summary=_news_summary(news),
             history_summary=_history_summary(history),
+            technical_summary=tech_summary,
         )
         messages = [{"role": "user", "content": prompt_text}]
         try:
@@ -226,7 +267,7 @@ class LlmEvalBrain:
         except Exception:
             # inner schema fallback: heuristic
             heur = HeuristicEvalBrain()
-            sev = heur.build_severity(price, news, history)
+            sev = heur.build_severity(price, news, history, indicators=indicators)
             return EvalSeverityOutput(
                 needs_history=heur.needs_history(price, news, history),
                 level=sev.level.value,
@@ -254,13 +295,14 @@ class LlmEvalBrain:
         price: PriceAgentResult,
         news: NewsAgentResult,
         history: list[PriceBar],
+        indicators: IndicatorSummary | None = None,
     ) -> Severity:
         if history:
-            data = self._call_llm(price, news, history)
+            data = self._call_llm(price, news, history, indicators=indicators)
         elif self._cached_empty_history is not None and not self._cached_empty_history.needs_history:
             data = self._cached_empty_history
         else:
-            data = self._call_llm(price, news, history)
+            data = self._call_llm(price, news, history, indicators=indicators)
         return data.to_severity()
 
 
@@ -326,13 +368,16 @@ def run_eval_agent(
                     history_calls=history_calls,
                 )
 
+        closes = [b.close for b in history if getattr(b, "close", None) is not None]
+        indicators = analyze_technical_indicators(closes) if closes else None
+
         with agent_step(
             turn,
             "eval_agent",
             "build_severity",
             input={"symbol": symbol, "has_history": bool(history)},
         ) as box:
-            severity = evaluator.build_severity(price, news, history)
+            severity = evaluator.build_severity(price, news, history, indicators=indicators)
             box["output"] = {
                 "level": str(getattr(severity.level, "value", severity.level)),
                 "confidence": severity.confidence,
