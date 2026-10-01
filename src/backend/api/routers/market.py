@@ -101,8 +101,9 @@ def _get_matrix_data(
         conn.close()
 
 
-# /api/v1/market/matrix-10d
+# /api/v1/market/matrix-10d & /api/v1/market/matrix
 @router.get("/matrix-10d", response_model=MarketMatrixResponse)
+@router.get("/matrix", response_model=MarketMatrixResponse)
 def get_matrix_10d(
     symbols: str | None = Query(
         default=None,
@@ -114,8 +115,9 @@ def get_matrix_10d(
     return _get_matrix_data(symbols_raw=symbols, days=days, auto_sync=auto_sync)
 
 
-# /api/market/matrix-10d
+# /api/market/matrix-10d & /api/market/matrix
 @alias_router.get("/matrix-10d", response_model=MarketMatrixResponse)
+@alias_router.get("/matrix", response_model=MarketMatrixResponse)
 def alias_get_matrix_10d(
     symbols: str | None = Query(default=None),
     days: int = Query(default=10, ge=1, le=60),
@@ -124,11 +126,13 @@ def alias_get_matrix_10d(
     return _get_matrix_data(symbols_raw=symbols, days=days, auto_sync=auto_sync)
 
 
-# /market/matrix-10d
+# /market/matrix-10d & /market/matrix
 @direct_router.get("/matrix-10d", response_model=MarketMatrixResponse)
+@direct_router.get("/matrix", response_model=MarketMatrixResponse)
 def direct_get_matrix_10d(
     symbols: str | None = Query(default=None),
     days: int = Query(default=10, ge=1, le=60),
     auto_sync: bool = Query(default=True),
 ) -> MarketMatrixResponse:
     return _get_matrix_data(symbols_raw=symbols, days=days, auto_sync=auto_sync)
+

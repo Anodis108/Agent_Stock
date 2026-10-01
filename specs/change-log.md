@@ -4,6 +4,47 @@ Nhật ký ghi nhận chi tiết mọi thay đổi, kết quả kiểm thử và
 
 ---
 
+## 2026-10-01 — Hoàn Thành Mục 4.4: Tích Hợp API Market Matrix 10D (Market Watch 10D Matrix & Sparkline SVG)
+
+### Chi Tiết Triển Khai
+1. **Chuẩn Hóa API Market Matrix Trên Backend (`src/backend/api/routers/market.py`)**:
+   - Bổ sung alias route `@router.get("/matrix")`, `@alias_router.get("/matrix")`, `@direct_router.get("/matrix")` song song với các route `/matrix-10d`.
+   - Cung cấp đầy đủ các endpoint:
+     - `GET /api/v1/market/matrix-10d` & `GET /api/v1/market/matrix`: Chuẩn REST API v1.
+     - `GET /api/market/matrix-10d` & `GET /api/market/matrix`: Tiền tố tiện ích.
+     - `GET /market/matrix-10d` & `GET /market/matrix`: Direct root alias tương thích ngược.
+   - Trả về danh sách 10 mã VN30 lớn mặc định (`FPT`, `VNM`, `HPG`, `VHM`, `VIC`, `TCB`, `MBB`, `SSI`, `MWG`, `VCB`), mỗi mã gồm giá hiện tại `current_price`, tỷ lệ biến động `change_pct`, tổng khối lượng 10 phiên `total_volume`, 10 phiên chi tiết OHLCV `sessions` và chuỗi 10 giá đóng cửa `sparkline: list[float]`.
+
+2. **Nâng Cấp Web UI Frontend (`src/frontend/app.js`)**:
+   - Cập nhật hàm `loadMarketMatrix()` gọi endpoint chuẩn `GET /api/v1/market/matrix-10d` kèm cơ chế fallback an toàn sang `GET /market/matrix-10d`.
+   - Hiển thị loading indicator trên nút làm mới `#btn-refresh-matrix` trong quá trình tải dữ liệu.
+   - Tối ưu hóa hàm `renderMarketMatrix(items)`:
+     - Dựng động tiêu đề 10 cột phiên ngày (`T-9` đến `H.nay`), định dạng giá đóng cửa và % biến động.
+     - Phân loại màu sắc trực quan: `.matrix-cell-up` (xanh lá), `.matrix-cell-down` (đỏ), `.matrix-cell-ref` (vàng hổ phách).
+     - Gắn tooltip chi tiết OHLCV khi rê chuột vào từng ô phiên.
+     - Render mini Sparkline SVG 10D qua hàm `generateSparklineSvg()` với đường biểu diễn xu hướng (xanh tăng / đỏ giảm) và dot tròn tại điểm giá mới nhất.
+     - Cập nhật thời gian làm mới và số lượng mã tại `#matrix-updated-time`.
+     - Xử lý bắt lỗi mạng và hiển thị banner cảnh báo tại `#market-matrix-error`.
+   - Kết nối nút chuyển đổi tab Header `#tab-nav-market` (chuyển sang `#market-matrix-view`) và nút làm mới `#btn-refresh-matrix`.
+
+3. **Kiểm Thử Tự Động Toàn Diện**:
+   - Bổ sung bài test `test_phase4_market_matrix_api_integration` trong `tests/test_system.py`:
+     - Kiểm tra cấu trúc DOM HTML và mã nguồn frontend JS: `#market-matrix-view`, `#market-matrix-table`, `#btn-refresh-matrix`, hàm `loadMarketMatrix()`, `renderMarketMatrix()`, `generateSparklineSvg()`.
+     - Kiểm tra API Backend: `GET /api/v1/market/matrix-10d` và alias `GET /api/v1/market/matrix` trả về đủ 10 mã mặc định, cấu trúc sparkline và sessions 10 ngày hợp lệ; kiểm tra tham số lọc tùy biến `symbols=FPT,VNM&days=5`.
+     - Kiểm thử logic sinh SVG Sparkline qua Node.js (phân biệt màu xanh stroke `#059669` khi uptrend và đỏ `#dc2626` khi downtrend).
+   - Kiểm tra hồi quy toàn bộ: `tests/test_system.py` (24/24 PASS) và `tests/test_market.py` (9/9 PASS).
+
+### Đánh Giá Tiêu Chí Nghiệm Thu (Acceptance Criteria Review)
+- **What Passes**:
+  - Giao diện nạp đầy đủ dữ liệu ma trận 10 mã VN30 x 10 phiên giao dịch qua endpoint `GET /api/v1/market/matrix-10d`.
+  - Đồ thị thu nhỏ Sparkline SVG được render chính xác cho từng mã cổ phiếu, thể hiện rõ xu hướng tăng/giảm.
+  - Chuyển đổi qua lại giữa tab Chat và Market Watch hoạt động trơn tru, không tải lại trang.
+  - Nút làm mới dữ liệu cập nhật tức thì dữ liệu thị trường và nhãn thời gian.
+- **What Fails**: 0 lỗi.
+- **What Was Missing & Fixed**: Frontend trước đó gọi trực tiếp endpoint `/market/matrix-10d`. Đã nâng cấp ưu tiên gọi chuẩn `/api/v1/market/matrix-10d` kèm fallback an toàn và bổ sung alias route `/matrix` trên backend.
+
+---
+
 ## 2026-10-01 — Hoàn Thành Mục 4.3: Tích Hợp API Watchlist (Watchlist API & Alert Threshold Sync)
 
 ### Chi Tiết Triển Khai

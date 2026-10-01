@@ -140,8 +140,12 @@ Kế hoạch triển khai theo phương pháp **Spec-Driven Development (SDD)**,
   - Backend chuẩn hóa router và main app hỗ trợ đầy đủ các route `/api/v1/watchlist`, `/api/watchlist`, `/watchlist` cho mọi phương thức GET, POST, PATCH, DELETE.
   - UI hỗ trợ thêm mã, sửa ngưỡng và xóa mã khỏi watchlist kèm thông báo toast và làm mới danh sách tức thời.
   - Đã kiểm thử tự động toàn diện qua `test_phase4_watchlist_api_integration` trong `tests/test_system.py` và toàn bộ test suite đạt 100% PASS (207/207 tests).
-* [ ] **4.4. Tích hợp API Market Matrix 10D**:
+* [x] **4.4. Tích hợp API Market Matrix 10D**:
   - UI nạp bảng ma trận 10 phiên VN30 và render đồ thị sparkline thu nhỏ.
+  - Backend chuẩn hóa router và endpoint `GET /api/v1/market/matrix-10d` kèm các alias routes `/api/v1/market/matrix`, `/api/market/matrix-10d`, `/market/matrix-10d`, trả về danh sách 10 mã VN30 mặc định kèm 10 phiên OHLCV và dãy giá sparkline 10 điểm.
+  - Frontend Web UI (`app.js`) nâng cấp hàm `loadMarketMatrix()` gọi endpoint chuẩn `/api/v1/market/matrix-10d` (kèm fallback `/market/matrix-10d`), render động 10 phiên ngày `T-9` đến `H.nay`, phân loại màu sắc tăng/giảm/tham chiếu, định dạng khối lượng tổng và render SVG sparkline mini sắc nét.
+  - Hỗ trợ chuyển đổi tab mượt mà qua nút `#tab-nav-market` và nút làm mới dữ liệu `#btn-refresh-matrix` với hiệu ứng loading icon.
+  - Đã kiểm thử tự động toàn diện qua `test_phase4_market_matrix_api_integration` trong `tests/test_system.py` và toàn bộ 9 tests trong `tests/test_market.py` đạt 100% PASS.
 * [ ] **4.5. Kiểm thử luồng tích hợp đầu-cuối (End-to-End Integration Test)**:
   - Gửi câu hỏi từ UI, nhận phản hồi streaming đầy đủ, bảng P&L cập nhật không lỗi.
 

@@ -933,3 +933,111 @@ def test_phase4_watchlist_api_integration():
     after_data = after_del_res.json()
     assert after_data["count"] == 1
     assert after_data["items"][0]["symbol"] == "SSI"
+
+
+def test_phase4_market_matrix_api_integration():
+    """Phase 4.4: Kiểm tra tích hợp Market Matrix 10D API & Sparklines SVG.
+
+    Xác nhận:
+    1. Web UI app.js và index.html:
+       - index.html có đủ cấu trúc #market-matrix-view, #market-matrix-table, #btn-refresh-matrix.
+       - app.js chứa hàm loadMarketMatrix() gọi GET /api/v1/market/matrix-10d, renderMarketMatrix(), generateSparklineSvg().
+    2. Endpoint GET /api/v1/market/matrix-10d và alias /api/v1/market/matrix:
+       - Trả về đủ 10 mã VN30 mặc định.
+       - Mỗi mã chứa current_price, change_pct, total_volume, sparkline (10 điểm float), và 10 sessions OHLCV.
+       - Hỗ trợ tham số tùy biến symbols và days (ví dụ days=5).
+    3. Kiểm thử logic sinh SVG Sparkline qua Node.js (nếu có môi trường Node).
+    """
+    import shutil
+    import subprocess
+    from fastapi.testclient import TestClient
+    from backend.main import app
+
+    html_text = (FE / "index.html").read_text(encoding="utf-8")
+    js_text = (FE / "app.js").read_text(encoding="utf-8")
+
+    # 1. Kiểm tra cấu trúc giao diện HTML & JS
+    assert 'id="market-matrix-view"' in html_text
+    assert 'id="market-matrix-table"' in html_text
+    assert 'id="btn-refresh-matrix"' in html_text
+    assert 'id="matrix-updated-time"' in html_text
+
+    assert 'api("GET", "/api/v1/market/matrix-10d")' in js_text
+    assert "renderMarketMatrix" in js_text
+    assert "generateSparklineSvg" in js_text
+    assert "loadMarketMatrix" in js_text
+    assert "switchView" in js_text
+
+    # 2. Kiểm tra API Backend
+    client = TestClient(app)
+
+    # 2.1 GET /api/v1/market/matrix-10d mặc định
+    res = client.get("/api/v1/market/matrix-10d")
+    assert res.status_code == 200
+    data = res.json()
+    assert "items" in data
+    assert data["count"] == 10
+    assert len(data["items"]) == 10
+
+    for item in data["items"]:
+        assert isinstance(item["symbol"], str) and len(item["symbol"]) == 3
+        assert isinstance(item["current_price"], (int, float)) and item["current_price"] > 0
+        assert isinstance(item["total_volume"], int) and item["total_volume"] >= 0
+        assert isinstance(item["sparkline"], list)
+        assert len(item["sparkline"]) == 10
+        assert isinstance(item["sessions"], list)
+        assert len(item["sessions"]) == 10
+        for s in item["sessions"]:
+            assert "date" in s
+            assert "close" in s
+            assert s["close"] > 0
+
+    # 2.2 GET /api/v1/market/matrix (alias route)
+    alias_res = client.get("/api/v1/market/matrix")
+    assert alias_res.status_code == 200
+    alias_data = alias_res.json()
+    assert alias_data["count"] == 10
+    assert len(alias_data["items"]) == 10
+
+    # 2.3 Query tùy biến: symbols=FPT,VNM&days=5
+    custom_res = client.get("/api/v1/market/matrix-10d?symbols=FPT,VNM&days=5")
+    assert custom_res.status_code == 200
+    custom_data = custom_res.json()
+    assert custom_data["count"] == 2
+    assert len(custom_data["items"]) == 2
+    for item in custom_data["items"]:
+        assert item["symbol"] in ("FPT", "VNM")
+        assert len(item["sparkline"]) == 5
+        assert len(item["sessions"]) == 5
+
+    # 3. Kiểm thử hàm generateSparklineSvg qua Node.js nếu có sẵn
+    node_bin = shutil.which("node")
+    if node_bin:
+        js_code = r"""
+        const fs = require('fs');
+        const code = fs.readFileSync('src/frontend/app.js', 'utf-8');
+        const start = code.indexOf('function generateSparklineSvg');
+        const end = code.indexOf('function renderMarketMatrix');
+        if (start === -1 || end === -1) throw new Error("Could not find generateSparklineSvg");
+        const snippet = code.slice(start, end);
+        const fn = new Function(snippet + '; return generateSparklineSvg;');
+        const generateSparklineSvg = fn();
+
+        const svg = generateSparklineSvg([100, 105, 102, 108, 112]);
+        if (!svg.includes('<svg') || !svg.includes('<polyline') || !svg.includes('<circle')) {
+            throw new Error("Invalid sparkline SVG structure: " + svg);
+        }
+        if (!svg.includes('stroke="#059669"')) {
+            throw new Error("Uptrend sparkline should have green stroke #059669");
+        }
+
+        const downSvg = generateSparklineSvg([120, 115, 110, 105]);
+        if (!downSvg.includes('stroke="#dc2626"')) {
+            throw new Error("Downtrend sparkline should have red stroke #dc2626");
+        }
+        console.log("SPARKLINE_TEST_OK");
+        """
+        proc = subprocess.run([node_bin, "-e", js_code], cwd=str(ROOT), capture_output=True, text=True)
+        assert proc.returncode == 0, f"Node sparkline test failed: {proc.stderr}"
+        assert "SPARKLINE_TEST_OK" in proc.stdout
+

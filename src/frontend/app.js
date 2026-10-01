@@ -2494,7 +2494,9 @@
     if (refreshBtn) refreshBtn.classList.add("loading");
 
     try {
-      var data = await api("GET", "/market/matrix-10d");
+      var data = await api("GET", "/api/v1/market/matrix-10d").catch(function () {
+        return api("GET", "/market/matrix-10d");
+      });
       if (!data || !Array.isArray(data.items)) {
         throw new Error("Dữ liệu ma trận không hợp lệ");
       }
