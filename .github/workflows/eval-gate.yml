@@ -4,9 +4,9 @@ name: Eval Gate
 on:
   pull_request:
     paths:
-      - "llm-backend-ref-portfolio-watch/resources/prompts/**"
-      - "llm-backend-ref-portfolio-watch/src/backend/**"
-      - "llm-backend-ref-portfolio-watch/resources/eval/**"
+      - "resources/prompts/**"
+      - "src/backend/**"
+      - "resources/eval/**"
       - ".github/workflows/eval-gate.yml"
 
 permissions:
@@ -16,10 +16,6 @@ permissions:
 concurrency:
   group: eval-gate-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
-defaults:
-  run:
-    working-directory: llm-backend-ref-portfolio-watch
 
 jobs:
   eval_gate:
@@ -39,7 +35,7 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: llm-backend-ref-portfolio-watch/pyproject.toml
+          cache-dependency-path: pyproject.toml
 
       - name: Install dependencies
         run: |
@@ -49,8 +45,8 @@ jobs:
       - name: Cache eval responses
         uses: actions/cache@v4
         with:
-          path: llm-backend-ref-portfolio-watch/.eval_cache
-          key: eval-cache-${{ hashFiles('llm-backend-ref-portfolio-watch/resources/prompts/**') }}
+          path: .eval_cache
+          key: eval-cache-${{ hashFiles('resources/prompts/**') }}
           restore-keys: |
             eval-cache-
 
@@ -79,8 +75,8 @@ jobs:
         with:
           name: eval-reports-${{ github.run_id }}
           path: |
-            llm-backend-ref-portfolio-watch/specs/eval/pr_report.json
-            llm-backend-ref-portfolio-watch/specs/eval/pr_report.md
+            specs/eval/pr_report.json
+            specs/eval/pr_report.md
 
       - name: Comment eval report on PR
         if: always() && github.event_name == 'pull_request'
@@ -88,7 +84,7 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const path = 'llm-backend-ref-portfolio-watch/specs/eval/pr_report.md';
+            const path = 'specs/eval/pr_report.md';
             let body = '## Eval Gate Report\n\n_Report file not found._';
             if (fs.existsSync(path)) {
               body = fs.readFileSync(path, 'utf8');

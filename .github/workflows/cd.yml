@@ -7,17 +7,16 @@ on:
     branches:
       - main
     paths:
-      - "llm-backend-ref-portfolio-watch/**"
+      - "src/**"
+      - "deploy/**"
+      - "docker-compose.yml"
+      - "pyproject.toml"
       - ".github/workflows/cd.yml"
   workflow_dispatch:
 
 concurrency:
   group: cd-main
   cancel-in-progress: false
-
-defaults:
-  run:
-    working-directory: llm-backend-ref-portfolio-watch
 
 jobs:
   deploy:

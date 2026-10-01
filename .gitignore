@@ -30,8 +30,10 @@ training/output/
 .vscode/
 
 # Portfolio Watch — CI artifacts & local caches
-llm-backend-ref-portfolio-watch/wheels/
-llm-backend-ref-portfolio-watch/.eval_cache/
-llm-backend-ref-portfolio-watch/.agy-runs/
-llm-backend-ref-portfolio-watch/specs/eval/runs/
-llm-backend-ref-portfolio-watch/deploy/lkg/
+.eval_cache/
+.agy-runs/
+specs/eval/runs/
+specs/eval/pr_report.json
+specs/eval/pr_report.md
+deploy/lkg/
+
