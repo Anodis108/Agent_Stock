@@ -58,6 +58,7 @@ from backend.eval.run import (
     BASELINE_PATH,
     GOLDEN_V4_PATH,
     GOLDEN_V5_PATH,
+    GOLDEN_V6_PATH,
     CaseEvalResult,
     build_report,
     check_injection_gate,

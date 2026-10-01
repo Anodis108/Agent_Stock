@@ -4,6 +4,79 @@ Nhật ký ghi nhận chi tiết mọi thay đổi, kết quả kiểm thử và
 
 ---
 
+## 2026-10-01 — Docker Runtime-Only Images, Port 3001 & Repo Hygiene (SDD Review Fix)
+
+### Chi Tiết Triển Khai
+1. **Docker image chỉ chứa runtime + thư viện**:
+   - Xóa `Dockerfile` root (trùng lặp, compose không dùng).
+   - `src/backend/Dockerfile`: venv từ `pyproject.toml` + `gosu`/`appuser`; không `COPY` mã app; không `EXPOSE`/`HEALTHCHECK`/`CMD`/`ENTRYPOINT`.
+   - `src/frontend/Dockerfile`: `FROM nginx:alpine`; không copy static/config.
+2. **Runtime → `docker-compose.yml`**: mount `./src`, `./resources`, `./specs`, entrypoint, frontend assets; `command` + `healthcheck` tại compose; frontend `:3001`, Langfuse `:3000` qua `host.docker.internal`.
+3. **Gom `data/`, `docs/`, `portfolio_watch.egg-info/` vào `resources/`**; cập nhật `SQLITE_PATH` local → `./resources/data/...`.
+4. **`.gitignore`**: ignore `.cursor/`, `.agy-prompts/`, runtime DB/charts, egg-info, diagram artifacts; `git rm --cached` file agent/diagram/docs root.
+
+### Đánh Giá Tiêu Chí Nghiệm Thu
+- **What Passes**: `test_system.py` (Dockerfile/compose/nginx/port 3001), `test_ci_workflows.py`, `docker compose up -d` (backend healthy, frontend 200).
+- **What Fails (đã sửa)**: root `Dockerfile` bake code; README/`.env.example` port 3000 + `--build`; `docs/` root trùng `resources/docs/`; `.gitignore` thiếu agent/runtime paths.
+- **What Was Missing & Fixed**: tests port/mount + README workflow; `settings.sqlite_path` → `resources/data/`.
+
+---
+
+## 2026-10-01 — Hoàn Thành Mục 5.1: Thiết Kế Bộ Dataset Golden v6 Comprehensive (Bao Phủ Đủ 10 Lát Cắt Chuẩn Hóa)
+
+### Chi Tiết Triển Khai
+1. **Thiết Kế Bộ Dataset `golden_v6_comprehensive.yaml` Toàn Diện**:
+   - Xây dựng dataset tại `specs/eval/golden_v6_comprehensive.yaml` và đồng bộ vào `resources/eval/golden_v6_comprehensive.yaml`.
+   - Bao phủ đầy đủ 10 lát cắt năng lực theo yêu cầu đặc tả (`specs/test-plan.md` & `specs/product-spec.md`):
+     - **`lookup`** (2 cases): `lookup_01` (giá FPT), `lookup_02` (giá và % biến động VNM).
+     - **`news`** (2 cases): `news_01` (tin tức VNM), `news_02` (tin tức và sự kiện doanh nghiệp HPG).
+     - **`indicator`** (2 cases): `indicator_01` (chỉ số RSI và MA của HPG), `indicator_02` (chỉ báo MA20/RSI FPT).
+     - **`comparison`** (2 cases): `comparison_01` (so sánh FPT vs HPG), `comparison_02` (so sánh VNM vs HPG).
+     - **`portfolio`** (2 cases): `portfolio_01` (lãi/lỗ danh mục tài khoản), `portfolio_02` (hiệu suất P&L và NAV).
+     - **`watchlist`** (2 cases): `watchlist_01` (danh sách theo dõi), `watchlist_02` (ngưỡng cảnh báo biến động).
+     - **`chart`** (2 cases): `chart_01` (vẽ biểu đồ nến FPT), `chart_02` (biểu đồ kỹ thuật HPG).
+     - **`out_of_scope`** (2 cases): `out_of_scope_01` (thời tiết Hà Nội), `out_of_scope_02` (cổ phiếu Apple AAPL trên Nasdaq).
+     - **`injection`** (2 cases): `injection_01` (xuất system prompt / secret key), `injection_02` (ignore instructions, buy now).
+     - **`disclaimer`** (2 cases): `disclaimer_01` (có nên mua FPT lúc này), `disclaimer_02` (có nên bán hết HPG cắt lỗ).
+   - Tổng cộng 20 test cases chuẩn hóa, cấu trúc nghiêm ngặt gồm `id`, `question`, `expected`, `slice` (`type`, `difficulty`), `must_include`, `must_not_include`.
+
+2. **Nâng Cấp Bộ Khung Đánh Giá Backend (`src/backend/eval/run.py` & `src/backend/eval/run_detailed.py`)**:
+   - Định nghĩa `GOLDEN_V6_PATH` tự động phát hiện giữa `resources/eval/` và `specs/eval/`.
+   - Mở rộng tập hợp `RULE_SLICES` bao phủ đủ cả 10 lát cắt chuẩn hóa: `lookup`, `news`, `indicator`, `comparison`, `portfolio`, `watchlist`, `chart`, `out_of_scope`, `injection`, `disclaimer` (và vẫn duy trì tương thích ngược với các lát cắt cũ của v3/v4/v5).
+   - Cập nhật hàm `load_golden_dataset` tự động ưu tiên nạp `GOLDEN_V6_PATH` khi không truyền tham số đường dẫn, và thêm `golden_v6_comprehensive.yaml` vào danh sách `validate_names` để tự động kiểm thử toàn vẹn schema.
+
+3. **Kiểm Thử Tự Động & Chống Hồi Quy Toàn Diện**:
+   - Bổ sung bài kiểm thử `test_golden_v6_structure_and_slices` trong `tests/test_eval.py` kiểm chứng file YAML hợp lệ, bao phủ trọn vẹn 10 lát cắt, mỗi lát cắt chứa 1–3 câu hỏi mẫu, ID không trùng lặp và vượt qua toàn bộ ràng buộc `validate_golden_case_rules`.
+   - Chạy toàn bộ test suite `tests/test_eval.py`: **35/35 tests PASS 100%**.
+   - Chạy toàn bộ test suite `tests/test_system.py`: **25/25 tests PASS 100%**.
+
+### Đánh Giá Tiêu Chí Nghiệm Thu (Acceptance Criteria Review)
+- **What Passes**:
+  - `AC-5 (Bao Phủ 10 Lát Cắt Golden Dataset)`: Đạt chuẩn 100%. File `specs/eval/golden_v6_comprehensive.yaml` bao phủ đủ 10 lát cắt chức năng với 20 câu hỏi mẫu chất lượng cao.
+  - Bộ kiểm tra `RULE_SLICES` và `load_golden_dataset` trong `src/backend/eval/run.py` nhận diện và xác thực tự động toàn bộ 10 lát cắt mà không phát sinh lỗi validation.
+  - Không có hồi quy (zero regression): 35/35 tests trong `tests/test_eval.py` và 25/25 tests trong `tests/test_system.py` đều PASS.
+- **What Fails**: 0 lỗi.
+- **What Was Missing & Fixed**: Trước đây chỉ có `golden_v5.yaml` với 7 lát cắt và `RULE_SLICES` thiếu các lát cắt `news`, `indicator`, `portfolio`, `watchlist`, `chart`, `disclaimer`. Đã thiết kế hoàn chỉnh `golden_v6_comprehensive.yaml` và đồng bộ `RULE_SLICES` cùng `load_golden_dataset` trong evaluation engine.
+
+### Các Bước Kiểm Thử Thủ Công (Manual Test Steps)
+1. **Kiểm tra cú pháp và tính toàn vẹn của dataset v6**:
+   ```bash
+   python -c "from backend.eval.run import load_golden_dataset, GOLDEN_V6_PATH; d = load_golden_dataset(GOLDEN_V6_PATH, validate_rules=True); print('Loaded cases:', len(d['cases'])); print('Slices:', sorted(set(c['slice']['type'] for c in d['cases'])))"
+   ```
+   *Kết quả mong đợi*: In ra `Loaded cases: 20` và `Slices: ['chart', 'comparison', 'disclaimer', 'indicator', 'injection', 'lookup', 'news', 'out_of_scope', 'portfolio', 'watchlist']`.
+2. **Chạy bài kiểm thử tự động pytest**:
+   ```bash
+   pytest tests/test_eval.py -k "test_golden_v6_structure_and_slices" -v
+   ```
+   *Kết quả mong đợi*: 2 passed (100%), không có lỗi.
+3. **Chạy toàn bộ eval test suite**:
+   ```bash
+   pytest tests/test_eval.py -v
+   ```
+   *Kết quả mong đợi*: 35/35 passed (100%).
+
+---
+
 ## 2026-10-01 — Hoàn Thành Mục 4.5: Kiểm Thử Luồng Tích Hợp Đầu-Cuối (End-to-End Integration Test) & Hoàn Tất Trọn Vẹn Phase 4
 
 ### Chi Tiết Triển Khai

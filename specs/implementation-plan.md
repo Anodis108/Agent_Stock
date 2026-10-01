@@ -159,9 +159,12 @@ Kế hoạch triển khai theo phương pháp **Spec-Driven Development (SDD)**,
 
 > **Mục tiêu**: Xây dựng bộ Golden Dataset mới toàn diện, xử lý các trạng thái lỗi/biên, chạy đánh giá tự động và thu thập thông số quan sát (Observation & Trace).
 
-* [ ] **5.1. Thiết kế bộ dataset `specs/eval/golden_v6_comprehensive.yaml`**:
+* [x] **5.1. Thiết kế bộ dataset `specs/eval/golden_v6_comprehensive.yaml`**:
   - Bao phủ đủ 10 lát cắt: `lookup`, `news`, `indicator`, `comparison`, `portfolio`, `watchlist`, `chart`, `out_of_scope`, `injection`, `disclaimer`.
-  - Mỗi lát cắt chứa 1–3 câu hỏi mẫu tối giản nhưng bao quát tình huống biên.
+  - Mỗi lát cắt chứa 1–3 câu hỏi mẫu tối giản nhưng bao quát tình huống biên (tổng cộng 20 câu hỏi mẫu chất lượng cao, 2 câu/lát cắt).
+  - Đồng bộ file vào cả `specs/eval/golden_v6_comprehensive.yaml` và `resources/eval/golden_v6_comprehensive.yaml`.
+  - Cập nhật `src/backend/eval/run.py` mở rộng `RULE_SLICES` bao phủ đủ 10 lát cắt chuẩn hóa, hỗ trợ nạp tự động qua `GOLDEN_V6_PATH` và kiểm tra hợp lệ schema `load_golden_dataset`.
+  - Đã kiểm thử tự động toàn diện qua `test_golden_v6_structure_and_slices` trong `tests/test_eval.py` đạt 100% PASS (35/35 tests).
 * [ ] **5.2. Xử lý các trạng thái lỗi & biên (Edge Cases & Fallbacks)**:
   - Khi nhập mã không tồn tại (VD: `XYZ`) ➔ thông báo không tìm thấy mã hoặc kích hoạt fallback mẫu.
   - Khi danh mục rỗng (Empty State) ➔ hiển thị hướng dẫn thêm mã đầu tiên.

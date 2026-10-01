@@ -68,6 +68,11 @@ GOLDEN_V5_PATH = (
     if (ROOT / "resources" / "eval" / "golden_v5.yaml").is_file()
     else ROOT / "specs" / "eval" / "golden_v5.yaml"
 )
+GOLDEN_V6_PATH = (
+    ROOT / "resources" / "eval" / "golden_v6_comprehensive.yaml"
+    if (ROOT / "resources" / "eval" / "golden_v6_comprehensive.yaml").is_file()
+    else ROOT / "specs" / "eval" / "golden_v6_comprehensive.yaml"
+)
 GOLDEN_PR_SUBSET_PATH = (
     ROOT / "resources" / "eval" / "golden_pr_subset.yaml"
     if (ROOT / "resources" / "eval" / "golden_pr_subset.yaml").is_file()
@@ -122,7 +127,22 @@ from backend.shared.settings import settings  # noqa: E402
 JUDGE_MODEL = "gpt-4o-mini"
 JUDGE_SLICES = frozenset({"lookup", "comparison"})
 RULE_SLICES = frozenset(
-    {"lookup", "comparison", "explain_why", "charting_diagram", "session_memory", "out_of_scope", "injection", "diagram"}
+    {
+        "lookup",
+        "news",
+        "indicator",
+        "comparison",
+        "portfolio",
+        "watchlist",
+        "chart",
+        "out_of_scope",
+        "injection",
+        "disclaimer",
+        "explain_why",
+        "charting_diagram",
+        "session_memory",
+        "diagram",
+    }
 )
 # Điểm trung bình >= ngưỡng → pass (rubric 1–5). Không được hạ dưới sàn này.
 JUDGE_PASS_THRESHOLD = 3.0
@@ -332,7 +352,9 @@ def resolve_golden_cases(data: dict, *, base_dir: Path) -> list[dict]:
 def load_golden_dataset(path: Path | None = None, validate_rules: bool = False) -> dict:
     p = path
     if p is None:
-        if GOLDEN_V5_PATH.is_file():
+        if GOLDEN_V6_PATH.is_file():
+            p = GOLDEN_V6_PATH
+        elif GOLDEN_V5_PATH.is_file():
             p = GOLDEN_V5_PATH
         elif GOLDEN_V4_PATH.is_file():
             p = GOLDEN_V4_PATH
@@ -349,6 +371,7 @@ def load_golden_dataset(path: Path | None = None, validate_rules: bool = False) 
         "golden_v3.yaml",
         "golden_v4.yaml",
         "golden_v5.yaml",
+        "golden_v6_comprehensive.yaml",
         "golden_pr_subset.yaml",
     }
     if p.name in validate_names or validate_rules:
@@ -1594,7 +1617,10 @@ def main(argv: list[str] | None = None) -> int:
             from backend.eval.history import save_eval_history
 
             meta = {
-                "dataset": str(args.dataset or GOLDEN_V5_PATH),
+                "dataset": str(
+                    args.dataset
+                    or (GOLDEN_V6_PATH if GOLDEN_V6_PATH.is_file() else GOLDEN_V5_PATH)
+                ),
                 "subset": bool(args.subset),
                 "skip_judge": bool(args.skip_judge),
             }

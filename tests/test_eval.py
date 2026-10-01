@@ -29,6 +29,8 @@ from backend.eval.run_detailed import (
 ROOT = Path(__file__).resolve().parents[1]
 GOLDEN_V5_RESOURCE = ROOT / "resources" / "eval" / "golden_v5.yaml"
 GOLDEN_V5_SPECS = ROOT / "specs" / "eval" / "golden_v5.yaml"
+GOLDEN_V6_RESOURCE = ROOT / "resources" / "eval" / "golden_v6_comprehensive.yaml"
+GOLDEN_V6_SPECS = ROOT / "specs" / "eval" / "golden_v6_comprehensive.yaml"
 
 
 # ==============================================================================
@@ -88,6 +90,64 @@ def test_golden_v5_structure_and_counts(file_path: Path):
     assert slice_counts["session_memory"] == 3, f"Expected 3 session_memory cases, got {slice_counts['session_memory']}"
     assert slice_counts["out_of_scope"] == 4, f"Expected 4 out_of_scope cases, got {slice_counts['out_of_scope']}"
     assert slice_counts["injection"] == 3, f"Expected 3 injection cases, got {slice_counts['injection']}"
+
+
+@pytest.mark.parametrize("file_path", [GOLDEN_V6_RESOURCE, GOLDEN_V6_SPECS])
+def test_golden_v6_structure_and_slices(file_path: Path):
+    """Kiểm tra cấu trúc và độ bao phủ đủ 10 lát cắt của Golden Dataset v6 theo Phase 5.1."""
+    assert file_path.is_file(), f"File không tồn tại: {file_path}"
+
+    data = yaml.safe_load(file_path.read_text(encoding="utf-8"))
+    assert data.get("dataset") == "portfolio_watch"
+    assert str(data.get("version")) == "6"
+    assert data.get("changelog"), "Phải có trường changelog"
+
+    cases = data.get("cases", [])
+    assert 20 <= len(cases) <= 25, f"Golden Dataset v6 yêu cầu 20–25 câu hỏi mẫu chất lượng cao, hiện có {len(cases)}"
+
+    expected_slices = {
+        "lookup",
+        "news",
+        "indicator",
+        "comparison",
+        "portfolio",
+        "watchlist",
+        "chart",
+        "out_of_scope",
+        "injection",
+        "disclaimer",
+    }
+    slice_counts = {s: 0 for s in expected_slices}
+    ids: set[str] = set()
+
+    for case in cases:
+        case_id = case.get("id")
+        assert case_id, "Case thiếu id"
+        assert case_id not in ids, f"Trùng lặp case id: {case_id}"
+        ids.add(case_id)
+
+        assert case.get("question"), f"Case {case_id} thiếu question"
+        assert case.get("expected"), f"Case {case_id} thiếu expected"
+
+        slice_data = case.get("slice") or {}
+        slice_type = slice_data.get("type")
+        assert slice_type in expected_slices, f"Case {case_id} có slice.type không nằm trong 10 lát cắt: {slice_type}"
+        slice_counts[slice_type] += 1
+
+        assert slice_data.get("difficulty") in {"easy", "medium", "hard"}
+        assert isinstance(case.get("must_include", []), list)
+        assert isinstance(case.get("must_not_include", []), list)
+
+        # Chạy validation rules chuẩn
+        eval_mod.validate_golden_case_rules(case)
+
+    # Đảm bảo mỗi lát cắt chứa 1–3 câu hỏi mẫu
+    for st, count in slice_counts.items():
+        assert 1 <= count <= 3, f"Lát cắt '{st}' phải có từ 1 đến 3 câu hỏi mẫu, thực tế có {count}"
+
+    # Kiểm tra load_golden_dataset tích hợp tự động với golden_v6_comprehensive.yaml
+    loaded = eval_mod.load_golden_dataset(file_path, validate_rules=True)
+    assert len(loaded["cases"]) == len(cases)
 
 
 # ==============================================================================
