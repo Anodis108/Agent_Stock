@@ -193,7 +193,7 @@ class VnstockNewsSource:
                 items = filtered
 
             return items
-        except Exception:
+        except (Exception, SystemExit):
             return []
 
 

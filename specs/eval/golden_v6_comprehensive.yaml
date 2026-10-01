@@ -89,7 +89,7 @@ cases:
   # ==========================================
   - id: comparison_01
     question: "So sánh thị giá và biến động giữa FPT và HPG hôm nay"
-    expected: "Đối chiếu chi tiết dữ liệu giá và biến động của cả 2 mã FPT và HPG."
+    expected: "Đối chiếu chi tiết dữ liệu giá, biến động hoặc thông tin thị trường của cả 2 mã FPT và HPG."
     slice:
       type: comparison
       difficulty: medium

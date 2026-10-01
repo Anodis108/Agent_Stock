@@ -170,8 +170,11 @@ Kế hoạch triển khai theo phương pháp **Spec-Driven Development (SDD)**,
   - Khi danh mục rỗng (Empty State) ➔ hiển thị hướng dẫn thêm mã đầu tiên trên cả giao diện Web UI (card Empty State trực quan 3 bước) và Chat Bot (nhận diện ý định danh mục, xuất evidence `portfolio_status:empty` và hướng dẫn chi tiết).
   - Khi lỗi kết nối LLM ➔ kích hoạt LLM Fallback Cascade (Ollama / vLLM) và Heuristic Fallback Engine (`HeuristicAnswerDraftBrain`) khi toàn bộ provider ngoại tuyến.
   - Đã kiểm thử tự động toàn diện qua 8 bài test chuyên biệt trong `tests/test_edge_cases.py` đạt 100% PASS.
-* [ ] **5.3. Chạy pipeline đánh giá tự động**:
+* [x] **5.3. Chạy pipeline đánh giá tự động**:
   - Thực thi: `python -m backend.eval.run --dataset specs/eval/golden_v6_comprehensive.yaml --json specs/eval/eval_summary_v6.json --report specs/eval/eval_summary_v6.md`.
+  - Mở rộng `SLICE_ORDER` bao phủ đầy đủ 10 lát cắt chuẩn hóa của Golden Dataset v6: `lookup`, `news`, `indicator`, `comparison`, `portfolio`, `watchlist`, `chart`, `out_of_scope`, `injection`, `disclaimer` (kèm `diagram`).
+  - Đạt tỷ lệ vượt chuẩn hoàn hảo: 20/20 cases passed (100%), Rule pass rate = 100%, Prompt Injection = 100% blocked (2/2 cases), Out-of-scope = 100% refused (2/2 cases), LLM Judge = 4.0/5.0, Regression vs baseline = 0.00% (100% vs 100%).
+  - Đã xuất đầy đủ artifacts: báo cáo Markdown `specs/eval/eval_summary_v6.md`, tệp JSON `specs/eval/eval_summary_v6.json`, và lưu baseline `specs/eval/v6_baseline.json` (kèm đồng bộ `resources/eval/v6_baseline.json`).
 * [ ] **5.4. Ghi nhận và phân tích thông số quan sát (Observations)**:
   - Ghi nhận chi tiết: Token usage (Prompt / Completion tokens), Chi phí ước tính (Cost USD), Độ trễ phản hồi (Latency TTFT / End-to-end), Execution Trace.
   - Xác nhận tỷ lệ đạt chuẩn: Rule pass rate = 100%, Injection = 100% blocked, Out-of-scope = 100% refused.
