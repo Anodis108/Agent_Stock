@@ -305,6 +305,40 @@
     });
   }
 
+  function mergeWithCanonicalNodes(steps) {
+    var canonical = getCanonicalInitialNodes();
+    if (!steps || !steps.length) return canonical;
+    var map = {};
+    steps.forEach(function (s) {
+      var cid = canonicalNodeId(s.name || s.id);
+      map[cid] = s;
+      if (s.id) map[String(s.id).toLowerCase()] = s;
+      if (s.raw_name) map[String(s.raw_name).toLowerCase()] = s;
+      if (s.name) map[String(s.name).toLowerCase()] = s;
+    });
+
+    return canonical.map(function (c) {
+      var match = map[c.id] || map[c.name.toLowerCase()];
+      if (match) {
+        return {
+          id: c.id,
+          name: c.name,
+          label: c.label,
+          role: c.role,
+          icon: c.icon,
+          status: match.status || "done",
+          duration_s: match.duration_s,
+          duration_ms: match.duration_ms,
+          detail: match.detail || c.detail,
+          input: match.input !== undefined ? match.input : c.input,
+          output: match.output !== undefined ? match.output : c.output,
+          static_info: match.static_info || c.static_info,
+        };
+      }
+      return c;
+    });
+  }
+
   function setGraphStatus(text, statusClass) {
     var tag = document.getElementById("graph-status-tag");
     if (!tag) return;
@@ -1595,6 +1629,7 @@
 
     var realtimeSteps = [];
     var streamedText = "";
+    var streamedChartUrl = null;
     var streamingMsgDiv = null;
     var streamingTextEl = null;
 
@@ -1649,11 +1684,11 @@
           existing.detail = "Đang xử lý…";
           if (data.input) existing.input = data.input;
         }
-        renderLiveGraphNodes(realtimeSteps);
+        renderLiveGraphNodes(mergeWithCanonicalNodes(realtimeSteps));
         renderTimeline(realtimeSteps);
         setGraphStatus("Đang chạy (" + normName + ")…", "running");
         setBoot("Agent đang chạy: " + normName);
-      } else if (eventName === "node_finish") {
+      } else if (eventName === "node_end" || eventName === "node_finish") {
         var rawName = data.node || "agent";
         var normName = normalizeNodeName(rawName);
         var existing = realtimeSteps.find(function (s) { return s.name === normName || s.raw_name === rawName || s.id === rawName; });
@@ -1665,7 +1700,7 @@
           existing.detail = "Hoàn tất" + (durStr ? " (⏱ " + durStr + ")" : "");
           if (data.output !== undefined && data.output !== null) existing.output = data.output;
         }
-        renderLiveGraphNodes(realtimeSteps);
+        renderLiveGraphNodes(mergeWithCanonicalNodes(realtimeSteps));
         renderTimeline(realtimeSteps);
       } else if (eventName === "token") {
         var delta = data.delta || "";
@@ -1676,7 +1711,11 @@
           var box = document.getElementById("chat-messages");
           if (box) box.scrollTop = box.scrollHeight;
         }
-      } else if (eventName === "complete") {
+      } else if (eventName === "chart_url") {
+        if (data.url) {
+          streamedChartUrl = data.url;
+        }
+      } else if (eventName === "final_answer" || eventName === "complete") {
         if (streamingMsgDiv) {
           streamingMsgDiv.remove();
           streamingMsgDiv = null;
@@ -1687,7 +1726,7 @@
 
         var finalAnswer = data.answer || streamedText || "(không có câu trả lời cuối từ Backend)";
         var diagram = data.diagram || null;
-        var chartPath = data.chart_path || null;
+        var chartPath = data.chart_path || streamedChartUrl || null;
         var messageId = data.message_id || null;
         var sid = data.session_id || currentSessionId;
 
@@ -1704,7 +1743,7 @@
           realtimeSteps.forEach(function (s) { s.status = "done"; });
         }
         renderTimeline(realtimeSteps);
-        renderLiveGraphNodes(realtimeSteps);
+        renderLiveGraphNodes(mergeWithCanonicalNodes(realtimeSteps));
 
         var durLabel = data.total_duration_s != null ? " (" + Number(data.total_duration_s).toFixed(2) + "s)" : "";
         setGraphStatus("Hoàn tất" + durLabel, "done");
@@ -1727,14 +1766,25 @@
     }
 
     try {
-      var resp = await fetch(apiUrl("/chat/stream"), {
+      var streamHeaders = {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "X-User-ID": getCurrentUserId(),
+      };
+
+      var resp = await fetch(apiUrl("/chat"), {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Accept": "text/event-stream",
-        },
+        headers: streamHeaders,
         body: JSON.stringify(chatPayload),
       });
+
+      if (!resp.ok && (resp.status === 404 || resp.status === 405)) {
+        resp = await fetch(apiUrl("/chat/stream"), {
+          method: "POST",
+          headers: streamHeaders,
+          body: JSON.stringify(chatPayload),
+        });
+      }
 
       if (!resp.ok || !resp.body) {
         // Fallback sang POST /chat thông thường nếu stream gặp sự cố

@@ -688,3 +688,30 @@ def test_smoke_health_with_mock(monkeypatch):
 
     monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
     assert run_smoke("http://localhost:8000", check_stream_flag=False) == 0
+
+
+def test_phase4_frontend_sse_and_live_graph_integration():
+    """Phase 4.1: Kiểm tra hợp đồng tích hợp Web UI SSE và Live Graph lighting trong app.js và style.css."""
+    js_text = (FE / "app.js").read_text(encoding="utf-8")
+    css_text = (FE / "style.css").read_text(encoding="utf-8")
+
+    # 1. Kiểm tra kết nối SSE tới POST /chat
+    assert 'apiUrl("/chat")' in js_text
+    assert '"text/event-stream"' in js_text
+
+    # 2. Kiểm tra xử lý đủ 5 sự kiện SSE
+    assert 'eventName === "node_start"' in js_text
+    assert 'eventName === "node_end"' in js_text
+    assert 'eventName === "token"' in js_text
+    assert 'eventName === "chart_url"' in js_text
+    assert 'eventName === "final_answer"' in js_text
+
+    # 3. Kiểm tra hàm đồng bộ trạng thái Live Graph với Canonical Nodes
+    assert "mergeWithCanonicalNodes" in js_text
+    assert "renderLiveGraphNodes(mergeWithCanonicalNodes" in js_text
+
+    # 4. Kiểm tra CSS hiệu ứng sáng đèn của node (Live Glow Pulse)
+    assert ".graph-node-card.status-running" in css_text
+    assert "node-glow-pulse" in css_text
+    assert "@keyframes node-glow-pulse" in css_text
+    assert ".graph-node-card.status-done" in css_text

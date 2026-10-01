@@ -152,6 +152,51 @@ def test_chat_stream_sse_flow(client: TestClient):
     assert "complete" in event_names
 
 
+def test_phase4_post_chat_sse_streaming_integration(client: TestClient):
+    """Phase 4.1: Kiểm tra endpoint POST /chat hỗ trợ SSE streaming nhận đủ 5 sự kiện:
+    node_start, node_end, token, chart_url, final_answer.
+    """
+    # 1. Yêu cầu bình thường (không có Accept text/event-stream) -> trả về ChatResponse JSON
+    json_resp = client.post("/chat", json={"question": "Giá FPT?"})
+    assert json_resp.status_code == 200
+    assert "application/json" in json_resp.headers.get("content-type", "")
+    assert "answer" in json_resp.json()
+
+    # 2. Yêu cầu streaming qua POST /chat với header Accept: text/event-stream
+    # Câu hỏi kích hoạt ChartAgent để xác nhận phát ra chart_url
+    stream_resp = client.post(
+        "/chat",
+        headers={"Accept": "text/event-stream"},
+        json={"question": "Vẽ biểu đồ nến cho FPT"},
+    )
+    assert stream_resp.status_code == 200
+    assert "text/event-stream" in stream_resp.headers.get("content-type", "")
+
+    events = _parse_sse(stream_resp.text)
+    event_names = [e[0] for e in events]
+
+    # Kiểm tra đủ 5 sự kiện cốt lõi của Phase 4.1
+    assert "node_start" in event_names
+    assert "node_end" in event_names
+    assert "node_finish" in event_names
+    assert "token" in event_names
+    assert "chart_url" in event_names
+    assert "final_answer" in event_names
+    assert "complete" in event_names
+
+    # Kiểm tra nội dung chart_url
+    chart_events = [e[1] for e in events if e[0] == "chart_url"]
+    assert len(chart_events) > 0
+    assert "url" in chart_events[0]
+    assert chart_events[0]["url"].endswith(".png")
+
+    # Kiểm tra nội dung final_answer
+    final_events = [e[1] for e in events if e[0] == "final_answer"]
+    assert len(final_events) > 0
+    assert "answer" in final_events[0]
+    assert final_events[0]["answer"] != ""
+
+
 def test_stream_cancel_event_stops_pipeline():
     """SSE cancel event → check_stream_cancelled raise StreamCancelledError."""
     import threading

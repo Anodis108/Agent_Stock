@@ -513,8 +513,25 @@ def _forward_chat_from_ai(data: dict[str, Any]) -> dict[str, Any]:
 @app.post("/chat")
 @app.post("/api/v1/chat")
 @app.post("/api/chat")
-def post_chat(body: ChatRequest) -> dict[str, Any]:
-    """Xử lý câu hỏi người dùng với AI Swarm qua SQLite session & message storage."""
+def post_chat(
+    request: Request,
+    body: ChatRequest,
+    deps: AppDeps = Depends(get_app_deps),
+) -> Any:
+    """Xử lý câu hỏi người dùng với AI Swarm qua SQLite session & message storage hoặc SSE streaming."""
+    accept_header = (request.headers.get("accept") or "").lower()
+    is_stream = "text/event-stream" in accept_header or request.query_params.get("stream") == "true"
+    if is_stream:
+        return StreamingResponse(
+            stream_chat_generator_async(body, deps, request),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
     q = (body.question or "").strip()
     if not q:
         raise HTTPException(status_code=400, detail="câu hỏi rỗng")

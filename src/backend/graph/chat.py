@@ -96,13 +96,17 @@ def check_stream_cancelled() -> None:
 
 
 def emit_agent_event(event: str, data: dict[str, Any]) -> None:
-    """Gửi sự kiện thời gian thực (node_start, node_finish, token) đến SSE stream generator."""
+    """Gửi sự kiện thời gian thực (node_start, node_end, token, chart_url, final_answer) đến SSE stream generator."""
     check_stream_cancelled()
     deps = _chat_deps.get()
     cb = deps.get("event_callback")
     if cb:
         try:
             cb(event, data)
+            if event == "node_finish":
+                cb("node_end", data)
+            elif event == "node_end":
+                cb("node_finish", data)
         except Exception as exc:
             _logger.warning("Error in event_callback (%s): %s", event, exc)
 
@@ -383,6 +387,16 @@ def chart_node(
             "file_path": chart_result.file_path,
             "error": chart_result.error,
         }
+    if chart_result and getattr(chart_result, "success", False) and getattr(chart_result, "url", None):
+        emit_agent_event(
+            "chart_url",
+            {
+                "url": chart_result.url,
+                "symbols": target_symbols,
+                "chart_type": getattr(chart_result, "chart_type", "candlestick" if is_candlestick else "line"),
+                "file_path": getattr(chart_result, "file_path", None),
+            },
+        )
     dur = round(time.perf_counter() - t0, 3)
     emit_agent_event("node_finish", {"node": "chart_agent", "duration_s": dur, "duration_ms": int(dur * 1000)})
     return chart_result

@@ -125,9 +125,12 @@ Kế hoạch triển khai theo phương pháp **Spec-Driven Development (SDD)**,
 
 > **Mục tiêu**: Kết nối hoàn chỉnh giữa giao diện Web UI và Backend thông qua Server-Sent Events (SSE) và REST API.
 
-* [ ] **4.1. Tích hợp luồng SSE `/chat`**:
-  - Web UI kết nối endpoint streaming `POST /chat` nhận các sự kiện: `node_start`, `node_end`, `token`, `chart_url`, `final_answer`.
-  - Cập nhật hiệu ứng sáng đèn của node trên Live Graph tương ứng với sự kiện `node_start` / `node_end`.
+* [x] **4.1. Tích hợp luồng SSE `/chat`**:
+  - Web UI kết nối endpoint streaming `POST /chat` nhận đầy đủ 5 sự kiện: `node_start`, `node_end`, `token`, `chart_url`, `final_answer` (kèm các alias tương thích ngược `node_finish`, `complete`).
+  - Hỗ trợ `POST /chat` tự động trả về `StreamingResponse` khi có header `Accept: text/event-stream` và vẫn bảo toàn JSON `ChatResponse` cho các client truyền thống.
+  - Cập nhật hiệu ứng sáng đèn của node trên Live Graph: tự động đồng bộ runtime steps với mạng lưới `CANONICAL_GRAPH_NODES`, kích hoạt hiệu ứng `status-running` kèm nhịp thở `node-glow-pulse` khi `node_start` và chuyển `status-done` (viền xanh lá, dot xanh, badge thời gian `⏱`) khi `node_end`.
+  - Tự động hiển thị và mở rộng biểu đồ nến kỹ thuật khi nhận sự kiện `chart_url`.
+  - Đã kiểm thử tự động toàn diện qua `test_phase4_post_chat_sse_streaming_integration` (`tests/test_api.py`) và `test_phase4_frontend_sse_and_live_graph_integration` (`tests/test_system.py`) đạt 100% PASS.
 * [ ] **4.2. Tích hợp API Quản lý Danh mục (Portfolio API)**:
   - UI gọi `GET /api/v1/portfolio/holdings` và `GET /api/v1/portfolio/summary` để nạp bảng P&L theo user hiện tại.
   - UI hỗ trợ thêm/xóa mã cổ phiếu nắm giữ và cập nhật tức thì giá trị NAV.

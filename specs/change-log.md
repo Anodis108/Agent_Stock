@@ -4,6 +4,48 @@ Nhật ký ghi nhận chi tiết mọi thay đổi, kết quả kiểm thử và
 
 ---
 
+## 2026-10-01 — Hoàn Thành Mục 4.1: Tích Hợp Luồng SSE `/chat` (SSE Streaming & Live Graph Lighting)
+
+### Chi Tiết Triển Khai
+1. **Nâng Cấp Endpoint `POST /chat` Hỗ Trợ Server-Sent Events (SSE) (`src/backend/main.py` & `src/backend/api/routers/chat.py`)**:
+   - Nhận diện linh hoạt header `Accept: text/event-stream` và query parameter `stream=true`:
+     - Khi client yêu cầu streaming ➔ Trả về `StreamingResponse` với `media_type="text/event-stream"`.
+     - Khi client gửi yêu cầu chuẩn JSON (`Accept: application/json`) ➔ Trả về schema `ChatResponse` chuẩn (bảo toàn 100% tính tương thích ngược).
+   - Bảo toàn các route alias: `POST /chat`, `POST /api/v1/chat`, `POST /api/chat`, `POST /chat/stream`, `POST /api/v1/chat/stream`.
+
+2. **Chuẩn Hóa Đầy Đủ 5 Sự Kiện Cốt Lõi SSE (`src/backend/graph/chat.py` & `src/backend/api/routers/chat.py`)**:
+   - `node_start`: Phát ra khi agent bắt đầu chạy (kèm tên node, input, timestamp).
+   - `node_end`: Phát ra khi agent kết thúc (kèm duration_s, duration_ms, output), đồng thời phát kèm alias `node_finish` cho các client cũ.
+   - `token`: Phát ra từng mẩu từ/token câu trả lời trực tiếp trong quá trình stream Markdown.
+   - `chart_url`: Phát ra ngay khi `chart_node` hoàn thành tạo ảnh biểu đồ kỹ thuật (kèm URL, symbols, chart_type).
+   - `final_answer`: Phát ra khi toàn bộ Swarm hoàn thành luồng xử lý (kèm answer, chart_path, session_id, message_id, steps, total_duration_s), đồng thời phát kèm alias `complete`.
+
+3. **Tích Hợp Web UI & Hiệu Ứng Sáng Đèn Live Graph (`src/frontend/app.js`)**:
+   - Hàm `doChat` kết nối trực tiếp endpoint `apiUrl("/chat")` với header `Accept: text/event-stream`.
+   - Xây dựng hàm `mergeWithCanonicalNodes` đồng bộ tiến trình chạy thời gian thực với 9 node chuẩn của Swarm (`CANONICAL_GRAPH_NODES`).
+   - Hiệu ứng sáng đèn (Live Glow Pulse):
+     - Khi nhận `node_start`: Node chuyển sang trạng thái `.status-running`, kích hoạt animation `node-glow-pulse` (box-shadow xanh dương nhấp nháy, dot xanh sáng).
+     - Khi nhận `node_end` / `node_finish`: Node chuyển ngay sang `.status-done` (viền xanh lá, dot xanh lá, hiển thị badge thời gian `⏱`), giải phóng trạng thái chờ.
+   - Sự kiện `token`: Cập nhật văn bản phản hồi mượt mà theo thời gian thực.
+   - Sự kiện `chart_url`: Thu nhận URL biểu đồ và hiển thị thẻ ảnh trực tiếp khi hoàn tất.
+   - Sự kiện `final_answer` / `complete`: Trình diễn Markdown hoàn chỉnh, ghim I/O Inspector và cập nhật lịch sử chat session.
+
+4. **Kiểm Thử Tự Động Toàn Diện**:
+   - Bổ sung `test_phase4_post_chat_sse_streaming_integration` trong `tests/test_api.py`: Kiểm tra gọi `POST /chat` nhận đầy đủ chuỗi 5 sự kiện SSE (`node_start`, `node_end`, `token`, `chart_url`, `final_answer`) và kiểm tra tính tương thích ngược cho yêu cầu JSON.
+   - Bổ sung `test_phase4_frontend_sse_and_live_graph_integration` trong `tests/test_system.py`: Xác thực hợp đồng Frontend gọi SSE endpoint và CSS hiệu ứng `node-glow-pulse`.
+   - Kết quả: Đạt **100% PASS** trên toàn bộ 22/22 tests của `test_api.py` và 21/21 tests của `test_system.py`.
+
+### Đánh Giá Tiêu Chí Nghiệm Thu (Acceptance Criteria Review)
+- **What Passes**:
+  - `POST /chat` stream SSE dạng `text/event-stream` đúng chuẩn khi client yêu cầu.
+  - Chuỗi sự kiện `node_start`, `node_end`, `token`, `chart_url`, `final_answer` được phát đầy đủ và chính xác.
+  - Live Graph sáng đèn nhịp thở xanh dương khi node chạy và chuyển xanh lá khi node hoàn thành.
+  - Hợp đồng Frontend và Backend bảo toàn 100% không phát sinh lỗi.
+- **What Fails**: 0 lỗi.
+- **What Was Missing & Fixed**: Ban đầu `src/backend/main.py` định nghĩa `post_chat` ghi đè router mà chưa kiểm tra header `Accept: text/event-stream`, dẫn đến yêu cầu gửi tới `/chat` luôn trả về JSON. Đã bổ sung logic phát hiện streaming tại `src/backend/main.py` và kiểm thử thành công.
+
+---
+
 ## 2026-10-01 — Hoàn Thành Mục 3.8: Tường Lửa Guardrail & Nghiệm Thu Toàn Diện Phase 3
 
 ### Chi Tiết Triển Khai

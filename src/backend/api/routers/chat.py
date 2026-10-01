@@ -70,9 +70,23 @@ class ChatResponse(BaseModel):
 @router.post("/api/v1/chat", response_model=ChatResponse)
 @router.post("/api/chat", response_model=ChatResponse)
 def post_chat(
+    request: Request,
     body: ChatRequest,
     deps: AppDeps = Depends(get_app_deps),
-) -> ChatResponse:
+) -> Any:
+    accept_header = (request.headers.get("accept") or "").lower()
+    is_stream = "text/event-stream" in accept_header or request.query_params.get("stream") == "true"
+    if is_stream:
+        return StreamingResponse(
+            stream_chat_generator_async(body, deps, request),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
     question = normalize_question(body.question)
 
     conn = get_connection()
@@ -331,6 +345,7 @@ def stream_chat_generator(
                 "message_id": assistant_msg_id,
                 "total_duration_s": total_duration_s,
             }
+            event_queue.put(("final_answer", complete_data))
             event_queue.put(("complete", complete_data))
         except StreamCancelledError:
             event_queue.put(("error", {"error": "client disconnected"}))
