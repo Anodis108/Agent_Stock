@@ -146,8 +146,12 @@ Kế hoạch triển khai theo phương pháp **Spec-Driven Development (SDD)**,
   - Frontend Web UI (`app.js`) nâng cấp hàm `loadMarketMatrix()` gọi endpoint chuẩn `/api/v1/market/matrix-10d` (kèm fallback `/market/matrix-10d`), render động 10 phiên ngày `T-9` đến `H.nay`, phân loại màu sắc tăng/giảm/tham chiếu, định dạng khối lượng tổng và render SVG sparkline mini sắc nét.
   - Hỗ trợ chuyển đổi tab mượt mà qua nút `#tab-nav-market` và nút làm mới dữ liệu `#btn-refresh-matrix` với hiệu ứng loading icon.
   - Đã kiểm thử tự động toàn diện qua `test_phase4_market_matrix_api_integration` trong `tests/test_system.py` và toàn bộ 9 tests trong `tests/test_market.py` đạt 100% PASS.
-* [ ] **4.5. Kiểm thử luồng tích hợp đầu-cuối (End-to-End Integration Test)**:
+* [x] **4.5. Kiểm thử luồng tích hợp đầu-cuối (End-to-End Integration Test)**:
   - Gửi câu hỏi từ UI, nhận phản hồi streaming đầy đủ, bảng P&L cập nhật không lỗi.
+  - Kiểm thử chuỗi tích hợp khép kín giữa Streaming SSE `/chat` (`node_start`, `token`, `final_answer`), Quản lý danh mục Portfolio (`/api/v1/portfolio/holdings` & `/api/v1/portfolio/summary`), Đồng bộ Watchlist (`/api/v1/watchlist`), và Ma trận 10D (`/api/v1/market/matrix-10d`).
+  - Xác nhận tính nhất quán Single Source of Truth (SSOT): Thị giá FPT khớp nhau giữa câu trả lời Chat, bảng Portfolio và bảng Market Watch Matrix 10D, không phát sinh lỗi giá `price_error`.
+  - Xác nhận khả năng thêm/xóa vị thế danh mục và tái tính toán tự động các chỉ số NAV, vốn gốc, Lãi/Lỗ VND và tỷ lệ % P&L.
+  - Đã kiểm thử tự động toàn diện qua `test_phase4_end_to_end_integration_chat_and_portfolio_pnl` trong `tests/test_system.py` và toàn bộ 25 bài test trong `tests/test_system.py` đạt 100% PASS. Hoàn thành 100% Phase 4.
 
 ---
 

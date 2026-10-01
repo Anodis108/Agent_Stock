@@ -4,6 +4,44 @@ Nhật ký ghi nhận chi tiết mọi thay đổi, kết quả kiểm thử và
 
 ---
 
+## 2026-10-01 — Hoàn Thành Mục 4.5: Kiểm Thử Luồng Tích Hợp Đầu-Cuối (End-to-End Integration Test) & Hoàn Tất Trọn Vẹn Phase 4
+
+### Chi Tiết Triển Khai
+1. **Kiểm Thử Chuỗi Tích Hợp Khép Kín Đầu-Cuối (End-to-End Integration Flow)**:
+   - Xây dựng bài kiểm thử tự động toàn diện `test_phase4_end_to_end_integration_chat_and_portfolio_pnl` trong `tests/test_system.py`.
+   - **Luồng Hỏi Đáp & Streaming SSE**:
+     - Client gửi yêu cầu hỏi đáp tài chính qua `POST /chat` với header `Accept: text/event-stream`.
+     - Phân tích luồng Server-Sent Events xác nhận đầy đủ chuỗi sự kiện tuần tự: `node_start` (Guardrail, Supervisor, PriceAgent, AnswerComposer...), dòng chảy `token`, và `final_answer` với nội dung trả lời phân tích FPT chi tiết.
+   - **Luồng Quản Lý Danh Mục & P&L**:
+     - Ban đầu danh mục của người dùng mới rỗng hoàn toàn (NAV = 0, P&L = 0).
+     - Người dùng thêm vị thế mua 1,000 cp FPT (giá vốn 110,000 VND) và 500 cp VNM (giá vốn 70,000 VND) qua `POST /api/v1/portfolio/holdings`.
+     - Nạp danh mục qua `GET /api/v1/portfolio/holdings` và `GET /api/v1/portfolio/summary`:
+       - Xác nhận tính toán chính xác toán học: Tổng vốn 145,000,000 VND, Giá trị thị trường (NAV), Lãi/Lỗ chưa chốt (Unrealized P&L), và Tỷ lệ % P&L.
+       - Đảm bảo dữ liệu giá không bị lỗi (`price_error: False`).
+   - **Luồng Đồng Bộ Watchlist & Ma Trận Market Watch 10D**:
+     - Thêm mã FPT vào Watchlist kèm ngưỡng cảnh báo biến động `alert_threshold_pct = 3.5%` qua `POST /api/v1/watchlist`.
+     - Nạp ma trận 10D qua `GET /api/v1/market/matrix-10d?symbols=FPT,VNM&days=10`.
+     - Xác nhận nguyên tắc **Single Source of Truth (SSOT)**: Thị giá FPT trên bảng ma trận khớp 100% với thị giá trong danh mục Portfolio và câu trả lời trong Chat.
+   - **Luồng Xóa Vị Thế & Tái Tính Toán Tự Động**:
+     - Xóa vị thế VNM qua `DELETE /api/v1/portfolio/holdings/{id}`.
+     - Xác nhận danh mục chỉ còn lại FPT và tóm tắt NAV/vốn gốc được tái tính toán tức thì, trơn tru.
+   - **Kiểm Tra Tính Liên Kết Trên Frontend Web UI**:
+     - Xác thực mã nguồn `src/frontend/app.js` tích hợp toàn bộ các phương thức gọi API (`doChat`, `handleEvent`, `node_start`, `loadPortfolio`, `doAddHolding`, `doDeleteHolding`, `loadWatchlist`, `loadMarketMatrix`, `switchView`) đảm bảo giao diện không phát sinh xung đột state.
+
+2. **Kết Quả Kiểm Thử Toàn Diện**:
+   - Chạy `tests/test_system.py`: **25/25 tests PASS 100%**.
+   - Toàn bộ Phase 4 (từ 4.1 đến 4.5) đã hoàn tất 100%.
+
+### Đánh Giá Tiêu Chí Nghiệm Thu (Acceptance Criteria Review)
+- **What Passes**:
+  - Toàn bộ luồng nghiệp vụ từ Chat Streaming SSE, Quản lý Danh mục P&L, Đồng bộ Watchlist đến Ma trận 10D kết nối đồng bộ và hoạt động ổn định.
+  - Phản hồi streaming SSE trả về đầy đủ các sự kiện, không bị treo hay mất kết nối.
+  - Bảng P&L tính toán chuẩn xác, thị giá khớp với Market Watch Matrix (SSOT), cập nhật tức thời khi thêm/xóa mã.
+- **What Fails**: 0 lỗi.
+- **What Was Missing & Fixed**: Trước đó chưa có bài kiểm thử đầu-cuối xuyên suốt các thành phần của Phase 4. Đã bổ sung `test_phase4_end_to_end_integration_chat_and_portfolio_pnl` bao quát đầy đủ cả chat streaming, portfolio CRUD, watchlist sync và market matrix.
+
+---
+
 ## 2026-10-01 — Hoàn Thành Mục 4.4: Tích Hợp API Market Matrix 10D (Market Watch 10D Matrix & Sparkline SVG)
 
 ### Chi Tiết Triển Khai

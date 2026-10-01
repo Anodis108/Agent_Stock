@@ -1041,3 +1041,198 @@ def test_phase4_market_matrix_api_integration():
         assert proc.returncode == 0, f"Node sparkline test failed: {proc.stderr}"
         assert "SPARKLINE_TEST_OK" in proc.stdout
 
+
+def test_phase4_end_to_end_integration_chat_and_portfolio_pnl():
+    """Phase 4.5: Kiểm thử luồng tích hợp đầu-cuối (End-to-End Integration Test).
+    
+    Quy trình tích hợp khép kín:
+    1. Gửi câu hỏi chat streaming qua POST /chat (Accept: text/event-stream), nhận đầy đủ
+       chuỗi sự kiện SSE: node_start, token, final_answer.
+    2. Quản lý danh mục Portfolio:
+       - Ban đầu danh mục rỗng (Empty State).
+       - Thêm vị thế nắm giữ FPT (1,000 cp @ 110.0) và VNM (500 cp @ 70.0) qua POST /api/v1/portfolio/holdings.
+       - Gọi GET /api/v1/portfolio/holdings và GET /api/v1/portfolio/summary:
+         xác nhận tính toán P&L chuẩn xác toán học, Single Source of Truth (SSOT), không lỗi price_error.
+    3. Đồng bộ Watchlist & Ma trận 10D:
+       - Thêm FPT vào Watchlist kèm alert_threshold_pct qua POST /api/v1/watchlist.
+       - Nạp ma trận 10D qua GET /api/v1/market/matrix-10d: giá khớp với thị giá trong danh mục.
+    4. Xóa vị thế và xác nhận bảng danh mục tái tính toán tức thời không lỗi.
+    5. Kiểm tra tính liên kết trên Frontend Web UI (app.js).
+    """
+    import json
+    import uuid
+    from fastapi.testclient import TestClient
+    from backend.main import app
+
+    client = TestClient(app)
+    uid = uuid.uuid4().hex[:8]
+    e2e_user = f"e2e_user_{uid}"
+    headers = {"X-User-ID": e2e_user}
+
+    # --------------------------------------------------------------------------
+    # 1. Gửi câu hỏi chat và nhận phản hồi streaming SSE đầy đủ
+    # --------------------------------------------------------------------------
+    stream_headers = {"X-User-ID": e2e_user, "Accept": "text/event-stream"}
+    chat_resp = client.post(
+        "/chat",
+        headers=stream_headers,
+        json={"question": "Cho tôi biết thông tin cổ phiếu FPT"},
+    )
+    assert chat_resp.status_code == 200
+    assert "text/event-stream" in chat_resp.headers.get("content-type", "")
+
+    # Phân tích dòng sự kiện SSE
+    sse_lines = chat_resp.text.strip().split("\n")
+    events = []
+    current_event = "message"
+    for line in sse_lines:
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith("event:"):
+            current_event = line.replace("event:", "").strip()
+        elif line.startswith("data:"):
+            payload_str = line.replace("data:", "").strip()
+            try:
+                payload = json.loads(payload_str)
+            except Exception:
+                payload = payload_str
+            events.append((current_event, payload))
+            current_event = "message"
+
+    event_names = [e[0] for e in events]
+    assert "node_start" in event_names, f"Missing node_start in events: {event_names}"
+    assert "token" in event_names, f"Missing token in events: {event_names}"
+    assert "final_answer" in event_names, f"Missing final_answer in events: {event_names}"
+
+    final_payloads = [e[1] for e in events if e[0] == "final_answer"]
+    assert len(final_payloads) > 0
+    assert isinstance(final_payloads[0], dict)
+    assert "answer" in final_payloads[0]
+    assert len(final_payloads[0]["answer"]) > 0
+
+    # --------------------------------------------------------------------------
+    # 2. Quản lý danh mục Portfolio & Đồng bộ P&L
+    # --------------------------------------------------------------------------
+    # 2.1 Trạng thái ban đầu: người dùng mới danh mục hoàn toàn rỗng
+    init_holdings = client.get("/api/v1/portfolio/holdings", headers=headers)
+    assert init_holdings.status_code == 200
+    assert len(init_holdings.json()) == 0
+
+    init_summary = client.get("/api/v1/portfolio/summary", headers=headers)
+    assert init_summary.status_code == 200
+    assert init_summary.json()["total_nav"] == 0.0
+
+    # 2.2 Thêm vị thế mua 1,000 cổ phiếu FPT giá vốn 110,000 VND (110.0 nghìn đồng)
+    res_fpt = client.post(
+        "/api/v1/portfolio/holdings",
+        headers=headers,
+        json={"symbol": "FPT", "quantity": 1000, "avg_buy_price": 110.0},
+    )
+    assert res_fpt.status_code == 201
+    fpt_holding = res_fpt.json()
+    assert fpt_holding["symbol"] == "FPT"
+    assert fpt_holding["quantity"] == 1000
+    assert fpt_holding["avg_buy_price"] == 110.0
+    fpt_id = fpt_holding["id"]
+
+    # 2.3 Thêm vị thế mua 500 cổ phiếu VNM giá vốn 70,000 VND (70.0 nghìn đồng)
+    res_vnm = client.post(
+        "/api/v1/portfolio/holdings",
+        headers=headers,
+        json={"symbol": "VNM", "quantity": 500, "avg_buy_price": 70.0},
+    )
+    assert res_vnm.status_code == 201
+    vnm_holding = res_vnm.json()
+    vnm_id = vnm_holding["id"]
+
+    # 2.4 Truy vấn bảng P&L chi tiết qua GET /api/v1/portfolio/holdings
+    pnl_holdings = client.get("/api/v1/portfolio/holdings", headers=headers)
+    assert pnl_holdings.status_code == 200
+    items = pnl_holdings.json()
+    assert len(items) == 2
+
+    holdings_by_sym = {it["symbol"]: it for it in items}
+    assert "FPT" in holdings_by_sym and "VNM" in holdings_by_sym
+
+    fpt_pnl = holdings_by_sym["FPT"]
+    vnm_pnl = holdings_by_sym["VNM"]
+
+    # Đảm bảo không có lỗi giá và giá thị trường hợp lệ
+    assert fpt_pnl["price_error"] is False
+    assert fpt_pnl["current_price"] is not None and fpt_pnl["current_price"] > 0
+    assert fpt_pnl["cost_basis"] == 110_000_000.0  # 1000 * 110,000
+    assert fpt_pnl["market_value"] == fpt_pnl["quantity"] * fpt_pnl["current_price"] * 1000.0
+    assert fpt_pnl["unrealized_pnl"] == fpt_pnl["market_value"] - fpt_pnl["cost_basis"]
+
+    assert vnm_pnl["price_error"] is False
+    assert vnm_pnl["current_price"] is not None and vnm_pnl["current_price"] > 0
+    assert vnm_pnl["cost_basis"] == 35_000_000.0  # 500 * 70,000
+
+    # 2.5 Truy vấn tổng quan danh mục qua GET /api/v1/portfolio/summary
+    pnl_summary = client.get("/api/v1/portfolio/summary", headers=headers)
+    assert pnl_summary.status_code == 200
+    summary = pnl_summary.json()
+    expected_cost = 145_000_000.0  # 110M + 35M
+    assert summary["total_cost"] == expected_cost
+    expected_nav = fpt_pnl["market_value"] + vnm_pnl["market_value"]
+    assert abs(summary["total_nav"] - expected_nav) < 1.0
+    expected_unrealized = expected_nav - expected_cost
+    assert abs(summary["total_unrealized_pnl"] - expected_unrealized) < 1.0
+
+    # --------------------------------------------------------------------------
+    # 3. Đồng bộ Watchlist & Ma trận Market Matrix 10D
+    # --------------------------------------------------------------------------
+    # 3.1 Thêm FPT vào Watchlist với ngưỡng biến động 3.5%
+    wl_add = client.post(
+        "/api/v1/watchlist",
+        headers=headers,
+        json={"symbol": "FPT", "alert_threshold_pct": 3.5},
+    )
+    assert wl_add.status_code == 200
+    assert wl_add.json()["symbol"] == "FPT"
+    assert wl_add.json()["alert_threshold_pct"] == 3.5
+
+    # 3.2 Nạp bảng ma trận 10D cho rổ cổ phiếu đang theo dõi
+    matrix_res = client.get("/api/v1/market/matrix-10d?symbols=FPT,VNM&days=10")
+    assert matrix_res.status_code == 200
+    matrix_data = matrix_res.json()
+    assert matrix_data["count"] == 2
+    matrix_syms = {it["symbol"]: it for it in matrix_data["items"]}
+    assert "FPT" in matrix_syms
+    assert len(matrix_syms["FPT"]["sparkline"]) == 10
+    assert len(matrix_syms["FPT"]["sessions"]) == 10
+
+    # Xác nhận Single Source of Truth (SSOT): Thị giá FPT khớp giữa Portfolio và Market Matrix
+    assert matrix_syms["FPT"]["current_price"] == fpt_pnl["current_price"]
+
+    # --------------------------------------------------------------------------
+    # 4. Xóa vị thế và xác nhận bảng danh mục tự động tái tính toán không lỗi
+    # --------------------------------------------------------------------------
+    del_res = client.delete(f"/api/v1/portfolio/holdings/{vnm_id}", headers=headers)
+    assert del_res.status_code == 200
+
+    after_holdings = client.get("/api/v1/portfolio/holdings", headers=headers).json()
+    assert len(after_holdings) == 1
+    assert after_holdings[0]["symbol"] == "FPT"
+
+    after_summary = client.get("/api/v1/portfolio/summary", headers=headers).json()
+    assert after_summary["total_cost"] == 110_000_000.0
+    assert abs(after_summary["total_nav"] - fpt_pnl["market_value"]) < 1.0
+
+    # --------------------------------------------------------------------------
+    # 5. Xác thực mã nguồn Frontend Web UI tích hợp toàn vẹn các luồng
+    # --------------------------------------------------------------------------
+    js_text = (FE / "app.js").read_text(encoding="utf-8")
+    assert "doChat" in js_text
+    assert "handleEvent" in js_text
+    assert "node_start" in js_text
+    assert "loadPortfolio" in js_text
+    assert "doAddHolding" in js_text
+    assert "doDeleteHolding" in js_text
+    assert "loadWatchlist" in js_text
+    assert "loadMarketMatrix" in js_text
+    assert "switchView" in js_text
+
+
+
