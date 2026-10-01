@@ -739,7 +739,10 @@ body {
   flex-direction: column;
   gap: 0.75rem;
   height: 100%;
-  overflow: hidden;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 /* Phase 11: Live Graph Panel & Hover I/O */
@@ -748,11 +751,16 @@ body {
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 0.65rem 0.85rem;
-  flex-shrink: 0;
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: min(62vh, 560px);
   display: flex;
   flex-direction: column;
   gap: 0.45rem;
   box-shadow: var(--shadow-sm);
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .graph-panel-header {
@@ -1038,6 +1046,10 @@ body {
   padding: 0.55rem 0.7rem;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   animation: inspector-fade-in 0.15s ease-out;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  overflow: visible;
 }
 
 @keyframes inspector-fade-in {
@@ -1101,6 +1113,7 @@ body {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 0.5rem;
+  min-height: 0;
 }
 
 .inspector-io-col {
@@ -1127,20 +1140,63 @@ body {
   font-size: 0.75rem;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   line-height: 1.35;
-  max-height: 180px;
+  max-height: 220px;
+  overflow-x: auto;
   overflow-y: auto;
   white-space: pre-wrap;
   word-break: break-all;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: #64748b #1e293b;
 }
 
 .io-pre::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
+  width: 8px;
+  height: 8px;
+}
+
+.io-pre::-webkit-scrollbar-track {
+  background: #1e293b;
+  border-radius: 4px;
 }
 
 .io-pre::-webkit-scrollbar-thumb {
-  background: #334155;
-  border-radius: 2px;
+  background: #64748b;
+  border-radius: 4px;
+}
+
+.io-pre::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Scrollbar — cột phải & live graph panel */
+.secondary-column::-webkit-scrollbar,
+.live-graph-panel::-webkit-scrollbar {
+  width: 10px;
+}
+
+.secondary-column::-webkit-scrollbar-track,
+.live-graph-panel::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 5px;
+}
+
+.secondary-column::-webkit-scrollbar-thumb,
+.live-graph-panel::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 5px;
+  border: 2px solid #f1f5f9;
+}
+
+.secondary-column::-webkit-scrollbar-thumb:hover,
+.live-graph-panel::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+.secondary-column,
+.live-graph-panel {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 #f1f5f9;
 }
 
 /* Secondary Tabs */
@@ -2284,6 +2340,80 @@ body {
   border-radius: 4px;
   font-size: 0.75rem;
   margin-bottom: 0.4rem;
+}
+
+/* Empty State Danh mục (Task 5.2) */
+.portfolio-empty-cell {
+  padding: 1.5rem 1rem !important;
+  text-align: center;
+  background: #f8fafc;
+}
+
+.portfolio-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem 0.5rem;
+  max-width: 460px;
+  margin: 0 auto;
+}
+
+.portfolio-empty-state .empty-state-icon {
+  font-size: 2.2rem;
+  margin-bottom: 0.5rem;
+  animation: float-subtle 3s ease-in-out infinite;
+}
+
+.portfolio-empty-state .empty-state-title {
+  margin: 0 0 0.4rem 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.portfolio-empty-state .empty-state-desc {
+  margin: 0 0 0.8rem 0;
+  font-size: 0.82rem;
+  color: #64748b;
+  line-height: 1.45;
+}
+
+.portfolio-empty-state .empty-state-steps {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  text-align: left;
+  width: 100%;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+}
+
+.portfolio-empty-state .empty-state-steps li {
+  font-size: 0.8rem;
+  color: #334155;
+  margin-bottom: 0.35rem;
+  line-height: 1.4;
+}
+
+.portfolio-empty-state .empty-state-steps li:last-child {
+  margin-bottom: 0;
+}
+
+.portfolio-empty-state .empty-state-steps code {
+  background: #f1f5f9;
+  padding: 0.1rem 0.3rem;
+  border-radius: 4px;
+  font-size: 0.78rem;
+  color: #0f172a;
+  border: 1px solid #e2e8f0;
+}
+
+@keyframes float-subtle {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
 }
 
 /* --------------------------------------------------------------------------

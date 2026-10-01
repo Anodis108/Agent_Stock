@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Iterator
 from typing import Any, TypeVar
 
@@ -59,6 +60,33 @@ def _record_cache_hit_cost(*, model: str) -> None:
             completion_tokens=0,
             total_tokens=0,
             cache_hit=True,
+        )
+    except Exception:
+        pass
+
+
+def _emit_llm_cache_hit(model: str) -> None:
+    """Thông báo SSE live graph khi LLM exact/semantic cache hit."""
+    try:
+        from backend.graph.chat import emit_agent_event
+        from backend.infra.cache.exact import get_llm_cache_context
+
+        ctx = get_llm_cache_context()
+        emit_agent_event("node_start", {"node": "llm_cache", "timestamp": time.time()})
+        emit_agent_event(
+            "node_finish",
+            {
+                "node": "llm_cache",
+                "duration_s": 0,
+                "duration_ms": 0,
+                "status": "done",
+                "output": {
+                    "cache_hit": True,
+                    "model": model,
+                    "prompt_name": ctx.get("prompt_name"),
+                    "layer": "llm_exact_or_semantic",
+                },
+            },
         )
     except Exception:
         pass
@@ -131,6 +159,7 @@ def chat(
     cached = _try_tiered_cache_get(primary_model)
     if cached is not None:
         _record_cache_hit_cost(model=primary_model)
+        _emit_llm_cache_hit(primary_model)
         return cached
 
     from backend.infra.llm.semaphore import llm_semaphore_slot
@@ -175,20 +204,22 @@ def chat_stream(
     check_budget_or_raise()
     models = resolve_model_chain(model)
     resolved_model = models[0]
-    client = get_client()
-
-    def _open_stream():
-        return client.chat.completions.create(
+    def _open_stream_on_backend(backend_name: str | None):
+        c = get_client() if backend_name is None else get_client(backend_name)
+        return c.chat.completions.create(
             model=resolved_model,
             messages=messages,
             stream=True,
             **params.to_openai_kwargs(),
         )
 
+    def _open_stream():
+        return call_with_backend_fallback(_open_stream_on_backend)
+
     stream = retry_with_backoff(
         _open_stream,
         max_retries=settings.llm_max_retries,
-        on_rate_limit=lambda: mark_current_key_limited(client),
+        on_rate_limit=lambda: mark_current_key_limited(get_client()),
     )
 
     for chunk in stream:
@@ -213,6 +244,7 @@ def chat_parsed(
         hit = cache.get(cache_key)
         if hit is not None:
             _record_cache_hit_cost(model=primary_model)
+            _emit_llm_cache_hit(primary_model)
             return schema.model_validate_json(hit)
 
     from backend.infra.llm.semaphore import llm_semaphore_slot

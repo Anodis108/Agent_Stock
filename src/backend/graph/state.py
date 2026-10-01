@@ -32,6 +32,7 @@ class ChatState(TypedDict, total=False):
     diagram_result: DiagramAgentResult | None
     chart_result: Any | None
     chart_path: str | None
+    portfolio_summary: Any | None
     compose: AnswerComposeResult | None
     answer: str
     error: str | None

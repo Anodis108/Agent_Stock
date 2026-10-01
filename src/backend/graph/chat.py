@@ -249,16 +249,41 @@ def price_node(
     """Node thu thập dữ liệu giá Vnstock cho một mã cổ phiếu cụ thể."""
     t0 = time.perf_counter()
     emit_agent_event("node_start", {"node": "price_agent", "symbol": sym, "timestamp": time.time()})
+    hits_before = price_source.cache_stats().get("hits", 0)
     with agent_span(turn, "price_agent", input=sym) as box:
         p = run_price_agent(sym, price_source, turn)
-        box["output"] = {
+        from_cache = price_source.cache_stats().get("hits", 0) > hits_before
+        out = {
             "symbol": sym,
             "latest_close": p.latest_close,
             "change_pct": p.change_pct,
             "error": p.error,
+            "from_cache": from_cache,
         }
+        box["output"] = out
         dur = round(time.perf_counter() - t0, 3)
-        emit_agent_event("node_finish", {"node": "price_agent", "symbol": sym, "duration_s": dur, "duration_ms": int(dur * 1000)})
+        finish_payload: dict[str, Any] = {
+            "node": "price_agent",
+            "symbol": sym,
+            "duration_s": dur,
+            "duration_ms": int(dur * 1000),
+            "output": out,
+            "status": "error" if p.error else "done",
+        }
+        if from_cache:
+            emit_agent_event("node_start", {"node": "price_cache", "symbol": sym, "timestamp": time.time()})
+            emit_agent_event(
+                "node_finish",
+                {
+                    "node": "price_cache",
+                    "symbol": sym,
+                    "duration_s": 0,
+                    "duration_ms": 0,
+                    "output": {"cache_hit": True, "symbol": sym, "layer": "price_source_ttl"},
+                    "status": "done",
+                },
+            )
+        emit_agent_event("node_finish", finish_payload)
         return p
 
 
@@ -527,6 +552,35 @@ def workers_node(state: ChatState, config: RunnableConfig) -> dict[str, Any]:
         )
 
     chart_path = chart_result.url if (chart_result and chart_result.success) else None
+
+    # Task 5.2: Tự động nạp portfolio_summary khi câu hỏi liên quan đến danh mục đầu tư
+    req_q_lower = (state.get("question") or "").lower()
+    rw_q = (state.get("rewritten").rewritten or "") if state.get("rewritten") else ""
+    combined_q = f"{req_q_lower} {rw_q.lower()}"
+    is_portfolio_query = any(
+        k in combined_q
+        for k in ("danh mục", "portfolio", "lãi lỗ", "lãi/lỗ", "nav", "tài khoản", "nắm giữ", "vị thế")
+    ) or "portfolio" in agents
+
+    portfolio_summary = None
+    if is_portfolio_query:
+        try:
+            from backend.database.connection import get_connection
+            from backend.database.repositories import PortfolioHoldingRepository, UserSettingsRepository
+            from backend.services.portfolio_service import PortfolioService
+
+            conn = get_connection()
+            try:
+                h_repo = PortfolioHoldingRepository(conn)
+                u_repo = UserSettingsRepository(conn)
+                ps = PortfolioService(h_repo, u_repo, price_source)
+                uid = state.get("user_id") or "default"
+                portfolio_summary = ps.get_portfolio_summary(uid)
+            finally:
+                conn.close()
+        except Exception as exc:
+            _logger.warning("Không nạp được portfolio_summary trong workers_node: %s", exc)
+
     return {
         "price": price,
         "news": news,
@@ -535,6 +589,7 @@ def workers_node(state: ChatState, config: RunnableConfig) -> dict[str, Any]:
         "eval_result": eval_result,
         "chart_result": chart_result,
         "chart_path": chart_path,
+        "portfolio_summary": portfolio_summary,
     }
 
 
@@ -587,6 +642,7 @@ def composer_node(state: ChatState, config: RunnableConfig) -> dict[str, Any]:
             prices=state.get("prices") or None,
             news_list=state.get("news_list") or None,
             chart_path=chart_path,
+            portfolio_summary=state.get("portfolio_summary"),
             turn=turn,
             on_token=_on_token,
         )

@@ -6,9 +6,12 @@ Phase 8: mặc định dùng LLM qua Prompt Registry (`answer_compose`) +
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
+
+_logger = logging.getLogger(__name__)
 
 from backend.agents.eval_agent import EvalAgentResult
 from backend.agents.news_agent import NewsAgentResult
@@ -140,7 +143,35 @@ class HeuristicAnswerDraftBrain:
         if all_prices and len(all_prices) > 1:
             sym = "+".join(p.symbol for p in all_prices)
 
+        # Xử lý Empty State danh mục đầu tư (Task 5.2)
+        if any("portfolio_status:empty" in e for e in evidence):
+            parts = [
+                "Danh mục đầu tư của bạn hiện tại chưa có cổ phiếu nào (danh mục rỗng).",
+                "Hướng dẫn thêm mã đầu tiên:",
+                "- Bước 1: Nhập mã cổ phiếu (ví dụ: FPT, VNM, HPG) vào ô 'Mã'.",
+                "- Bước 2: Nhập số lượng cổ phiếu cần theo dõi (ví dụ: 100, 500, 1000).",
+                "- Bước 3: Nhập giá mua bình quân (nghìn đồng, ví dụ: 66.0) rồi nhấn 'Thêm'.",
+                "Hệ thống sẽ tự động cập nhật Tổng NAV và tính toán Lãi/Lỗ theo thời gian thực.",
+                "Thông tin tham khảo, không phải lời khuyên đầu tư.",
+            ]
+            ans = "\n".join(parts)
+            if on_token:
+                words = ans.split(" ")
+                for i, w in enumerate(words):
+                    sep = " " if i < len(words) - 1 else ""
+                    on_token(w + sep)
+            return ans
+
         parts: list[str] = []
+        if any("portfolio_status:active" in e for e in evidence):
+            nav_e = next((e.split("=", 1)[1] for e in evidence if e.startswith("portfolio_total_nav=")), "")
+            cost_e = next((e.split("=", 1)[1] for e in evidence if e.startswith("portfolio_total_cost=")), "")
+            pnl_e = next((e.split("=", 1)[1] for e in evidence if e.startswith("portfolio_total_unrealized_pnl=")), "")
+            pct_e = next((e.split("=", 1)[1] for e in evidence if e.startswith("portfolio_total_pnl_pct=")), "")
+            if nav_e:
+                parts.append(
+                    f"Tổng quan danh mục: Tổng NAV {nav_e} VND, Vốn {cost_e} VND, Lãi/Lỗ {pnl_e} VND ({pct_e})."
+                )
         if len(all_prices) > 1 or len(all_news) > 1:
             parts.append(f"Tổng hợp so sánh về {sym}:")
             # 1. So sánh giá
@@ -181,7 +212,12 @@ class HeuristicAnswerDraftBrain:
                     )
                 elif p and p.error:
                     err_text = p.error.strip()
-                    if any(k in err_text.lower() for k in ("không lấy được", "không tìm thấy", "mã cổ phiếu", "nguồn dữ liệu")):
+                    if any(k in err_text.lower() for k in ("không tìm thấy", "mã cổ phiếu", "không tồn tại")):
+                        parts.append(
+                            f"{p.symbol}: Không tìm thấy thông tin hoặc mã không tồn tại trên thị trường chứng khoán Việt Nam. "
+                            f"Gợi ý: Quý khách vui lòng kiểm tra lại mã cổ phiếu (ví dụ các mã VN30 phổ biến như FPT, VNM, HPG, TCB, MBB)."
+                        )
+                    elif any(k in err_text.lower() for k in ("không lấy được", "nguồn dữ liệu", "kết nối")):
                         parts.append(f"{p.symbol}: {err_text}.")
                     else:
                         parts.append(f"{p.symbol}: không lấy được giá ({err_text}).")
@@ -322,6 +358,7 @@ def build_evidence(
     prices: list[PriceAgentResult] | None = None,
     news_list: list[NewsAgentResult] | None = None,
     chart_path: str | None = None,
+    portfolio_summary: Any | None = None,
 ) -> list[str]:
     evidence: list[str] = []
     price_rows = prices if prices else ([price] if price is not None else [])
@@ -348,6 +385,27 @@ def build_evidence(
     if chart_path:
         evidence.append(f"chart_path:{chart_path}")
         evidence.append("chart_status:đã_tạo_biểu_đồ_thành_công")
+    if portfolio_summary is not None:
+        items = getattr(portfolio_summary, "items", None) or []
+        u_id = getattr(portfolio_summary, "user_id", "default")
+        evidence.append(f"portfolio_user_id:{u_id}")
+        if len(items) == 0:
+            evidence.append("portfolio_status:empty")
+            evidence.append("portfolio_guide:bước 1 2 3 thêm mã cổ phiếu 100 500 1000 66.0 fpt vnm hpg")
+        else:
+            evidence.append("portfolio_status:active")
+            nav = getattr(portfolio_summary, "total_nav", 0.0)
+            cost = getattr(portfolio_summary, "total_cost", 0.0)
+            pnl = getattr(portfolio_summary, "total_unrealized_pnl", 0.0)
+            pnl_pct = getattr(portfolio_summary, "total_pnl_pct", 0.0)
+            evidence.append(f"portfolio_total_nav={nav}")
+            evidence.append(f"portfolio_total_cost={cost}")
+            evidence.append(f"portfolio_total_unrealized_pnl={pnl}")
+            evidence.append(f"portfolio_total_pnl_pct={pnl_pct:.2f}%")
+            for it in items:
+                evidence.append(
+                    f"holding:{it.symbol}:qty={it.quantity}:cost={it.cost_basis}:pnl={it.unrealized_pnl}:pnl_pct={it.pnl_pct:.2f}%"
+                )
     # dedupe giữ thứ tự
     seen: set[str] = set()
     out: list[str] = []
@@ -374,6 +432,7 @@ def run_answer_composer(
     prices: list[PriceAgentResult] | None = None,
     news_list: list[NewsAgentResult] | None = None,
     chart_path: str | None = None,
+    portfolio_summary: Any | None = None,
     turn: str = "",
     on_token: Callable[[str], None] | None = None,
 ) -> AnswerComposeResult:
@@ -394,7 +453,13 @@ def run_answer_composer(
 
     set_cost_context(feature="answer_composer", prompt_version=str(prompt_version))
     evidence = build_evidence(
-        price, news, eval_result, prices=prices, news_list=news_list, chart_path=chart_path
+        price,
+        news,
+        eval_result,
+        prices=prices,
+        news_list=news_list,
+        chart_path=chart_path,
+        portfolio_summary=portfolio_summary,
     )
     model = select_answer_model(eval_result)
     violations: list[str] = []
@@ -429,13 +494,33 @@ def run_answer_composer(
                         on_token(w + " ")
                 box["output"] = (answer or "")[:500]
             except Exception as exc:  # noqa: BLE001
-                answer = (
-                    f"Không soạn được câu trả lời ({exc}). "
-                    f"Evidence: {'; '.join(evidence) if evidence else 'không có'}."
-                )
-                box["output"] = {"error": str(exc)}
-                if on_token:
-                    on_token(answer)
+                _logger.warning("AnswerComposer brain lỗi hoặc toàn bộ provider ngoại tuyến (%s). Kích hoạt Heuristic Fallback.", exc)
+                try:
+                    heuristic_brain = HeuristicAnswerDraftBrain()
+                    heuristic_kwargs = {
+                        "question": question,
+                        "symbol": symbol,
+                        "price": price,
+                        "news": news,
+                        "eval_result": eval_result,
+                        "evidence": evidence,
+                        "model": "heuristic-fallback",
+                        "attempt": attempt,
+                        "previous_violations": list(violations),
+                        "prices": prices,
+                        "news_list": news_list,
+                        "on_token": on_token,
+                    }
+                    answer = heuristic_brain.compose(**heuristic_kwargs)
+                    box["output"] = f"[HEURISTIC_FALLBACK] {(answer or '')[:400]}"
+                except Exception as h_exc:
+                    answer = (
+                        f"Không soạn được câu trả lời ({exc}). "
+                        f"Evidence: {'; '.join(evidence) if evidence else 'không có'}."
+                    )
+                    box["output"] = {"error": str(exc), "heuristic_error": str(h_exc)}
+                    if on_token:
+                        on_token(answer)
         with agent_step(
             turn,
             "answer_composer",

@@ -200,6 +200,8 @@
 
   function canonicalNodeId(name) {
     var lower = String(name || "").toLowerCase().trim();
+    if (lower.indexOf("llm_cache") >= 0 || lower === "llm cache") return "llm_cache";
+    if (lower.indexOf("price_cache") >= 0 || lower === "price cache") return "price_cache";
     if (lower.indexOf("guardrail") >= 0 || lower.indexOf("gate") >= 0) return "guardrail";
     if (lower.indexOf("rewrite") >= 0) return "rewrite";
     if (lower.indexOf("supervisor") >= 0) return "supervisor";
@@ -212,8 +214,22 @@
     return lower;
   }
 
+  function stepOutputHasError(output) {
+    if (!output || typeof output !== "object") return false;
+    var err = output.error;
+    return err != null && String(err).trim() !== "";
+  }
+
+  function resolveStepStatus(step, fallback) {
+    if (step && step.status === "error") return "error";
+    if (stepOutputHasError(step && step.output)) return "error";
+    return fallback || step.status || "done";
+  }
+
   function normalizeNodeName(name) {
     var lower = String(name || "").toLowerCase().trim();
+    if (lower.indexOf("llm_cache") >= 0) return "LLM Cache";
+    if (lower.indexOf("price_cache") >= 0) return "Price Cache";
     if (lower.indexOf("guardrail") >= 0 || lower.indexOf("gate") >= 0) return "Guardrail";
     if (lower.indexOf("rewrite") >= 0) return "Rewrite";
     if (lower.indexOf("supervisor") >= 0) return "Supervisor";
@@ -236,6 +252,7 @@
     if (lower.indexOf("indicator") >= 0) return "📐";
     if (lower.indexOf("chart") >= 0) return "📊";
     if (lower.indexOf("eval") >= 0) return "⚖️";
+    if (lower.indexOf("llm_cache") >= 0 || lower.indexOf("price_cache") >= 0) return "⚡";
     if (lower.indexOf("classifier") >= 0) return "🏷️";
     if (lower.indexOf("synthesis") >= 0) return "🔔";
     if (lower.indexOf("compose") >= 0 || lower.indexOf("answer") >= 0) return "✍️";
@@ -285,8 +302,38 @@
     "diagram_agent": "[System Prompt: diagram_plan]\nMermaid Diagram Planner: Lập kế hoạch và tạo mã Mermaid biểu diễn luồng quan hệ doanh nghiệp hoặc dữ liệu.",
     "event_classifier": "[System Prompt: event_classification]\nPhân loại sự kiện định lượng / định tính từ dữ liệu quét biến động thị trường.",
     "synthesis_agent": "[System Prompt: synthesis_alert]\nTổng hợp thông tin từ Price/News/Eval để soạn thảo cảnh báo danh mục đầu tư.",
-    "confidence_gate": "[Human-in-the-Loop & Confidence Gate]:\nĐánh giá ngưỡng tin cậy (Threshold >= 0.70) để tự động duyệt phát cảnh báo hoặc chuyển vào hàng đợi phê duyệt."
+    "confidence_gate": "[Human-in-the-Loop & Confidence Gate]:\nĐánh giá ngưỡng tin cậy (Threshold >= 0.70) để tự động duyệt phát cảnh báo hoặc chuyển vào hàng đợi phê duyệt.",
+
+    "llm_cache": "[Response Cache: LLM exact/semantic]\n- Trả lời ngay từ cache khi cùng prompt + câu hỏi đã được xử lý gần đây.\n- Không gọi API LLM — phản hồi nhanh, chi phí token = 0.",
+    "price_cache": "[Market Data Cache: PriceSource TTL]\n- Giá vnstock đã lấy trong vòng TTL (mặc định ~5 phút) được phục vụ từ bộ nhớ.\n- Tránh gọi lại API khi nhiều agent cùng cần một mã."
   };
+
+  function enrichExecutedStep(step) {
+    var cid = canonicalNodeId(step.name || step.id || step.raw_name);
+    var canon = null;
+    for (var i = 0; i < CANONICAL_GRAPH_NODES.length; i++) {
+      if (CANONICAL_GRAPH_NODES[i].id === cid) {
+        canon = CANONICAL_GRAPH_NODES[i];
+        break;
+      }
+    }
+    var status = resolveStepStatus(step, step.status || "done");
+    return {
+      id: cid,
+      name: canon ? canon.name : normalizeNodeName(step.name || step.id || step.raw_name),
+      label: canon ? canon.label : normalizeNodeName(step.name || step.id),
+      role: canon ? canon.role : "Agent step",
+      icon: canon ? canon.icon : getNodeIcon(step.name || step.id || step.raw_name),
+      status: status,
+      duration_s: step.duration_s,
+      duration_ms: step.duration_ms,
+      detail: step.detail,
+      input: step.input,
+      output: step.output,
+      static_info: step.static_info || NODE_FALLBACK_PROMPTS[cid] || NODE_FALLBACK_PROMPTS[String(step.raw_name || "").toLowerCase()],
+      raw_name: step.raw_name || step.name || step.id,
+    };
+  }
 
   function getCanonicalInitialNodes() {
     return CANONICAL_GRAPH_NODES.map(function (n) {
@@ -306,37 +353,29 @@
   }
 
   function mergeWithCanonicalNodes(steps) {
-    var canonical = getCanonicalInitialNodes();
-    if (!steps || !steps.length) return canonical;
-    var map = {};
+    if (!steps || !steps.length) return [];
+    var ordered = [];
+    var seen = {};
     steps.forEach(function (s) {
-      var cid = canonicalNodeId(s.name || s.id);
-      map[cid] = s;
-      if (s.id) map[String(s.id).toLowerCase()] = s;
-      if (s.raw_name) map[String(s.raw_name).toLowerCase()] = s;
-      if (s.name) map[String(s.name).toLowerCase()] = s;
-    });
-
-    return canonical.map(function (c) {
-      var match = map[c.id] || map[c.name.toLowerCase()];
-      if (match) {
-        return {
-          id: c.id,
-          name: c.name,
-          label: c.label,
-          role: c.role,
-          icon: c.icon,
-          status: match.status || "done",
-          duration_s: match.duration_s,
-          duration_ms: match.duration_ms,
-          detail: match.detail || c.detail,
-          input: match.input !== undefined ? match.input : c.input,
-          output: match.output !== undefined ? match.output : c.output,
-          static_info: match.static_info || c.static_info,
-        };
+      if (!s) return;
+      var cid = canonicalNodeId(s.name || s.id || s.raw_name);
+      if (seen[cid]) {
+        var idx = -1;
+        for (var i = 0; i < ordered.length; i++) {
+          if (ordered[i].id === cid) {
+            idx = i;
+            break;
+          }
+        }
+        if (idx >= 0) {
+          ordered[idx] = enrichExecutedStep(Object.assign({}, ordered[idx], s));
+        }
+        return;
       }
-      return c;
+      seen[cid] = true;
+      ordered.push(enrichExecutedStep(s));
     });
+    return ordered;
   }
 
   function setGraphStatus(text, statusClass) {
@@ -479,10 +518,13 @@
     flow.innerHTML = "";
 
     var effectiveSteps = steps;
-    var isCanonical = false;
     if (!effectiveSteps || !effectiveSteps.length) {
-      effectiveSteps = getCanonicalInitialNodes();
-      isCanonical = true;
+      flow.innerHTML =
+        '<div class="graph-empty-state">' +
+        '<span class="empty-icon">📊</span>' +
+        '<p class="muted tiny"><em>Chờ câu hỏi hoặc lượt quét để kích hoạt đồ thị</em></p>' +
+        "</div>";
+      return;
     }
 
     effectiveSteps.forEach(function (step, idx) {
@@ -494,7 +536,8 @@
       }
 
       var card = document.createElement("div");
-      var status = STATUSES.indexOf(step.status) >= 0 ? step.status : (isCanonical ? "idle" : "pending");
+      var status = resolveStepStatus(step, STATUSES.indexOf(step.status) >= 0 ? step.status : "pending");
+      if (STATUSES.indexOf(status) < 0) status = "pending";
       card.className = "graph-node-card status-" + status;
       if (pinnedInspectorStepId && String(step.id) === String(pinnedInspectorStepId)) {
         card.classList.add("active");
@@ -1697,12 +1740,19 @@
         var normName = normalizeNodeName(rawName);
         var existing = realtimeSteps.find(function (s) { return s.name === normName || s.raw_name === rawName || s.id === rawName; });
         if (existing) {
-          existing.status = "done";
+          if (data.output !== undefined && data.output !== null) existing.output = data.output;
+          existing.status = data.status === "error" || stepOutputHasError(existing)
+            ? "error"
+            : "done";
           if (data.duration_s != null) existing.duration_s = Number(data.duration_s);
           if (data.duration_ms != null) existing.duration_ms = Number(data.duration_ms);
           var durStr = existing.duration_s != null ? (existing.duration_s >= 1 ? existing.duration_s.toFixed(2) + "s" : existing.duration_ms + "ms") : "";
-          existing.detail = "Hoàn tất" + (durStr ? " (⏱ " + durStr + ")" : "");
-          if (data.output !== undefined && data.output !== null) existing.output = data.output;
+          if (existing.status === "error") {
+            var errText = (existing.output && existing.output.error) ? String(existing.output.error) : "Lỗi agent";
+            existing.detail = errText + (durStr ? " (⏱ " + durStr + ")" : "");
+          } else {
+            existing.detail = "Hoàn tất" + (durStr ? " (⏱ " + durStr + ")" : "");
+          }
         }
         renderLiveGraphNodes(mergeWithCanonicalNodes(realtimeSteps));
         renderTimeline(realtimeSteps);
@@ -2063,7 +2113,18 @@
       if (!tbody) return;
 
       if (!items.length) {
-        tbody.innerHTML = '<tr><td colspan="7" class="placeholder"><em>Danh mục đang trống. Hãy thêm mã cổ phiếu đầu tiên của bạn!</em></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" class="portfolio-empty-cell">' +
+          '<div class="portfolio-empty-state">' +
+          '<div class="empty-state-icon">📂</div>' +
+          '<h4 class="empty-state-title">Danh mục đang trống</h4>' +
+          '<p class="empty-state-desc">Bạn chưa có vị thế nào trong danh mục của tài khoản này. Hãy thêm mã cổ phiếu đầu tiên:</p>' +
+          '<ul class="empty-state-steps">' +
+          '<li><strong>Bước 1:</strong> Nhập mã cổ phiếu vào ô "Mã (vd. FPT, VNM, HPG)" phía trên.</li>' +
+          '<li><strong>Bước 2:</strong> Nhập số lượng cổ phiếu (bội số 100, vd: 100, 500).</li>' +
+          '<li><strong>Bước 3:</strong> Nhập giá mua bình quân (nghìn đồng, vd: 66.0) rồi nhấn <strong>Thêm</strong>.</li>' +
+          '</ul>' +
+          '</div>' +
+          '</td></tr>';
         return;
       }
 

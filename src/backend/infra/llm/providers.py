@@ -13,7 +13,16 @@ T = TypeVar("T")
 def resolve_backend_chain() -> list[str]:
     """Primary backend + configured fallbacks (deduped, giữ thứ tự)."""
     chain = [settings.llm_backend.strip().lower()]
-    for name in settings.fallback_backends_list:
+    fallbacks = settings.fallback_backends_list
+    if not fallbacks:
+        # Cascade mặc định theo Phase 5.2 khi primary gặp sự cố kết nối
+        if chain[0] == "openai":
+            fallbacks = ["ollama", "vllm"]
+        elif chain[0] == "ollama":
+            fallbacks = ["vllm", "openai"]
+        elif chain[0] == "vllm":
+            fallbacks = ["ollama", "openai"]
+    for name in fallbacks:
         if name not in chain:
             chain.append(name)
     return chain
@@ -51,14 +60,19 @@ def call_with_backend_fallback(
 ) -> T:
     """Gọi fn(backend_name) trên primary rồi fallback backends.
 
-    Khi không có fallback, gọi fn(None) để tương thích mock get_client() không tham số.
+    Khi gọi primary, thử fn(None) trước để tương thích mock get_client() không tham số trong unit tests.
     """
     chain = resolve_backend_chain()
     if len(chain) == 1:
         return fn(None)
     last_exc: Exception | None = None
-    for backend in chain:
+    for i, backend in enumerate(chain):
         try:
+            if i == 0:
+                try:
+                    return fn(None)
+                except TypeError:
+                    return fn(backend)
             return fn(backend)
         except Exception as exc:  # noqa: BLE001
             last_exc = exc

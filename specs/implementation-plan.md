@@ -165,10 +165,11 @@ Kế hoạch triển khai theo phương pháp **Spec-Driven Development (SDD)**,
   - Đồng bộ file vào cả `specs/eval/golden_v6_comprehensive.yaml` và `resources/eval/golden_v6_comprehensive.yaml`.
   - Cập nhật `src/backend/eval/run.py` mở rộng `RULE_SLICES` bao phủ đủ 10 lát cắt chuẩn hóa, hỗ trợ nạp tự động qua `GOLDEN_V6_PATH` và kiểm tra hợp lệ schema `load_golden_dataset`.
   - Đã kiểm thử tự động toàn diện qua `test_golden_v6_structure_and_slices` trong `tests/test_eval.py` đạt 100% PASS (35/35 tests).
-* [ ] **5.2. Xử lý các trạng thái lỗi & biên (Edge Cases & Fallbacks)**:
-  - Khi nhập mã không tồn tại (VD: `XYZ`) ➔ thông báo không tìm thấy mã hoặc kích hoạt fallback mẫu.
-  - Khi danh mục rỗng (Empty State) ➔ hiển thị hướng dẫn thêm mã đầu tiên.
-  - Khi lỗi kết nối LLM ➔ kích hoạt LLM Fallback Cascade (Ollama / vLLM).
+* [x] **5.2. Xử lý các trạng thái lỗi & biên (Edge Cases & Fallbacks)**:
+  - Khi nhập mã không tồn tại (VD: `XYZ`) ➔ thông báo không tìm thấy mã hoặc kích hoạt fallback mẫu kèm gợi ý tra cứu mã VN30 (FPT, VNM, HPG, TCB, MBB).
+  - Khi danh mục rỗng (Empty State) ➔ hiển thị hướng dẫn thêm mã đầu tiên trên cả giao diện Web UI (card Empty State trực quan 3 bước) và Chat Bot (nhận diện ý định danh mục, xuất evidence `portfolio_status:empty` và hướng dẫn chi tiết).
+  - Khi lỗi kết nối LLM ➔ kích hoạt LLM Fallback Cascade (Ollama / vLLM) và Heuristic Fallback Engine (`HeuristicAnswerDraftBrain`) khi toàn bộ provider ngoại tuyến.
+  - Đã kiểm thử tự động toàn diện qua 8 bài test chuyên biệt trong `tests/test_edge_cases.py` đạt 100% PASS.
 * [ ] **5.3. Chạy pipeline đánh giá tự động**:
   - Thực thi: `python -m backend.eval.run --dataset specs/eval/golden_v6_comprehensive.yaml --json specs/eval/eval_summary_v6.json --report specs/eval/eval_summary_v6.md`.
 * [ ] **5.4. Ghi nhận và phân tích thông số quan sát (Observations)**:
