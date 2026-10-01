@@ -715,3 +715,132 @@ def test_phase4_frontend_sse_and_live_graph_integration():
     assert "node-glow-pulse" in css_text
     assert "@keyframes node-glow-pulse" in css_text
     assert ".graph-node-card.status-done" in css_text
+
+
+def test_phase4_portfolio_api_integration():
+    """Phase 4.2: Kiểm tra tích hợp Portfolio API (/api/v1/portfolio/holdings & /api/v1/portfolio/summary).
+    
+    Xác nhận:
+    1. Web UI app.js chứa logic gọi GET /api/v1/portfolio/summary và GET /api/v1/portfolio/holdings.
+    2. Hỗ trợ thêm vị thế qua POST /api/v1/portfolio/holdings và xóa vị thế qua DELETE /api/v1/portfolio/holdings/{id}.
+    3. Giá trị NAV và P&L được cập nhật tức thì và cô lập hoàn toàn giữa các user.
+    """
+    from fastapi.testclient import TestClient
+    from backend.main import app
+
+    js_text = (FE / "app.js").read_text(encoding="utf-8")
+
+    # 1. Kiểm tra mã nguồn app.js gọi đúng các endpoint Phase 4.2
+    assert 'api("GET", "/api/v1/portfolio/summary")' in js_text
+    assert 'api("GET", "/api/v1/portfolio/holdings")' in js_text
+    assert 'api("POST", "/api/v1/portfolio/holdings"' in js_text
+    assert 'api("DELETE", "/api/v1/portfolio/holdings/"' in js_text
+    assert "pnl-total-nav" in js_text
+    assert "pnl-total-pnl" in js_text
+    assert "pnl-total-pct" in js_text
+
+    # 2. Kiểm tra chuỗi tương tác API thực tế
+    from backend.api.deps import get_app_deps
+    from backend.domain.ports import PriceBar, PriceQuote, PriceSourcePort
+
+    class MockPricing(PriceSourcePort):
+        def fetch_latest_close(self, symbol: str) -> PriceQuote:
+            sym = symbol.upper()
+            if sym == "FPT":
+                return PriceQuote(symbol="FPT", latest_close=120.0, prev_close=118.0)
+            if sym == "HPG":
+                return PriceQuote(symbol="HPG", latest_close=27.0, prev_close=27.0)
+            return PriceQuote(symbol=sym, latest_close=50.0, prev_close=50.0)
+
+        def fetch_history(self, symbol: str, lookback_days: int = 14) -> list[PriceBar]:
+            return []
+
+    deps = get_app_deps()
+    old_source = deps.price_source
+    deps.price_source = MockPricing()
+
+    try:
+        import uuid
+        uid = uuid.uuid4().hex[:8]
+        user_test = f"phase4_pnl_investor_{uid}"
+        user_other = f"phase4_pnl_isolated_{uid}"
+        client = TestClient(app)
+
+        # 2.1 Trạng thái ban đầu: danh mục trống
+        init_res = client.get("/api/v1/portfolio/summary", headers={"X-User-ID": user_test})
+        assert init_res.status_code == 200
+        init_data = init_res.json()
+        assert init_data["count"] == 0
+        assert init_data["total_nav"] == 0.0
+        assert init_data["total_unrealized_pnl"] == 0.0
+        assert init_data["items"] == []
+
+        # 2.2 Thêm cổ phiếu FPT (1,000 cp @ giá vốn 100k)
+        add_fpt = client.post(
+            "/api/v1/portfolio/holdings",
+            headers={"X-User-ID": user_test},
+            json={"symbol": "FPT", "quantity": 1000, "avg_buy_price": 100.0},
+        )
+        assert add_fpt.status_code == 201
+        fpt_holding = add_fpt.json()
+        fpt_id = fpt_holding["id"]
+        assert fpt_holding["symbol"] == "FPT"
+        assert fpt_holding["quantity"] == 1000
+
+        # 2.3 Thêm cổ phiếu HPG (2,000 cp @ giá vốn 30k)
+        add_hpg = client.post(
+            "/api/v1/portfolio/holdings",
+            headers={"X-User-ID": user_test},
+            json={"symbol": "HPG", "quantity": 2000, "avg_buy_price": 30.0},
+        )
+        assert add_hpg.status_code == 201
+        hpg_holding = add_hpg.json()
+        hpg_id = hpg_holding["id"]
+        assert hpg_holding["symbol"] == "HPG"
+        assert hpg_holding["quantity"] == 2000
+
+        # 2.4 Kiểm tra nạp bảng P&L qua GET /api/v1/portfolio/summary
+        summary_res = client.get("/api/v1/portfolio/summary", headers={"X-User-ID": user_test})
+        assert summary_res.status_code == 200
+        summary = summary_res.json()
+        assert summary["count"] == 2
+        assert summary["total_cost"] == 160_000_000.0
+        # Giá mock: FPT = 120.0 (120k) -> 120tr, HPG = 27.0 (27k) -> 54tr => Total NAV = 174tr
+        assert summary["total_nav"] == 174_000_000.0
+        assert summary["total_unrealized_pnl"] == 14_000_000.0
+        assert summary["total_pnl_pct"] == 8.75
+
+        # 2.5 Kiểm tra nạp danh sách holdings qua GET /api/v1/portfolio/holdings
+        holdings_res = client.get("/api/v1/portfolio/holdings", headers={"X-User-ID": user_test})
+        assert holdings_res.status_code == 200
+        holdings_list = holdings_res.json()
+        assert len(holdings_list) == 2
+        fpt_item = next(i for i in holdings_list if i["symbol"] == "FPT")
+        assert fpt_item["quantity"] == 1000
+        assert fpt_item["unrealized_pnl"] == 20_000_000.0
+        assert fpt_item["pnl_pct"] == 20.0
+
+        # 2.6 Kiểm tra cô lập dữ liệu với user khác (Multi-tenant)
+        other_res = client.get("/api/v1/portfolio/summary", headers={"X-User-ID": user_other})
+        assert other_res.status_code == 200
+        assert other_res.json()["count"] == 0
+        assert other_res.json()["items"] == []
+
+        # 2.7 Xóa vị thế FPT và xác nhận NAV cập nhật tức thì
+        del_res = client.delete(f"/api/v1/portfolio/holdings/{fpt_id}", headers={"X-User-ID": user_test})
+        assert del_res.status_code == 200
+        assert del_res.json()["ok"] is True
+
+        # 2.8 Kiểm tra lại sau khi xóa: chỉ còn HPG, NAV tức thì giảm còn 54,000,000 VND
+        after_del_res = client.get("/api/v1/portfolio/summary", headers={"X-User-ID": user_test})
+        assert after_del_res.status_code == 200
+        after_summary = after_del_res.json()
+        assert after_summary["count"] == 1
+        assert after_summary["items"][0]["symbol"] == "HPG"
+        assert after_summary["total_nav"] == 54_000_000.0
+        assert after_summary["total_cost"] == 60_000_000.0
+        assert after_summary["total_unrealized_pnl"] == -6_000_000.0
+        assert after_summary["total_pnl_pct"] == -10.0
+    finally:
+        deps.price_source = old_source
+

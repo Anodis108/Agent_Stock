@@ -4,6 +4,45 @@ Nhật ký ghi nhận chi tiết mọi thay đổi, kết quả kiểm thử và
 
 ---
 
+## 2026-10-01 — Hoàn Thành Mục 4.2: Tích Hợp API Quản Lý Danh Mục (Portfolio API & P&L Sync)
+
+### Chi Tiết Triển Khai
+1. **Chuẩn Hóa Luồng Gọi API Portfolio Trên Web UI (`src/frontend/app.js`)**:
+   - Nâng cấp hàm `loadPortfolio()` gọi đồng thời cả 2 endpoint chuẩn qua `Promise.all`:
+     - `GET /api/v1/portfolio/summary`: Lấy thông tin tổng hợp NAV, Lãi/Lỗ và Tỷ suất sinh lời % (`total_nav`, `total_unrealized_pnl`, `total_pnl_pct`, `total_cost`, `count`).
+     - `GET /api/v1/portfolio/holdings`: Lấy danh sách chi tiết các vị thế cổ phiếu trong danh mục (`id`, `symbol`, `quantity`, `avg_buy_price`, `current_price`, `unrealized_pnl`, `pnl_pct`, `price_error`).
+     - Hỗ trợ cơ chế tự động fallback về `/api/portfolio` và `/api/portfolio/holdings` đảm bảo tính tương thích ngược 100%.
+   - Cập nhật tức thì 3 thẻ tóm tắt giá trị danh mục:
+     - **Tổng NAV** (`#pnl-total-nav`): Định dạng chuẩn số tiền VND (`vi-VN`).
+     - **Tổng Lãi/Lỗ** (`#pnl-total-pnl`): Hiển thị số tiền lãi/lỗ kèm dấu `+`/`-` và đổi màu CSS tương ứng (`pnl-up`, `pnl-down`, `pnl-ref`).
+     - **Tỷ suất sinh lời %** (`#pnl-total-pct`): Định dạng phần trăm `+X.XX%`.
+   - Render bảng vị thế cổ phiếu (`#portfolio-body`):
+     - Hiển thị thông báo trạng thái rỗng thân thiện khi danh mục chưa có cổ phiếu (*"Danh mục đang trống. Hãy thêm mã cổ phiếu đầu tiên của bạn!"*).
+     - Định dạng rõ ràng từng vị thế kèm xử lý cảnh báo `price_error` khi không lấy được giá thị trường.
+     - Tự động gắn sự kiện click cho các nút xóa vị thế (`.btn-delete-holding`) theo attribute `data-holding-id`.
+
+2. **Hỗ Trợ Thêm/Xóa Vị Thế & Cập Nhật Tức Thời (`src/frontend/app.js`)**:
+   - `doAddHolding`: Gửi yêu cầu `POST /api/v1/portfolio/holdings` (kèm fallback `/api/portfolio/holdings`). Khi thành công, lập tức gọi `loadPortfolio()` nạp lại bảng và cập nhật giá trị NAV ngay lập tức, reset form và hiển thị thông báo toast thành công.
+   - `doDeleteHolding`: Gửi yêu cầu `DELETE /api/v1/portfolio/holdings/{id}` (kèm fallback `/api/portfolio/holdings/{id}`). Khi thành công, lập tức gọi `loadPortfolio()` cập nhật lại dữ liệu danh mục của user hiện tại.
+   - Nút `🔄 Làm mới` (`#btn-refresh-portfolio`): Kích hoạt `loadPortfolio()` theo nhu cầu người dùng.
+   - User Switcher (`#user-switcher-select`): Đồng bộ gọi `loadPortfolio()` khi người dùng chuyển đổi tài khoản, đảm bảo cô lập tuyệt đối dữ liệu giữa các user.
+
+3. **Kiểm Thử Tự Động Toàn Diện**:
+   - Bổ sung `test_phase4_portfolio_api_integration` trong `tests/test_system.py`:
+     - Kiểm tra tĩnh: Xác thực mã nguồn frontend `app.js` gọi đúng các endpoint chuẩn `/api/v1/portfolio/summary`, `/api/v1/portfolio/holdings`, `POST /api/v1/portfolio/holdings`, `DELETE /api/v1/portfolio/holdings/{id}` và tham chiếu đúng các phần tử UI (`pnl-total-nav`, `pnl-total-pnl`, `pnl-total-pct`).
+     - Kiểm tra chuỗi tương tác tích hợp thực tế: Thêm vị thế, kiểm tra bảng summary & holdings, cập nhật NAV tức thì, xóa vị thế, kiểm tra cô lập đa người dùng (Multi-tenant).
+   - Kiểm thử toàn diện: Toàn bộ test suite đạt **204/204 tests PASS 100%** (zero regression).
+
+### Đánh Giá Tiêu Chí Nghiệm Thu (Acceptance Criteria Review)
+- **What Passes**:
+  - `GET /api/v1/portfolio/summary` và `GET /api/v1/portfolio/holdings` được gọi và xử lý mượt mà.
+  - Các thao tác thêm, xóa cổ phiếu phản hồi nhanh chóng và cập nhật tức thì giá trị NAV trên giao diện.
+  - Dữ liệu danh mục đầu tư được cô lập hoàn toàn giữa các tài khoản người dùng theo `X-User-ID`.
+- **What Fails**: 0 lỗi.
+- **What Was Missing & Fixed**: Ban đầu frontend `app.js` chỉ gọi `/api/portfolio` đơn lẻ. Đã nâng cấp gọi đồng thời `/api/v1/portfolio/summary` và `/api/v1/portfolio/holdings` kèm cơ chế fallback an toàn.
+
+---
+
 ## 2026-10-01 — Hoàn Thành Mục 4.1: Tích Hợp Luồng SSE `/chat` (SSE Streaming & Live Graph Lighting)
 
 ### Chi Tiết Triển Khai

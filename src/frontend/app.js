@@ -2010,13 +2010,28 @@
     if (userBadgeEl) userBadgeEl.textContent = "user: " + getCurrentUserId();
 
     try {
-      var data = await api("GET", "/api/portfolio");
-      if (!data) return;
+      // Task 4.2: UI gọi GET /api/v1/portfolio/summary và GET /api/v1/portfolio/holdings
+      var summaryPromise = api("GET", "/api/v1/portfolio/summary").catch(function () {
+        return api("GET", "/api/portfolio");
+      });
+      var holdingsPromise = api("GET", "/api/v1/portfolio/holdings").catch(function () {
+        return api("GET", "/api/portfolio/holdings").catch(function () {
+          return null;
+        });
+      });
 
-      var nav = typeof data.total_nav === "number" ? data.total_nav : 0;
-      var pnl = typeof data.total_unrealized_pnl === "number" ? data.total_unrealized_pnl : 0;
-      var pct = typeof data.total_pnl_pct === "number" ? data.total_pnl_pct : 0;
+      var res = await Promise.all([summaryPromise, holdingsPromise]);
+      var summaryData = res[0] || {};
+      var holdingsData = res[1];
 
+      // Dữ liệu vị thế: ưu tiên mảng từ holdingsData, fallback sang summaryData.items
+      var items = Array.isArray(holdingsData) ? holdingsData : (summaryData.items || []);
+
+      var nav = typeof summaryData.total_nav === "number" ? summaryData.total_nav : 0;
+      var pnl = typeof summaryData.total_unrealized_pnl === "number" ? summaryData.total_unrealized_pnl : 0;
+      var pct = typeof summaryData.total_pnl_pct === "number" ? summaryData.total_pnl_pct : 0;
+
+      // Cập nhật tức thì 3 thẻ tóm tắt P&L và NAV
       if (totalNavEl) totalNavEl.textContent = nav.toLocaleString("vi-VN") + " ₫";
       if (totalPnlEl) {
         var pnlSign = pnl > 0 ? "+" : "";
@@ -2029,7 +2044,6 @@
         totalPctEl.className = "pnl-card-val " + (pct > 0 ? "pnl-up" : pct < 0 ? "pnl-down" : "pnl-ref");
       }
 
-      var items = data.items || [];
       if (!tbody) return;
 
       if (!items.length) {
@@ -2085,10 +2099,16 @@
   async function doAddHolding(symbol, quantity, avgBuyPrice) {
     hidePortfolioError();
     try {
-      await api("POST", "/api/portfolio/holdings", {
+      await api("POST", "/api/v1/portfolio/holdings", {
         symbol: symbol,
         quantity: quantity,
         avg_buy_price: avgBuyPrice,
+      }).catch(function () {
+        return api("POST", "/api/portfolio/holdings", {
+          symbol: symbol,
+          quantity: quantity,
+          avg_buy_price: avgBuyPrice,
+        });
       });
       showToast("Đã thêm " + symbol + " vào danh mục của " + getCurrentUserId(), "success");
       await loadPortfolio();
@@ -2103,7 +2123,9 @@
   async function doDeleteHolding(holdingId) {
     hidePortfolioError();
     try {
-      await api("DELETE", "/api/portfolio/holdings/" + encodeURIComponent(holdingId));
+      await api("DELETE", "/api/v1/portfolio/holdings/" + encodeURIComponent(holdingId)).catch(function () {
+        return api("DELETE", "/api/portfolio/holdings/" + encodeURIComponent(holdingId));
+      });
       showToast("Đã xóa vị thế khỏi danh mục", "info");
       await loadPortfolio();
     } catch (err) {
