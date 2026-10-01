@@ -4,6 +4,41 @@ Nhật ký ghi nhận chi tiết mọi thay đổi, kết quả kiểm thử và
 
 ---
 
+## 2026-10-01 — Hoàn Thành Mục 4.3: Tích Hợp API Watchlist (Watchlist API & Alert Threshold Sync)
+
+### Chi Tiết Triển Khai
+1. **Chuẩn Hóa API Watchlist Chuẩn `v1` Trên Backend (`src/backend/main.py` & `src/backend/api/routers/watchlist.py`)**:
+   - Thêm decorators alias route chuẩn `/api/v1/watchlist` và `/api/watchlist` cho toàn bộ các thao tác CRUD:
+     - `GET /api/v1/watchlist`: Liệt kê các mã đang theo dõi của người dùng.
+     - `POST /api/v1/watchlist`: Thêm mã theo dõi mới.
+     - `PATCH /api/v1/watchlist/{symbol}`: Cập nhật ngưỡng cảnh báo biến động giá.
+     - `DELETE /api/v1/watchlist/{symbol}`: Xóa mã khỏi danh sách theo dõi.
+   - Hỗ trợ linh hoạt và song hành cả 2 tên trường `threshold_pct` và `alert_threshold_pct` trong schemas request và response (`WatchlistItemOut`, `CreateWatchlistRequest`, `UpdateWatchlistRequest`).
+   - Bảo toàn 100% tính tương thích ngược cho endpoint cũ `/watchlist`.
+
+2. **Tích Hợp Giao Diện Web UI & Cập Nhật Tức Thời (`src/frontend/app.js`)**:
+   - Nâng cấp `safeLoadWatchlist()` gọi `GET /api/v1/watchlist` (kèm fallback `/watchlist`), nạp danh sách và hiển thị chính xác ngưỡng cảnh báo biến động (`alert_threshold_pct`).
+   - Cập nhật `doAddWatch()` gửi yêu cầu `POST /api/v1/watchlist`, nạp lại danh sách tức thời và thông báo toast thành công.
+   - Cập nhật `doPatchWatch()` gửi yêu cầu `PATCH /api/v1/watchlist/{symbol}` cập nhật ngưỡng biến động mới và thông báo toast.
+   - Cập nhật `doDeleteWatch()` gửi yêu cầu `DELETE /api/v1/watchlist/{symbol}` xóa mã tức thời khỏi bảng hiển thị.
+   - Đảm bảo dữ liệu theo dõi được cô lập triệt để theo từng tài khoản (`X-User-ID`).
+
+3. **Kiểm Thử Tự Động Toàn Diện**:
+   - Bổ sung bài test `test_phase4_watchlist_api_integration` trong `tests/test_system.py`:
+     - Kiểm tra tĩnh: Xác thực mã nguồn frontend `app.js` gọi đúng các endpoint `/api/v1/watchlist`, `POST`, `PATCH`, `DELETE` và hỗ trợ trường `alert_threshold_pct`.
+     - Kiểm tra chuỗi tương tác tích hợp: Nạp danh sách, thêm mã `TCB` với ngưỡng 4.5%, thêm mã `SSI`, sửa ngưỡng `TCB` thành 5.5%, xóa `TCB`, kiểm tra cô lập đa người dùng.
+   - Toàn bộ test suite đạt **207/207 tests PASS 100%** (zero regression).
+
+### Đánh Giá Tiêu Chí Nghiệm Thu (Acceptance Criteria Review)
+- **What Passes**:
+  - Web UI gọi đúng `GET /api/v1/watchlist` và hiển thị đầy đủ ngưỡng cảnh báo biến động.
+  - Các thao tác thêm mã, cập nhật ngưỡng cảnh báo và xóa mã hoạt động mượt mà, phản hồi tức thời.
+  - Dữ liệu Watchlist được cô lập hoàn toàn giữa các tài khoản người dùng (`User A`, `User B`, `default`).
+- **What Fails**: 0 lỗi.
+- **What Was Missing & Fixed**: Trước đây backend chỉ hỗ trợ tiền tố `/watchlist` và schema chỉ có `threshold_pct`. Đã bổ sung các alias `/api/v1/watchlist` và đồng bộ hỗ trợ trường `alert_threshold_pct` theo đúng đặc tả kỹ thuật.
+
+---
+
 ## 2026-10-01 — Hoàn Thành Mục 4.2: Tích Hợp API Quản Lý Danh Mục (Portfolio API & P&L Sync)
 
 ### Chi Tiết Triển Khai

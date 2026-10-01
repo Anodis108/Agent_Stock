@@ -811,11 +811,12 @@
     }
     items.forEach(function (it) {
       var tr = document.createElement("tr");
+      var thrVal = it.alert_threshold_pct != null ? it.alert_threshold_pct : it.threshold_pct;
       tr.innerHTML =
         "<td><strong>" +
         (it.symbol || "") +
         "</strong></td><td>" +
-        (it.threshold_pct != null ? it.threshold_pct + "%" : "") +
+        (thrVal != null ? thrVal + "%" : "") +
         '</td><td class="actions"></td>';
       var actions = tr.querySelector(".actions");
       var scanBtn = document.createElement("button");
@@ -823,7 +824,7 @@
       scanBtn.className = "btn-small";
       scanBtn.textContent = "Quét";
       scanBtn.addEventListener("click", function () {
-        doScan(it.symbol, it.threshold_pct);
+        doScan(it.symbol, thrVal);
       });
       var delBtn = document.createElement("button");
       delBtn.type = "button";
@@ -837,7 +838,7 @@
       editBtn.className = "btn-small btn-muted";
       editBtn.textContent = "Sửa";
       editBtn.addEventListener("click", function () {
-        var cur = it.threshold_pct != null ? String(it.threshold_pct) : "3";
+        var cur = thrVal != null ? String(thrVal) : "3";
         var next = window.prompt("Ngưỡng % mới cho " + it.symbol + ":", cur);
         if (next == null || !String(next).trim()) return;
         var n = Number(next);
@@ -918,7 +919,10 @@
   async function safeLoadWatchlist() {
     hideWatchlistError();
     try {
-      var data = await api("GET", "/watchlist?user_id=" + encodeURIComponent(getCurrentUserId()));
+      // Task 4.3: UI gọi GET /api/v1/watchlist để nạp danh sách theo dõi
+      var data = await api("GET", "/api/v1/watchlist").catch(function () {
+        return api("GET", "/watchlist?user_id=" + encodeURIComponent(getCurrentUserId()));
+      });
       renderWatchlist((data && data.items) || []);
     } catch (err) {
       var tbody = document.getElementById("watchlist-body");
@@ -1902,11 +1906,19 @@
   async function doAddWatch(symbol, thresholdPct) {
     hideWatchlistError();
     try {
-      await api("POST", "/watchlist", {
+      await api("POST", "/api/v1/watchlist", {
         symbol: symbol,
         threshold_pct: thresholdPct,
+        alert_threshold_pct: thresholdPct,
         user_id: getCurrentUserId(),
+      }).catch(function () {
+        return api("POST", "/watchlist", {
+          symbol: symbol,
+          threshold_pct: thresholdPct,
+          user_id: getCurrentUserId(),
+        });
       });
+      showToast("Đã thêm " + symbol + " vào Watchlist của " + getCurrentUserId(), "success");
       await loadWatchlist();
       await loadMarket().catch(function () {});
     } catch (err) {
@@ -1918,10 +1930,17 @@
   async function doPatchWatch(symbol, thresholdPct) {
     hideWatchlistError();
     try {
-      await api("PATCH", "/watchlist/" + encodeURIComponent(symbol), {
+      await api("PATCH", "/api/v1/watchlist/" + encodeURIComponent(symbol), {
         threshold_pct: thresholdPct,
+        alert_threshold_pct: thresholdPct,
         user_id: getCurrentUserId(),
+      }).catch(function () {
+        return api("PATCH", "/watchlist/" + encodeURIComponent(symbol), {
+          threshold_pct: thresholdPct,
+          user_id: getCurrentUserId(),
+        });
       });
+      showToast("Đã cập nhật ngưỡng " + symbol + " = " + thresholdPct + "%", "success");
       await loadWatchlist();
       await loadMarket().catch(function () {});
       setBoot("Đã cập nhật ngưỡng " + symbol + " = " + thresholdPct + "%");
@@ -1934,13 +1953,10 @@
   async function doDeleteWatch(symbol) {
     hideWatchlistError();
     try {
-      await api(
-        "DELETE",
-        "/watchlist/" +
-          encodeURIComponent(symbol) +
-          "?user_id=" +
-          encodeURIComponent(getCurrentUserId())
-      );
+      await api("DELETE", "/api/v1/watchlist/" + encodeURIComponent(symbol)).catch(function () {
+        return api("DELETE", "/watchlist/" + encodeURIComponent(symbol) + "?user_id=" + encodeURIComponent(getCurrentUserId()));
+      });
+      showToast("Đã xóa " + symbol + " khỏi Watchlist", "info");
       await loadWatchlist();
       await loadMarket().catch(function () {});
     } catch (err) {

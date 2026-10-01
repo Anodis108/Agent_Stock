@@ -115,7 +115,12 @@ class WatchlistItemOut(BaseModel):
     """Schema xuất dữ liệu một mục trong Watchlist."""
     symbol: str
     threshold_pct: float
+    alert_threshold_pct: float | None = None
     user_id: str = "default"
+
+    def model_post_init(self, __context: Any) -> None:
+        if self.alert_threshold_pct is None:
+            self.alert_threshold_pct = self.threshold_pct
 
 
 class WatchlistListResponse(BaseModel):
@@ -128,12 +133,14 @@ class CreateWatchlistRequest(BaseModel):
     """Schema yêu cầu thêm mã vào Watchlist."""
     symbol: str
     threshold_pct: float | None = None
+    alert_threshold_pct: float | None = None
     user_id: str = "default"
 
 
 class UpdateWatchlistRequest(BaseModel):
     """Schema yêu cầu cập nhật ngưỡng cảnh báo của mã trong Watchlist."""
-    threshold_pct: float
+    threshold_pct: float | None = None
+    alert_threshold_pct: float | None = None
     user_id: str = "default"
 
 
@@ -235,18 +242,25 @@ def health() -> dict[str, str]:
     return {"status": "ok", "service": "backend"}
 
 
+@app.get("/api/v1/watchlist", response_model=WatchlistListResponse)
+@app.get("/api/watchlist", response_model=WatchlistListResponse)
 @app.get("/watchlist", response_model=WatchlistListResponse)
 def get_watchlist(user_id: str = Depends(get_current_user_id)) -> WatchlistListResponse:
     """Lấy danh sách mã theo dõi trong danh mục của người dùng."""
     items = [
         WatchlistItemOut(
-            symbol=i.symbol, threshold_pct=i.threshold_pct, user_id=i.user_id
+            symbol=i.symbol,
+            threshold_pct=i.threshold_pct,
+            alert_threshold_pct=i.threshold_pct,
+            user_id=i.user_id,
         )
         for i in store.list_watchlist(user_id)
     ]
     return WatchlistListResponse(items=items, count=len(items))
 
 
+@app.post("/api/v1/watchlist", response_model=WatchlistItemOut)
+@app.post("/api/watchlist", response_model=WatchlistItemOut)
 @app.post("/watchlist", response_model=WatchlistItemOut)
 def post_watchlist(
     body: CreateWatchlistRequest,
@@ -254,9 +268,10 @@ def post_watchlist(
 ) -> WatchlistItemOut:
     """Thêm mã cổ phiếu mới vào danh mục theo dõi."""
     sym = _norm_symbol(body.symbol)
+    raw_thr = body.alert_threshold_pct if body.alert_threshold_pct is not None else body.threshold_pct
     thr = (
-        _norm_threshold(body.threshold_pct)
-        if body.threshold_pct is not None
+        _norm_threshold(raw_thr)
+        if raw_thr is not None
         else DEFAULT_THRESHOLD
     )
     assert thr is not None
@@ -269,10 +284,13 @@ def post_watchlist(
     return WatchlistItemOut(
         symbol=saved.symbol,
         threshold_pct=saved.threshold_pct,
+        alert_threshold_pct=saved.threshold_pct,
         user_id=saved.user_id,
     )
 
 
+@app.patch("/api/v1/watchlist/{symbol}", response_model=WatchlistItemOut)
+@app.patch("/api/watchlist/{symbol}", response_model=WatchlistItemOut)
 @app.patch("/watchlist/{symbol}", response_model=WatchlistItemOut)
 def patch_watchlist(
     symbol: str,
@@ -285,7 +303,8 @@ def patch_watchlist(
     existing = store.get_watchlist(user_id, sym)
     if existing is None:
         raise HTTPException(status_code=404, detail="không tìm thấy mã trong watchlist")
-    thr = _norm_threshold(body.threshold_pct, required=True)
+    raw_thr = body.alert_threshold_pct if body.alert_threshold_pct is not None else body.threshold_pct
+    thr = _norm_threshold(raw_thr, required=True)
     assert thr is not None
     saved = store.upsert_watchlist(
         WatchlistItem(
@@ -295,10 +314,13 @@ def patch_watchlist(
     return WatchlistItemOut(
         symbol=saved.symbol,
         threshold_pct=saved.threshold_pct,
+        alert_threshold_pct=saved.threshold_pct,
         user_id=saved.user_id,
     )
 
 
+@app.delete("/api/v1/watchlist/{symbol}")
+@app.delete("/api/watchlist/{symbol}")
 @app.delete("/watchlist/{symbol}")
 def delete_watchlist(
     symbol: str,

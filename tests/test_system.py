@@ -844,3 +844,92 @@ def test_phase4_portfolio_api_integration():
     finally:
         deps.price_source = old_source
 
+
+def test_phase4_watchlist_api_integration():
+    """Phase 4.3: Kiểm tra tích hợp Watchlist API (/api/v1/watchlist & alert_threshold_pct).
+    
+    Xác nhận:
+    1. Web UI app.js chứa logic gọi GET /api/v1/watchlist và hỗ trợ trường alert_threshold_pct.
+    2. Hỗ trợ đầy đủ CRUD: GET, POST thêm mã, PATCH sửa ngưỡng cảnh báo, DELETE xóa mã.
+    3. Cô lập đa người dùng (Multi-tenant) qua header X-User-ID.
+    """
+    import uuid
+    from fastapi.testclient import TestClient
+    from backend.main import app
+
+    js_text = (FE / "app.js").read_text(encoding="utf-8")
+
+    # 1. Kiểm tra mã nguồn app.js gọi đúng các endpoint Phase 4.3
+    assert 'api("GET", "/api/v1/watchlist")' in js_text
+    assert 'api("POST", "/api/v1/watchlist"' in js_text
+    assert 'api("PATCH", "/api/v1/watchlist/"' in js_text
+    assert 'api("DELETE", "/api/v1/watchlist/"' in js_text
+    assert "alert_threshold_pct" in js_text
+
+    # 2. Kiểm tra chuỗi tương tác API thực tế
+    client = TestClient(app)
+    uid = uuid.uuid4().hex[:8]
+    user_test = f"phase4_wl_{uid}"
+    user_other = f"phase4_wl_other_{uid}"
+
+    # 2.1 Trạng thái ban đầu: user_test chưa có mã nào
+    init_res = client.get("/api/v1/watchlist", headers={"X-User-ID": user_test})
+    assert init_res.status_code == 200
+    assert init_res.json()["count"] == 0
+
+    # 2.2 Thêm mã TCB với alert_threshold_pct = 4.5%
+    add_res = client.post(
+        "/api/v1/watchlist",
+        headers={"X-User-ID": user_test},
+        json={"symbol": "TCB", "alert_threshold_pct": 4.5},
+    )
+    assert add_res.status_code == 200
+    add_data = add_res.json()
+    assert add_data["symbol"] == "TCB"
+    assert add_data["threshold_pct"] == 4.5
+    assert add_data.get("alert_threshold_pct") == 4.5
+
+    # 2.3 Thêm mã SSI với threshold_pct = 3.0%
+    add_ssi = client.post(
+        "/api/v1/watchlist",
+        headers={"X-User-ID": user_test},
+        json={"symbol": "SSI", "threshold_pct": 3.0},
+    )
+    assert add_ssi.status_code == 200
+
+    # 2.4 Nạp danh sách qua GET /api/v1/watchlist
+    list_res = client.get("/api/v1/watchlist", headers={"X-User-ID": user_test})
+    assert list_res.status_code == 200
+    list_data = list_res.json()
+    assert list_data["count"] == 2
+    sym_map = {item["symbol"]: item for item in list_data["items"]}
+    assert "TCB" in sym_map
+    assert "SSI" in sym_map
+    assert sym_map["TCB"]["alert_threshold_pct"] == 4.5
+
+    # 2.5 Cập nhật ngưỡng biến động TCB lên 5.5% qua PATCH /api/v1/watchlist/TCB
+    patch_res = client.patch(
+        "/api/v1/watchlist/TCB",
+        headers={"X-User-ID": user_test},
+        json={"alert_threshold_pct": 5.5},
+    )
+    assert patch_res.status_code == 200
+    assert patch_res.json()["threshold_pct"] == 5.5
+    assert patch_res.json().get("alert_threshold_pct") == 5.5
+
+    # 2.6 Kiểm tra cô lập dữ liệu với user khác (Multi-tenant)
+    other_res = client.get("/api/v1/watchlist", headers={"X-User-ID": user_other})
+    assert other_res.status_code == 200
+    assert other_res.json()["count"] == 0
+
+    # 2.7 Xóa mã TCB qua DELETE /api/v1/watchlist/TCB
+    del_res = client.delete("/api/v1/watchlist/TCB", headers={"X-User-ID": user_test})
+    assert del_res.status_code == 200
+    assert del_res.json()["ok"] is True
+
+    # 2.8 Kiểm tra lại sau khi xóa: chỉ còn SSI
+    after_del_res = client.get("/api/v1/watchlist", headers={"X-User-ID": user_test})
+    assert after_del_res.status_code == 200
+    after_data = after_del_res.json()
+    assert after_data["count"] == 1
+    assert after_data["items"][0]["symbol"] == "SSI"

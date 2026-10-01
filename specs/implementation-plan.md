@@ -135,8 +135,11 @@ Kế hoạch triển khai theo phương pháp **Spec-Driven Development (SDD)**,
   - UI gọi đồng thời `GET /api/v1/portfolio/holdings` và `GET /api/v1/portfolio/summary` để nạp bảng P&L theo user hiện tại (`X-User-ID`), hỗ trợ fallback tương thích ngược.
   - UI hỗ trợ thêm vị thế qua `POST /api/v1/portfolio/holdings` và xóa vị thế qua `DELETE /api/v1/portfolio/holdings/{id}`, tự động cập nhật tức thì giá trị NAV, P&L và bảng holdings.
   - Đã kiểm thử tự động toàn diện qua `test_phase4_portfolio_api_integration` trong `tests/test_system.py` và toàn bộ test suite đạt 100% PASS (204/204 tests).
-* [ ] **4.3. Tích hợp API Watchlist**:
-  - UI gọi `GET /api/v1/watchlist` để nạp danh sách theo dõi và cập nhật ngưỡng cảnh báo biến động (`alert_threshold_pct`).
+* [x] **4.3. Tích hợp API Watchlist**:
+  - UI gọi `GET /api/v1/watchlist` để nạp danh sách theo dõi và cập nhật ngưỡng cảnh báo biến động (`alert_threshold_pct`), hỗ trợ cả trường tương thích ngược `threshold_pct`.
+  - Backend chuẩn hóa router và main app hỗ trợ đầy đủ các route `/api/v1/watchlist`, `/api/watchlist`, `/watchlist` cho mọi phương thức GET, POST, PATCH, DELETE.
+  - UI hỗ trợ thêm mã, sửa ngưỡng và xóa mã khỏi watchlist kèm thông báo toast và làm mới danh sách tức thời.
+  - Đã kiểm thử tự động toàn diện qua `test_phase4_watchlist_api_integration` trong `tests/test_system.py` và toàn bộ test suite đạt 100% PASS (207/207 tests).
 * [ ] **4.4. Tích hợp API Market Matrix 10D**:
   - UI nạp bảng ma trận 10 phiên VN30 và render đồ thị sparkline thu nhỏ.
 * [ ] **4.5. Kiểm thử luồng tích hợp đầu-cuối (End-to-End Integration Test)**:

@@ -19,7 +19,12 @@ router = APIRouter(tags=["watchlist"])
 class WatchlistItemOut(BaseModel):
     symbol: str
     threshold_pct: float
+    alert_threshold_pct: float | None = None
     user_id: str = "default"
+
+    def model_post_init(self, __context: Any) -> None:
+        if self.alert_threshold_pct is None:
+            self.alert_threshold_pct = self.threshold_pct
 
 
 class WatchlistListResponse(BaseModel):
@@ -32,11 +37,15 @@ class CreateWatchlistRequest(BaseModel):
     threshold_pct: float | None = Field(
         default=None, description="None = ngưỡng mặc định"
     )
+    alert_threshold_pct: float | None = Field(
+        default=None, description="Ngưỡng cảnh báo biến động %"
+    )
     user_id: str = "default"
 
 
 class UpdateWatchlistRequest(BaseModel):
-    threshold_pct: float
+    threshold_pct: float | None = None
+    alert_threshold_pct: float | None = None
     user_id: str = "default"
 
 
@@ -44,10 +53,13 @@ def _to_out(item: WatchlistItem) -> WatchlistItemOut:
     return WatchlistItemOut(
         symbol=item.symbol,
         threshold_pct=float(item.threshold_pct),
+        alert_threshold_pct=float(item.threshold_pct),
         user_id=item.user_id,
     )
 
 
+@router.get("/api/v1/watchlist", response_model=WatchlistListResponse)
+@router.get("/api/watchlist", response_model=WatchlistListResponse)
 @router.get("/watchlist", response_model=WatchlistListResponse)
 def get_watchlist(
     user_id: str = Depends(get_current_user_id),
@@ -57,6 +69,8 @@ def get_watchlist(
     return WatchlistListResponse(items=items, count=len(items))
 
 
+@router.post("/api/v1/watchlist", response_model=WatchlistItemOut)
+@router.post("/api/watchlist", response_model=WatchlistItemOut)
 @router.post("/watchlist", response_model=WatchlistItemOut)
 def post_watchlist(
     body: CreateWatchlistRequest,
@@ -64,7 +78,8 @@ def post_watchlist(
     deps: AppDeps = Depends(get_app_deps),
 ) -> WatchlistItemOut:
     symbol = normalize_symbol(body.symbol)
-    thr = validate_threshold_pct(body.threshold_pct)
+    raw_thr = body.alert_threshold_pct if body.alert_threshold_pct is not None else body.threshold_pct
+    thr = validate_threshold_pct(raw_thr)
     if thr is None:
         thr = float(settings.default_alert_threshold_pct)
     effective_user = body.user_id if body.user_id != "default" else current_user
@@ -78,6 +93,8 @@ def post_watchlist(
     return _to_out(saved)
 
 
+@router.patch("/api/v1/watchlist/{symbol}", response_model=WatchlistItemOut)
+@router.patch("/api/watchlist/{symbol}", response_model=WatchlistItemOut)
 @router.patch("/watchlist/{symbol}", response_model=WatchlistItemOut)
 def patch_watchlist(
     symbol: str,
@@ -90,7 +107,8 @@ def patch_watchlist(
     existing = deps.watchlist_store.get(user_id, sym)
     if existing is None:
         raise HTTPException(status_code=404, detail="không tìm thấy mã trong watchlist")
-    thr = validate_threshold_pct(body.threshold_pct, required=True)
+    raw_thr = body.alert_threshold_pct if body.alert_threshold_pct is not None else body.threshold_pct
+    thr = validate_threshold_pct(raw_thr, required=True)
     assert thr is not None
     saved = deps.watchlist_store.upsert(
         WatchlistItem(
@@ -102,6 +120,8 @@ def patch_watchlist(
     return _to_out(saved)
 
 
+@router.delete("/api/v1/watchlist/{symbol}")
+@router.delete("/api/watchlist/{symbol}")
 @router.delete("/watchlist/{symbol}")
 def delete_watchlist(
     symbol: str,
