@@ -27,6 +27,24 @@ if hasattr(sys.stdout, "reconfigure"):
         pass
 
 
+def load_env_file() -> None:
+    """Tự động nạp các biến môi trường từ file .env nếu có."""
+    env_path = Path(__file__).resolve().parent.parent / ".env"
+    if env_path.exists():
+        try:
+            for line in env_path.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, val = line.split("=", 1)
+                    key = key.strip()
+                    val = val.strip().strip('"').strip("'")
+                    if key and key not in os.environ:
+                        os.environ[key] = val
+        except Exception:
+            pass
+
+
+
 def check_backend_running(port: int = 8000) -> bool:
     try:
         res = requests.get(f"http://127.0.0.1:{port}/health", timeout=3)
@@ -36,6 +54,7 @@ def check_backend_running(port: int = 8000) -> bool:
 
 
 def main() -> None:
+    load_env_file()
     parser = argparse.ArgumentParser(description="Portfolio Watch — Ngrok Demo Runner")
     parser.add_argument("--port", type=int, default=8000, help="Cổng backend local (mặc định: 8000)")
     parser.add_argument("--token", type=str, default="", help="Ngrok Authtoken (nếu chưa lưu trong config)")

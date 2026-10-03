@@ -7,6 +7,7 @@ from backend.infra.monitoring.tracing import (
     trace_request,
     agent_span,
     mark_turn_guardrail,
+    mark_turn_error,
     reset_client_for_tests,
     KNOWN_AGENT_SPANS,
 )
@@ -82,6 +83,73 @@ def test_guardrail_turn_always_traced(mock_enabled, mock_get_langfuse):
                 box["output"] = "refused"
 
     mock_langfuse.trace.assert_called_once()
+
+
+@patch("backend.infra.monitoring.tracing._get_langfuse")
+@patch("backend.infra.monitoring.tracing._enabled", return_value=True)
+def test_agent_error_turn_flushes_buffered_spans(mock_enabled, mock_get_langfuse):
+    mock_langfuse = MagicMock()
+    mock_root = MagicMock()
+    mock_child = MagicMock()
+    mock_root.span.return_value = mock_child
+    mock_langfuse.trace.return_value = mock_root
+    mock_get_langfuse.return_value = mock_langfuse
+    reset_client_for_tests()
+
+    turn = "error_turn"
+    with patch("backend.infra.monitoring.tracing.should_sample", return_value=False):
+        with trace_request("chat", "Giá FPT?", metadata={"turn": turn}):
+            with agent_span(turn, "price_agent", input="FPT") as box:
+                box["output"] = {"error": "rate limit"}
+            mark_turn_error(turn)
+
+    mock_langfuse.trace.assert_called_once()
+    mock_root.span.assert_called()
+    mock_child.update.assert_called()
+    update_kwargs = mock_child.update.call_args.kwargs
+    assert update_kwargs.get("level") == "ERROR"
+
+
+@patch("backend.infra.monitoring.tracing._get_langfuse")
+@patch("backend.infra.monitoring.tracing._enabled", return_value=True)
+@patch("backend.infra.monitoring.tracing.should_sample", return_value=True)
+def test_trace_request_creates_root_at_start_when_sampled(
+    mock_should_sample, mock_enabled, mock_get_langfuse
+):
+    mock_langfuse = MagicMock()
+    mock_root = MagicMock()
+    mock_langfuse.trace.return_value = mock_root
+    mock_get_langfuse.return_value = mock_langfuse
+    reset_client_for_tests()
+
+    with trace_request("chat", "Giá FPT?", metadata={"turn": "sample_turn"}):
+        mock_langfuse.trace.assert_called_once()
+
+    mock_root.update.assert_called()
+    mock_root.end.assert_called()
+
+
+@patch("backend.infra.monitoring.tracing._get_langfuse")
+@patch("backend.infra.monitoring.tracing._enabled", return_value=True)
+def test_record_step_usage_aggregates_per_turn(mock_enabled, mock_get_langfuse):
+    from backend.infra.monitoring.tracing import (
+        _current_turn,
+        _turn_usage_totals,
+        record_step_usage,
+    )
+
+    reset_client_for_tests()
+    token = _current_turn.set("turn_usage_test")
+    try:
+        record_step_usage(prompt_tokens=10, completion_tokens=5, total_tokens=15)
+        record_step_usage(prompt_tokens=3, completion_tokens=2, total_tokens=5)
+        assert _turn_usage_totals["turn_usage_test"]["input"] == 13
+        assert _turn_usage_totals["turn_usage_test"]["output"] == 7
+        assert _turn_usage_totals["turn_usage_test"]["total"] == 20
+    finally:
+        _current_turn.reset(token)
+        _turn_usage_totals.pop("turn_usage_test", None)
+
 
 def test_cost_dashboard_script_runs():
     # Run the dashboard script in a subprocess

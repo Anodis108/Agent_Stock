@@ -59,7 +59,7 @@ class Settings(BaseSettings):
     # Data sources / storage
     price_source: str = "vnstock"
     news_source: str = "cafef"
-    sqlite_path: str = "./data/portfolio_watch.db"
+    sqlite_path: str = "./resources/data/portfolio_watch.db"
 
     # Cron (minutes)
     scan_interval_minutes: int = 60
@@ -83,6 +83,8 @@ class Settings(BaseSettings):
     langfuse_public_key: str | None = None
     langfuse_secret_key: str | None = None
     langfuse_host: str = "https://cloud.langfuse.com"
+    # 1.0 = trace mọi request khi MONITORING_ENABLED; giảm (vd. 0.05) để tiết kiệm quota
+    langfuse_sample_rate: float = 1.0
 
     @property
     def api_keys(self) -> list[str]:

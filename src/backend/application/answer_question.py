@@ -309,4 +309,9 @@ def answer_question(
         result.pending_approvals_created = pending
 
         root["output"] = result.answer
+        if result.error:
+            root["error"] = result.error
+            from backend.infra.monitoring.tracing import mark_turn_error
+
+            mark_turn_error(turn)
         return result

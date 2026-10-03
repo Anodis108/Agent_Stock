@@ -1679,6 +1679,7 @@
     var streamedChartUrl = null;
     var streamingMsgDiv = null;
     var streamingTextEl = null;
+    var streamFinalized = false;
 
     function getOrCreateStreamingMessage() {
       if (streamingMsgDiv) return streamingTextEl;
@@ -1770,6 +1771,9 @@
           streamedChartUrl = data.url;
         }
       } else if (eventName === "final_answer" || eventName === "complete") {
+        // Backend phát cả final_answer và complete (alias) — chỉ render một lần.
+        if (streamFinalized) return;
+        streamFinalized = true;
         if (streamingMsgDiv) {
           streamingMsgDiv.remove();
           streamingMsgDiv = null;

@@ -305,7 +305,7 @@ def check_input_guardrail(question: str) -> InputGuardrailResult:
             reason=f"Yêu cầu lời khuyên mua/bán trực tiếp: {reason_desc}",
             refusal_response=(
                 "Hệ thống Portfolio Watch cung cấp dữ liệu giá, tin tức và phân tích khách quan từ nguồn dữ liệu chính thống. "
-                "Trợ lý không đưa ra khuyến nghị mua/bán hay cam kết lợi nhuận cụ thể. Quý nhà đầu tư vui lòng tự đưa ra quyết định "
+                "Trợ lý không đưa ra khuyến nghị mua/bán hay đảm bảo lợi nhuận cụ thể. Quý nhà đầu tư vui lòng tự đưa ra quyết định "
                 f"và chủ động quản trị rủi ro danh mục ({INVESTMENT_DISCLAIMER})."
             ),
         )

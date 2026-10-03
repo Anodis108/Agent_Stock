@@ -1,18 +1,19 @@
 # Portfolio Watch V5 — Microservices Deployment (Frontend + Backend)
 #
-# Khởi động cả 2 container:
-#   cp .env.example .env   # Điền OPENAI_API_KEYS nếu dùng OpenAI
-#   docker compose up --build -d
+# Images: runtime + thư viện only. Code/config/command/healthcheck → compose.
+#
+# Lần đầu (hoặc khi đổi pyproject.toml):
+#   cp .env.example .env
+#   docker compose build
+#   docker compose up -d
+#
+# Sửa code / port / .env — không cần build:
+#   docker compose up -d --force-recreate
 #
 # Truy cập:
-#   Frontend Web UI : http://localhost:3000 (Nginx reverse-proxy)
-#   Backend API     : http://localhost:8000 (FastAPI Swagger /docs, /health)
-#
-# Xem logs:
-#   docker compose logs -f
-#
-# Dừng hệ thống:
-#   docker compose down
+#   Frontend : http://localhost:3001
+#   Backend  : http://localhost:8000
+#   Langfuse : http://localhost:3000 (compose riêng ../langfuse)
 
 services:
   backend:
@@ -24,6 +25,7 @@ services:
     container_name: portfolio-watch-backend
     env_file:
       - .env
+    entrypoint: ["sh", "/docker-entrypoint.sh"]
     command:
       [
         "uvicorn",
@@ -36,25 +38,30 @@ services:
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     environment:
+      PYTHONPATH: /app/src
+      HOME: /app/data
+      XDG_CONFIG_HOME: /app/data/.config
+      MPLCONFIGDIR: /app/data/.matplotlib
       API_HOST: "0.0.0.0"
       API_PORT: "8000"
       AI_TRANSPORT: "inprocess"
       FRONTEND_ORIGIN: "*"
       SQLITE_PATH: /app/data/portfolio_watch.db
       BACKEND_SQLITE_PATH: /app/data/backend_store.db
+      CHARTS_DIR: /app/data/charts
       MONITORING_ENABLED: "${MONITORING_ENABLED:-false}"
       LANGFUSE_PUBLIC_KEY: "${LANGFUSE_PUBLIC_KEY:-}"
       LANGFUSE_SECRET_KEY: "${LANGFUSE_SECRET_KEY:-}"
-      LANGFUSE_HOST: "${DOCKER_LANGFUSE_HOST:-http://langfuse-web:3000}"
+      LANGFUSE_HOST: "${DOCKER_LANGFUSE_HOST:-http://host.docker.internal:3000}"
       QDRANT_URL: http://qdrant:6333
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - pw_data:/app/data
-      - ./resources:/app/resources
-      - ./specs:/app/specs
-      - ./docker-compose.yml:/app/docker-compose.yml:ro
-      - ./.env.example:/app/.env.example:ro
+      - ./src:/app/src:ro
+      - ./resources:/app/resources:ro
+      - ./specs:/app/specs:ro
+      - ./src/backend/docker-entrypoint.sh:/docker-entrypoint.sh:ro
     healthcheck:
       test:
         [
@@ -76,16 +83,17 @@ services:
     image: portfolio-watch:frontend
     pull_policy: build
     container_name: portfolio-watch-frontend
+    command: ["nginx", "-g", "daemon off;"]
     ports:
-      - "${FRONTEND_PORT:-3000}:80"
+      - "${FRONTEND_PORT:-3001}:80"
+    volumes:
+      - ./src/frontend:/usr/share/nginx/html:ro
+      - ./src/frontend/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       backend:
         condition: service_healthy
     restart: unless-stopped
 
-  # Alias / Utility runner cho test và eval trong container:
-  # docker compose run --rm app pytest tests/ -v
-  # docker compose run --rm app python -m backend.eval.run_detailed
   app:
     image: portfolio-watch:backend
     build:
@@ -94,23 +102,29 @@ services:
     container_name: portfolio-watch-app
     env_file:
       - .env
+    entrypoint: ["sh", "/docker-entrypoint.sh"]
     environment:
+      PYTHONPATH: /app/src
+      HOME: /app/data
+      XDG_CONFIG_HOME: /app/data/.config
+      MPLCONFIGDIR: /app/data/.matplotlib
       API_HOST: "0.0.0.0"
       API_PORT: "8000"
       AI_TRANSPORT: "inprocess"
       SQLITE_PATH: /app/data/portfolio_watch.db
       BACKEND_SQLITE_PATH: /app/data/backend_store.db
+      CHARTS_DIR: /app/data/charts
     volumes:
       - pw_data:/app/data
-      - ./resources:/app/resources
-      - ./specs:/app/specs
-      - ./docker-compose.yml:/app/docker-compose.yml:ro
-      - ./.env.example:/app/.env.example:ro
+      - ./src:/app/src:ro
+      - ./resources:/app/resources:ro
+      - ./specs:/app/specs:ro
+      - ./tests:/app/tests:ro
+      - ./src/backend/docker-entrypoint.sh:/docker-entrypoint.sh:ro
     profiles:
       - tools
       - test
 
-  # Service tùy chọn cho Long-term Memory Vector Search (kích hoạt: docker compose --profile qdrant up -d)
   qdrant:
     image: qdrant/qdrant:latest
     container_name: portfolio-watch-qdrant
@@ -129,4 +143,3 @@ volumes:
     name: portfolio-watch-data
   qdrant_data:
     name: portfolio-watch-qdrant-data
-

@@ -8,6 +8,7 @@ Không dùng ContextVar; span cha tra theo `turn` (uuid mỗi request).
 
 from __future__ import annotations
 
+import concurrent.futures
 import hashlib
 import re
 import threading
@@ -25,6 +26,7 @@ _logger = get_logger(__name__)
 _roots: dict[str, Any] = {}
 _agents: dict[tuple[str, str], Any] = {}
 _pending_requests: dict[str, dict[str, Any]] = {}
+_pending_agent_spans: dict[str, list[dict[str, Any]]] = {}
 _guardrail_turns: set[str] = set()
 _error_turns: set[str] = set()
 _lock = threading.RLock()
@@ -35,6 +37,8 @@ _warned_init_fail = False
 _current_step_box: ContextVar[dict[str, Any] | None] = ContextVar(
     "_current_step_box", default=None
 )
+_current_turn: ContextVar[str | None] = ContextVar("_current_turn", default=None)
+_turn_usage_totals: dict[str, dict[str, int]] = {}
 
 KNOWN_AGENT_SPANS = [
     "guardrail", "rewrite", "supervisor", "price", "news", "chart", "composer",
@@ -91,6 +95,89 @@ def mark_turn_guardrail(turn: str) -> None:
             _guardrail_turns.add(turn)
 
 
+def mark_turn_error(turn: str) -> None:
+    """Đánh dấu turn có lỗi agent — luôn được trace (100% sampling)."""
+    if turn:
+        with _lock:
+            _error_turns.add(turn)
+
+
+def _output_indicates_error(output: Any) -> bool:
+    if isinstance(output, dict):
+        err = output.get("error")
+        return err not in (None, "")
+    return False
+
+
+def _sample_rate() -> float:
+    rate = float(getattr(settings, "langfuse_sample_rate", 1.0) or 1.0)
+    return max(0.0, min(1.0, rate))
+
+
+def _flush_langfuse(langfuse: Any, *, timeout_s: float = 3.0) -> None:
+    """Flush Langfuse buffer — timeout để không block HTTP response khi host down."""
+    if not langfuse or not hasattr(langfuse, "flush"):
+        return
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            fut = pool.submit(langfuse.flush)
+            fut.result(timeout=timeout_s)
+    except Exception as exc:  # noqa: BLE001
+        _logger.warning("Langfuse flush thất bại (best-effort): %s", exc)
+
+
+def _should_trace_turn(turn: str, *, latency_s: float | None = None) -> bool:
+    with _lock:
+        if turn in _guardrail_turns or turn in _error_turns:
+            return True
+    return should_sample(
+        latency_s=latency_s, seed=turn, normal_rate=_sample_rate()
+    )
+
+
+def _flush_pending_spans(turn: str, root: Any) -> None:
+    """Ghi các agent span đã buffer khi root chưa kịp tạo (slow/error sampling)."""
+    with _lock:
+        pending = _pending_agent_spans.pop(turn, [])
+    for entry in pending:
+        span = None
+        try:
+            if hasattr(root, "span"):
+                span = root.span(
+                    name=entry["name"],
+                    input=entry.get("input"),
+                    metadata=entry.get("metadata") or {},
+                )
+            elif hasattr(root, "start_observation"):
+                span = root.start_observation(
+                    name=entry["name"],
+                    as_type="agent",
+                    input=entry.get("input"),
+                    metadata=entry.get("metadata") or {},
+                )
+        except Exception as exc:
+            _logger.warning("Không thể flush pending agent span %s: %s", entry.get("name"), exc)
+            continue
+        if span and hasattr(span, "update"):
+            if entry.get("error") or _output_indicates_error(entry.get("output")):
+                status_msg = entry.get("error")
+                if not status_msg and isinstance(entry.get("output"), dict):
+                    status_msg = entry["output"].get("error")
+                span.update(
+                    level="ERROR",
+                    status_message=str(status_msg or "agent error"),
+                    output=entry.get("output"),
+                    metadata={"latency_s": entry.get("latency_s")},
+                )
+            else:
+                span.update(
+                    output=entry.get("output"),
+                    metadata={"latency_s": entry.get("latency_s")},
+                )
+        if span and hasattr(span, "end"):
+            span.end()
+
+
 def _wants_trace(turn: str, agent_name: str = "", *, force: bool = False) -> bool:
     if force:
         return True
@@ -99,7 +186,7 @@ def _wants_trace(turn: str, agent_name: str = "", *, force: bool = False) -> boo
             return True
     if agent_name == "guardrail_refusal":
         return True
-    return should_sample(seed=turn)
+    return should_sample(seed=turn, normal_rate=_sample_rate())
 
 
 def _ensure_root(turn: str, *, agent_name: str = "", force: bool = False) -> Any | None:
@@ -133,7 +220,7 @@ def _ensure_root(turn: str, *, agent_name: str = "", force: bool = False) -> Any
         elif hasattr(langfuse, "start_observation"):
             span = langfuse.start_observation(
                 name=pending["name"],
-                as_type="agent",
+                as_type="chain",
                 input=sanitized_input,
                 metadata=meta,
             )
@@ -162,6 +249,15 @@ def record_step_usage(
         usage["total"] += total_tokens
         if model:
             box["model"] = model
+    turn = _current_turn.get()
+    if turn:
+        with _lock:
+            agg = _turn_usage_totals.setdefault(
+                turn, {"input": 0, "output": 0, "total": 0}
+            )
+            agg["input"] += prompt_tokens
+            agg["output"] += completion_tokens
+            agg["total"] += total_tokens
 
 
 def _enabled() -> bool:
@@ -221,6 +317,11 @@ def reset_client_for_tests() -> None:
         _warned_init_fail = False
         _roots.clear()
         _agents.clear()
+        _pending_agent_spans.clear()
+        _pending_requests.clear()
+        _guardrail_turns.clear()
+        _error_turns.clear()
+        _turn_usage_totals.clear()
 
 
 def step_parent(turn: str, agent_name: str | None = None) -> Any:
@@ -246,9 +347,18 @@ def trace_request(
 
     meta = dict(metadata or {})
     turn = str(meta.get("turn") or "")
+    turn_token = None
     if turn:
         with _lock:
-            _pending_requests[turn] = {"name": name, "input": input, "meta": meta}
+            _pending_requests[turn] = {
+                "name": name,
+                "input": input,
+                "meta": meta,
+                "started_at_ms": int(time.time() * 1000),
+            }
+        turn_token = _current_turn.set(turn)
+        if _wants_trace(turn):
+            _ensure_root(turn, force=True)
 
     box: dict[str, Any] = {}
     start = time.perf_counter()
@@ -266,28 +376,48 @@ def trace_request(
     finally:
         span = step_parent(turn) if turn else None
         latency_s = time.perf_counter() - start
-        if span is None and turn and should_sample(latency_s=latency_s, seed=turn):
+        if span is None and turn and _should_trace_turn(turn, latency_s=latency_s):
             span = _ensure_root(turn, force=True)
+        if span and turn:
+            _flush_pending_spans(turn, span)
         if span:
+            meta: dict[str, Any] = {"latency_s": round(latency_s, 3)}
+            has_error = False
+            with _lock:
+                has_error = turn in _error_turns
+                if has_error:
+                    meta["has_agent_error"] = True
+                turn_usage = dict(_turn_usage_totals.get(turn) or {})
             if hasattr(span, "update"):
                 sanitized_output = sanitize_trace_payload(box.get("output"))
-                span.update(
-                    output=sanitized_output,
-                    metadata={"latency_s": latency_s},
-                )
+                update_kwargs: dict[str, Any] = {
+                    "output": sanitized_output,
+                    "metadata": meta,
+                }
+                if turn_usage.get("total", 0) > 0:
+                    update_kwargs["usage_details"] = turn_usage
+                if has_error:
+                    update_kwargs["level"] = "ERROR"
+                    if box.get("error"):
+                        update_kwargs["status_message"] = str(box["error"])
+                span.update(**update_kwargs)
             if hasattr(span, "end"):
-                span.end()
-            if langfuse and hasattr(langfuse, "flush"):
                 try:
-                    langfuse.flush()
-                except Exception as exc:  # noqa: BLE001
-                    _logger.warning("Langfuse flush thất bại (best-effort): %s", exc)
+                    span.end(end_time=int(time.time() * 1000))
+                except TypeError:
+                    span.end()
+            if langfuse:
+                _flush_langfuse(langfuse)
         if turn:
             with _lock:
                 _roots.pop(turn, None)
                 _pending_requests.pop(turn, None)
+                _pending_agent_spans.pop(turn, None)
+                _turn_usage_totals.pop(turn, None)
                 _guardrail_turns.discard(turn)
                 _error_turns.discard(turn)
+            if turn_token is not None:
+                _current_turn.reset(turn_token)
 
 
 @contextmanager
@@ -305,7 +435,29 @@ def agent_span(
     if root is None:
         root = _ensure_root(turn, agent_name=name)
     if root is None:
-        yield {}
+        buf_entry: dict[str, Any] = {
+            "name": name,
+            "input": sanitize_trace_payload(input),
+            "metadata": dict(metadata or {}),
+            "output": None,
+            "error": None,
+            "latency_s": None,
+        }
+        with _lock:
+            _pending_agent_spans.setdefault(turn, []).append(buf_entry)
+        box: dict[str, Any] = {}
+        start = time.perf_counter()
+        try:
+            yield box
+        except Exception as exc:
+            buf_entry["error"] = str(exc)
+            mark_turn_error(turn)
+            raise
+        finally:
+            buf_entry["output"] = sanitize_trace_payload(box.get("output"))
+            buf_entry["latency_s"] = time.perf_counter() - start
+            if _output_indicates_error(box.get("output")):
+                mark_turn_error(turn)
         return
 
     span = None
@@ -324,24 +476,33 @@ def agent_span(
     if span:
         with _lock:
             _agents[key] = span
-    box: dict[str, Any] = {}
+    box = {}
     start = time.perf_counter()
     try:
         yield box
     except Exception as exc:
+        mark_turn_error(turn)
         if span and hasattr(span, "update"):
             span.update(level="ERROR", status_message=str(exc))
         raise
     finally:
         with _lock:
             _agents.pop(key, None)
+        if _output_indicates_error(box.get("output")):
+            mark_turn_error(turn)
         if span:
             if hasattr(span, "update"):
                 sanitized_output = sanitize_trace_payload(box.get("output"))
-                span.update(
-                    output=sanitized_output,
-                    metadata={"latency_s": time.perf_counter() - start},
-                )
+                update_kwargs: dict[str, Any] = {
+                    "output": sanitized_output,
+                    "metadata": {"latency_s": time.perf_counter() - start},
+                }
+                if _output_indicates_error(box.get("output")):
+                    update_kwargs["level"] = "ERROR"
+                    err = (box.get("output") or {}).get("error")
+                    if err:
+                        update_kwargs["status_message"] = str(err)
+                span.update(**update_kwargs)
             if hasattr(span, "end"):
                 span.end()
 

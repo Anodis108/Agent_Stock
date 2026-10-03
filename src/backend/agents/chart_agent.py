@@ -27,16 +27,43 @@ from matplotlib.ticker import FuncFormatter
 from backend.domain.ports import PriceBar
 
 
+def _is_dir_writable(p: Path) -> bool:
+    try:
+        p.mkdir(parents=True, exist_ok=True)
+        test_file = p / f".write_test_{uuid4().hex[:6]}"
+        test_file.touch()
+        test_file.unlink()
+        return True
+    except (OSError, PermissionError):
+        return False
+
+
 def get_charts_dir() -> Path:
-    """Xác định đường dẫn thư mục lưu ảnh biểu đồ."""
+    """Xác định đường dẫn thư mục lưu ảnh biểu đồ (hỗ trợ cả môi trường Local & Docker read-only)."""
     env_dir = os.environ.get("CHARTS_DIR")
     if env_dir:
         p = Path(env_dir)
-    else:
-        root = Path(__file__).resolve().parents[3]
-        p = root / "resources" / "data" / "charts"
-    p.mkdir(parents=True, exist_ok=True)
-    return p
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
+    root = Path(__file__).resolve().parents[3]
+    candidates: list[Path] = []
+    # 1. Nếu đang trong container Docker (/app/data volume tồn tại), ưu tiên /app/data/charts
+    if Path("/app/data").is_dir():
+        candidates.append(Path("/app/data/charts"))
+    # 2. Môi trường local chuẩn: root / resources / data / charts
+    candidates.append(root / "resources" / "data" / "charts")
+    # 3. Môi trường local dự phòng: root / data / charts
+    candidates.append(root / "data" / "charts")
+
+    for cand in candidates:
+        if _is_dir_writable(cand):
+            return cand
+
+    import tempfile
+    fallback = Path(tempfile.gettempdir()) / "portfolio_watch_charts"
+    fallback.mkdir(parents=True, exist_ok=True)
+    return fallback
 
 
 @dataclass(slots=True)
@@ -115,6 +142,7 @@ def plot_price_history(
     sma_periods: Sequence[int] = (5, 10, 20),
     style: str = "line",
     title: str | None = None,
+    limit_sessions: int | None = None,
 ) -> ChartResult:
     """Vẽ biểu đồ lịch sử giá cho 1 mã cổ phiếu (Line hoặc Candlestick + SMA + Volume)."""
     sym = (symbol or "").strip().upper()
@@ -126,6 +154,8 @@ def plot_price_history(
     # Sắp xếp theo ngày tăng dần
     normalized = [_normalize_bar(b) for b in bars]
     normalized.sort(key=lambda x: x["date"])
+    if limit_sessions and limit_sessions > 0:
+        normalized = normalized[-limit_sessions:]
 
     if len(normalized) < 2:
         return ChartResult(success=False, error=f"Dữ liệu lịch sử của {sym} quá ít (< 2 phiên) để vẽ biểu đồ", symbols=[sym])
@@ -144,10 +174,13 @@ def plot_price_history(
         2, 1,
         figsize=(10, 6.2),
         gridspec_kw={"height_ratios": [3.5, 1] if has_volume else [1, 0.001]},
+        sharex=has_volume,
         facecolor="#ffffff",
     )
     if not has_volume:
         ax2.set_visible(False)
+    else:
+        plt.setp(ax1.get_xticklabels(), visible=False)
 
     try:
         # 1. Vẽ đường giá Close nếu style="line"
@@ -208,8 +241,12 @@ def plot_price_history(
         subtitle = f"Giá hiện tại: {latest_str} ({change_sign}{pct_change:.2f}% trong {len(closes)} phiên)"
 
         ax1.set_title(f"{chart_title}\n{subtitle}", fontsize=12, fontweight="bold", color="#1e293b", pad=12)
-        ax1.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f"{x:,.0f}"))
-        ax1.set_ylabel("Giá (VND)", fontsize=10, fontweight="600", color="#475569")
+        price_range = max(closes) - min(closes)
+        if max(closes) < 1000 and price_range < 15:
+            ax1.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f"{x:,.1f}"))
+        else:
+            ax1.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f"{x:,.0f}"))
+        ax1.set_ylabel("Giá (VND)", fontsize=10, fontweight="bold", color="#475569")
         ax1.legend(loc="upper left", frameon=True, facecolor="#ffffff", framealpha=0.9, fontsize=9)
         ax1.grid(True, linestyle="--", alpha=0.6)
 
@@ -237,11 +274,160 @@ def plot_price_history(
         plt.close(fig)
 
 
+def plot_multi_price_history(
+    symbols_history: dict[str, Sequence[PriceBar | dict[str, Any]]],
+    *,
+    output_dir: str | Path | None = None,
+    style: str = "line",
+    sma_periods: Sequence[int] = (5, 10),
+    title: str | None = None,
+    limit_sessions: int | None = None,
+) -> ChartResult:
+    """Vẽ biểu đồ lịch sử giá thực tế (VND) cho nhiều mã cổ phiếu dạng subplots xếp tầng."""
+    valid_symbols = [s.strip().upper() for s, data in symbols_history.items() if data and len(data) >= 2]
+    if not valid_symbols:
+        return ChartResult(
+            success=False,
+            chart_type="price_history",
+            error="Không có đủ dữ liệu lịch sử (cần ít nhất 2 phiên/mã) để vẽ biểu đồ giá",
+            symbols=list(symbols_history.keys()),
+        )
+    if len(valid_symbols) == 1:
+        s = valid_symbols[0]
+        bars = symbols_history[s]
+        if limit_sessions and limit_sessions > 0:
+            bars = bars[-limit_sessions:]
+        return plot_price_history(
+            s,
+            bars,
+            output_dir=output_dir,
+            sma_periods=sma_periods,
+            style=style,
+            title=title,
+            limit_sessions=limit_sessions,
+        )
+
+    n = len(valid_symbols)
+    out_path = Path(output_dir) if output_dir else None
+    chart_id = f"multi_{'_'.join(valid_symbols[:3])}_{uuid4().hex[:8]}"
+
+    plt.style.use("seaborn-v0_8-whitegrid" if "seaborn-v0_8-whitegrid" in plt.style.available else "default")
+    fig, axes = plt.subplots(
+        n, 1,
+        figsize=(10, max(5.2, 2.7 * n)),
+        sharex=True,
+        facecolor="#ffffff",
+    )
+    if n == 1:
+        axes = [axes]
+
+    palette = ["#0b6e4f", "#2563eb", "#ea580c", "#8b5cf6", "#06b6d4"]
+    colors_sma = ["#f59e0b", "#ec4899", "#3b82f6"]
+
+    try:
+        actual_sessions_count = 0
+        for idx, sym in enumerate(valid_symbols):
+            ax = axes[idx]
+            color = palette[idx % len(palette)]
+            raw_bars = symbols_history[sym]
+            norm_bars = [_normalize_bar(b) for b in raw_bars]
+            norm_bars.sort(key=lambda x: x["date"])
+            if limit_sessions and limit_sessions > 0:
+                norm_bars = norm_bars[-limit_sessions:]
+
+            if len(norm_bars) > actual_sessions_count:
+                actual_sessions_count = len(norm_bars)
+
+            dates = [_parse_date(b["date"]) for b in norm_bars]
+            closes = [b["close"] for b in norm_bars]
+
+            if style == "candle":
+                for i, b in enumerate(norm_bars):
+                    d = dates[i]
+                    op, cl, hi, lo = b["open"], b["close"], b["high"], b["low"]
+                    is_up = cl >= op
+                    c_candle = "#10b981" if is_up else "#ef4444"
+                    ax.vlines(d, lo, hi, color=c_candle, linewidth=1.2, zorder=2)
+                    body_low = min(op, cl)
+                    body_height = max(abs(cl - op), (max(closes) - min(closes)) * 0.005)
+                    ax.bar(d, body_height, bottom=body_low, width=0.6, color=c_candle, alpha=0.9, zorder=3)
+                ax.plot([], [], color="#10b981", label=f"Nến tăng ({sym})", linewidth=3)
+                ax.plot([], [], color="#ef4444", label=f"Nến giảm ({sym})", linewidth=3)
+            else:
+                ax.plot(dates, closes, label=f"{sym} Đóng cửa", color=color, linewidth=2.0, marker="o", markersize=4, zorder=3)
+                ax.scatter(dates[-1], closes[-1], color=color, s=36, zorder=4)
+
+            # SMA
+            for s_idx, period in enumerate(sma_periods):
+                if len(closes) >= period:
+                    sma_vals = []
+                    for i in range(len(closes)):
+                        if i < period - 1:
+                            sma_vals.append(None)
+                        else:
+                            window = closes[i - period + 1 : i + 1]
+                            sma_vals.append(sum(window) / period)
+                    valid_dates = [dates[i] for i, v in enumerate(sma_vals) if v is not None]
+                    valid_sma = [v for v in sma_vals if v is not None]
+                    sma_c = colors_sma[s_idx % len(colors_sma)]
+                    ax.plot(valid_dates, valid_sma, label=f"SMA {period}", color=sma_c, linestyle="--", linewidth=1.3, alpha=0.85)
+
+            # Panel title with latest price and change
+            latest_c = closes[-1]
+            first_c = closes[0]
+            pct = ((latest_c - first_c) / first_c) * 100
+            sign = "+" if pct >= 0 else ""
+            latest_str = f"{latest_c:,.1f}" if latest_c < 1000 else f"{latest_c:,.0f}"
+            panel_title = f"{sym}: {latest_str} VND ({sign}{pct:.2f}% / {len(closes)} phiên)"
+            ax.set_title(panel_title, fontsize=10, fontweight="bold", color="#1e293b", loc="left", pad=4)
+
+            # Y-axis
+            ax.set_ylabel("Giá (VND)", fontsize=9, fontweight="600", color="#475569")
+            price_range = max(closes) - min(closes)
+            if max(closes) < 1000 and price_range < 15:
+                ax.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f"{x:,.1f}"))
+            else:
+                ax.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f"{x:,.0f}"))
+            ax.grid(True, linestyle="--", alpha=0.5)
+            ax.legend(loc="upper left", frameon=True, facecolor="#ffffff", framealpha=0.9, fontsize=8)
+
+        # Trục thời gian ở panel cuối
+        axes[-1].xaxis.set_major_formatter(mdates.DateFormatter("%d/%m"))
+        axes[-1].xaxis.set_major_locator(mdates.AutoDateLocator(minticks=5, maxticks=10))
+        plt.setp(axes[-1].xaxis.get_majorticklabels(), rotation=30, ha="right", fontsize=9)
+
+        sess_desc = f" ({actual_sessions_count} phiên gần nhất)" if actual_sessions_count else ""
+        main_title = title or f"Biểu đồ diễn biến giá: {', '.join(valid_symbols)}{sess_desc}"
+        fig.suptitle(main_title, fontsize=12, fontweight="bold", color="#1e293b", y=0.995)
+        plt.tight_layout()
+        file_path, file_name, url, base64_uri = _save_and_encode_fig(fig, chart_id, out_path)
+
+        return ChartResult(
+            success=True,
+            chart_type="candlestick" if style == "candle" else "price_history",
+            file_path=file_path,
+            file_name=file_name,
+            url=url,
+            base64_data=base64_uri,
+            symbols=valid_symbols,
+        )
+    except Exception as exc:
+        return ChartResult(
+            success=False,
+            chart_type="candlestick" if style == "candle" else "price_history",
+            error=f"Lỗi render biểu đồ đa mã {', '.join(valid_symbols)}: {exc}",
+            symbols=valid_symbols,
+        )
+    finally:
+        plt.close(fig)
+
+
 def plot_comparison(
     symbols_history: dict[str, Sequence[PriceBar | dict[str, Any]]],
     *,
     output_dir: str | Path | None = None,
     title: str | None = None,
+    limit_sessions: int | None = None,
 ) -> ChartResult:
     """Vẽ biểu đồ so sánh % tăng trưởng giữa 2-3 mã cổ phiếu."""
     valid_symbols = [s.strip().upper() for s, data in symbols_history.items() if data and len(data) >= 2]
@@ -269,6 +455,8 @@ def plot_comparison(
             raw_bars = symbols_history[sym]
             norm_bars = [_normalize_bar(b) for b in raw_bars]
             norm_bars.sort(key=lambda x: x["date"])
+            if limit_sessions and limit_sessions > 0:
+                norm_bars = norm_bars[-limit_sessions:]
 
             base_price = norm_bars[0]["close"]
             if base_price <= 0:
@@ -293,7 +481,8 @@ def plot_comparison(
         # Baseline 0%
         ax.axhline(0, color="#94a3b8", linestyle="--", linewidth=1.2, alpha=0.8)
 
-        cmp_title = title or f"So sánh hiệu suất tương đối: {' vs '.join(valid_symbols)}"
+        sess_desc = f" ({limit_sessions} phiên gần nhất)" if limit_sessions else ""
+        cmp_title = title or f"So sánh hiệu suất tương đối: {' vs '.join(valid_symbols)}{sess_desc}"
         ax.set_title(f"{cmp_title}\n(Tỷ suất lợi nhuận chuẩn hóa % từ mốc ban đầu)", fontsize=12, fontweight="bold", color="#1e293b", pad=12)
         ax.set_ylabel("% Tăng trưởng", fontsize=10, fontweight="600", color="#475569")
         ax.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f"{x:+.1f}%"))
@@ -331,11 +520,14 @@ def run_chart_agent(
     sma_periods: Sequence[int] = (5, 10, 20),
     output_dir: str | Path | None = None,
     title: str | None = None,
+    limit_sessions: int | None = None,
 ) -> ChartResult:
     """Entry point chính cho ChartAgent tương thích LangGraph swarm.
 
     - Nếu `symbols` là 1 chuỗi mã hoặc price_data là danh sách -> Gọi `plot_price_history`.
-    - Nếu `symbols` là nhiều mã (hoặc price_data là dict) -> Gọi `plot_comparison`.
+    - Nếu `symbols` là nhiều mã (hoặc price_data là dict):
+        * Nếu chart_type in ("price", "price_history", "candle", "candlestick", "line", "multi_price") -> Gọi `plot_multi_price_history`.
+        * Nếu chart_type == "comparison" hoặc "auto" -> Gọi `plot_comparison` (so sánh % tương đối).
     """
     if isinstance(symbols, str) and "," in symbols:
         symbols_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
@@ -344,10 +536,25 @@ def run_chart_agent(
     else:
         symbols_list = [str(symbols).strip().upper()]
 
-    if len(symbols_list) > 1 and isinstance(price_data, dict):
-        return plot_comparison(price_data, output_dir=output_dir, title=title)
-    if isinstance(price_data, dict) and len(price_data) > 1:
-        return plot_comparison(price_data, output_dir=output_dir, title=title)
+    effective_style = "candle" if (style == "candle" or chart_type in ("candle", "candlestick")) else style
+
+    is_multi = (len(symbols_list) > 1 and isinstance(price_data, dict)) or (isinstance(price_data, dict) and len(price_data) > 1)
+    if is_multi and isinstance(price_data, dict):
+        if chart_type in ("price", "price_history", "candle", "candlestick", "line", "multi_price"):
+            return plot_multi_price_history(
+                price_data,
+                output_dir=output_dir,
+                style=effective_style,
+                sma_periods=sma_periods,
+                title=title,
+                limit_sessions=limit_sessions,
+            )
+        return plot_comparison(
+            price_data,
+            output_dir=output_dir,
+            title=title,
+            limit_sessions=limit_sessions,
+        )
 
     # Đơn mã
     target_sym = symbols_list[0] if symbols_list else "UNKNOWN"
@@ -356,7 +563,9 @@ def run_chart_agent(
     else:
         bars = price_data
 
-    effective_style = "candle" if (style == "candle" or chart_type in ("candle", "candlestick")) else style
+    if limit_sessions and limit_sessions > 0 and bars:
+        bars = bars[-limit_sessions:]
+
     return plot_price_history(
         target_sym,
         bars,
@@ -364,4 +573,6 @@ def run_chart_agent(
         sma_periods=sma_periods,
         style=effective_style,
         title=title,
+        limit_sessions=limit_sessions,
     )
+

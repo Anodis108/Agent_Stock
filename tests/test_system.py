@@ -31,6 +31,24 @@ if not FE.is_dir():
 # 1. Docker Compose & Dockerfile Configuration Tests
 # ==============================================================================
 
+def test_compose_frontend_port_avoids_langfuse_default():
+    """Frontend mặc định :3001 — không tranh port 3000 với Langfuse self-host."""
+    text = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+    assert "${FRONTEND_PORT:-3001}:80" in text
+    assert "${FRONTEND_PORT:-3000}:80" not in text
+    assert "host.docker.internal:3000" in text
+    assert "langfuse-web:3000" not in text
+
+
+def test_compose_runtime_code_mounts():
+    """Mã nguồn mount qua compose — image không bake code."""
+    text = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+    assert "./src:/app/src" in text
+    assert "./src/frontend:/usr/share/nginx/html" in text
+    assert "docker-entrypoint.sh:/docker-entrypoint.sh" in text
+    assert 'command: ["nginx"' in text
+
+
 def test_compose_two_services_backend_and_frontend_and_volume():
     """Kiểm tra docker-compose.yml có đúng 2 services (backend, frontend), volume pw_data và healthcheck."""
     text = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
@@ -49,17 +67,30 @@ def test_compose_two_services_backend_and_frontend_and_volume():
 
 
 def test_dockerfile_and_frontend_dockerfile():
-    """Kiểm tra backend Dockerfile và frontend Dockerfile / nginx.conf."""
-    df_path = ROOT / "src" / "backend" / "Dockerfile" if (ROOT / "src" / "backend" / "Dockerfile").is_file() else ROOT / "Dockerfile"
-    df = df_path.read_text(encoding="utf-8")
-    assert ("backend.main:app" in df) or ("backend.backend.main:app" in df)
-    assert ("USER appuser" in df) or ("gosu appuser" in df)
-    assert "HEALTHCHECK" in df
+    """Image chỉ runtime/thư viện; command/healthcheck/code mount qua compose."""
+    assert not (ROOT / "Dockerfile").is_file(), "Root Dockerfile đã bỏ — dùng src/backend/Dockerfile"
 
-    fe_df_path = ROOT / "src" / "frontend" / "Dockerfile" if (ROOT / "src" / "frontend" / "Dockerfile").is_file() else ROOT / "frontend" / "Dockerfile"
-    fe_df = fe_df_path.read_text(encoding="utf-8")
+    df = (ROOT / "src" / "backend" / "Dockerfile").read_text(encoding="utf-8")
+    compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+    assert "COPY src" not in df
+    assert "pip install" in df and "-e ." not in df
+    assert "EXPOSE" not in df
+    assert "HEALTHCHECK" not in df
+    assert "CMD [" not in df
+    assert "ENTRYPOINT" not in df
+    assert "gosu" in df and "appuser" in df
+    assert "backend.main:app" in compose
+    assert "healthcheck:" in compose
+    assert "./src:/app/src" in compose
+
+    fe_df = (ROOT / "src" / "frontend" / "Dockerfile").read_text(encoding="utf-8")
     assert "nginx" in fe_df
-    assert (ROOT / "src" / "frontend" / "nginx.conf").is_file() or (ROOT / "frontend" / "nginx.conf").is_file()
+    assert "COPY" not in fe_df
+    assert "EXPOSE" not in fe_df
+    assert "CMD [" not in fe_df
+    assert 'command: ["nginx"' in compose
+    assert "./src/frontend:/usr/share/nginx/html" in compose
+    assert (ROOT / "src" / "frontend" / "nginx.conf").is_file()
 
 
 def test_phase10_nginx_sse_buffering_disabled():
@@ -612,7 +643,9 @@ def test_phase2_portfolio_pnl_table_and_summary_cards():
 def test_readme_docker_product_and_local():
     """Kiểm tra README.md có hướng dẫn Docker Compose và chạy Local đầy đủ."""
     content = (ROOT / "README.md").read_text(encoding="utf-8")
-    assert "docker compose up --build" in content
+    assert "docker compose build" in content
+    assert "docker compose up -d" in content
+    assert "localhost:3001" in content
     assert "uvicorn backend.main" in content or "uvicorn backend.backend.main" in content or "python -m backend.main" in content
 
 # ==============================================================================
@@ -705,16 +738,34 @@ def test_phase4_frontend_sse_and_live_graph_integration():
     assert 'eventName === "token"' in js_text
     assert 'eventName === "chart_url"' in js_text
     assert 'eventName === "final_answer"' in js_text
+    assert "streamFinalized" in js_text
 
-    # 3. Kiểm tra hàm đồng bộ trạng thái Live Graph với Canonical Nodes
+    # 3. Live Graph: chỉ hiển thị node đã thực thi + cache + lỗi agent
     assert "mergeWithCanonicalNodes" in js_text
     assert "renderLiveGraphNodes(mergeWithCanonicalNodes" in js_text
+    assert "enrichExecutedStep" in js_text
+    assert "stepOutputHasError" in js_text
+    assert "resolveStepStatus" in js_text
+    assert "if (!steps || !steps.length) return [];" in js_text
+    assert '"llm_cache"' in js_text
+    assert '"price_cache"' in js_text
 
     # 4. Kiểm tra CSS hiệu ứng sáng đèn của node (Live Glow Pulse)
     assert ".graph-node-card.status-running" in css_text
     assert "node-glow-pulse" in css_text
     assert "@keyframes node-glow-pulse" in css_text
     assert ".graph-node-card.status-done" in css_text
+    assert ".graph-node-card.status-error" in css_text
+
+    # 5. Scrollbar I/O Inspector; Live Graph không cuộn dọc (cuộn ngang trong graph-container)
+    assert "scrollbar-gutter: stable" in css_text
+    assert ".live-graph-panel" in css_text
+    live_panel_block = css_text.split(".live-graph-panel {", 1)[1].split("}", 1)[0]
+    assert "overflow-y: auto" not in live_panel_block
+    assert "overflow: visible" in live_panel_block
+    assert ".graph-container" in css_text
+    graph_container_block = css_text.split(".graph-container {", 1)[1].split("}", 1)[0]
+    assert "overflow-x: auto" in graph_container_block
 
 
 def test_phase4_portfolio_api_integration():

@@ -22,6 +22,7 @@ from backend.agents.chart_agent import (
     ChartResult,
     get_charts_dir,
     plot_comparison,
+    plot_multi_price_history,
     plot_price_history,
     run_chart_agent,
 )
@@ -520,4 +521,153 @@ def test_phase3_candlestick_chart_generation_with_sma_and_static_cache(tmp_path:
     # Kiểm tra phản hồi markdown có nhúng ảnh biểu đồ
     assert "![Biểu đồ" in chat_res.answer
     assert chat_res.chart_path in chat_res.answer
+
+
+def test_plot_multi_price_history_three_symbols(tmp_path: Path):
+    """Kiểm tra vẽ biểu đồ giá đa mã (FPT, VNM, LPB) dạng subplots với số phiên yêu cầu."""
+    data = {
+        "FPT": _make_sample_bars("FPT", count=15, base_price=62000.0),
+        "VNM": _make_sample_bars("VNM", count=15, base_price=57000.0),
+        "LPB": _make_sample_bars("LPB", count=15, base_price=40000.0),
+    }
+
+    result = plot_multi_price_history(
+        data,
+        output_dir=tmp_path,
+        limit_sessions=10,
+        title="Biểu đồ giá FPT, VNM, LPB 10 phiên gần nhất",
+    )
+
+    assert result.success is True
+    assert result.chart_type == "price_history"
+    assert result.symbols == ["FPT", "VNM", "LPB"]
+    assert result.file_path is not None
+    assert Path(result.file_path).is_file()
+    assert result.url is not None and result.url.startswith("/charts/chart_multi_")
+    assert result.base64_data is not None and result.base64_data.startswith("data:image/png;base64,")
+
+
+def test_run_chart_agent_multi_price_history_dispatch(tmp_path: Path):
+    """Kiểm tra run_chart_agent điều phối đúng sang plot_multi_price_history khi yêu cầu price_history."""
+    data = {
+        "FPT": _make_sample_bars("FPT", count=15, base_price=62000.0),
+        "VNM": _make_sample_bars("VNM", count=15, base_price=57000.0),
+    }
+
+    res = run_chart_agent(
+        ["FPT", "VNM"],
+        data,
+        chart_type="price_history",
+        output_dir=tmp_path,
+        limit_sessions=10,
+    )
+
+    assert res.success is True
+    assert res.chart_type == "price_history"
+    assert res.url.startswith("/charts/chart_multi_")
+    assert set(res.symbols) == {"FPT", "VNM"}
+
+
+def test_chat_graph_multi_symbol_price_chart_not_comparison(tmp_path: Path):
+    """Kiểm tra câu hỏi 'vẽ tôi biểu đồ giá của 10 phiên gần nhất của 3 cổ phiếu FPT, VNM, LPB'
+
+    Hệ thống PHẢI vẽ biểu đồ giá (price_history), KHÔNG ĐƯỢC nhầm sang biểu đồ hiệu suất tương đối (comparison).
+    """
+    from backend.agents.answer_composer.nodes import HeuristicAnswerDraftBrain
+    from backend.agents.supervisor_agent.nodes import (
+        HeuristicRewriteBrain,
+        HeuristicSupervisorBrain,
+    )
+    from backend.domain.ports import PriceQuote
+    from backend.graph.chat import run_chat_graph
+
+    sample_fpt = _make_sample_bars("FPT", count=15, base_price=62000.0)
+    sample_vnm = _make_sample_bars("VNM", count=15, base_price=57000.0)
+    sample_lpb = _make_sample_bars("LPB", count=15, base_price=40000.0)
+
+    class MockPriceSource:
+        def fetch_latest_close(self, symbol: str) -> PriceQuote:
+            close_val = {"FPT": 62100.0, "VNM": 57300.0, "LPB": 40200.0}.get(symbol.upper(), 50000.0)
+            return PriceQuote(symbol=symbol, latest_close=close_val, prev_close=close_val * 0.99)
+
+        def fetch_history(self, symbol: str, days: int = 30):
+            return {"FPT": sample_fpt, "VNM": sample_vnm, "LPB": sample_lpb}.get(symbol.upper(), sample_fpt)
+
+    class MockNewsSource:
+        def fetch_news(self, symbol: str, query=None, days=None):
+            return []
+
+    class MockHistoryStore:
+        def read_history(self, symbol: str, days: int = 30):
+            return {"FPT": sample_fpt, "VNM": sample_vnm, "LPB": sample_lpb}.get(symbol.upper(), sample_fpt)
+
+    chat_res = run_chat_graph(
+        "vẽ tôi biểu đồ giá của 10 phiên gần nhất của 3 cổ phiếu FPT, VNM, LPB?",
+        price_source=MockPriceSource(),
+        news_source=MockNewsSource(),
+        history_store=MockHistoryStore(),
+        memory_store=DummyMemoryStore(),
+        rewrite_brain=HeuristicRewriteBrain(),
+        supervisor_brain=HeuristicSupervisorBrain(),
+        answer_brain=HeuristicAnswerDraftBrain(),
+    )
+
+    assert chat_res.chart_result is not None
+    assert chat_res.chart_result.success is True
+    # Phải là price_history (biểu đồ giá thực tế VND), KHÔNG PHẢI comparison (% tăng trưởng tương đối)
+    assert chat_res.chart_result.chart_type == "price_history"
+    assert chat_res.chart_path is not None
+    assert chat_res.chart_path.startswith("/charts/chart_multi_")
+    assert "FPT" in chat_res.chart_result.symbols
+    assert "VNM" in chat_res.chart_result.symbols
+    assert "LPB" in chat_res.chart_result.symbols
+
+
+def test_chat_graph_multi_symbol_comparison_chart_still_supported(tmp_path: Path):
+    """Kiểm tra câu hỏi so sánh hiệu suất/biến động vẫn vẽ đúng biểu đồ comparison (% tăng trưởng)."""
+    from backend.agents.answer_composer.nodes import HeuristicAnswerDraftBrain
+    from backend.agents.supervisor_agent.nodes import (
+        HeuristicRewriteBrain,
+        HeuristicSupervisorBrain,
+    )
+    from backend.domain.ports import PriceQuote
+    from backend.graph.chat import run_chat_graph
+
+    sample_vnm = _make_sample_bars("VNM", count=15, base_price=57000.0)
+    sample_hpg = _make_sample_bars("HPG", count=15, base_price=28000.0)
+
+    class MockPriceSource:
+        def fetch_latest_close(self, symbol: str) -> PriceQuote:
+            close_val = {"VNM": 57300.0, "HPG": 28000.0}.get(symbol.upper(), 50000.0)
+            return PriceQuote(symbol=symbol, latest_close=close_val, prev_close=close_val * 0.99)
+
+        def fetch_history(self, symbol: str, days: int = 30):
+            return {"VNM": sample_vnm, "HPG": sample_hpg}.get(symbol.upper(), sample_vnm)
+
+    class MockNewsSource:
+        def fetch_news(self, symbol: str, query=None, days=None):
+            return []
+
+    class MockHistoryStore:
+        def read_history(self, symbol: str, days: int = 30):
+            return {"VNM": sample_vnm, "HPG": sample_hpg}.get(symbol.upper(), sample_vnm)
+
+    chat_res = run_chat_graph(
+        "Vẽ biểu đồ so sánh biến động giá giữa VNM và HPG",
+        price_source=MockPriceSource(),
+        news_source=MockNewsSource(),
+        history_store=MockHistoryStore(),
+        memory_store=DummyMemoryStore(),
+        rewrite_brain=HeuristicRewriteBrain(),
+        supervisor_brain=HeuristicSupervisorBrain(),
+        answer_brain=HeuristicAnswerDraftBrain(),
+    )
+
+    assert chat_res.chart_result is not None
+    assert chat_res.chart_result.success is True
+    # Phải là comparison (% tăng trưởng tương đối)
+    assert chat_res.chart_result.chart_type == "comparison"
+    assert chat_res.chart_path is not None
+    assert chat_res.chart_path.startswith("/charts/chart_cmp_")
+
 

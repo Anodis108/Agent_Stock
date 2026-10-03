@@ -11,7 +11,7 @@ def main() -> None:
     parser.add_argument(
         "--out",
         type=str,
-        default="docs/agent_graph.png",
+        default="resources/docs/agent_graph.png",
         help="Path to save the graph visualization",
     )
     args = parser.parse_args()

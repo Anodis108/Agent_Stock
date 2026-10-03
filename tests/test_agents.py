@@ -1075,6 +1075,20 @@ def test_phase3_query_decomposition_comparison_and_stopwords():
     extracted = _extract_symbols(raw_text)
     assert extracted == ["FPT", "HPG"]
 
+    # 4. Kiểm tra loại bỏ chỉ báo kỹ thuật (RSI, SMA, EMA, MACD, MA20) và giới từ (QUA) khỏi mã ticker
+    q_indicator = "Phân tích xu hướng kỹ thuật cổ phiếu FPT qua các chỉ báo MA20 và RSI"
+    extracted_ind = _extract_symbols(q_indicator)
+    assert extracted_ind == ["FPT"]
+    assert "QUA" not in extracted_ind
+    assert "RSI" not in extracted_ind
+
+    r_ind = brain.rewrite(q_indicator, [])
+    assert r_ind.symbols == ["FPT"]
+    assert r_ind.symbol == "FPT"
+    assert "QUA" not in r_ind.symbols
+    assert "RSI" not in r_ind.symbols
+
+
 
 
 

@@ -125,6 +125,7 @@ class VnstockPriceSource:
                 interval="1D",
             )
         except (Exception, SystemExit) as exc:
+            logger.warning("vnstock fetch_latest_close failed for %s: %r", sym, exc)
             if self.fallback_on_error and sym in DEFAULT_BASE_PRICES:
                 base = DEFAULT_BASE_PRICES[sym]
                 prev = round(base * 0.99, 2)
@@ -137,6 +138,11 @@ class VnstockPriceSource:
                 err_msg = f"Nguồn dữ liệu tạm thời chạm giới hạn truy vấn (rate limit) khi lấy mã '{sym}'. Vui lòng thử lại sau ít phút."
             elif any(k in exc_str for k in ("timeout", "timed out", "connection", "connect")):
                 err_msg = f"Không thể kết nối đến nguồn dữ liệu giá cho mã '{sym}'. Vui lòng kiểm tra kết nối mạng."
+            elif isinstance(exc, PermissionError) or "permission denied" in exc_str:
+                err_msg = (
+                    f"Không thể ghi cấu hình/cache vnstock (Permission denied) khi lấy giá mã '{sym}'. "
+                    "Trong Docker, đặt HOME=/app/data (volume ghi được)."
+                )
             else:
                 err_msg = f"Không tìm thấy dữ liệu giá cho mã '{sym}' hoặc mã không tồn tại trên thị trường."
             return PriceQuote(

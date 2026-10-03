@@ -46,7 +46,11 @@ def retry_with_backoff(
     for attempt in range(max_retries):
         try:
             return fn()
-        except RateLimitError:
+        except RateLimitError as exc:
+            err_msg = str(exc).lower()
+            # Lỗi cạn credit / hết quota vĩnh viễn -> raise ngay để kích hoạt fallback cascade
+            if "quota" in err_msg or "credit" in err_msg or "billing" in err_msg:
+                raise
             if on_rate_limit is not None:
                 on_rate_limit()
             if attempt == max_retries - 1:
@@ -54,3 +58,4 @@ def retry_with_backoff(
             wait = (2**attempt) + random.uniform(0, 1)
             time.sleep(wait)
     raise RuntimeError("retry_with_backoff: hết số lần thử")
+

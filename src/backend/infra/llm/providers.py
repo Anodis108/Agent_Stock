@@ -49,6 +49,9 @@ def call_with_model_cascade(
             return fn(m)
         except Exception as exc:  # noqa: BLE001
             last_exc = exc
+            err_msg = str(exc).lower()
+            if "quota" in err_msg or "credit" in err_msg or "billing" in err_msg:
+                break
             continue
     if last_exc is not None:
         raise last_exc

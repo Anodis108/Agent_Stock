@@ -92,14 +92,19 @@ class TokenRecord:
     completion_tokens: int
     total_tokens: int
     cost_usd: float
+    timestamp: float = 0.0
 
 
 class TokenTracker:
     def __init__(self):
         self.active_stage: str = "app"
         self.records: list[TokenRecord] = []
+        self.first_token_time: float | None = None
 
     def record_usage(self, model: str, prompt_tokens: int, completion_tokens: int, total_tokens: int):
+        now = time.perf_counter()
+        if self.first_token_time is None:
+            self.first_token_time = now
         pricing = MODEL_PRICING.get(model, MODEL_PRICING["default"])
         cost = (prompt_tokens * pricing["prompt"] + completion_tokens * pricing["completion"]) / 1_000_000.0
         self.records.append(
@@ -110,12 +115,18 @@ class TokenTracker:
                 completion_tokens=completion_tokens,
                 total_tokens=total_tokens,
                 cost_usd=cost,
+                timestamp=now,
             )
         )
+
+    def mark_first_token(self):
+        if self.first_token_time is None:
+            self.first_token_time = time.perf_counter()
 
     def reset(self):
         self.records.clear()
         self.active_stage = "app"
+        self.first_token_time = None
 
     @property
     def total_prompt_tokens(self) -> int:
@@ -321,9 +332,14 @@ def run_detailed_evaluation(
     from backend.api.deps import get_app_deps
 
     save_baseline_flag = save_baseline
-    p = dataset_path or (GOLDEN_V5_PATH if GOLDEN_V5_PATH.is_file() else GOLDEN_V4_PATH)
-    out_md = output_md_path or (ROOT / "specs" / "eval" / "eval_results_golden_v5.md")
-    out_json = output_json_path or (ROOT / "specs" / "eval" / "eval_results_golden_v5.json")
+    p = dataset_path or (
+        GOLDEN_V6_PATH if GOLDEN_V6_PATH.is_file() else (
+            GOLDEN_V5_PATH if GOLDEN_V5_PATH.is_file() else GOLDEN_V4_PATH
+        )
+    )
+    v_num = "6" if "v6" in p.name else ("5" if "v5" in p.name else "4")
+    out_md = output_md_path or (ROOT / "specs" / "eval" / f"eval_observations_v{v_num}.md")
+    out_json = output_json_path or (ROOT / "specs" / "eval" / f"eval_observations_v{v_num}.json")
 
     print(f"\n========================================================")
     print(f"  BẮT ĐẦU ĐÁNH GIÁ DATASET: {p.name}")
@@ -378,6 +394,7 @@ def run_detailed_evaluation(
             def tracked_answer_fn(q: str) -> str:
                 _tracker.active_stage = "app"
                 out = fn(q)
+                _tracker.mark_first_token()
                 tracked_answer_fn.last_steps = getattr(fn, "last_steps", [])
                 return out
 
@@ -397,6 +414,8 @@ def run_detailed_evaluation(
             )
 
             elapsed = time.perf_counter() - t0
+            ttft = (_tracker.first_token_time - t0) if _tracker.first_token_time is not None else elapsed
+            ttft = min(ttft, elapsed)
             eval_results.append(res)
 
             # Pipeline trace
@@ -420,6 +439,11 @@ def run_detailed_evaluation(
                 "pipeline_trace": trace_str,
                 "steps": res.steps,
                 "latency_s": round(elapsed, 2),
+                "ttft_s": round(ttft, 3),
+                "latency": {
+                    "ttft_s": round(ttft, 3),
+                    "end_to_end_s": round(elapsed, 2),
+                },
                 "tokens": {
                     "prompt_tokens": _tracker.total_prompt_tokens,
                     "completion_tokens": _tracker.total_completion_tokens,
@@ -449,7 +473,8 @@ def run_detailed_evaluation(
             print(
                 f"   ➔ Status: {status_str} | Trace: [{trace_str}] | "
                 f"Tokens: {_tracker.total_tokens} (App: {app_tokens}, Judge: {judge_tokens}) | "
-                f"Cost: ${_tracker.total_cost_usd:.5f} ({_tracker.total_cost_vnd:.0f} VND) | Time: {elapsed:.2f}s"
+                f"Cost: ${_tracker.total_cost_usd:.5f} ({_tracker.total_cost_vnd:.0f} VND) | "
+                f"Latency: TTFT {ttft:.2f}s, E2E {elapsed:.2f}s"
             )
             if not res.passed:
                 print(f"      [FAIL REASON] Rule: {res.rule.passed} (Missing: {res.rule.missing}, Forbidden: {res.rule.forbidden_found})")
@@ -476,12 +501,27 @@ def run_detailed_evaluation(
     failed_count = total_cases - passed_count
     pass_rate = (passed_count / total_cases) * 100.0 if total_cases > 0 else 0.0
 
+    inj_cases = [c for c in detailed_results if c["slice"] == "injection"]
+    inj_blocked = sum(1 for c in inj_cases if c["passed"])
+    inj_rate = (inj_blocked / len(inj_cases)) if inj_cases else 1.0
+
+    oos_cases = [c for c in detailed_results if c["slice"] == "out_of_scope"]
+    oos_refused = sum(1 for c in oos_cases if c["passed"])
+    oos_rate = (oos_refused / len(oos_cases)) if oos_cases else 1.0
+
+    rule_passed = sum(1 for c in detailed_results if c["scoring"]["rule_based"]["passed"])
+    rule_rate = (rule_passed / total_cases) if total_cases > 0 else 0.0
+
+    avg_ttft = sum(c.get("ttft_s", 0) for c in detailed_results) / total_cases if total_cases > 0 else 0.0
+    avg_latency = total_duration / total_cases if total_cases > 0 else 0.0
+
     print(f"\n========================================================")
     print(f"  HOÀN THÀNH ĐÁNH GIÁ DATASET ({total_cases} CASES)")
     print(f"  Kết quả: {passed_count}/{total_cases} Passed ({pass_rate:.1f}%)")
+    print(f"  Rule Pass Rate: {rule_rate*100:.1f}% | Injection Blocked: {inj_rate*100:.1f}% | Out-of-scope Refused: {oos_rate*100:.1f}%")
     print(f"  Tổng Tokens: {total_tokens_all:,} (App: {total_app_tokens:,}, Judge: {total_judge_tokens:,})")
     print(f"  Tổng Chi Phí: ${total_cost_usd_all:.4f} USD (~ {total_cost_vnd_all:,.0f} VND)")
-    print(f"  Tổng Thời Gian: {total_duration:.1f}s (Trung bình: {total_duration/total_cases:.2f}s/case if total_cases > 0 else 0)")
+    print(f"  Thời Gian: {total_duration:.1f}s (TTFT TB: {avg_ttft:.2f}s, E2E TB: {avg_latency:.2f}s)")
     print(f"========================================================\n")
 
     # Generate Markdown Table Report
@@ -510,13 +550,19 @@ def run_detailed_evaluation(
             "passed_cases": passed_count,
             "failed_cases": failed_count,
             "pass_rate_pct": round(pass_rate, 2),
+            "rule_pass_rate_pct": round(rule_rate * 100.0, 2),
+            "injection_blocked_pct": round(inj_rate * 100.0, 2),
+            "out_of_scope_refused_pct": round(oos_rate * 100.0, 2),
             "total_tokens": total_tokens_all,
+            "total_prompt_tokens": sum(c["tokens"]["prompt_tokens"] for c in detailed_results),
+            "total_completion_tokens": sum(c["tokens"]["completion_tokens"] for c in detailed_results),
             "total_app_tokens": total_app_tokens,
             "total_judge_tokens": total_judge_tokens,
             "total_cost_usd": round(total_cost_usd_all, 6),
             "total_cost_vnd": round(total_cost_vnd_all, 2),
             "total_duration_sec": round(total_duration, 2),
-            "avg_latency_per_case_sec": round(total_duration / total_cases, 2) if total_cases > 0 else 0,
+            "avg_latency_per_case_sec": round(avg_latency, 2),
+            "avg_ttft_sec": round(avg_ttft, 3),
             "by_slice": {s.slice_type: s.as_dict() for s in report.by_slice},
         },
         "cases": detailed_results,
@@ -525,7 +571,7 @@ def run_detailed_evaluation(
     print(f"Đã lưu chi tiết JSON tại: {out_json}")
 
     if save_baseline_flag:
-        v_num = "5" if "v5" in p.name else "4"
+        v_num = "6" if "v6" in p.name else ("5" if "v5" in p.name else "4")
         baseline_obj = {
             "created": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "purpose": f"V{v_num} Product Edition — baseline đánh giá chất lượng {total_cases} cases chuẩn hóa",
@@ -578,10 +624,27 @@ def generate_markdown_report(
     total_cost_usd: float,
     total_cost_vnd: float,
     total_duration: float,
+    **kwargs: Any,
 ) -> str:
     total_cases = len(detailed_results)
     passed_cases = sum(1 for c in detailed_results if c["passed"])
     pass_rate = (passed_cases / total_cases) * 100.0 if total_cases > 0 else 0.0
+
+    inj_cases = [c for c in detailed_results if c.get("slice") == "injection"]
+    inj_blocked = sum(1 for c in inj_cases if c.get("passed"))
+    inj_rate = (inj_blocked / len(inj_cases)) if inj_cases else 1.0
+
+    oos_cases = [c for c in detailed_results if c.get("slice") == "out_of_scope"]
+    oos_refused = sum(1 for c in oos_cases if c.get("passed"))
+    oos_rate = (oos_refused / len(oos_cases)) if oos_cases else 1.0
+
+    rule_passed = sum(1 for c in detailed_results if c.get("scoring", {}).get("rule_based", {}).get("passed"))
+    rule_rate = (rule_passed / total_cases) if total_cases > 0 else 0.0
+
+    total_prompt = sum(c.get("tokens", {}).get("prompt_tokens", 0) for c in detailed_results)
+    total_completion = sum(c.get("tokens", {}).get("completion_tokens", 0) for c in detailed_results)
+    avg_ttft = sum(c.get("ttft_s", 0) for c in detailed_results) / total_cases if total_cases > 0 else 0.0
+    avg_duration = total_duration / total_cases if total_cases > 0 else 0.0
 
     lines = [
         f"# Báo Cáo Đánh Giá Chất Lượng Agent: {dataset_name}",
@@ -589,10 +652,15 @@ def generate_markdown_report(
         f"- **Thời gian chạy**: `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`",
         f"- **Model chính**: `{settings.llm_model}` | **LLM Judge**: `gpt-4o-mini`",
         f"- **Tổng số ca kiểm thử**: **{total_cases}**",
-        f"- **Kết quả**: **{passed_cases}/{total_cases} Passed ({pass_rate:.1f}%)**",
-        f"- **Tổng Token tiêu thụ**: **{total_tokens:,} tokens** (Pipeline: {total_app_tokens:,}, Judge: {total_judge_tokens:,})",
+        f"- **Kết quả tổng thể**: **{passed_cases}/{total_cases} Passed ({pass_rate:.1f}%)**",
+        f"- **Tỷ lệ đạt chuẩn (Compliance Gate)**:",
+        f"  - **Rule Pass Rate**: **{rule_rate:.1%}** ({rule_passed}/{total_cases})",
+        f"  - **Prompt Injection Blocked**: **{inj_rate:.1%}** ({inj_blocked}/{len(inj_cases) if inj_cases else 0})",
+        f"  - **Out-of-scope Refused**: **{oos_rate:.1%}** ({oos_refused}/{len(oos_cases) if oos_cases else 0})",
+        f"- **Độ trễ trung bình**: TTFT: **{avg_ttft:.2f}s** | End-to-end: **{avg_duration:.2f}s**",
+        f"- **Tổng Token tiêu thụ**: **{total_tokens:,} tokens** (Prompt: {total_prompt:,}, Completion: {total_completion:,} | App: {total_app_tokens:,}, Judge: {total_judge_tokens:,})",
         f"- **Tổng chi phí ước tính**: **${total_cost_usd:.4f} USD** (~ **{total_cost_vnd:,.0f} VNĐ**)",
-        f"- **Tổng thời gian thực thi**: **{total_duration:.1f}s** (Trung bình: **{total_duration/total_cases:.2f}s/case**)" if total_cases > 0 else "- **Tổng thời gian thực thi**: 0s",
+        f"- **Tổng thời gian thực thi**: **{total_duration:.1f}s**" if total_cases > 0 else "- **Tổng thời gian thực thi**: 0s",
         f"",
         f"---",
         f"",
@@ -612,8 +680,8 @@ def generate_markdown_report(
         f"",
         f"## 2. Bảng Chi Tiết Toàn Bộ {total_cases} Test Cases",
         f"",
-        f"| STT | Case ID | Slice | Câu Hỏi | Pipeline Trace Agent | Tokens (App/Judge) | Chi Phí (VNĐ) | Kết Quả | Chi Tiết / Lý Do |",
-        f"| :---: | :--- | :--- | :--- | :--- | :---: | :---: | :---: | :--- |",
+        f"| STT | Case ID | Slice | Câu Hỏi | Pipeline Trace Agent | Tokens (P/C/Tot) | Độ Trễ (TTFT/E2E) | Chi Phí (VNĐ) | Kết Quả | Chi Tiết / Lý Do |",
+        f"| :---: | :--- | :--- | :--- | :--- | :---: | :---: | :---: | :---: | :--- |",
     ])
 
     for c in detailed_results:
@@ -622,8 +690,13 @@ def generate_markdown_report(
         s_type = c["slice"]
         q = c["question"].replace("|", "\\|")
         trace = c["pipeline_trace"].replace("|", "\\|")
-        t_app = c["tokens"]["app_tokens"]
-        t_judge = c["tokens"]["judge_tokens"]
+        t_p = c["tokens"].get("prompt_tokens", 0)
+        t_c = c["tokens"].get("completion_tokens", 0)
+        t_tot = c["tokens"].get("total_tokens", 0)
+        tokens_str = f"{t_p:,}/{t_c:,} ({t_tot:,})"
+        ttft_s = c.get("ttft_s", 0)
+        lat_s = c.get("latency_s", 0)
+        lat_str = f"{ttft_s:.2f}s / {lat_s:.2f}s"
         cost_vnd = f"{c['cost']['vnd']:,.0f}đ"
         status_badge = "✅ **PASS**" if c["passed"] else "❌ **FAIL**"
 
@@ -650,7 +723,7 @@ def generate_markdown_report(
         notes = notes.replace("|", "\\|")
 
         lines.append(
-            f"| {stt} | `{cid}` | `{s_type}` | {q} | `{trace}` | {t_app:,} / {t_judge:,} | {cost_vnd} | {status_badge} | {notes} |"
+            f"| {stt} | `{cid}` | `{s_type}` | {q} | `{trace}` | {tokens_str} | {lat_str} | {cost_vnd} | {status_badge} | {notes} |"
         )
 
     lines.extend([
@@ -668,8 +741,8 @@ def generate_markdown_report(
             f"- **Câu hỏi**: {c['question']}",
             f"- **Expected**: {c['expected']}",
             f"- **Pipeline Trace**: `{c['pipeline_trace']}`",
-            f"- **Token & Chi phí**: {c['tokens']['total_tokens']} tokens ({c['tokens']['app_tokens']} app + {c['tokens']['judge_tokens']} judge) | **{c['cost']['vnd']:,.0f} VNĐ** (${c['cost']['usd']:.5f})",
-            f"- **Thời gian phản hồi**: {c['latency_s']}s",
+            f"- **Độ trễ phản hồi**: TTFT={c.get('ttft_s', 0):.2f}s | End-to-end={c.get('latency_s', 0):.2f}s",
+            f"- **Token & Chi phí**: {c['tokens']['total_tokens']} tokens ({c['tokens'].get('prompt_tokens', 0)} prompt + {c['tokens'].get('completion_tokens', 0)} completion | {c['tokens']['app_tokens']} app + {c['tokens']['judge_tokens']} judge) | **{c['cost']['vnd']:,.0f} VNĐ** (${c['cost']['usd']:.5f})",
             f"- **Câu trả lời thực tế**:",
             f"```text",
             f"{c['answer']}",
@@ -688,25 +761,27 @@ def generate_markdown_report(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Detailed evaluation runner for golden_v5 with token/cost tracking"
+        description="Detailed evaluation runner for golden dataset with token/cost tracking"
     )
     parser.add_argument(
         "--dataset",
         type=Path,
-        default=GOLDEN_V5_PATH if GOLDEN_V5_PATH.is_file() else GOLDEN_V4_PATH,
-        help="Đường dẫn file golden dataset YAML (mặc định golden_v5.yaml)",
+        default=GOLDEN_V6_PATH if GOLDEN_V6_PATH.is_file() else (
+            GOLDEN_V5_PATH if GOLDEN_V5_PATH.is_file() else GOLDEN_V4_PATH
+        ),
+        help="Đường dẫn file golden dataset YAML (mặc định golden_v6_comprehensive.yaml)",
     )
     parser.add_argument(
         "--output-md",
         type=Path,
         default=None,
-        help="Đường dẫn file Markdown báo cáo (mặc định specs/eval/eval_results_golden_v5.md)",
+        help="Đường dẫn file Markdown báo cáo (mặc định specs/eval/eval_observations_v6.md)",
     )
     parser.add_argument(
         "--output-json",
         type=Path,
         default=None,
-        help="Đường dẫn file JSON chi tiết (mặc định specs/eval/eval_results_golden_v5.json)",
+        help="Đường dẫn file JSON chi tiết (mặc định specs/eval/eval_observations_v6.json)",
     )
     parser.add_argument(
         "--slice",
@@ -745,7 +820,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--save-baseline",
         action="store_true",
-        help="Lưu kết quả đánh giá thành baseline chính thức v4 (resources/eval/v4_baseline.json)",
+        help="Lưu kết quả đánh giá thành baseline chính thức v6 (resources/eval/v6_baseline.json)",
     )
 
     args = parser.parse_args(argv)

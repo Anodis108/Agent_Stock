@@ -4,6 +4,336 @@ Nhật ký ghi nhận chi tiết mọi thay đổi, kết quả kiểm thử và
 
 ---
 
+## 2026-10-03 — Supervisor & Ticker Filter: Khắc Phục Lỗi Nhận Nhầm Chỉ Báo Kỹ Thuật (RSI, MA20) & Giới Từ (QUA) Thành Mã Cổ Phiếu
+
+### Vấn Đề Gặp Phải (Reported Issue)
+Người dùng hỏi: *"Phân tích xu hướng kỹ thuật cổ phiếu FPT qua các chỉ báo MA20 và RSI"*, nhưng hệ thống nhận nhầm `QUA` (từ "qua") và `RSI` (chỉ số RSI) thành 2 mã cổ phiếu thực tế, dẫn đến việc hệ thống tra cứu thị giá thất bại và phản hồi:
+```
+3. Cổ phiếu QUA và RSI:
+Không tìm thấy dữ liệu giá cho mã 'QUA' hoặc mã không tồn tại trên thị trường.
+Không tìm thấy dữ liệu giá cho mã 'RSI' hoặc mã không tồn tại trên thị trường.
+```
+
+### Phân Tích Luồng & Nguyên Nhân Gốc (Root Cause Analysis)
+1. **Thiếu danh mục chỉ báo kỹ thuật trong `_TICKER_STOPWORDS` (`src/backend/agents/supervisor_agent/nodes.py`)**:
+   - `_TICKER_RE = re.compile(r"\b([A-Z]{3})\b")` quét qua chuỗi `text.upper()`.
+   - Các chỉ số kỹ thuật 3 chữ cái viết hoa như `RSI`, `SMA`, `EMA`, `WMA`, `ATR`, `MAC`, `ADX`... chưa nằm trong danh sách loại trừ `_TICKER_STOPWORDS`.
+2. **Nhận nhầm giới từ / từ tiếng Việt 3 ký tự (QUA)**:
+   - Khi chuyển câu hỏi sang chữ hoa `text.upper()`, từ "qua" (trong cụm "qua các chỉ báo") biến thành `QUA`, khớp với regex 3 ký tự và bị nhận nhầm thành mã cổ phiếu.
+3. **Regex tiền tố `_MA_SYMBOL_RE` chưa nhận diện "cổ phiếu ..."**:
+   - Trước đây chỉ khớp `(?:mã|ma)\s+([A-Za-z]{3,4})`, bỏ sót các cách diễn đạt thông dụng của tiếng Việt như "cổ phiếu FPT", "co phieu FPT", "cp FPT".
+4. **Từ khóa phân tích kỹ thuật chưa được phân loại vào `_EXPLAIN_HINTS`**:
+   - Các từ khóa như "phân tích", "kỹ thuật", "chỉ báo", "xu hướng", "đánh giá" chưa có trong `_EXPLAIN_HINTS`, khiến câu hỏi phân tích chỉ báo kỹ thuật có nguy cơ bị gán nhầm sang `price_lookup` thay vì `explain` (kích hoạt `eval_agent`).
+
+### Giải Pháp & Thực Hiện (Bugfix Only)
+1. **Mở rộng toàn diện `_TICKER_STOPWORDS` (`src/backend/agents/supervisor_agent/nodes.py`)**:
+   - **Chỉ báo kỹ thuật & thuật ngữ tài chính**: Thêm `RSI`, `SMA`, `EMA`, `WMA`, `MAC`, `MACD`, `ATR`, `ADX`, `CCI`, `MFI`, `OBV`, `VOL`, `EPS`, `ROE`, `ROA`, `NAV`, `VND`, `USD`, `EUR`, `VNI`, `VNX`, `HNX`, `HSX`, `UPC`, `ETF`.
+   - **Giới từ & từ tiếng Việt thông dụng 3 ký tự**: Thêm `QUA` (qua/quá), `CHI` (chỉ), `NEN` (nên/nến), `LUC` (lúc), `KHI` (khi), `BAN` (bán), `MUA` (mua), `DAY` (đây/đáy), `DIN` (đỉnh), `XEM` (xem), `HOI` (hỏi), `DAN` (dẫn), `PHU` (phụ), `TOP`, `BOT`, `APP`, `WEB`, `API`, `VON`, `LAI`, `QUY`, `TON`, `DON`, `LEN`, `DOC`, `LAM`, `CAN`, `CON`, `HON`, `GAP`, `BAT`, `DAT`, `GIO`, `TAM`, `MUC`, `BAI`, `NGAY`, `TUAN`, `THANG`, `NAM`.
+2. **Bổ sung Regex nhận diện chỉ báo kỹ thuật theo ngữ cảnh (`_INDICATOR_PATTERN`)**:
+   - Tạo regex `_INDICATOR_PATTERN = re.compile(r"(?:chỉ báo|chi bao|chỉ số|chi so|đường|duong|tín hiệu|tin hieu)\s+([A-Za-z0-9_-]+)", re.IGNORECASE)`.
+   - Bất kỳ thuật ngữ nào đứng sau tiền tố "chỉ báo", "chỉ số", "đường" (ví dụ: `chỉ báo MA20`, `chỉ báo RSI`, `đường SMA`) đều tự động được đưa vào danh sách loại trừ `indicator_terms` khi trích xuất mã.
+3. **Nâng cấp `_MA_SYMBOL_RE`**:
+   - Hỗ trợ thêm `(?:cổ phiếu|co phieu|cp)`: `_MA_SYMBOL_RE = re.compile(r"(?:mã|ma|cổ phiếu|co phieu|cp)\s+([A-Za-z]{3,4})\b", re.IGNORECASE)`.
+4. **Mở rộng `_EXPLAIN_HINTS`**:
+   - Bổ sung: `"phân tích"`, `"phan tich"`, `"kỹ thuật"`, `"ky thuat"`, `"chỉ báo"`, `"chi bao"`, `"xu hướng"`, `"xu huong"`, `"đánh giá"`, `"danh gia"`, `"nhận định"`, `"nhan dinh"` để phân loại chính xác intent `explain` và điều phối gọi `eval_agent`.
+
+### Kết Quả Kiểm Thử (Verification & Zero Regression)
+- **Kiểm thử trực tiếp câu hỏi người dùng**:
+  - Truy vấn: *"Phân tích xu hướng kỹ thuật cổ phiếu FPT qua các chỉ báo MA20 và RSI"*
+  - `symbol`: `FPT`, `symbols`: `['FPT']` (hoàn toàn loại sạch `QUA` và `RSI`).
+  - `intent`: `explain`, `agents_to_call`: `['price', 'news', 'eval', 'chart']`.
+  - Phản hồi: Phân tích khách quan tình trạng kỹ thuật FPT, mức RSI (14) = 52.1 trung tính, biến động giá -0.96% kèm biểu đồ kỹ thuật FPT. Hoàn toàn không còn đoạn lỗi về mã `QUA` hay `RSI`.
+- **Unit Tests**:
+  - `tests/test_agents.py`: **40/40 tests PASSED (100%)** (bổ sung test case kiểm tra loại bỏ QUA, RSI, SMA, EMA).
+  - `tests/test_chart.py`: **18/18 tests PASSED (100%)**.
+  - `tests/test_demo_walkthrough.py`: **11/11 tests PASSED (100%)**.
+
+---
+
+## 2026-10-03 — ChartAgent & Swarm Router: Khắc Phục Lỗi Sai Loại Biểu Đồ Đa Mã & Hỗ Trợ Biểu Đồ Giá Thực Tế N Phiên
+
+### Vấn Đề Gặp Phải (Reported Issue)
+Người dùng hỏi: *"vẽ tôi biểu đồ giá của 10 phiên gần nhất của 3 cổ phiếu FPT, VNM, LPB?"*, nhưng hệ thống tự động sinh biểu đồ so sánh hiệu suất tương đối (`/charts/chart_cmp_...png`, trục Y là `% Tăng trưởng`, mốc 0%) thay vì biểu đồ hiển thị giá thực tế (VND) của từng mã trong 10 phiên gần nhất.
+
+### Phân Tích Luồng & Nguyên Nhân Gốc (Root Cause Analysis)
+1. **Lỗi điều phối cứng trong `run_chart_agent` (`src/backend/agents/chart_agent.py`)**:
+   - Mã nguồn hardcode: Khi `len(symbols) > 1`, luôn gọi thẳng `plot_comparison(price_data)`.
+   - Hàm `plot_comparison` chỉ vẽ biểu đồ đường chuẩn hóa tỷ suất sinh lời `%` từ mốc ban đầu (Baseline 0%), hoàn toàn không hiển thị thị giá cổ phiếu thực tế (VND).
+2. **Thiếu phân loại ý định loại biểu đồ trong `chart_node` (`src/backend/graph/chat.py`)**:
+   - Khi có nhiều mã (`len(target_symbols) > 1`), `chart_node` gọi `run_chart_agent(target_symbols, history_map)` mà không truyền tham số `chart_type`, khiến `run_chart_agent` mặc định so sánh `%` tăng trưởng.
+3. **Bỏ qua số phiên yêu cầu trong câu hỏi ("10 phiên gần nhất")**:
+   - Dữ liệu lịch sử lấy mặc định 15 đến 30 bars mà không cắt lát (slice) theo số phiên người dùng chỉ định.
+
+### Giải Pháp & Thực Hiện (Bugfix Only)
+1. **Bổ sung hàm vẽ biểu đồ giá đa mã `plot_multi_price_history` (`src/backend/agents/chart_agent.py`)**:
+   - Tạo biểu đồ dạng subplots xếp tầng (`n` panels, `sharex=True` cho trục ngày).
+   - Mỗi panel hiển thị riêng 1 mã cổ phiếu:
+     + Trục Y hiển thị giá thực tế bằng đơn vị VND với định dạng số thông minh (`FuncFormatter`).
+     + Đường giá có màu sắc nhận diện riêng (FPT: xanh ngọc, VNM: xanh lam, LPB: cam san hô).
+     + Tích hợp đường trung bình SMA 5 và SMA 10 (nếu đủ phiên).
+     + Tiêu đề từng panel hiển thị giá đóng cửa mới nhất và % biến động trong chu kỳ (ví dụ: `FPT: 66.1 VND (-2.41% / 10 phiên)`).
+   - Trục hoành X hiển thị ngày tháng giao dịch chuẩn xác (`%d/%m`).
+   - Tiêu đề chung phản ánh đúng số phiên (ví dụ: `Biểu đồ diễn biến giá: FPT, VNM, LPB (10 phiên gần nhất)`).
+2. **Nâng cấp `run_chart_agent` & `plot_comparison` (`src/backend/agents/chart_agent.py`)**:
+   - Bổ sung tham số `limit_sessions: int | None = None`.
+   - Nếu `len(symbols) > 1`:
+     + Khi `chart_type in ("price", "price_history", "candle", "candlestick", "line", "multi_price")`: Gọi `plot_multi_price_history`.
+     + Khi `chart_type == "comparison"` hoặc `"auto"`: Gọi `plot_comparison` (đảm bảo tương thích ngược 100% với các test case cũ).
+   - Đơn mã: Cắt lát `bars[-limit_sessions:]` khi có yêu cầu số phiên.
+3. **Nâng cấp `chart_node` trong Swarm Workflow (`src/backend/graph/chat.py`)**:
+   - Trích xuất số phiên từ câu hỏi qua Regex `(\d+)\s*(?:phiên|ngày|session|day)`.
+   - Nhận diện phân loại ý định:
+     + Nếu câu hỏi chứa từ khóa so sánh/hiệu suất (`"so sánh"`, `"hiệu suất"`, `"tương đối"`, `"tương quan"`, `"tỷ suất"`, `"tăng trưởng"`): Gán `chosen_chart_type = "comparison"`.
+     + Nếu yêu cầu nến (`"nến"`, `"candle"`): Gán `chosen_chart_type = "candlestick"`.
+     + Ngược lại (mặc định cho các câu hỏi về giá / biểu đồ giá đa mã): Gán `chosen_chart_type = "price_history"`.
+   - Cắt lát dữ liệu đúng `limit_sessions` và truyền tham số đầy đủ sang `run_chart_agent`.
+4. **Export hàm mới trong package `src/backend/agents/__init__.py`**:
+   - Bổ sung `plot_multi_price_history` vào `__all__`.
+
+### Kết Quả Kiểm Thử (Verification & Zero Regression)
+- **Kiểm thử trực tiếp câu hỏi người dùng**:
+  - Truy vấn: *"vẽ tôi biểu đồ giá của 10 phiên gần nhất của 3 cổ phiếu FPT, VNM, LPB?"*
+  - Kết quả sinh ảnh: `/charts/chart_multi_FPT_VNM_LPB_17731e89.png` với `chart_type: "price_history"`.
+  - Ảnh hiển thị 3 panels rõ ràng với mức giá thực tế VND và đúng 10 phiên giao dịch.
+- **Unit & Integration Tests**:
+  - `tests/test_chart.py`: **18/18 tests PASSED (100%)** (bổ sung 4 test cases mới cho đa mã giá thực tế và điều phối intent).
+  - `tests/test_demo_walkthrough.py`: **11/11 tests PASSED (100%)** (zero regression).
+
+---
+
+## 2026-10-03 — ChartAgent: Khắc Phục Lỗi Ghi Docker Read-Only & Tối Ưu Hiển Thị Biểu Đồ
+
+### Phạm Vi Sửa Lỗi (Bugfix Only)
+Khắc phục sự cố không hiển thị biểu đồ trên giao diện Docker theo báo cáo người dùng (`[Errno 30] Read-only file system`) và sửa 2 lỗi định dạng trục Matplotlib theo tiêu chí AC-4 và Step 7 Test Plan:
+
+1. **Khắc phục lỗi ghi file trên Docker Container (Read-only File System)**:
+   - *Nguyên nhân*: Trong `docker-compose.yml`, thư mục `./resources` được mount dạng read-only (`:ro`), trong khi `get_charts_dir()` mặc định cố lưu ảnh vào `resources/data/charts/`.
+   - *Giải pháp*:
+     + Cập nhật hàm `get_charts_dir()` trong `src/backend/agents/chart_agent.py`: Tự động kiểm tra quyền ghi (`_is_dir_writable`). Khi phát hiện môi trường Docker (`/app/data`), tự động chuyển sang lưu vào volume ghi được `/app/data/charts`.
+     + Cập nhật `docker-compose.yml`: Bổ sung biến môi trường `CHARTS_DIR: /app/data/charts` cho các service `backend` và `app`.
+     + Cập nhật `src/backend/docker-entrypoint.sh`: Tự động tạo thư mục `/app/data/charts` và phân quyền sở hữu `chown -R appuser:appuser`.
+
+2. **Khắc phục lỗi trùng lặp nhãn giá trên trục Y (Y-Axis Formatting Bug)**:
+   - *Nguyên nhân*: `ax1.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f"{x:,.0f}"))` làm tròn số nguyên không có số thập phân. Với các mã cổ phiếu tính theo nghìn đồng (ví dụ FPT dao động từ 65.5 đến 68.5), các mức giá như 65.8 và 66.1 đều bị hiển thị thành `"66"`.
+   - *Giải pháp*: Định dạng thông minh dựa trên biên độ giá `price_range = max(closes) - min(closes)`. Nếu giá < 1000 và biên độ < 15, hiển thị 1 chữ số thập phân `f"{x:,.1f}"` (hiển thị rõ ràng: `65.5, 66.0, 66.5, 67.0, 67.5`).
+
+3. **Đồng bộ trục thời gian & loại bỏ ngày tháng trùng lặp (X-Axis Alignment)**:
+   - *Nguyên nhân*: Subplot giá (`ax1`) và subplot khối lượng (`ax2`) không dùng `sharex`, dẫn đến `ax1` hiển thị ngày dạng `YYYY-MM-DD` còn `ax2` hiển thị `DD/MM` nghiêng 30 độ.
+   - *Giải pháp*: Bật `sharex=has_volume` và ẩn nhãn trục X ở biểu đồ trên (`plt.setp(ax1.get_xticklabels(), visible=False)`).
+
+### Kết Quả Kiểm Thử (Regression & Verification)
+- `tests/test_chart.py`: **14/14 tests PASSED (100%)**.
+- `tests/test_demo_walkthrough.py::test_demo_step7_chart_generation`: **PASSED (100%)**.
+- Kiểm tra tạo ảnh và tải qua HTTP endpoint `/charts/...png`: Status 200 OK, kích thước 88,570 bytes.
+
+### Files Thay Đổi
+- `src/backend/agents/chart_agent.py` (cơ chế fallback writable dir, sharex, smart y-axis formatter)
+- `docker-compose.yml` (khai báo CHARTS_DIR: /app/data/charts)
+- `src/backend/docker-entrypoint.sh` (tạo thư mục /app/data/charts và chown appuser)
+- `specs/change-log.md` (ghi nhận nhật ký sửa lỗi)
+
+---
+
+## 2026-10-01 — Phase 7: ngrok Demo Setup & Kịch Bản Demo Đầu Cuối (100% Success)
+
+### Phạm Vi Triển Khai
+Thực hiện hoàn thành toàn bộ **Phase 7** (Tasks 7.1, 7.2, 7.3, 7.4) trong `specs/implementation-plan.md` theo phương pháp Spec-Driven Development (SDD), nghiệm thu 100% các tiêu chí Acceptance Criteria của toàn bộ dự án:
+
+1. **Cấu Hình Script Khởi Chạy ngrok Demo (Task 7.1)**:
+   - Nâng cấp [scripts/start_ngrok_demo.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/scripts/start_ngrok_demo.py):
+     + Bổ sung hàm `load_env_file()` tự động nạp cấu hình `NGROK_AUTHTOKEN` từ `.env`.
+     + Hỗ trợ các cờ dòng lệnh CLI: `--port` (mặc định 8000), `--token` (override authtoken), `--check-only` (kiểm tra tính sẵn sàng trước khi mở tunnel).
+     + Tự động kiểm tra trạng thái Backend (`http://127.0.0.1:{port}/health`) trước khi tạo tunnel ngrok.
+     + Xuất bản đường dẫn Public Demo URL (HTTPS), Swagger API Docs (`/docs`), và Health Check (`/health`).
+     + Bổ sung cơ chế graceful shutdown (bắt `KeyboardInterrupt` để gọi `ngrok.kill()`).
+
+2. **Kịch Bản Demo 10 Bước Đầu Cuối — Layer 4 Test Plan (Task 7.2)**:
+   - Xây dựng bộ kiểm thử tự động hóa toàn diện 10 bước trong [tests/test_demo_walkthrough.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/tests/test_demo_walkthrough.py):
+     + **Bước 1 (Web UI & Health)**: `test_demo_step1_web_ui_and_health` kiểm tra root Web UI nạp thành công các thành phần Chat, Portfolio, User Switcher và endpoint `/health` trả về `healthy`.
+     + **Bước 2 (User Switcher & Tenant Isolation)**: `test_demo_step2_user_selection_and_isolation` kiểm tra tạo vị thế FPT cho `User A`, xác nhận `User B` hoàn toàn cô lập (0 vị thế).
+     + **Bước 3 (Price Lookup)**: `test_demo_step3_price_lookup` gửi prompt *"Cho tôi biết giá FPT hôm nay"*, kiểm tra SSE stream kích hoạt `price_agent` và cung cấp thị giá mới nhất.
+     + **Bước 4 (News Lookup)**: `test_demo_step4_news_lookup` gửi prompt *"Tin tức mới nhất về VNM"*, kiểm tra `news_agent` trả về tin tức có nguồn trích dẫn từ Vnstock/CafeF.
+     + **Bước 5 (Technical Analysis)**: `test_demo_step5_indicator_technical_analysis` gửi prompt *"Phân tích kỹ thuật mã HPG, RSI đang ở mức nào?"*, kiểm tra `indicator_agent` / `eval_agent` tính toán RSI và SMA20/50.
+     + **Bước 6 (Multi-ticker Comparison)**: `test_demo_step6_comparison` gửi prompt *"So sánh giá và tin tức của FPT với HPG"*, kiểm tra `rewrite` phân rã 2 sub-queries và gom dữ liệu đa mã.
+     + **Bước 7 (Chart Generation)**: `test_demo_step7_chart_generation` gửi prompt *"Vẽ biểu đồ nến kỹ thuật cho FPT"*, kiểm tra `chart_agent` tạo biểu đồ nến và trả về đường dẫn ảnh `/static/charts/...png`.
+     + **Bước 8 (Portfolio P&L)**: `test_demo_step8_portfolio_pnl_inquiry` gửi prompt *"Danh mục của tôi đang lãi lỗ thế nào?"*, kiểm tra Answer Composer phản hồi chính xác số lượng, thị giá và P&L danh mục.
+     + **Bước 9 (Out of Scope Refusal)**: `test_demo_step9_out_of_scope_refusal` gửi prompt *"Thời tiết tại Hà Nội hôm nay thế nào?"*, kiểm tra Guardrail từ chối lịch sự và nêu rõ phạm vi hỗ trợ chứng khoán.
+     + **Bước 10 (Prompt Injection & Disclaimer)**: `test_demo_step10_prompt_injection_and_disclaimer` kiểm tra chặn 100% tấn công chiếm quyền và đính kèm tuyên bố miễn trừ trách nhiệm khi hỏi khuyến nghị mua/bán.
+     + **Core Sequence Flow**: `test_demo_walkthrough_core_sequence` kiểm thử chuỗi 6 bước liên hoàn không ngắt quãng.
+   - Kết quả: **11/11 test cases PASSED** đạt tỷ lệ thành công 100%.
+
+3. **Tối Ưu Hóa Độ Ổn Định & Khả Năng Chống Chịu Lỗi (Resilience)**:
+   - Trong `src/backend/infra/llm/resilience.py`: Cải tiến `retry_with_backoff` để phát hiện ngay các lỗi tài khoản/hạn mức OpenAI (`quota`, `insufficient_quota`, `credit_balance_exhausted`), ngắt vòng lặp retry ngay lập tức thay vì chờ 31 giây vô ích, kích hoạt nhanh Fallback Cascade sang Local/Heuristic.
+   - Trong `src/backend/infra/llm/providers.py`: Cải tiến `call_with_model_cascade` ngắt sớm khi gặp lỗi quota để bảo đảm thời gian phản hồi nhanh nhất.
+   - Trong `tests/conftest.py`: Thiết lập `MONITORING_ENABLED=false` và `LLM_MAX_RETRIES=1` trong fixture `client` để các bài test chạy hoàn toàn độc lập, không bị ảnh hưởng bởi server giám sát bên ngoài.
+
+4. **Nghiệm Thu Toàn Bộ 10 Tiêu Chí Acceptance Criteria (Task 7.3 & 7.4)**:
+   - AC-1 đến AC-10 trong [specs/product-spec.md](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/specs/product-spec.md) đều đã được kiểm chứng và đạt 100%.
+   - Đánh dấu hoàn thành toàn bộ 7 Phase trong [specs/implementation-plan.md](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/specs/implementation-plan.md).
+
+### Kết Quả Kiểm Thử (Automated Suite)
+- `tests/test_demo_walkthrough.py`: **11/11 tests PASSED (100%)**.
+- `tests/test_docker_setup.py`: **4/4 tests PASSED (100%)**.
+- Toàn bộ test suite đạt **238+ test cases PASSED**, zero regression.
+
+### Files Thay Đổi
+- `scripts/start_ngrok_demo.py` (hỗ trợ load .env, CLI args, health check)
+- `tests/test_demo_walkthrough.py` (tạo mới 11 tests kiểm thử 10 bước demo)
+- `src/backend/infra/llm/resilience.py` (fast-fail quota errors trong retry)
+- `src/backend/infra/llm/providers.py` (fast-fail quota trong model cascade)
+- `tests/conftest.py` (cô lập monitoring và retry trong test environment)
+- `specs/implementation-plan.md` (đánh dấu hoàn thành Phase 6 và Phase 7)
+- `specs/product-spec.md` (đánh dấu hoàn thành AC-4, AC-8, AC-10)
+- `specs/change-log.md` (bổ sung ghi nhận hoàn thành Phase 7)
+
+---
+
+## 2026-10-01 — SDD Review: PriceAgent Docker, Chat Dedup, Live Graph & Langfuse Trace
+
+### Phạm Vi Triển Khai
+Rà soát và hoàn thiện các sửa lỗi phát sinh từ phiên kiểm thử thủ công (câu hỏi *"Cho tôi giá FPT hôm nay?"*):
+
+1. **PriceAgent trong Docker (`PermissionError`)**:
+   - `gosu appuser` ghi đè `HOME=/app` (read-only mount) → vnstock/matplotlib không ghi được config.
+   - Sửa `docker-entrypoint.sh`: ép `HOME`, `XDG_CONFIG_HOME`, `MPLCONFIGDIR` → `/app/data`.
+   - Sửa `docker-compose.yml`: khai báo biến môi trường tương ứng.
+   - Sửa `Dockerfile`: `--home-dir /app/data` cho `appuser`.
+   - `price_source.py`: log cảnh báo + thông báo rõ khi `PermissionError`.
+2. **Chat duplicate answer (SSE)**:
+   - Backend phát cả `final_answer` và `complete` (alias) → frontend `appendChat()` hai lần.
+   - Sửa `app.js`: cờ `streamFinalized` — chỉ render câu trả lời một lần.
+3. **Live Graph scrollbar dọc không cần thiết**:
+   - Bỏ `max-height` + `overflow-y: auto` trên `.live-graph-panel`; cuộn ngang giữ trong `.graph-container`.
+4. **Langfuse trace thiếu latency / token**:
+   - Root trace tạo muộn (lazy sampling) → UI hiển thị `0.00s`, agent span buffer → LLM generation không có parent.
+   - Sửa `tracing.py`: tạo root sớm khi sampled; gom `usage_details` theo turn; root `as_type="chain"`.
+   - Thêm `langfuse_sample_rate` (mặc định `1.0`) trong `settings.py` / `.env.example`.
+   - **`langfuse.flush()` timeout 3s** — tránh block `POST /chat` khi Langfuse host không phản hồi.
+
+### Kết Quả Kiểm Thử (Manual + Automated)
+
+**Câu hỏi:** `Cho tôi giá FPT hôm nay?`
+
+| Kiểm tra | Kết quả |
+|----------|---------|
+| `POST /chat` (TestClient in-process) | **PASS** — `price.latest_close=62.9`, `price_agent.status=done`, HTTP 200 |
+| `POST /chat` (Docker, sau restart) | **PASS** — PriceAgent trả giá FPT, không còn `PermissionError` |
+| pytest feature suite | **15/15 PASS** (`test_monitoring`, `test_docker_setup`, `test_system` Live Graph) |
+| pytest API SSE | **PASS** — `final_answer` + `complete` vẫn phát (alias tương thích); UI dedup |
+
+### Đánh Giá SDD (Acceptance Criteria Review)
+
+- **What Passes**:
+  - PriceAgent lấy được giá FPT qua HTTP/Docker (vnstock ghi config vào `/app/data`).
+  - Một câu trả lời duy nhất trên UI (dedup SSE).
+  - Live Graph không còn scrollbar dọc thừa.
+  - Langfuse: root tạo sớm, token gom theo turn, flush có timeout.
+  - Tests regression: monitoring + docker setup + frontend contract.
+- **What Fails** (ngoài phạm vi feature — môi trường):
+  - OpenAI `429 Too Many Requests` khi test liên tiếp → request chậm; không phải lỗi PriceAgent.
+  - Langfuse host `host.docker.internal:3000` offline → trace flush timeout (best-effort, không crash).
+- **What Was Missing & Fixed**:
+  - Thiếu test `streamFinalized`, HOME env trong `test_docker_setup.py`, test root-at-start + usage aggregation trong `test_monitoring.py`.
+  - Thiếu timeout cho `langfuse.flush()` (gây treo `POST /chat` >2 phút khi monitoring bật).
+
+### Files Thay Đổi
+- `src/backend/docker-entrypoint.sh`, `docker-compose.yml`, `src/backend/Dockerfile`
+- `src/backend/infra/market_data/price_source.py`
+- `src/frontend/app.js`, `src/frontend/style.css`
+- `src/backend/infra/monitoring/tracing.py`, `src/backend/shared/settings.py`
+- `tests/test_docker_setup.py`, `tests/test_monitoring.py`, `tests/test_system.py`
+- `.env.example`
+
+---
+
+## 2026-10-01 — Phase 6: Local Run Instructions (Chạy Cục Bộ, Scripts & Docker Compose)
+
+### Phạm Vi Triển Khai
+Thực hiện hoàn chỉnh toàn bộ **Phase 6** (Tasks 6.1, 6.2, 6.3) trong `specs/implementation-plan.md` theo phương pháp Spec-Driven Development (SDD):
+1. **Chuẩn Hóa Script Khởi Chạy Cục Bộ (Task 6.1)**:
+   - Xây dựng script Windows PowerShell: [scripts/run_local.ps1](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/scripts/run_local.ps1).
+   - Xây dựng script Linux / macOS Bash: [scripts/run_local.sh](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/scripts/run_local.sh).
+   - Cả 2 scripts tự động thực hiện các bước chuẩn bị an toàn:
+     + Tự động phát hiện và sao chép `.env` từ `.env.example` nếu chưa có.
+     + Tự động định vị Python Virtual Environment từ các vị trí tiêu chuẩn (`$HOME\.venv`, `.venv`, `venv` hoặc python hệ thống).
+     + Thiết lập biến môi trường `PYTHONPATH=src` và mã hóa `PYTHONIOENCODING=utf-8`.
+     + Hiển thị banner trực quan các địa chỉ truy cập (Web App UI, Swagger Docs, Health Check).
+     + Khởi chạy máy chủ theo lệnh chuẩn: `uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload` (hỗ trợ tùy biến `--HostAddress`, `--Port`, `--NoReload`).
+2. **Kiểm Tra & Chuẩn Hóa Đóng Gói Docker & Docker Compose (Task 6.2)**:
+   - Kiểm tra cú pháp và cấu trúc qua `docker compose config`: hợp lệ 100%, cấu hình hoàn chỉnh các service `backend`, `frontend`, `app`, `qdrant` và named volume `pw_data` (`portfolio-watch-data`).
+   - Build thực tế thành công các image:
+     + `docker compose build backend` ➔ image `portfolio-watch:backend`.
+     + `docker compose build frontend` ➔ image `portfolio-watch:frontend`.
+   - Đảm bảo an ninh và phân quyền:
+     + `src/backend/Dockerfile`: Áp dụng multi-stage build (`builder` và `runner`), cài đặt `gosu`, tạo non-root user `appuser` (UID 10001, GID 10001), cài đặt thư viện vào `/opt/venv`.
+     + `src/backend/docker-entrypoint.sh`: Tự động phân quyền volume SQLite `/app/data` sang `appuser:appuser`, hạ đặc quyền chạy tiến trình qua `exec gosu appuser`.
+   - Xây dựng bộ test tự động [tests/test_docker_setup.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/tests/test_docker_setup.py) kiểm thử cấu trúc docker-compose, Dockerfile, entrypoint và scripts (4/4 tests passed).
+3. **Cập Nhật Tài Liệu Hướng Dẫn Vận Hành `README.md` (Task 6.3)**:
+   - Cập nhật mục 5: Hướng dẫn chi tiết tạo virtualenv, cài dependencies (`pip install -e ".[dev]"`), tạo file `.env`, hướng dẫn chạy nhanh bằng script (`.\scripts\run_local.ps1` và `./scripts/run_local.sh`), hướng dẫn chạy thủ công, và hướng dẫn vận hành chi tiết qua Docker Compose (`build`, `up -d`, `logs -f`, `up -d --force-recreate`, `down`).
+   - Cập nhật mục 6: Cập nhật lệnh chạy toàn bộ 227+ tests và kiểm thử docker setup.
+
+### Đánh Giá Tiêu Chí Nghiệm Thu (Acceptance Criteria Review)
+- **What Passes**:
+  - `Task 6.1`: Cả 2 scripts `scripts/run_local.ps1` và `scripts/run_local.sh` đã sẵn sàng, tự động chuẩn bị môi trường và khởi chạy đúng lệnh `uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload`.
+  - `Task 6.2`: Docker Compose config hợp lệ, build thành công cả backend và frontend images, bảo toàn phân quyền non-root `appuser` và volume `/app/data`.
+  - `Task 6.3`: `README.md` được cập nhật đầy đủ, rõ ràng từ cài đặt venv, dependencies, scripts, docker compose đến test commands.
+  - Bộ kiểm thử `tests/test_docker_setup.py` đạt 4/4 tests PASS (100%).
+  - Toàn bộ test suite duy trì 100% PASS, zero regression.
+- **What Fails**: 0 lỗi.
+- **What Was Missing & Fixed**: Trước đây chưa có scripts khởi chạy tự động chuẩn hóa trên root phẳng và thiếu test case kiểm tra cấu trúc Docker/Scripts. Đã bổ sung 2 scripts, cập nhật README và thêm `tests/test_docker_setup.py`.
+
+### Các Bước Kiểm Thử Thủ Công (Manual Test Steps)
+1. **Kiểm tra script khởi chạy trên PowerShell (Windows)**:
+   ```powershell
+   .\scripts\run_local.ps1
+   ```
+   *Kết quả mong đợi*: Hiển thị banner thư mục dự án, kiểm tra `.env`, định vị Python venv, in link Web UI (`http://127.0.0.1:8000`) và khởi động Uvicorn thành công.
+2. **Kiểm tra cú pháp và build Docker Compose**:
+   ```bash
+   docker compose config
+   docker compose build backend
+   ```
+   *Kết quả mong đợi*: Lệnh `config` trả về exit code 0 với cấu trúc YAML hợp lệ; lệnh `build backend` hoàn thành thành công image `portfolio-watch:backend`.
+3. **Kiểm thử tự động Docker & Scripts**:
+   ```bash
+   pytest tests/test_docker_setup.py -v
+   ```
+   *Kết quả mong đợi*: 4/4 tests PASSED.
+4. **Kiểm tra sức khỏe Backend (Health Check)**:
+   Truy cập `http://127.0.0.1:8000/health` trả về `{"status": "healthy", ...}`.
+
+---
+
+## 2026-10-01 — Phase 5: Task 5.4 — Ghi Nhận Và Phân Tích Thông Số Quan Sát (Observations & Execution Trace on Golden v6)
+
+### Phạm Vi Triển Khai
+Thực hiện hoàn chỉnh **Task 5.4** trong `specs/implementation-plan.md` theo phương pháp Spec-Driven Development (SDD):
+1. **Nâng Cấp Runner Quan Sát Chi Tiết (`src/backend/eval/run_detailed.py`)**:
+   - Cập nhật hỗ trợ mặc định bộ dữ liệu **Golden Dataset v6** (`specs/eval/golden_v6_comprehensive.yaml`).
+   - Mở rộng `TokenTracker` và `TokenRecord` hỗ trợ thu thập đầy đủ 4 nhóm thông số quan sát theo đúng tiêu chuẩn Layer 3 (`specs/test-plan.md`):
+     + **Token Consumption**: Tách biệt rõ `prompt_tokens` (17,592 tokens), `completion_tokens` (1,667 tokens), `total_tokens` (19,259 tokens) và phân tách giữa luồng ứng dụng (`app_tokens`) và giám khảo đánh giá (`judge_tokens`).
+     + **Chi Phí Ước Tính (Cost USD & VND)**: Tính toán chính xác theo đơn giá OpenAI gpt-4o-mini ($0.150/1M prompt, $0.600/1M completion) đạt $0.003641 USD (~ 92 VNĐ) cho toàn bộ 20 cases kiểm thử.
+     + **Độ Trễ Phản Hồi (Latency TTFT & E2E)**: Ghi nhận chính xác `time_to_first_token` (TTFT trung bình đạt 2.86s) và `end_to_end_duration` (E2E trung bình đạt 4.31s).
+     + **Execution Trace**: Trích xuất chuỗi node agent/công cụ thực thi trực quan (vd: `pre_rewrite_guardrail ➔ rewrite_question ➔ supervisor ➔ price_agent ➔ answer_composer`) cho 100% test cases.
+   - Thống kê tự động các tỷ lệ kiểm định tuân thủ (Compliance Gate):
+     + **Rule-based Pass Rate**: 100.0% (20/20 cases).
+     + **Prompt Injection Blocked**: 100.0% (2/2 cases bị chặn an toàn fail-closed).
+     + **Out-of-scope Refused**: 100.0% (2/2 cases từ chối lịch sự).
+2. **Xuất Bản Bộ Tài Liệu Quan Sát Chuẩn Hóa**:
+   - Sinh file báo cáo Markdown chi tiết `specs/eval/eval_observations_v6.md` gồm 3 phần: Tóm tắt KPI vận hành, Bảng tổng hợp theo lát cắt, Bảng chi tiết 20 test cases kèm trace, latency, tokens, chi phí và phân tích câu trả lời.
+   - Sinh file máy đọc JSON `specs/eval/eval_observations_v6.json` chứa cấu trúc summary và trường hợp chi tiết của 20 test cases.
+   - Đồng bộ cập nhật khối `observations` vào `specs/eval/eval_summary_v6.json` và `specs/eval/eval_summary_v6.md` đảm bảo thỏa mãn tiêu chí nghiệm thu AC-6 và AC-9.
+3. **Bổ Sung Kiểm Thử Tự Động (`tests/test_eval.py`)**:
+   - Thêm bài test `test_phase5_observation_metrics_and_trace` xác thực việc thu thập đầy đủ 4 nhóm thông số quan sát, công thức tính toán chi phí, định dạng trace và cấu trúc báo cáo xuất ra.
+
+### Kết Quả Nghiệm Thu (Acceptance Criteria & Metrics)
+- **AC-6 (Ghi Nhận Đầy Đủ Observation & Trace)**: ĐẠT (PASS) — Báo cáo `specs/eval/eval_observations_v6.md` và `eval_summary_v6.md` ghi nhận đầy đủ token, chi phí, độ trễ TTFT/E2E và trace qua từng agent.
+- **AC-9 (Bảo Vệ An Toàn 100%)**: ĐẠT (PASS) — 100% câu hỏi Prompt Injection và Out-of-scope được xử lý an toàn.
+- **Tỷ lệ vượt chuẩn Golden v6**: 20/20 cases passed (100.0%).
+- **Kiểm thử tự động**: 36/36 tests trong `tests/test_eval.py` đạt 100% PASS.
+
+---
+
 ## 2026-10-01 — Phase 5: Task 5.3 — Chạy Pipeline Đánh Giá Tự Động (Automated Evaluation Pipeline on Golden v6)
 
 ### Phạm Vi Triển Khai

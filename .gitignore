@@ -1,6 +1,3 @@
-# Áp dụng chung cho cả 2 folder con: vn-stock-swarm/ (code chính) và
-# llm-engineer-demo/ (code tham chiếu để build từng Agent theo plan.md).
-
 # Secrets — KHÔNG BAO GIỜ commit
 .env
 *.env
@@ -16,13 +13,37 @@ __pycache__/
 .venv/
 venv/
 
-# Dữ liệu / cache nặng — không commit (qdrant index, dataset đã tải,
-# checkpoint fine-tune, sink DB & JSONL runtime của swarm)
-data/
-!vn-stock-swarm/tests/**/data/
-training/output/
+# Legacy root folders — dùng resources/ thay thế
+/data/
+/docs/
+
+# Runtime data & generated assets (resources/data)
+resources/data/*.db
+resources/data/*.db-*
+resources/data/charts/
+resources/data/hitl_feedback.json
+resources/data/hitl_feedback_export.json
+resources/portfolio_watch.egg-info/
+
+# DB / binary artifacts (anywhere)
 *.db
 *.sqlite3
+*.db-shm
+*.db-wal
+
+# Agent / IDE local (không phải product source)
+.cursor/
+.agy-prompts/
+.agy-runs/
+
+# Generated diagrams / notes at repo root
+portfolio-watch-agent-explained.md
+portfolio-watch-agent-overview.png
+portfolio-watch-agent-v4.mmd
+portfolio-watch-agent-v4.png
+
+# Training / heavy outputs
+training/output/
 
 # OS / IDE
 .DS_Store
@@ -31,9 +52,7 @@ training/output/
 
 # Portfolio Watch — CI artifacts & local caches
 .eval_cache/
-.agy-runs/
 specs/eval/runs/
 specs/eval/pr_report.json
 specs/eval/pr_report.md
 deploy/lkg/
-

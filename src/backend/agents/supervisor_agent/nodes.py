@@ -27,45 +27,87 @@ from backend.infra.storage.long_term_memory import (
 )
 from backend.shared.schemas import MemoryFact
 
-_MA_SYMBOL_RE = re.compile(r"(?:mã|ma)\s+([A-Za-z]{3,4})\b", re.IGNORECASE)
+_MA_SYMBOL_RE = re.compile(r"(?:mã|ma|cổ phiếu|co phieu|cp)\s+([A-Za-z]{3,4})\b", re.IGNORECASE)
+_INDICATOR_PATTERN = re.compile(
+    r"(?:chỉ báo|chi bao|chỉ số|chi so|đường|duong|tín hiệu|tin hieu)\s+([A-Za-z0-9_-]+)",
+    re.IGNORECASE,
+)
 _TICKER_RE = re.compile(r"\b([A-Z]{3})\b")
 _TICKER_STOPWORDS = frozenset(
     {
-        "THE",
-        "AND",
-        "FOR",
-        "ARE",
-        "BUT",
-        "NOT",
-        "YOU",
-        "ALL",
-        "SAO",
-        "NAY",
-        "ROI",
-        "CUA",
-        "NHE",
-        "VAY",
-        "TIN",  # "tin tức" — không phải mã
-        "TUC",
-        "MOT",
-        "HAY",
-        "CHO",
-        "CAC",
-        "DEN",
-        "VOI",
-        "NUA",
-        "RAT",
-        "HOM",
-        "NAO",
-        "BAO",  # «bao nhiêu» — không phải mã
-        "ATC",  # Lệnh ATC — không phải mã
-        "ATO",  # Lệnh ATO — không phải mã
-        "GIA",  # «giá» — không phải mã
-        "TAI",  # «tại» — không phải mã
-        "TIA",  # typo «tịa» — không phải mã
-        "HIEN",  # «hiện» — không phải mã
+        # Từ tiếng Anh phổ biến
+        "THE", "AND", "FOR", "ARE", "BUT", "NOT", "YOU", "ALL", "WHY", "HOW", "WHO", "OUT",
+        # Chỉ báo kỹ thuật & thuật ngữ tài chính (Technical Indicators & Financial Metrics)
+        "RSI", "SMA", "EMA", "WMA", "MAC", "MACD", "ATR", "ADX", "CCI", "MFI", "OBV", "VOL",
+        "EPS", "ROE", "ROA", "NAV", "VND", "USD", "EUR", "VNI", "VNX", "HNX", "HSX", "UPC", "ETF",
+        "ATC", "ATO",
+        # Từ tiếng Việt 3 chữ cái phổ biến (tránh nhận nhầm khi text.upper())
+        "QUA",  # «qua» / «quá» (qua các chỉ báo, hôm qua)
+        "CHI",  # «chỉ» (chỉ báo, chỉ số)
+        "BAO",  # «bao» / «báo» (bao nhiêu, chỉ báo, bài báo)
+        "NEN",  # «nên» / «nến» (nên mua, biểu đồ nến)
+        "LUC",  # «lúc»
+        "KHI",  # «khi»
+        "BAN",  # «bán» / «bản»
+        "MUA",  # «mua»
+        "DAY",  # «đây» / «đáy»
+        "DIN",  # «đỉnh»
+        "XEM",  # «xem»
+        "HOI",  # «hỏi»
+        "DAN",  # «dẫn»
+        "PHU",  # «phụ»
+        "TOP",  # «top»
+        "BOT",  # «bot»
+        "APP",  # «app»
+        "WEB",  # «web»
+        "API",  # «api»
+        "VON",  # «vốn»
+        "LAI",  # «lãi» / «lại»
+        "QUY",  # «quỹ» / «quý»
+        "TON",  # «tồn»
+        "DON",  # «đơn»
+        "LEN",  # «lên»
+        "DOC",  # «đọc»
+        "LAM",  # «làm»
+        "CAN",  # «cần»
+        "CON",  # «còn» / «con»
+        "HON",  # «hơn»
+        "GAP",  # «gặp» / «gấp»
+        "BAT",  # «bắt»
+        "DAT",  # «đạt» / «đặt»
+        "GIO",  # «giờ»
+        "TAM",  # «tạm» / «tầm»
+        "MUC",  # «mức» / «mục»
+        "BAI",  # «bài»
+        "GIA",  # «giá»
+        "TAI",  # «tại»
+        "TIA",  # typo «tịa»
+        "HIEN", # «hiện»
         "HIE",
-        "TOI",  # «tôi» — không phải mã
+        "TOI",  # «tôi»
+        "THE",  # «thế» / «thể»
+        "SAO",  # «sao»
+        "NAY",  # «này»
+        "ROI",  # «rồi»
+        "CUA",  # «của»
+        "NHE",  # «nhé»
+        "VAY",  # «vậy»
+        "TIN",  # «tin»
+        "TUC",  # «tức»
+        "MOT",  # «một»
+        "HAY",  # «hay»
+        "CHO",  # «cho»
+        "CAC",  # «các»
+        "DEN",  # «đến»
+        "VOI",  # «với»
+        "NUA",  # «nữa»
+        "RAT",  # «rất»
+        "HOM",  # «hôm»
+        "NAO",  # «nào»
+        "NGAY", # «ngày»
+        "TUAN", # «tuần»
+        "THANG",# «tháng»
+        "NAM",  # «năm»
     }
 )
 _REF_PREV_RE = re.compile(
@@ -99,6 +141,18 @@ _EXPLAIN_HINTS = (
     "lý do",
     "ly do",
     "why",
+    "phân tích",
+    "phan tich",
+    "kỹ thuật",
+    "ky thuat",
+    "chỉ báo",
+    "chi bao",
+    "xu hướng",
+    "xu huong",
+    "đánh giá",
+    "danh gia",
+    "nhận định",
+    "nhan dinh",
 )
 _NEWS_PHRASES = (
     "tin tức",
@@ -170,17 +224,18 @@ class SupervisorBrain(Protocol):
 
 
 def _extract_symbols(text: str) -> list[str]:
-    """Lấy mọi mã 3-4 chữ cái (theo thứ tự xuất hiện, loại bỏ stopwords, không trùng)."""
+    """Lấy mọi mã 3-4 chữ cái (theo thứ tự xuất hiện, loại bỏ stopwords và chỉ báo kỹ thuật, không trùng)."""
     if not text:
         return []
+    indicator_terms = {m.group(1).strip().upper() for m in _INDICATOR_PATTERN.finditer(text)}
     out: list[str] = []
     for ma in _MA_SYMBOL_RE.finditer(text):
         sym = ma.group(1).strip().upper()
-        if sym and sym not in _TICKER_STOPWORDS and sym not in out:
+        if sym and sym not in _TICKER_STOPWORDS and sym not in indicator_terms and sym not in out:
             out.append(sym)
     for match in _TICKER_RE.finditer(text.upper()):
         sym = match.group(1)
-        if sym not in _TICKER_STOPWORDS and sym not in out:
+        if sym not in _TICKER_STOPWORDS and sym not in indicator_terms and sym not in out:
             out.append(sym)
     return out
 

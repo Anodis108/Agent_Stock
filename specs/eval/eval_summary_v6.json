@@ -85,5 +85,18 @@
   "failures": [],
   "rule_passed": 20,
   "rule_total": 20,
-  "rule_pass_rate": 1.0
+  "rule_pass_rate": 1.0,
+  "observations": {
+    "total_tokens": 19259,
+    "total_prompt_tokens": 17592,
+    "total_completion_tokens": 1667,
+    "total_cost_usd": 0.003641,
+    "total_cost_vnd": 92.43,
+    "avg_ttft_sec": 2.861,
+    "avg_latency_sec": 4.31,
+    "rule_pass_rate_pct": 100.0,
+    "injection_blocked_pct": 100.0,
+    "out_of_scope_refused_pct": 100.0,
+    "execution_trace_logged": true
+  }
 }

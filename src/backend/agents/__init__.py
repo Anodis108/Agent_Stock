@@ -3,6 +3,7 @@
 from backend.agents.chart_agent import (
     ChartResult,
     plot_comparison,
+    plot_multi_price_history,
     plot_price_history,
     run_chart_agent,
 )
@@ -10,6 +11,8 @@ from backend.agents.chart_agent import (
 __all__ = [
     "ChartResult",
     "plot_price_history",
+    "plot_multi_price_history",
     "plot_comparison",
     "run_chart_agent",
 ]
+

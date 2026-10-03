@@ -249,10 +249,11 @@ def price_node(
     """Node thu thập dữ liệu giá Vnstock cho một mã cổ phiếu cụ thể."""
     t0 = time.perf_counter()
     emit_agent_event("node_start", {"node": "price_agent", "symbol": sym, "timestamp": time.time()})
-    hits_before = price_source.cache_stats().get("hits", 0)
+    has_cache = hasattr(price_source, "cache_stats") and callable(getattr(price_source, "cache_stats"))
+    hits_before = price_source.cache_stats().get("hits", 0) if has_cache else 0
     with agent_span(turn, "price_agent", input=sym) as box:
         p = run_price_agent(sym, price_source, turn)
-        from_cache = price_source.cache_stats().get("hits", 0) > hits_before
+        from_cache = (price_source.cache_stats().get("hits", 0) > hits_before) if has_cache else False
         out = {
             "symbol": sym,
             "latest_close": p.latest_close,
@@ -329,18 +330,32 @@ def chart_node(
     price_by_sym = {p.symbol.upper(): p for p in prices if p and p.symbol}
     history_map: dict[str, list[PriceBar]] = {}
 
+    q_lower = (question or "").lower()
+    import re
+    session_limit: int | None = None
+    m_sess = re.search(r"(\d+)\s*(?:phiên|ngày|session|day)", q_lower)
+    if m_sess:
+        try:
+            val = int(m_sess.group(1))
+            if 2 <= val <= 100:
+                session_limit = val
+        except ValueError:
+            pass
+
+    fetch_days = max(30, (session_limit or 15) + 15)
+
     for sym_item in target_symbols:
         s_upper = sym_item.upper()
         bars: list[PriceBar] = []
         if history_store:
             try:
-                bars = list(history_store.read_history(s_upper, days=30) or [])
+                bars = list(history_store.read_history(s_upper, days=fetch_days) or [])
             except Exception as exc:
                 _logger.warning("history_store read_history failed for %s: %s", s_upper, exc)
                 bars = []
         if len(bars) < 5 and hasattr(price_source, "fetch_history"):
             try:
-                fetched = price_source.fetch_history(s_upper, days=30)
+                fetched = price_source.fetch_history(s_upper, days=fetch_days)
                 if fetched:
                     bars = fetched
                     if history_store and hasattr(history_store, "upsert_bars"):
@@ -355,7 +370,7 @@ def chart_node(
                 from backend.services.market_service import MarketService
                 from backend.infra.market_data.price_source import VnstockPriceSource
                 ms = MarketService(price_source=price_source if isinstance(price_source, VnstockPriceSource) else None)
-                hist_records = ms.get_symbol_history(s_upper, limit=15)
+                hist_records = ms.get_symbol_history(s_upper, limit=max(15, (session_limit or 15) + 5))
                 if hist_records:
                     bars = [
                         PriceBar(
@@ -376,7 +391,8 @@ def chart_node(
             from datetime import date, timedelta
             today = date.today()
             bars = []
-            for i in range(20, 0, -1):
+            fake_count = max(20, (session_limit or 10) + 5)
+            for i in range(fake_count, 0, -1):
                 d_i = (today - timedelta(days=i)).isoformat()
                 factor = 1.0 + ((i % 5) - 2) * 0.008
                 c = round(base_close * factor, 2)
@@ -388,11 +404,34 @@ def chart_node(
                     low=round(c * 0.99, 2),
                     volume=1000000.0 + i * 50000.0,
                 ))
+        if session_limit and len(bars) > session_limit:
+            bars = bars[-session_limit:]
         history_map[s_upper] = bars
 
-    q_lower = (question or "").lower()
     is_candlestick = any(w in q_lower for w in ("nến", "candle", "candlestick"))
     style = "candle" if is_candlestick else "line"
+
+    # Phân biệt ý định: So sánh hiệu suất tương đối (% tăng trưởng) vs Biểu đồ giá (VND)
+    is_relative_comparison = any(
+        w in q_lower
+        for w in (
+            "so sánh", "so sanh",
+            "hiệu suất", "hieu suat",
+            "tương đối", "tuong doi",
+            "tỷ suất", "ty suat",
+            "tăng trưởng", "tang truong",
+            "tương quan", "tuong quan",
+            "tỷ lệ tăng", "ty le tang",
+        )
+    )
+
+    if is_relative_comparison:
+        chosen_chart_type = "comparison"
+    elif is_candlestick:
+        chosen_chart_type = "candlestick"
+    else:
+        chosen_chart_type = "price_history"
+
 
     t0 = time.perf_counter()
     emit_agent_event("node_start", {"node": "chart_agent", "symbols": target_symbols, "timestamp": time.time()})
@@ -402,10 +441,17 @@ def chart_node(
                 target_symbols[0],
                 history_map.get(target_symbols[0].upper(), []),
                 style=style,
-                chart_type="candlestick" if is_candlestick else "auto",
+                chart_type=chosen_chart_type,
+                limit_sessions=session_limit,
             )
         else:
-            chart_result = run_chart_agent(target_symbols, history_map)
+            chart_result = run_chart_agent(
+                target_symbols,
+                history_map,
+                style=style,
+                chart_type=chosen_chart_type,
+                limit_sessions=session_limit,
+            )
         box["output"] = {
             "success": chart_result.success,
             "url": chart_result.url,
@@ -418,13 +464,14 @@ def chart_node(
             {
                 "url": chart_result.url,
                 "symbols": target_symbols,
-                "chart_type": getattr(chart_result, "chart_type", "candlestick" if is_candlestick else "line"),
+                "chart_type": getattr(chart_result, "chart_type", chosen_chart_type),
                 "file_path": getattr(chart_result, "file_path", None),
             },
         )
     dur = round(time.perf_counter() - t0, 3)
     emit_agent_event("node_finish", {"node": "chart_agent", "duration_s": dur, "duration_ms": int(dur * 1000)})
     return chart_result
+
 
 
 def workers_node(state: ChatState, config: RunnableConfig) -> dict[str, Any]:

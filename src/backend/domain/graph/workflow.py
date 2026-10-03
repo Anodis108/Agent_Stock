@@ -200,5 +200,5 @@ def save_graph_visualization(path: str = "resources/docs/agent_graph.png") -> st
 
 if __name__ == "__main__":
     # python -m backend.domain.graph.workflow
-    saved = save_graph_visualization("docs/agent_graph.png")
+    saved = save_graph_visualization("resources/docs/agent_graph.png")
     print(saved)

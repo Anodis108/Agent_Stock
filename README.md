@@ -81,46 +81,98 @@ Bộ tài liệu đặc tả được duy trì tại thư mục `specs/`:
 * Python >= 3.10 (khuyến nghị Python 3.11 hoặc 3.12)
 * SQLite 3
 * Git
+* Docker & Docker Compose (tùy chọn nếu chạy container)
 
-### Cài Đặt
+### Cài Đặt Ban Đầu
 ```bash
-# 1. Kích hoạt môi trường ảo
+# 1. Khởi tạo và kích hoạt virtual environment
 # Windows:
+py -m venv $HOME\.venv
 & "$HOME\.venv\Scripts\Activate.ps1"
 # Linux / macOS:
+python3 -m venv ~/.venv
 source ~/.venv/bin/activate
 
-# 2. Cài đặt dependencies (bao gồm wheel nội bộ)
-pip install wheels/*.whl
+# 2. Cài đặt dependencies
+pip install -U pip setuptools wheel
 pip install -e ".[dev]"
+
+# 3. Tạo file cấu hình môi trường từ .env.example
+# Windows (PowerShell):
+Copy-Item .env.example .env
+# Linux / macOS:
+cp .env.example .env
 ```
 
-### Chạy Cục Bộ (Local)
+### Chạy Cục Bộ Nhanh Bằng Script Tự Động (Khuyến Nghị)
+
+Dự án cung cấp sẵn scripts tiện lợi tự động định vị venv, thiết lập `PYTHONPATH=src`, kiểm tra `.env` và khởi động máy chủ Uvicorn:
+
+* **Trên Windows (PowerShell):**
+  ```powershell
+  .\scripts\run_local.ps1
+  ```
+  *(Có thể tùy biến: `.\scripts\run_local.ps1 -Port 8000 -HostAddress 127.0.0.1`)*
+
+* **Trên Linux / macOS (Bash):**
+  ```bash
+  chmod +x ./scripts/run_local.sh
+  ./scripts/run_local.sh
+  ```
+
+### Chạy Cục Bộ Thủ Công
+Nếu muốn tự điều khiển qua dòng lệnh:
 ```bash
-# Thiết lập biến môi trường và chạy Backend API (kèm Frontend Static)
+# Windows (PowerShell):
 $env:PYTHONPATH="src"
-uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
-```
-* **Giao diện Web UI:** `http://localhost:8000`
-* **API Documentation (Swagger):** `http://localhost:8000/docs`
-* **Health Check:** `http://localhost:8000/health`
+python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
 
-### Chạy Qua Docker Compose
-```bash
-# Khởi chạy toàn bộ dịch vụ (Backend FastAPI + Frontend Nginx)
-docker compose up --build -d
+# Linux / macOS (Bash):
+export PYTHONPATH="src"
+python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
 ```
-* **Frontend UI (Nginx):** `http://localhost:3000`
-* **Backend API:** `http://localhost:8000`
+
+* **Giao diện Web UI (App):** `http://localhost:8000` (hoặc `http://127.0.0.1:8000`)
+* **Tài liệu API (Swagger UI):** `http://localhost:8000/docs`
+* **Kiểm tra sức khỏe (Health Check):** `http://localhost:8000/health`
+
+### Vận Hành Qua Docker Compose
+
+Hệ thống được thiết kế theo kiến trúc Microservices tối ưu: image chỉ chứa runtime Python và thư viện; mã nguồn ứng dụng, resources, và specs được mount trực tiếp ở runtime. Entrypoint script tự động phân quyền volume cho non-root user `appuser` (UID 10001).
+
+```bash
+# 1. Build images (chỉ cần chạy lần đầu hoặc khi cập nhật pyproject.toml)
+docker compose build
+
+# 2. Khởi động toàn bộ dịch vụ ở chế độ background
+docker compose up -d
+
+# 3. Xem nhật ký log của backend
+docker compose logs -f backend
+
+# 4. Khi sửa đổi code / cấu hình .env (không cần build lại)
+docker compose up -d --force-recreate
+
+# 5. Dừng các dịch vụ
+docker compose down
+```
+
+* **Frontend UI (Nginx Web):** `http://localhost:3001` (tránh xung đột port 3000 của Langfuse)
+* **Backend API & Direct Web:** `http://localhost:8000`
+* **Langfuse Tracing UI (nếu có):** `http://localhost:3000`
 
 ---
 
 ## 6. Chạy Kiểm Thử & Đánh Giá Chất Lượng
 
 ```bash
-# Chạy toàn bộ 178+ unit & integration tests
+# Chạy toàn bộ 227+ unit, integration & docker setup tests
 pytest tests/ -v
 
-# Chạy đánh giá tập Golden Dataset mới (Offline / Mock judge)
+# Chạy riêng kiểm thử thiết lập Docker & Scripts
+pytest tests/test_docker_setup.py -v
+
+# Chạy đánh giá tập Golden Dataset (Offline / Mock judge)
 python -m backend.eval.run --subset --skip-agent-eval --json specs/eval/pr_report.json --report specs/eval/pr_report.md
 ```
+

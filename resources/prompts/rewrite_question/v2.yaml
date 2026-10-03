@@ -1,6 +1,6 @@
 name: rewrite_question
 version: 2
-model: gpt-4o
+model: gpt-4o-mini
 description: >-
   RewriteQuestion v2: Tinh gọn và bao quát toàn diện ngữ cảnh hội thoại đa lượt
   (Kế thừa đối tượng & Kế thừa hành động cho câu hỏi tỉnh lược Turn 2; kết hợp Query Decomposition).

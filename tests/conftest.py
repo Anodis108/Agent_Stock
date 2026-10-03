@@ -68,6 +68,8 @@ def real_deps(tmp_path, monkeypatch):
     db = tmp_path / "portfolio_watch.db"
     monkeypatch.setenv("SQLITE_PATH", str(db))
     monkeypatch.setenv("BACKEND_SQLITE_PATH", str(tmp_path / "backend_store.db"))
+    monkeypatch.setenv("MONITORING_ENABLED", "false")
+    monkeypatch.setenv("LLM_MAX_RETRIES", "1")
     clear_deps_cache()
     deps = build_real_deps(str(db))
     set_app_deps(deps)
@@ -82,6 +84,8 @@ def client(tmp_path, monkeypatch):
     temp_db = tmp_path / "test_api.db"
     monkeypatch.setenv("SQLITE_PATH", str(temp_db))
     monkeypatch.setenv("BACKEND_SQLITE_PATH", str(tmp_path / "test_store.db"))
+    monkeypatch.setenv("MONITORING_ENABLED", "false")
+    monkeypatch.setenv("LLM_MAX_RETRIES", "1")
     clear_deps_cache()
     deps = build_real_deps(str(temp_db))
     set_app_deps(deps)

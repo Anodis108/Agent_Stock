@@ -1,7 +1,8 @@
-# Portfolio Watch — Backend Service Container (FastAPI + LangGraph Swarm)
-# Build: docker build -f src/backend/Dockerfile -t portfolio-watch:backend .
+# Backend runtime image — Python venv + gosu only. NO application code.
+# Code, entrypoint, command, healthcheck → docker-compose.yml
+# Rebuild when pyproject.toml dependencies change:
+#   docker compose build backend
 
-# Stage 1: Builder
 FROM python:3.12-slim AS builder
 
 WORKDIR /build
@@ -16,13 +17,29 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-COPY wheels /wheels
 COPY pyproject.toml README.md ./
-RUN pip install --no-cache-dir -U pip setuptools wheel \
-    && pip install --no-cache-dir /wheels/*.whl \
-    && pip install --no-cache-dir .[dev]
 
-# Stage 2: Final Runner
+ARG PIP_EXTRA_INDEX_URL=https://vnstocks.com/api/simple
+ENV PIP_EXTRA_INDEX_URL=${PIP_EXTRA_INDEX_URL}
+
+RUN pip install --no-cache-dir -U pip setuptools wheel \
+    && python - <<'PY'
+import os
+import subprocess
+import tomllib
+from pathlib import Path
+
+data = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+deps = list(data["project"]["dependencies"])
+deps.extend(data["project"].get("optional-dependencies", {}).get("dev", []))
+extra = os.environ.get("PIP_EXTRA_INDEX_URL")
+cmd = ["pip", "install", "--no-cache-dir"]
+if extra:
+    cmd.extend(["--extra-index-url", extra])
+cmd.extend(deps)
+subprocess.check_call(cmd)
+PY
+
 FROM python:3.12-slim AS runner
 
 WORKDIR /app
@@ -32,37 +49,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends gosu \
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PATH="/opt/venv/bin:$PATH" \
-    PYTHONPATH="/app/src:$PATH" \
-    API_HOST=0.0.0.0 \
-    API_PORT=8000 \
-    SQLITE_PATH=/app/data/portfolio_watch.db \
-    BACKEND_SQLITE_PATH=/app/data/backend_store.db
+    PATH="/opt/venv/bin:$PATH"
 
 COPY --from=builder /opt/venv /opt/venv
 
-COPY pyproject.toml README.md docker-compose.yml .env.example ./
-COPY src ./src
-COPY resources ./resources
-COPY specs ./specs
-COPY tests ./tests
-
-# Link package in editable mode
-RUN pip install --no-cache-dir --no-deps -e .
-
 RUN mkdir -p /app/data /app/data/charts \
     && groupadd -r appuser --gid 10001 \
-    && useradd -r -g appuser --uid 10001 --home-dir /app --shell /usr/sbin/nologin appuser \
-    && chown -R appuser:appuser /app
-
-# USER appuser (chạy qua gosu appuser trong docker-entrypoint.sh để sửa quyền /app/data)
-COPY src/backend/docker-entrypoint.sh /docker-entrypoint.sh
-RUN chmod +x /docker-entrypoint.sh
-
-EXPOSE 8000
-
-HEALTHCHECK --interval=15s --timeout=5s --retries=3 --start-period=10s \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"
-
-ENTRYPOINT ["/docker-entrypoint.sh"]
-CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    && useradd -r -g appuser --uid 10001 --home-dir /app/data --shell /usr/sbin/nologin appuser

@@ -751,16 +751,12 @@ body {
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 0.65rem 0.85rem;
-  flex: 0 1 auto;
-  min-height: 0;
-  max-height: min(62vh, 560px);
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   gap: 0.45rem;
   box-shadow: var(--shadow-sm);
-  overflow-x: hidden;
-  overflow-y: auto;
-  scrollbar-gutter: stable;
+  overflow: visible;
 }
 
 .graph-panel-header {
@@ -1169,32 +1165,27 @@ body {
   background: #94a3b8;
 }
 
-/* Scrollbar — cột phải & live graph panel */
-.secondary-column::-webkit-scrollbar,
-.live-graph-panel::-webkit-scrollbar {
+/* Scrollbar — cột phải (Live Graph cuộn ngang trong .graph-container) */
+.secondary-column::-webkit-scrollbar {
   width: 10px;
 }
 
-.secondary-column::-webkit-scrollbar-track,
-.live-graph-panel::-webkit-scrollbar-track {
+.secondary-column::-webkit-scrollbar-track {
   background: #f1f5f9;
   border-radius: 5px;
 }
 
-.secondary-column::-webkit-scrollbar-thumb,
-.live-graph-panel::-webkit-scrollbar-thumb {
+.secondary-column::-webkit-scrollbar-thumb {
   background: #cbd5e1;
   border-radius: 5px;
   border: 2px solid #f1f5f9;
 }
 
-.secondary-column::-webkit-scrollbar-thumb:hover,
-.live-graph-panel::-webkit-scrollbar-thumb:hover {
+.secondary-column::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
 
-.secondary-column,
-.live-graph-panel {
+.secondary-column {
   scrollbar-width: thin;
   scrollbar-color: #cbd5e1 #f1f5f9;
 }
