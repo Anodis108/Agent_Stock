@@ -1,0 +1,126 @@
+{
+  "generated_at": "2026-10-04T10:46:53Z",
+  "git_sha": "unknown",
+  "dry_run": true,
+  "questions_run": 200,
+  "elapsed_sec": 0.02,
+  "modes": {
+    "none": {
+      "requests": 600,
+      "cache_hits": 0,
+      "cache_hit_rate": 0.0,
+      "total_tokens": 623940,
+      "total_cost_usd": 0.131364,
+      "total_cost_vnd": 3336.65,
+      "by_feature": {
+        "cache_benchmark": {
+          "requests": 600,
+          "tokens": 623940,
+          "cost_usd": 0.131364
+        }
+      }
+    },
+    "tier1": {
+      "requests": 1200,
+      "cache_hits": 600,
+      "cache_hit_rate": 0.5,
+      "total_tokens": 623940,
+      "total_cost_usd": 0.131364,
+      "total_cost_vnd": 3336.65,
+      "by_feature": {
+        "cache_benchmark": {
+          "requests": 1200,
+          "tokens": 623940,
+          "cost_usd": 0.131364
+        }
+      }
+    },
+    "tier1_tier2": {
+      "requests": 600,
+      "cache_hits": 180,
+      "cache_hit_rate": 0.3,
+      "total_tokens": 436740,
+      "total_cost_usd": 0.091944,
+      "total_cost_vnd": 2335.38,
+      "by_feature": {
+        "cache_benchmark": {
+          "requests": 600,
+          "tokens": 436740,
+          "cost_usd": 0.09194399999999998
+        }
+      }
+    }
+  },
+  "semantic_audit_sample": [
+    {
+      "query": "Giá FPT hôm nay?",
+      "matched_question": "Giá FPT hôm nay bao nhiêu?",
+      "similarity": 0.95,
+      "prompt_name": "answer_compose",
+      "false_hit_risk": "low"
+    },
+    {
+      "query": "FPT giá bao nhiêu hôm nay?",
+      "matched_question": "Giá FPT hôm nay bao nhiêu?",
+      "similarity": 0.95,
+      "prompt_name": "answer_compose",
+      "false_hit_risk": "low"
+    },
+    {
+      "query": "Thị giá FPT phiên này thế nào?",
+      "matched_question": "Giá FPT hôm nay bao nhiêu?",
+      "similarity": 0.95,
+      "prompt_name": "answer_compose",
+      "false_hit_risk": "low"
+    },
+    {
+      "query": "Giá VNM hiện tại?",
+      "matched_question": "Cho tôi giá hiện tại của VNM",
+      "similarity": 0.95,
+      "prompt_name": "answer_compose",
+      "false_hit_risk": "low"
+    },
+    {
+      "query": "Vinamilk hôm nay giá bao nhiêu?",
+      "matched_question": "Cho tôi giá hiện tại của VNM",
+      "similarity": 0.95,
+      "prompt_name": "answer_compose",
+      "false_hit_risk": "low"
+    },
+    {
+      "query": "HPG giá thế nào?",
+      "matched_question": "HPG đang giao dịch ở mức giá nào?",
+      "similarity": 0.95,
+      "prompt_name": "answer_compose",
+      "false_hit_risk": "low"
+    },
+    {
+      "query": "Hòa Phát đang khớp giá mấy?",
+      "matched_question": "HPG đang giao dịch ở mức giá nào?",
+      "similarity": 0.95,
+      "prompt_name": "answer_compose",
+      "false_hit_risk": "low"
+    },
+    {
+      "query": "VCB giá bao nhiêu hôm nay?",
+      "matched_question": "Thị giá và tỷ lệ thay đổi của VCB hôm nay",
+      "similarity": 0.95,
+      "prompt_name": "answer_compose",
+      "false_hit_risk": "low"
+    },
+    {
+      "query": "Giá cổ phiếu VIC?",
+      "matched_question": "Giá cổ phiếu VIC hiện tại là bao nhiêu?",
+      "similarity": 0.95,
+      "prompt_name": "answer_compose",
+      "false_hit_risk": "low"
+    },
+    {
+      "query": "Vinhomes VHM hôm nay tăng hay giảm?",
+      "matched_question": "VHM đang tăng hay giảm bao nhiêu phần trăm?",
+      "similarity": 0.95,
+      "prompt_name": "answer_compose",
+      "false_hit_risk": "low"
+    }
+  ]
+}

@@ -1,0 +1,145 @@
+# Portfolio Watch V5 — Microservices Deployment (Frontend + Backend)
+#
+# Images: runtime + thư viện only. Code/config/command/healthcheck → compose.
+#
+# Lần đầu (hoặc khi đổi pyproject.toml):
+#   cp .env.example .env
+#   docker compose build
+#   docker compose up -d
+#
+# Sửa code / port / .env — không cần build:
+#   docker compose up -d --force-recreate
+#
+# Truy cập:
+#   Frontend : http://localhost:3001
+#   Backend  : http://localhost:8000
+#   Langfuse : http://localhost:3000 (compose riêng ../langfuse)
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: src/backend/Dockerfile
+    image: portfolio-watch:backend
+    pull_policy: build
+    container_name: portfolio-watch-backend
+    env_file:
+      - .env
+    entrypoint: ["sh", "/docker-entrypoint.sh"]
+    command:
+      [
+        "uvicorn",
+        "backend.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+      ]
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    environment:
+      PYTHONPATH: /app/src
+      HOME: /app/data
+      XDG_CONFIG_HOME: /app/data/.config
+      MPLCONFIGDIR: /app/data/.matplotlib
+      API_HOST: "0.0.0.0"
+      API_PORT: "8000"
+      AI_TRANSPORT: "inprocess"
+      FRONTEND_ORIGIN: "*"
+      SQLITE_PATH: /app/data/portfolio_watch.db
+      BACKEND_SQLITE_PATH: /app/data/backend_store.db
+      CHARTS_DIR: /app/data/charts
+      MONITORING_ENABLED: "${MONITORING_ENABLED:-false}"
+      LANGFUSE_PUBLIC_KEY: "${LANGFUSE_PUBLIC_KEY:-}"
+      LANGFUSE_SECRET_KEY: "${LANGFUSE_SECRET_KEY:-}"
+      LANGFUSE_HOST: "${DOCKER_LANGFUSE_HOST:-http://host.docker.internal:3000}"
+      QDRANT_URL: http://qdrant:6333
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - pw_data:/app/data
+      - ./src:/app/src:ro
+      - ./resources:/app/resources:ro
+      - ./specs:/app/specs:ro
+      - ./src/backend/docker-entrypoint.sh:/docker-entrypoint.sh:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./src/frontend
+      dockerfile: Dockerfile
+    image: portfolio-watch:frontend
+    pull_policy: build
+    container_name: portfolio-watch-frontend
+    command: ["nginx", "-g", "daemon off;"]
+    ports:
+      - "${FRONTEND_PORT:-3001}:80"
+    volumes:
+      - ./src/frontend:/usr/share/nginx/html:ro
+      - ./src/frontend/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  app:
+    image: portfolio-watch:backend
+    build:
+      context: .
+      dockerfile: src/backend/Dockerfile
+    container_name: portfolio-watch-app
+    env_file:
+      - .env
+    entrypoint: ["sh", "/docker-entrypoint.sh"]
+    environment:
+      PYTHONPATH: /app/src
+      HOME: /app/data
+      XDG_CONFIG_HOME: /app/data/.config
+      MPLCONFIGDIR: /app/data/.matplotlib
+      API_HOST: "0.0.0.0"
+      API_PORT: "8000"
+      AI_TRANSPORT: "inprocess"
+      SQLITE_PATH: /app/data/portfolio_watch.db
+      BACKEND_SQLITE_PATH: /app/data/backend_store.db
+      CHARTS_DIR: /app/data/charts
+    volumes:
+      - pw_data:/app/data
+      - ./src:/app/src:ro
+      - ./resources:/app/resources:ro
+      - ./specs:/app/specs:ro
+      - ./tests:/app/tests:ro
+      - ./src/backend/docker-entrypoint.sh:/docker-entrypoint.sh:ro
+    profiles:
+      - tools
+      - test
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: portfolio-watch-qdrant
+    profiles:
+      - qdrant
+      - optional
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: unless-stopped
+
+volumes:
+  pw_data:
+    name: portfolio-watch-data
+  qdrant_data:
+    name: portfolio-watch-qdrant-data

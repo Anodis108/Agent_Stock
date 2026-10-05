@@ -1,0 +1,135 @@
+"""CRUD /watchlist — thêm/xem/sửa ngưỡng/xóa mã (không qua HITL)."""
+
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
+
+from backend.api.deps import AppDeps, get_app_deps, get_current_user_id
+from backend.api.helpers.validation import (
+    normalize_symbol,
+    validate_threshold_pct,
+)
+from backend.domain.entities import WatchlistItem
+from backend.shared.settings import settings
+
+router = APIRouter(tags=["watchlist"])
+
+
+class WatchlistItemOut(BaseModel):
+    symbol: str
+    threshold_pct: float
+    alert_threshold_pct: float | None = None
+    user_id: str = "default"
+
+    def model_post_init(self, __context: Any) -> None:
+        if self.alert_threshold_pct is None:
+            self.alert_threshold_pct = self.threshold_pct
+
+
+class WatchlistListResponse(BaseModel):
+    items: list[WatchlistItemOut] = Field(default_factory=list)
+    count: int = 0
+
+
+class CreateWatchlistRequest(BaseModel):
+    symbol: str = Field(description="Mã chứng khoán VN")
+    threshold_pct: float | None = Field(
+        default=None, description="None = ngưỡng mặc định"
+    )
+    alert_threshold_pct: float | None = Field(
+        default=None, description="Ngưỡng cảnh báo biến động %"
+    )
+    user_id: str = "default"
+
+
+class UpdateWatchlistRequest(BaseModel):
+    threshold_pct: float | None = None
+    alert_threshold_pct: float | None = None
+    user_id: str = "default"
+
+
+def _to_out(item: WatchlistItem) -> WatchlistItemOut:
+    return WatchlistItemOut(
+        symbol=item.symbol,
+        threshold_pct=float(item.threshold_pct),
+        alert_threshold_pct=float(item.threshold_pct),
+        user_id=item.user_id,
+    )
+
+
+@router.get("/api/v1/watchlist", response_model=WatchlistListResponse)
+@router.get("/api/watchlist", response_model=WatchlistListResponse)
+@router.get("/watchlist", response_model=WatchlistListResponse)
+def get_watchlist(
+    user_id: str = Depends(get_current_user_id),
+    deps: AppDeps = Depends(get_app_deps),
+) -> WatchlistListResponse:
+    items = [_to_out(i) for i in deps.watchlist_store.list_items(user_id)]
+    return WatchlistListResponse(items=items, count=len(items))
+
+
+@router.post("/api/v1/watchlist", response_model=WatchlistItemOut)
+@router.post("/api/watchlist", response_model=WatchlistItemOut)
+@router.post("/watchlist", response_model=WatchlistItemOut)
+def post_watchlist(
+    body: CreateWatchlistRequest,
+    current_user: str = Depends(get_current_user_id),
+    deps: AppDeps = Depends(get_app_deps),
+) -> WatchlistItemOut:
+    symbol = normalize_symbol(body.symbol)
+    raw_thr = body.alert_threshold_pct if body.alert_threshold_pct is not None else body.threshold_pct
+    thr = validate_threshold_pct(raw_thr)
+    if thr is None:
+        thr = float(settings.default_alert_threshold_pct)
+    effective_user = body.user_id if body.user_id != "default" else current_user
+    saved = deps.watchlist_store.upsert(
+        WatchlistItem(
+            symbol=symbol,
+            threshold_pct=thr,
+            user_id=effective_user,
+        )
+    )
+    return _to_out(saved)
+
+
+@router.patch("/api/v1/watchlist/{symbol}", response_model=WatchlistItemOut)
+@router.patch("/api/watchlist/{symbol}", response_model=WatchlistItemOut)
+@router.patch("/watchlist/{symbol}", response_model=WatchlistItemOut)
+def patch_watchlist(
+    symbol: str,
+    body: UpdateWatchlistRequest,
+    current_user: str = Depends(get_current_user_id),
+    deps: AppDeps = Depends(get_app_deps),
+) -> WatchlistItemOut:
+    sym = normalize_symbol(symbol)
+    user_id = body.user_id if body.user_id != "default" else current_user
+    existing = deps.watchlist_store.get(user_id, sym)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="không tìm thấy mã trong watchlist")
+    raw_thr = body.alert_threshold_pct if body.alert_threshold_pct is not None else body.threshold_pct
+    thr = validate_threshold_pct(raw_thr, required=True)
+    assert thr is not None
+    saved = deps.watchlist_store.upsert(
+        WatchlistItem(
+            symbol=sym,
+            threshold_pct=thr,
+            user_id=user_id,
+        )
+    )
+    return _to_out(saved)
+
+
+@router.delete("/api/v1/watchlist/{symbol}")
+@router.delete("/api/watchlist/{symbol}")
+@router.delete("/watchlist/{symbol}")
+def delete_watchlist(
+    symbol: str,
+    user_id: str = Depends(get_current_user_id),
+    deps: AppDeps = Depends(get_app_deps),
+) -> dict[str, object]:
+    sym = normalize_symbol(symbol)
+    ok = deps.watchlist_store.delete(user_id, sym)
+    if not ok:
+        raise HTTPException(status_code=404, detail="không tìm thấy mã trong watchlist")
+    return {"ok": True, "symbol": sym, "user_id": user_id}

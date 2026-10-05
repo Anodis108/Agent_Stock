@@ -1,0 +1,61 @@
+"""Rate-limit resilience: key rotation + exponential backoff."""
+
+from __future__ import annotations
+
+import random
+import time
+from collections import deque
+from collections.abc import Callable
+from typing import TypeVar
+
+from openai import RateLimitError
+
+T = TypeVar("T")
+
+
+class RotatingKeyPool:
+    def __init__(self, keys: list[str]):
+        if not keys:
+            raise ValueError(
+                "RotatingKeyPool cần ít nhất 1 API key. "
+                "Đặt OPENAI_API_KEYS trong .env (xem .env.example)."
+            )
+        self._keys = deque(keys)
+        self._cooldown: dict[str, float] = {}
+
+    def get_key(self) -> str:
+        now = time.time()
+        for _ in range(len(self._keys)):
+            key = self._keys[0]
+            self._keys.rotate(-1)
+            if self._cooldown.get(key, 0.0) <= now:
+                return key
+        time.sleep(1.0)
+        return self.get_key()
+
+    def mark_limited(self, key: str, cooldown_seconds: float = 60.0) -> None:
+        self._cooldown[key] = time.time() + cooldown_seconds
+
+
+def retry_with_backoff(
+    fn: Callable[[], T],
+    *,
+    max_retries: int = 5,
+    on_rate_limit: Callable[[], None] | None = None,
+) -> T:
+    for attempt in range(max_retries):
+        try:
+            return fn()
+        except RateLimitError as exc:
+            err_msg = str(exc).lower()
+            # Lỗi cạn credit / hết quota vĩnh viễn -> raise ngay để kích hoạt fallback cascade
+            if "quota" in err_msg or "credit" in err_msg or "billing" in err_msg:
+                raise
+            if on_rate_limit is not None:
+                on_rate_limit()
+            if attempt == max_retries - 1:
+                raise
+            wait = (2**attempt) + random.uniform(0, 1)
+            time.sleep(wait)
+    raise RuntimeError("retry_with_backoff: hết số lần thử")
+
