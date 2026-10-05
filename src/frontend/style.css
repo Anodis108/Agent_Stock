@@ -357,15 +357,6 @@ body {
   color: var(--muted);
 }
 
-/* Cột phải: Live Graph + Secondary Panels */
-.secondary-column {
-  flex: 1 1 35%;
-  min-width: 360px;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  overflow-y: auto;
-}
 
 /* Banner lỗi mạng / timeout nổi bật */
 .chat-error-banner {
@@ -1042,10 +1033,9 @@ body {
   padding: 0.55rem 0.7rem;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   animation: inspector-fade-in 0.15s ease-out;
-  flex: 1 1 auto;
-  min-height: 0;
-  max-height: none;
-  overflow: visible;
+  flex: 0 0 auto;
+  max-height: 220px;
+  overflow-y: auto;
 }
 
 @keyframes inspector-fade-in {
@@ -1084,18 +1074,21 @@ body {
 }
 
 .inspector-close {
-  background: none;
-  border: none;
-  font-size: 0.85rem;
-  color: var(--muted);
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #475569;
   cursor: pointer;
-  padding: 0.1rem 0.3rem;
-  border-radius: 3px;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  transition: all 0.15s ease;
 }
 
 .inspector-close:hover {
-  background: #f1f5f9;
-  color: var(--text);
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #dc2626;
 }
 
 .inspector-detail {
@@ -1136,7 +1129,7 @@ body {
   font-size: 0.75rem;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   line-height: 1.35;
-  max-height: 220px;
+  max-height: 110px;
   overflow-x: auto;
   overflow-y: auto;
   white-space: pre-wrap;
@@ -1234,7 +1227,8 @@ body {
 
 /* Tab Content */
 .tab-content {
-  flex: 1 1 auto;
+  flex: 1 0 320px;
+  min-height: 320px;
   overflow-y: auto;
   background: var(--panel);
   border: 1px solid var(--border);
@@ -2545,6 +2539,62 @@ body {
   color: #0d9488;
 }
 
+/* --------------------------------------------------------------------------
+   Phase 4: Responsive Candlestick Charts & Markdown Image Container
+   -------------------------------------------------------------------------- */
+.chat-chart-container {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  margin: 0.75rem 0;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border, #cbd5e1);
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
 
+.chat-chart-container:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(15, 118, 110, 0.16);
+  border-color: var(--accent, #0f766e);
+}
 
+.chat-chart-img {
+  display: block;
+  width: 100%;
+  max-width: 720px;
+  height: auto;
+  border-radius: 8px 8px 0 0;
+}
 
+.chat-chart-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.65rem;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 500;
+  border-top: 1px solid #e2e8f0;
+  transition: color 0.2s ease, background-color 0.2s ease;
+}
+
+.chat-chart-container:hover .chat-chart-hint {
+  color: var(--accent, #0f766e);
+  background: #f0fdfa;
+}
+
+@media (max-width: 768px) {
+  .chat-chart-container {
+    width: 100%;
+    margin: 0.5rem 0;
+  }
+  .chat-chart-img {
+    max-width: 100%;
+  }
+}

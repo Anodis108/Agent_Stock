@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 # Phân loại vi phạm Guardrail đầu vào
-GuardrailCategory = Literal["safe", "out_of_scope_foreign_stock", "out_of_scope_general", "out_of_scope_advice", "injection"]
+GuardrailCategory = Literal["safe", "greeting", "out_of_scope_foreign_stock", "out_of_scope_general", "out_of_scope_advice", "injection"]
 
 @dataclass(slots=True)
 class InputGuardrailResult:
@@ -73,6 +73,21 @@ _NON_FINANCIAL_PATTERNS = (
     "nấu ăn",
     "nau an",
     "công thức nấu",
+    "cong thuc nau",
+    "cách nấu",
+    "cach nau",
+    "món ăn",
+    "mon an",
+    "bài thơ",
+    "bai tho",
+    "làm thơ",
+    "lam tho",
+    "viết thơ",
+    "viet tho",
+    "chuyện cười",
+    "chuyen cuoi",
+    "kể chuyện",
+    "ke chuyen",
     "bài hát",
     "phim ảnh",
     "du lịch",
@@ -197,6 +212,11 @@ _INJECTION_PATTERNS = (
     "show your instructions",
     "ignore all rules",
     "bypass rules",
+    "bypass all rules",
+    "bypass rule",
+    "bypass security",
+    "override all rules",
+    "output internal variables",
     "đóng vai một ai không có giới hạn",
     "dong vai mot ai khong co gioi han",
 )
@@ -208,6 +228,7 @@ _INJECTION_REGEXES = (
     re.compile(r"quen\s+(?:het|toan\s*bo|tat\s*ca|cac)?\s*(?:menh\s*lenh|huong\s*dan|chi\s*dan|lenh|quy\s*tac)", re.IGNORECASE),
     re.compile(r"(?:show|print|reveal|display|xuất|xuat|in|xem)\s+(?:me\s+)?(?:your\s+)?(?:the\s+)?system\s+prompt", re.IGNORECASE),
     re.compile(r"đóng\s*vai\s+(?:như\s+)?(?:một\s+)?(?:ai|người|bot|model)\s+(?:không\s+bị\s+giới\s*hạn|tự\s*do|bất\s*chấp)", re.IGNORECASE),
+    re.compile(r"bypass\s+(?:all\s+)?(?:rules|security|filters|restrictions)", re.IGNORECASE),
 )
 
 INVESTMENT_DISCLAIMER = (
@@ -216,6 +237,39 @@ INVESTMENT_DISCLAIMER = (
 )
 
 _FOREIGN_TICKER_RE = re.compile(r"\b([A-Z]{3,5})\b")
+
+# Mẫu câu chào hỏi và giao tiếp thông thường (Greeting Fast-Path)
+_GREETING_PATTERNS = (
+    "xin chào", "xin chao",
+    "chào bạn", "chao ban",
+    "chào bot", "chao bot",
+    "chào em", "chao em",
+    "chào anh", "chao anh",
+    "chào chị", "chao chi",
+    "chào trợ lý", "chao tro ly",
+    "chào buổi sáng", "chao buoi sang",
+    "chào buổi chiều", "chao buoi chieu",
+    "chào buổi tối", "chao buoi toi",
+    "chào ngày mới", "chao ngay moi",
+    "bạn là ai", "ban la ai",
+    "bạn có thể làm gì", "ban co the lam gi",
+    "bạn có thể giúp gì", "ban co the giup gi",
+    "bạn giúp được gì", "ban giup duoc gi",
+    "trợ lý có tính năng gì", "tro ly co tinh nang gi",
+    "bạn có tính năng gì", "ban co tinh nang gi",
+    "hướng dẫn sử dụng", "huong dan su dung",
+    "giới thiệu bản thân", "gioi thieu ban than",
+    "giới thiệu về bạn", "gioi thieu ve ban",
+    "hello", "hi bot", "hey bot", "good morning", "good afternoon",
+)
+
+_GREETING_REGEXES = (
+    re.compile(r"^(?:xin\s+)?chào(?:\s+(?:bạn|bot|em|anh|chị|trợ\s*lý|mọi\s*người))?[\s!\?\.]*$", re.IGNORECASE),
+    re.compile(r"^(?:hello|hi|hey|halo|alo)[\s!\?\.]*$", re.IGNORECASE),
+    re.compile(r"^(?:bạn\s+là\s+ai|ban\s+la\s+ai)[\s!\?\.]*$", re.IGNORECASE),
+    re.compile(r"^(?:bạn|ban)\s+(?:có\s+thể|co\s+the|giúp\s+được|giup\s+duoc)\s+(?:làm|lam|giúp|giup)\s+(?:gì|gi)(?:\s+(?:cho\s+tôi|cho\s+toi))?[\s!\?\.]*$", re.IGNORECASE),
+    re.compile(r"^(?:trợ\s*lý|tro\s*ly|bạn|ban)\s+(?:có|co)\s+(?:tính\s*năng|tinh\s*nang|chức\s*năng|chuc\s*nang)\s+(?:gì|gi)[\s!\?\.]*$", re.IGNORECASE),
+)
 
 
 def check_input_guardrail(question: str) -> InputGuardrailResult:
@@ -310,7 +364,22 @@ def check_input_guardrail(question: str) -> InputGuardrailResult:
             ),
         )
 
-    # 5. Câu hỏi an toàn hợp lệ
+    # 5. Kiểm tra câu chào hỏi / giao tiếp thông thường (Greeting Fast-Path)
+    is_greeting = any(pat in lowered for pat in _GREETING_PATTERNS) or any(rgx.search(raw_q) for rgx in _GREETING_REGEXES)
+    if is_greeting:
+        # Nếu câu hỏi có chứa mã cổ phiếu cụ thể kèm ý định tra cứu (ví dụ: "Chào bạn, giá FPT bao nhiêu?"),
+        # chuyển về "safe" để Worker phân tích dữ liệu; ngược lại nối thẳng fast-path greeting.
+        has_specific_ticker = bool(_FOREIGN_TICKER_RE.findall(raw_q))
+        has_stock_intent = any(k in lowered for k in ("giá", "gia", "thị giá", "thi gia", "tin tức", "tin tuc", "chỉ báo", "chi bao", "biểu đồ", "bieu do", "danh mục", "danh muc", "lãi lỗ", "lai lo", "so sánh", "so sanh"))
+        if not (has_specific_ticker and has_stock_intent):
+            return InputGuardrailResult(
+                is_safe=True,
+                category="greeting",
+                reason="Câu chào hỏi giao tiếp thông thường (Greeting Fast-Path)",
+                refusal_response=None,
+            )
+
+    # 6. Câu hỏi an toàn hợp lệ
     return InputGuardrailResult(
         is_safe=True,
         category="safe",

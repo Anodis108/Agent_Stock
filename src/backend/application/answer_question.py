@@ -46,6 +46,7 @@ class AnswerQuestionResult:
     error: str | None = None
     steps: list[dict] = field(default_factory=list)
     memories: list[str] = field(default_factory=list)
+    portfolio_watch_result: Any | None = None
 
 
 def build_chat_steps(

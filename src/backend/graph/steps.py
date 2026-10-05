@@ -92,6 +92,16 @@ def build_steps_from_chunks(
                     static_info=info_guardrail_refusal,
                 )
 
+            elif node_name == "greeting_node":
+                add(
+                    "greeting_responder",
+                    "done",
+                    (output.get("answer", "") or "")[:120],
+                    output_data={"answer": output.get("answer", "")},
+                    duration_s=node_timings.get("greeting_node"),
+                    static_info="[Greeting Fast-Path] Phản hồi chào hỏi thân thiện và giới thiệu các năng lực của trợ lý Portfolio Watch.",
+                )
+
             elif node_name == "rewrite_question":
                 rewritten = output.get("rewritten")
                 if rewritten:
@@ -271,6 +281,31 @@ def build_steps_from_chunks(
                         },
                         duration_s=w_dur,
                         static_info=info_chart_agent,
+                    )
+
+                pw_res = output.get("portfolio_watch_result")
+                if pw_res is not None:
+                    pw_status = "error" if getattr(pw_res, "error", None) else "done"
+                    pw_intent = getattr(pw_res, "intent", "all")
+                    pw_nav = getattr(getattr(pw_res, "portfolio_summary", None), "total_nav", None)
+                    pw_wl_cnt = len(getattr(pw_res, "watchlist_items", []) or [])
+                    pw_detail = f"intent={pw_intent}"
+                    if pw_nav is not None:
+                        pw_detail += f" NAV={pw_nav:,.0f} VND"
+                    if pw_wl_cnt:
+                        pw_detail += f" watchlist={pw_wl_cnt} mã"
+                    add(
+                        "portfolio_watch_agent",
+                        pw_status,
+                        pw_detail,
+                        input_data={"user_id": getattr(pw_res, "user_id", "default"), "intent": pw_intent},
+                        output_data={
+                            "total_nav": pw_nav,
+                            "watchlist_count": pw_wl_cnt,
+                            "error": getattr(pw_res, "error", None),
+                        },
+                        duration_s=w_dur,
+                        static_info="[Worker] PortfolioWatchAgent: Quản lý danh mục nắm giữ, định giá NAV, Unrealized P&L và danh sách theo dõi Watchlist.",
                     )
 
             elif node_name == "answer_composer":

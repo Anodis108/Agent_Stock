@@ -691,13 +691,13 @@ def test_cost_tracker_record_and_summary():
 
 
 def test_replay_faq_has_50_questions_and_duplicates():
-    """replay_faq.yaml: 50 câu, ~30% near-duplicate."""
+    """replay_faq.yaml: 50 hoặc 200 câu, ~30% near-duplicate."""
     import yaml
 
     assert REPLAY_FAQ.is_file()
     data = yaml.safe_load(REPLAY_FAQ.read_text(encoding="utf-8"))
     questions = data["questions"]
-    assert len(questions) == 50
+    assert len(questions) in (50, 200)
     dups = sum(1 for q in questions if q.get("near_duplicate_of"))
     assert dups >= 14
 

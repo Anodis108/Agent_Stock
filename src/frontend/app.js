@@ -202,9 +202,11 @@
     var lower = String(name || "").toLowerCase().trim();
     if (lower.indexOf("llm_cache") >= 0 || lower === "llm cache") return "llm_cache";
     if (lower.indexOf("price_cache") >= 0 || lower === "price cache") return "price_cache";
+    if (lower.indexOf("greeting") >= 0) return "greeting_responder";
     if (lower.indexOf("guardrail") >= 0 || lower.indexOf("gate") >= 0) return "guardrail";
     if (lower.indexOf("rewrite") >= 0) return "rewrite";
     if (lower.indexOf("supervisor") >= 0) return "supervisor";
+    if (lower.indexOf("portfolio") >= 0 || lower.indexOf("watchlist") >= 0) return "portfolio_watch_agent";
     if (lower.indexOf("price") >= 0) return "price_agent";
     if (lower.indexOf("news") >= 0) return "news_agent";
     if (lower.indexOf("indicator") >= 0) return "indicator_engine";
@@ -230,9 +232,11 @@
     var lower = String(name || "").toLowerCase().trim();
     if (lower.indexOf("llm_cache") >= 0) return "LLM Cache";
     if (lower.indexOf("price_cache") >= 0) return "Price Cache";
+    if (lower.indexOf("greeting") >= 0) return "GreetingResponder";
     if (lower.indexOf("guardrail") >= 0 || lower.indexOf("gate") >= 0) return "Guardrail";
     if (lower.indexOf("rewrite") >= 0) return "Rewrite";
     if (lower.indexOf("supervisor") >= 0) return "Supervisor";
+    if (lower.indexOf("portfolio") >= 0 || lower.indexOf("watchlist") >= 0) return "PortfolioWatchAgent";
     if (lower.indexOf("price") >= 0) return "PriceAgent";
     if (lower.indexOf("news") >= 0) return "NewsAgent";
     if (lower.indexOf("indicator") >= 0) return "IndicatorEngine";
@@ -245,8 +249,10 @@
   function getNodeIcon(name) {
     var lower = String(name || "").toLowerCase();
     if (lower.indexOf("guardrail") >= 0 || lower.indexOf("gate") >= 0) return "🛡️";
+    if (lower.indexOf("greeting") >= 0) return "👋";
     if (lower.indexOf("rewrite") >= 0) return "🔄";
     if (lower.indexOf("supervisor") >= 0) return "🧭";
+    if (lower.indexOf("portfolio") >= 0 || lower.indexOf("watchlist") >= 0) return "💼";
     if (lower.indexOf("price") >= 0) return "📈";
     if (lower.indexOf("news") >= 0) return "📰";
     if (lower.indexOf("indicator") >= 0) return "📐";
@@ -261,6 +267,10 @@
   }
 
   var NODE_FALLBACK_PROMPTS = {
+    // 0. Greeting Fast-Path
+    "greeting_responder": "[Fast-Path: GreetingResponder]\n- Tiếp nhận các câu chào hỏi giao tiếp thông thường sau khi Guardrail xác nhận an toàn.\n- Phản hồi nhanh tức thì (TTFT < 1.0s), giới thiệu các năng lực của trợ lý và gợi ý câu hỏi mẫu.\n- Bỏ qua toàn bộ các Worker phân tích thị trường giúp tối ưu độ trễ và tiết kiệm tài nguyên.",
+    "greetingresponder": "[Fast-Path: GreetingResponder]\n- Tiếp nhận các câu chào hỏi giao tiếp thông thường sau khi Guardrail xác nhận an toàn.\n- Phản hồi nhanh tức thì (TTFT < 1.0s), giới thiệu các năng lực của trợ lý và gợi ý câu hỏi mẫu.\n- Bỏ qua toàn bộ các Worker phân tích thị trường giúp tối ưu độ trễ và tiết kiệm tài nguyên.",
+
     // 1. Guardrail
     "guardrail": "[Rule Engine & Safety Firewall: Guardrail]\nChính sách an toàn tuyệt đối:\n- Chặn 100% Prompt Injection, System Prompt Leak, Jailbreak.\n- Từ chối câu hỏi phi tài chính hoặc ngoài phạm vi chứng khoán Việt Nam.\n- Chuyển hướng phản hồi sang kịch bản từ chối chuẩn mực.",
     "pre_rewrite_guardrail": "[Rule Engine & Safety Firewall: Guardrail]\nChính sách an toàn tuyệt đối:\n- Chặn 100% Prompt Injection, System Prompt Leak, Jailbreak.\n- Từ chối câu hỏi phi tài chính hoặc ngoài phạm vi chứng khoán Việt Nam.\n- Chuyển hướng phản hồi sang kịch bản từ chối chuẩn mực.",
@@ -271,7 +281,7 @@
     "rewrite_question": "[System Prompt: Rewrite / Query Decomposition]\n- Chuẩn hóa ngôn ngữ và giải quyết đại từ chỉ định (Coreference Resolution).\n- Trích xuất mã cổ phiếu hợp lệ (loại bỏ stopword giả mã như GIA, TAI, TIA, HIEN, TOI).\n- Phân rã câu hỏi đa ý hoặc so sánh (VD: FPT vs HPG) thành các sub-queries độc lập.",
 
     // 3. Supervisor
-    "supervisor": "[System Prompt: Supervisor Router & Orchestrator]\n- Phân tích ý định người dùng từ câu hỏi chuẩn hóa.\n- Lập kế hoạch điều phối và gọi song song các worker chuyên trách: PriceAgent, NewsAgent, IndicatorEngine, ChartAgent, EvalAgent.\n- Thu thập facts và chuyển giao trạng thái cho AnswerComposer.",
+    "supervisor": "[System Prompt: Supervisor Router & Orchestrator]\n- Phân tích ý định người dùng từ câu hỏi chuẩn hóa.\n- Lập kế hoạch điều phối và gọi song song các worker chuyên trách: PriceAgent, NewsAgent, IndicatorEngine, ChartAgent, EvalAgent, PortfolioWatchAgent.\n- Thu thập facts và chuyển giao trạng thái cho AnswerComposer.",
 
     // 4. PriceAgent
     "price_agent": "[Tool Worker: PriceAgent]\n- Vnstock API: Truy xuất dữ liệu thời gian thực (giá khớp lệnh, tham chiếu, trần/sàn, biến động %).\n- Lấy lịch sử giá 10 ngày phục vụ ma trận giá và tính toán kỹ thuật.\n- Tự động kích hoạt cơ chế fallback dữ liệu mẫu khi thị trường đóng cửa hoặc mất mạng ngoài.",
@@ -294,7 +304,11 @@
     "eval_agent": "[System Prompt: EvalAgent / Risk Assessment]\n- Đánh giá mức độ rủi ro (none/low/medium/high) kết hợp từ biến động giá, chỉ báo kỹ thuật và tin tức.\n- Phát hiện bất thường (giá tăng/giảm mạnh vượt ngưỡng) và đề xuất cảnh báo danh mục.",
     "evalagent": "[System Prompt: EvalAgent / Risk Assessment]\n- Đánh giá mức độ rủi ro (none/low/medium/high) kết hợp từ biến động giá, chỉ báo kỹ thuật và tin tức.\n- Phát hiện bất thường (giá tăng/giảm mạnh vượt ngưỡng) và đề xuất cảnh báo danh mục.",
 
-    // 9. AnswerComposer
+    // 9. PortfolioWatchAgent
+    "portfolio_watch_agent": "[Worker: PortfolioWatchAgent]\n- Quản lý danh mục đầu tư (Holdings), tính giá vốn, thị giá hiện tại, Unrealized P&L (VND & %) và tổng NAV theo từng user_id.\n- Quản lý danh sách theo dõi (Watchlist) và ngưỡng cảnh báo biến động (alert_threshold_pct).\n- Đảm bảo phản hồi khách quan, không đưa ra khuyến nghị mua bán.",
+    "portfoliowatchagent": "[Worker: PortfolioWatchAgent]\n- Quản lý danh mục đầu tư (Holdings), tính giá vốn, thị giá hiện tại, Unrealized P&L (VND & %) và tổng NAV theo từng user_id.\n- Quản lý danh sách theo dõi (Watchlist) và ngưỡng cảnh báo biến động (alert_threshold_pct).\n- Đảm bảo phản hồi khách quan, không đưa ra khuyến nghị mua bán.",
+
+    // 10. AnswerComposer
     "answer_composer": "[System Prompt: AnswerComposer]\n- Tổng hợp câu trả lời hoàn chỉnh dựa trên dữ liệu facts thu thập từ các worker.\n- Định dạng Markdown: in đậm, bảng dữ liệu giá, trích dẫn tin tức và nhúng biểu đồ nến kỹ thuật.\n- Tự động gắn tuyên bố miễn trừ trách nhiệm đầu tư trung lập đối với mọi tư vấn mua/bán.",
     "answercomposer": "[System Prompt: AnswerComposer]\n- Tổng hợp câu trả lời hoàn chỉnh dựa trên dữ liệu facts thu thập từ các worker.\n- Định dạng Markdown: in đậm, bảng dữ liệu giá, trích dẫn tin tức và nhúng biểu đồ nến kỹ thuật.\n- Tự động gắn tuyên bố miễn trừ trách nhiệm đầu tư trung lập đối với mọi tư vấn mua/bán.",
 
@@ -462,6 +476,14 @@
       if (indList.length) {
         outContent += "\n\n📊 Chỉ báo kỹ thuật (Technical Indicators):\n" + indList.join("\n");
       }
+    } else if (canonicalId === "portfolio_watch_agent" && step.output && typeof step.output === "object") {
+      var pwList = [];
+      if (step.output.total_nav != null) pwList.push("  - Tổng NAV: " + Number(step.output.total_nav).toLocaleString("vi-VN") + " VND");
+      if (step.output.watchlist_count != null) pwList.push("  - Số mã Watchlist: " + step.output.watchlist_count + " mã");
+      if (step.output.error) pwList.push("  - Lỗi: " + step.output.error);
+      if (pwList.length) {
+        outContent += "\n\n💼 Thông tin Danh mục & Watchlist:\n" + pwList.join("\n");
+      }
     }
 
     if (outPre) outPre.textContent = outContent;
@@ -563,10 +585,24 @@
       card.title = step.role ? (displayName + " — " + (step.label || step.role)) : displayName;
 
       card.addEventListener("mouseenter", function () {
-        showNodeInspector(step);
+        if (!pinnedInspectorStepId) {
+          showNodeInspector(step, false);
+        }
+      });
+      card.addEventListener("mouseleave", function () {
+        if (!pinnedInspectorStepId) {
+          hideNodeInspector(false);
+        }
       });
       card.addEventListener("focus", function () {
-        showNodeInspector(step);
+        if (!pinnedInspectorStepId) {
+          showNodeInspector(step, false);
+        }
+      });
+      card.addEventListener("blur", function () {
+        if (!pinnedInspectorStepId) {
+          hideNodeInspector(false);
+        }
       });
       card.addEventListener("click", function () {
         if (String(pinnedInspectorStepId) === String(step.id)) {
@@ -632,9 +668,10 @@
             var totalDur = list.reduce(function (sum, s) { return sum + (s.duration_s || 0); }, 0);
             var durLabel = totalDur > 0 ? " (" + (totalDur >= 1 ? totalDur.toFixed(2) + "s" : Math.round(totalDur * 1000) + "ms") + ")" : "";
             setGraphStatus((hasErr ? "Có lỗi" : "Hoàn tất") + durLabel, hasErr ? "error" : "done");
-            // Show inspector for last step if user hasn't pinned one
-            if (animState.length > 0 && !pinnedInspectorStepId) {
-              showNodeInspector(animState[animState.length - 1], false);
+            // If user previously pinned an inspector step, refresh its data
+            if (pinnedInspectorStepId) {
+              var pinnedStep = animState.find(function (s) { return String(s.id) === String(pinnedInspectorStepId); });
+              if (pinnedStep) showNodeInspector(pinnedStep, true);
             }
             resolve();
           }
@@ -1335,12 +1372,21 @@
     }
   }
 
+  function normalizeChartUrl(url) {
+    if (!url) return "";
+    var cleaned = String(url).trim().replace(/^chart_path:\s*/i, "");
+    if (!cleaned.startsWith("/") && !cleaned.startsWith("http://") && !cleaned.startsWith("https://") && !cleaned.startsWith("data:")) {
+      cleaned = "/" + cleaned;
+    }
+    return cleaned;
+  }
+
   function openChartModal(src, caption) {
     var modal = document.getElementById("chart-modal");
     var modalImg = document.getElementById("chart-modal-img");
     var modalCaption = document.getElementById("chart-modal-caption");
     if (!modal || !modalImg) return;
-    modalImg.src = src;
+    modalImg.src = normalizeChartUrl(src);
     if (modalCaption) {
       modalCaption.textContent = caption ? caption.slice(0, 140) : "Biểu đồ tài chính";
     }
@@ -1411,7 +1457,8 @@
     var images = [];
     text = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, function (match, alt, url) {
       var placeholder = "@@@IMAGE" + images.length + "@@@";
-      var cleanUrl = escapeHtml(url.trim());
+      var normUrl = normalizeChartUrl(url);
+      var cleanUrl = escapeHtml(normUrl);
       var cleanAlt = escapeHtml(alt.trim() || "Biểu đồ tài chính");
       var isChart = cleanUrl.indexOf("/charts") !== -1 || cleanUrl.indexOf("/static/charts") !== -1;
       images.push(
@@ -1617,16 +1664,22 @@
 
     // Chart image rendering (nếu backend trả riêng chartPath mà chưa nhúng trong cleanText)
     if (chartPath && role === "assistant") {
-      var alreadyRendered = cleanText && cleanText.indexOf(chartPath) !== -1;
+      var normChartPath = normalizeChartUrl(chartPath);
+      var alreadyRendered = cleanText && (
+        cleanText.indexOf(normChartPath) !== -1 ||
+        cleanText.indexOf(chartPath) !== -1 ||
+        cleanText.indexOf("@@@IMAGE") !== -1 ||
+        (cleanText.indexOf("/charts") !== -1 && cleanText.indexOf("![") !== -1)
+      );
       if (!alreadyRendered) {
         var chartContainer = document.createElement("div");
         chartContainer.className = "chat-chart-container";
-        chartContainer.setAttribute("data-chart-src", chartPath);
+        chartContainer.setAttribute("data-chart-src", normChartPath);
         chartContainer.setAttribute("data-chart-alt", "Biểu đồ tài chính");
         
         var img = document.createElement("img");
         img.className = "chat-chart-img";
-        img.src = chartPath;
+        img.src = normChartPath;
         img.alt = "Biểu đồ tài chính";
         img.loading = "lazy";
         img.title = "Click để phóng to";
@@ -1636,7 +1689,7 @@
         hint.innerHTML = "<span>🔍</span> Nhấn vào ảnh để phóng to";
 
         chartContainer.addEventListener("click", function () {
-          openChartModal(chartPath, cleanText || "Biểu đồ tài chính");
+          openChartModal(normChartPath, cleanText || "Biểu đồ tài chính");
         });
 
         chartContainer.appendChild(img);
@@ -1807,8 +1860,9 @@
         setGraphStatus("Hoàn tất" + durLabel, "done");
         setBoot("Đã nhận câu trả lời cuối" + (data.total_duration_s ? " · ⏱ " + Number(data.total_duration_s).toFixed(2) + "s" : ""));
 
-        if (realtimeSteps.length > 0 && !pinnedInspectorStepId) {
-          showNodeInspector(realtimeSteps[realtimeSteps.length - 1], false);
+        if (pinnedInspectorStepId) {
+          var pinnedStep = realtimeSteps.find(function (s) { return String(s.id) === String(pinnedInspectorStepId); });
+          if (pinnedStep) showNodeInspector(pinnedStep, true);
         }
       } else if (eventName === "error") {
         removeThinking();

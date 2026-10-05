@@ -17,6 +17,13 @@ from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from typing import Any, Callable
 
+import sys
+from pathlib import Path
+
+_SRC_DIR = str(Path(__file__).resolve().parents[2])
+if _SRC_DIR not in sys.path:
+    sys.path.insert(0, _SRC_DIR)
+
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 
@@ -125,8 +132,8 @@ def guardrail_node(state: ChatState, config: RunnableConfig) -> dict[str, Any]:
     emit_agent_event("node_start", {"node": "pre_rewrite_guardrail", "timestamp": time.time()})
     turn = state.get("turn") or ""
     q = state.get("question", "")
+    res = state.get("guardrail_result") or check_input_guardrail(q)
     with agent_span(turn, "pre_rewrite_guardrail", input=q) as box:
-        res = check_input_guardrail(q)
         box["output"] = {
             "is_safe": res.is_safe,
             "category": res.category,
@@ -177,11 +184,59 @@ def guardrail_refusal_node(state: ChatState, config: RunnableConfig) -> dict[str
     }
 
 
+GREETING_RESPONSE = (
+    "Xin chào! Tôi là trợ lý AI phân tích chứng khoán Việt Nam (Portfolio Watch).\n\n"
+    "Tôi có thể hỗ trợ bạn các tác vụ sau:\n"
+    "- 📊 **Tra cứu thị giá & biến động**: Xem giá khớp lệnh, biên độ trần/sàn, biến động phiên (ví dụ: *'Giá cổ phiếu FPT hôm nay bao nhiêu?'*).\n"
+    "- 📰 **Tổng hợp tin tức tài chính**: Cập nhật tin tức doanh nghiệp nóng nhất từ CafeF & Vnstock (ví dụ: *'Tin tức mới nhất về VNM'*).\n"
+    "- 📈 **Phân tích chỉ báo kỹ thuật**: Đánh giá RSI(14), đường trung bình SMA 20/50, Golden/Death Cross (ví dụ: *'Phân tích chỉ báo RSI và MA của HPG'*).\n"
+    "- ⚖️ **So sánh tương quan cổ phiếu**: Đối chiếu dữ liệu thị giá và diễn biến giữa 2 mã (ví dụ: *'So sánh FPT và HPG hôm nay'*).\n"
+    "- 💼 **Quản lý danh mục & Lãi/Lỗ (P&L)**: Theo dõi giá trị vốn, thị giá hiện tại, tỷ suất sinh lời và tổng NAV tài khoản.\n"
+    "- 🕯️ **Vẽ biểu đồ nến kỹ thuật**: Tạo đồ thị nến hoặc biểu đồ giá đa phiên trực quan (ví dụ: *'Vẽ biểu đồ nến kỹ thuật cho cổ phiếu FPT'*).\n\n"
+    "Bạn muốn bắt đầu với mã cổ phiếu nào hôm nay?"
+)
+
+
+def greeting_node(state: ChatState, config: RunnableConfig) -> dict[str, Any]:
+    """Node chào hỏi (Greeting Fast-Path): Nối thẳng tới phản hồi thân thiện và hướng dẫn năng lực của trợ lý."""
+    t0 = time.perf_counter()
+    emit_agent_event("node_start", {"node": "greeting_responder", "timestamp": time.time()})
+    turn = state.get("turn") or ""
+    with agent_span(turn, "greeting_responder", input=state.get("question", "")) as box:
+        box["output"] = GREETING_RESPONSE
+
+    compose = AnswerComposeResult(
+        answer=GREETING_RESPONSE,
+        model="greeting_fastpath",
+        draft_attempts=1,
+        guardrail_violations=[],
+        evidence=[],
+        hitl_used=False,
+    )
+    words = GREETING_RESPONSE.split(" ")
+    for i, w in enumerate(words):
+        sep = " " if i < len(words) - 1 else ""
+        emit_agent_event("token", {"delta": w + sep})
+
+    dur = round(time.perf_counter() - t0, 3)
+    emit_agent_event("node_finish", {"node": "greeting_responder", "duration_s": dur, "duration_ms": int(dur * 1000)})
+    return {
+        "answer": GREETING_RESPONSE,
+        "compose": compose,
+    }
+
+
 def route_after_guardrail(state: ChatState) -> str:
-    """Định tuyến sau Guardrail: Nếu không an toàn đi vào guardrail_refusal, ngược lại sang rewrite_question."""
+    """Định tuyến sau Guardrail:
+    - Nếu không an toàn đi vào guardrail_refusal
+    - Nếu là câu chào hỏi -> greeting_node (Greeting Fast-Path)
+    - Ngược lại an toàn -> sang rewrite_question
+    """
     res = state.get("guardrail_result")
     if res and not res.is_safe:
         return "guardrail_refusal"
+    if res and getattr(res, "category", "") == "greeting":
+        return "greeting_node"
     return "rewrite_question"
 
 
@@ -600,33 +655,45 @@ def workers_node(state: ChatState, config: RunnableConfig) -> dict[str, Any]:
 
     chart_path = chart_result.url if (chart_result and chart_result.success) else None
 
-    # Task 5.2: Tự động nạp portfolio_summary khi câu hỏi liên quan đến danh mục đầu tư
+    # Phase 2: Tự động nạp dữ liệu Portfolio & Watchlist qua PortfolioWatchAgent
     req_q_lower = (state.get("question") or "").lower()
     rw_q = (state.get("rewritten").rewritten or "") if state.get("rewritten") else ""
+    rw_intent = (state.get("rewritten").intent or "") if state.get("rewritten") else ""
     combined_q = f"{req_q_lower} {rw_q.lower()}"
     is_portfolio_query = any(
         k in combined_q
-        for k in ("danh mục", "portfolio", "lãi lỗ", "lãi/lỗ", "nav", "tài khoản", "nắm giữ", "vị thế")
-    ) or "portfolio" in agents
+        for k in ("danh mục", "portfolio", "lãi lỗ", "lãi/lỗ", "lãi hay lỗ", "nav", "tài khoản", "nắm giữ", "vị thế")
+    ) or "portfolio" in agents or rw_intent == "portfolio"
+    is_watchlist_query = any(
+        k in combined_q
+        for k in ("watchlist", "theo dõi", "danh sách theo dõi", "mã theo dõi", "ngưỡng cảnh báo")
+    ) or "watchlist" in agents or rw_intent == "watchlist"
 
+    portfolio_watch_result = None
     portfolio_summary = None
-    if is_portfolio_query:
-        try:
-            from backend.database.connection import get_connection
-            from backend.database.repositories import PortfolioHoldingRepository, UserSettingsRepository
-            from backend.services.portfolio_service import PortfolioService
+    watchlist_items = None
 
-            conn = get_connection()
-            try:
-                h_repo = PortfolioHoldingRepository(conn)
-                u_repo = UserSettingsRepository(conn)
-                ps = PortfolioService(h_repo, u_repo, price_source)
-                uid = state.get("user_id") or "default"
-                portfolio_summary = ps.get_portfolio_summary(uid)
-            finally:
-                conn.close()
+    if is_portfolio_query or is_watchlist_query or "portfolio_watch" in agents:
+        try:
+            from backend.agents.portfolio_watch_agent import run_portfolio_watch_agent
+            emit_agent_event("node_start", {"node": "portfolio_watch_agent", "timestamp": time.time()})
+            t_pw = time.perf_counter()
+            target_intent = "watchlist" if (is_watchlist_query and not is_portfolio_query) else ("portfolio" if (is_portfolio_query and not is_watchlist_query) else "all")
+            pw_user_id = state.get("user_id") or "default"
+            pw_store = cfg.get("watchlist_store")
+            portfolio_watch_result = run_portfolio_watch_agent(
+                user_id=pw_user_id,
+                intent=target_intent,
+                price_source=price_source,
+                watchlist_store=pw_store,
+                turn=turn,
+            )
+            portfolio_summary = portfolio_watch_result.portfolio_summary
+            watchlist_items = portfolio_watch_result.watchlist_items
+            dur_pw = round(time.perf_counter() - t_pw, 3)
+            emit_agent_event("node_finish", {"node": "portfolio_watch_agent", "duration_s": dur_pw, "duration_ms": int(dur_pw * 1000)})
         except Exception as exc:
-            _logger.warning("Không nạp được portfolio_summary trong workers_node: %s", exc)
+            _logger.warning("Không nạp được portfolio_watch trong workers_node: %s", exc)
 
     return {
         "price": price,
@@ -637,6 +704,8 @@ def workers_node(state: ChatState, config: RunnableConfig) -> dict[str, Any]:
         "chart_result": chart_result,
         "chart_path": chart_path,
         "portfolio_summary": portfolio_summary,
+        "portfolio_watch_result": portfolio_watch_result,
+        "watchlist_items": watchlist_items,
     }
 
 
@@ -690,6 +759,7 @@ def composer_node(state: ChatState, config: RunnableConfig) -> dict[str, Any]:
             news_list=state.get("news_list") or None,
             chart_path=chart_path,
             portfolio_summary=state.get("portfolio_summary"),
+            portfolio_watch_result=state.get("portfolio_watch_result"),
             turn=turn,
             on_token=_on_token,
         )
@@ -722,6 +792,7 @@ def build_chat_graph() -> StateGraph:
     graph = StateGraph(ChatState)
     graph.add_node("pre_rewrite_guardrail", guardrail_node)
     graph.add_node("guardrail_refusal", guardrail_refusal_node)
+    graph.add_node("greeting_node", greeting_node)
     graph.add_node("rewrite_question", rewrite_node)
     graph.add_node("supervisor", supervisor_node)
     graph.add_node("diagram_agent", diagram_node)
@@ -734,10 +805,12 @@ def build_chat_graph() -> StateGraph:
         route_after_guardrail,
         {
             "guardrail_refusal": "guardrail_refusal",
+            "greeting_node": "greeting_node",
             "rewrite_question": "rewrite_question",
         },
     )
     graph.add_edge("guardrail_refusal", END)
+    graph.add_edge("greeting_node", END)
     graph.add_edge("rewrite_question", "supervisor")
     graph.add_conditional_edges(
         "supervisor",
@@ -772,6 +845,7 @@ def run_chat_graph(
     eval_brain: EvalAgentBrain | None = None,
     answer_brain: AnswerDraftBrain | None = None,
     diagram_brain: Any | None = None,
+    watchlist_store: Any | None = None,
     news_days: int | None = 7,
     limit: int | None = None,
     ttl_minutes: int | float | None = None,
@@ -811,8 +885,14 @@ def run_chat_graph(
 
     clear_semantic_question()
 
+    guard_preview = check_input_guardrail(q) if q else None
     recalled_memories: list[str] = []
-    if effective_user_id:
+    if (
+        effective_user_id
+        and guard_preview
+        and guard_preview.is_safe
+        and guard_preview.category != "greeting"
+    ):
         recall_res = recall_memory(
             {"user_id": effective_user_id, "question": q, "turn": turn_id}
         )
@@ -850,6 +930,7 @@ def run_chat_graph(
         "eval_brain": eval_brain,
         "answer_brain": answer_brain,
         "diagram_brain": diagram_brain,
+        "watchlist_store": watchlist_store,
         "news_days": news_days,
         "event_callback": event_callback,
     }
@@ -861,6 +942,7 @@ def run_chat_graph(
             "turn": turn_id,
             "conversation": conversation,
             "memories": recalled_memories,
+            "guardrail_result": guard_preview,
         }
         chunks = []
         node_timings: dict[str, float] = {}
@@ -886,7 +968,12 @@ def run_chat_graph(
     memory_store.append_conversation(short_term_user_id, "user", q)
     memory_store.append_conversation(short_term_user_id, "assistant", answer_text)
 
-    if effective_user_id:
+    if (
+        effective_user_id
+        and guard_preview
+        and guard_preview.is_safe
+        and guard_preview.category != "greeting"
+    ):
         store_memory(
             {
                 "user_id": effective_user_id,
@@ -906,19 +993,21 @@ def run_chat_graph(
 
     rewritten_val = final.get("rewritten")
     if not rewritten_val:
+        is_greeting = getattr(final.get("guardrail_result"), "category", "") == "greeting"
         rewritten_val = RewrittenQuestion(
             original=q,
             rewritten=q,
             symbol=None,
-            intent="out_of_scope",
+            intent="greeting" if is_greeting else "out_of_scope",
             symbols=[],
         )
 
     routing_val = final.get("routing")
     if not routing_val:
+        is_greeting = getattr(final.get("guardrail_result"), "category", "") == "greeting"
         routing_val = RoutingDecision(
-            route="guardrail",
-            reason=getattr(final.get("guardrail_result"), "reason", "Chặn bởi Pre-Rewrite Guardrail"),
+            route="greeting" if is_greeting else "guardrail",
+            reason="Luồng chào hỏi trực tiếp (Greeting Fast-Path)" if is_greeting else getattr(final.get("guardrail_result"), "reason", "Chặn bởi Pre-Rewrite Guardrail"),
             agents_to_call=[],
         )
 
@@ -936,6 +1025,7 @@ def run_chat_graph(
         chart_path=chart_path,
         error=final.get("error"),
         memories=recalled_memories,
+        portfolio_watch_result=final.get("portfolio_watch_result"),
     )
 
     from backend.graph.steps import build_steps_from_chunks
@@ -949,3 +1039,44 @@ def run_chat_graph(
         result.routing.agents_to_call,
     )
     return result
+
+
+if __name__ == "__main__":
+    import argparse
+
+    if sys.stdout.encoding.lower() != "utf-8":
+        try:
+            sys.stdout.reconfigure(encoding="utf-8")
+        except Exception:
+            pass
+
+    parser = argparse.ArgumentParser(description="Export LangGraph Chat diagram")
+    parser.add_argument(
+        "--out",
+        type=str,
+        default="resources/docs/chat_agent_graph.png",
+        help="Path to save graph image (default: resources/docs/chat_agent_graph.png)",
+    )
+    args = parser.parse_args()
+
+    graph = compile_chat_graph().get_graph()
+
+    print("\n=== MERMAID DIAGRAM ===")
+    mermaid_code = graph.draw_mermaid()
+    print(mermaid_code)
+    print("========================\n")
+
+    out_path = Path(args.out)
+    if not out_path.is_absolute():
+        out_path = Path(__file__).resolve().parents[3] / args.out
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    try:
+        png_bytes = graph.draw_mermaid_png()
+        out_path.write_bytes(png_bytes)
+        print(f"[OK] Đã xuất sơ đồ ảnh PNG tại: {out_path}")
+    except Exception as exc:
+        mmd_path = out_path.with_suffix(".mmd")
+        mmd_path.write_text(mermaid_code, encoding="utf-8")
+        print(f"[WARN] Không thể kết nối để render PNG ({exc}). Đã lưu mã nguồn Mermaid tại: {mmd_path}")
+

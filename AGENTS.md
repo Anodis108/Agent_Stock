@@ -1,42 +1,77 @@
 # AGENTS.md
 
-Project này tuân theo phương pháp **Spec-Driven Development (SDD)**.
+Dự án này tuân theo phương pháp **Spec-Driven Development (SDD)**.
 
-Mọi AI Coding Assistant khi làm việc trên repository này **bắt buộc tuân thủ** các quy tắc dưới đây:
-
-## 1. Nguyên Tắc Làm Việc Cốt Lõi (Core Rules)
-
-- **Always read the specs before coding**: Luôn đọc kỹ tài liệu trong `specs/` (`product-spec.md`, `implementation-plan.md`, `test-plan.md`) trước khi thực hiện bất kỳ thay đổi nào.
-- **Implement only one phase or task at a time**: Chỉ triển khai đúng 01 phase hoặc 01 task cụ thể theo yêu cầu của người dùng tại một thời điểm. Không làm trước các phần chưa được yêu cầu.
-- **Keep the app simple & MVP-focused**: Luôn ưu tiên giải pháp tinh gọn, phục vụ đúng mục tiêu MVP. Tránh over-engineering hay tạo abstraction thừa.
-- **Do not add unnecessary libraries**: Tận dụng tối đa thư viện đã có trong `pyproject.toml` (FastAPI, LangGraph, Vnstock, Matplotlib, Pydantic). Không tự ý cài đặt thêm thư viện ngoài.
-- **Do not change architecture unless the spec is updated**: Không tự ý thay đổi luồng đi của Swarm Agent, cấu trúc bảng SQLite hay hợp đồng API nếu spec chưa cập nhật.
-- **After each implementation, update `specs/change-log.md`**: Ghi nhận chi tiết những gì đã thay đổi và cập nhật checklist ngay sau khi hoàn thành code.
-- **After each implementation, explain how to test the change**: Luôn giải thích rõ lệnh chạy và cách kiểm thử thay đổi vừa thực hiện để người dùng có thể nghiệm thu ngay.
-- **Preserve test suite integrity**: Toàn bộ 178+ bài test hiện có phải tiếp tục PASS 100% sau mỗi lần refactor hoặc chỉnh sửa code.
-- **Do not write code yet unless explicitly requested**: Ở bước lập kế hoạch và review spec, chỉ cập nhật tài liệu và chờ chỉ đạo tiếp theo từ người dùng.
+Mọi AI Coding Assistant khi làm việc trên repository này **bắt buộc tuân thủ các quy tắc dưới đây**:
 
 ---
 
-## 2. Quy Chuẩn Code (Coding Style)
+## 1. Nguyên Tắc Cốt Lõi (Core Rules)
 
-- **Ngôn ngữ**: Python $\ge$ 3.10, có type hints rõ ràng.
-- **Error Handling**: Các cuộc gọi bên ngoài (Vnstock, CafeF, LLM) phải luôn có `try...except` và fallback an toàn, không để ứng dụng crash (văng lỗi 500).
-- **Security**: Không bao giờ hardcode API Keys hoặc credentials; toàn bộ thông tin nhạy cảm đọc qua `backend.shared.settings.Settings`.
+- **Always read the specs before coding**: Luôn đọc kỹ các tệp trong `specs/` (`product-spec.md`, `implementation-plan.md`, `test-plan.md`) trước khi thực hiện bất kỳ thay đổi nào.
+- **Implement only one phase or task at a time**: Chỉ triển khai duy nhất 01 phase hoặc 01 checklist item được chỉ định tại một thời điểm. Không làm trước các phần chưa được yêu cầu.
+- **Keep the app simple**: Giữ giải pháp đơn giản, tập trung vào MVP. Không over-engineer, không tạo abstraction thừa.
+- **Do not add unnecessary libraries**: Tận dụng tối đa các thư viện đã có trong `pyproject.toml` (FastAPI, LangGraph, Vnstock, Matplotlib, Pydantic, SQLite). Không tự ý cài đặt thêm thư viện ngoài.
+- **Do not change architecture unless the spec is updated**: Không tự ý thay đổi luồng Swarm Agent, cấu trúc cơ sở dữ liệu hoặc hợp đồng API nếu spec chưa cập nhật.
+- **After each implementation, update `specs/change-log.md`**: Ghi nhận chi tiết những tệp đã thay đổi và cập nhật trạng thái checklist ngay sau khi hoàn thành.
+- **After each implementation, explain how to test the change**: Luôn giải thích rõ lệnh chạy và các bước kiểm thử thủ công để người dùng nghiệm thu ngay.
+- **Do not write code yet unless explicitly requested**: Ở bước lập kế hoạch và review spec, chỉ cập nhật tài liệu đặc tả và chờ chỉ đạo tiếp theo.
+- **Preserve test suite integrity (Zero Regression)**: Toàn bộ 180+ bài test hiện có phải tiếp tục PASS 100% sau mỗi lần chỉnh sửa.
 
 ---
 
-## 3. Kiến Trúc Swarm Multi-Agent (Tham Chiếu Nhanh)
+## 2. Quy Chuẩn Làm Việc Theo Từng Task (Workflow)
 
-- `Guardrail`: Chặn Prompt Injection, từ chối câu hỏi phi tài chính.
-- `RewriteBrain`: Chuẩn hóa tiếng Việt, xử lý lỗi gõ/stopwords, phân rã câu hỏi đa ý (Query Decomposition).
-- `Supervisor`: Điều phối các Worker Agents tương ứng theo sub-queries.
+Với mỗi task được giao:
+1. Đọc tệp spec liên quan (`specs/product-spec.md`, `specs/implementation-plan.md`, `specs/test-plan.md`).
+2. Tóm tắt ngắn gọn: Bạn sẽ làm gì, sửa những tệp nào, kiểm thử ra sao trước khi bắt đầu.
+3. Chỉ chỉnh sửa tối thiểu các tệp cần thiết cho task đó.
+4. Chạy kiểm thử tự động (`pytest ...`) xác nhận thay đổi hoạt động chính xác và không gây lỗi hồi quy.
+5. Cập nhật checklist trong `specs/implementation-plan.md` và ghi nhật ký vào `specs/change-log.md`.
+6. Cung cấp lệnh chạy và hướng dẫn kiểm thử thủ công.
+
+---
+
+## 3. Quy Chuẩn Kỹ Thuật Dự Án (Project Specifics)
+
+- **Ngôn ngữ**: Python $\ge$ 3.10, có type hints rõ ràng, cấu trúc module tường minh.
+- **Xử lý ngoại lệ**: Mọi cuộc gọi bên ngoài (Vnstock, CafeF, LLM) phải luôn có `try...except` và cơ chế fallback an toàn, không để ứng dụng văng lỗi HTTP 500.
+- **Bảo mật**: Không hardcode API key / secret. Toàn bộ thông tin nhạy cảm đọc qua `Settings`.
+- **Luồng Chào Hỏi (Greeting Fast-Path)**:
+  - Phân loại câu chào hỏi ("Xin chào", "Chào bạn", "Hello", "Hi bot") là an toàn (`category="greeting"`, `is_safe=True`).
+  - Nối thẳng sang Chat LLM/Composer, bỏ qua `rewrite`, `supervisor` và các Worker tra cứu dữ liệu.
+- **Agent Mới: `PortfolioWatchAgent`**:
+  - Chuyên trách xử lý danh mục nắm giữ (Holdings, P&L, NAV) và danh sách theo dõi (Watchlist, alert thresholds) của từng user.
+  - Supervisor điều phối đúng intent `portfolio` và `watchlist`, loại trừ triệt để các mã giả lập (`TRA`, `XEM`, `NAV`).
+- **Độ chính xác Golden Dataset v6**:
+  - Tuân thủ tuyệt đối các ràng buộc `must_include` và `must_not_include` cho 10 lát cắt.
+  - Lát cắt `disclaimer`: Luôn chứa *"miễn trừ trách nhiệm"*, không chứa *"nên mua"* hoặc *"nên bán"*.
+  - Lát cắt `injection`: Chặn đứng 100% can thiệp hệ thống.
+
+---
+
+## 4. Kiến Trúc Tham Chiếu Swarm Multi-Agent
+
+- `Guardrail`: Kiểm tra an toàn, chặn Prompt Injection, từ chối Out-of-Scope, phân luồng Greeting Fast-Path.
+- `RewriteBrain`: Chuẩn hóa tiếng Việt, phân rã câu hỏi so sánh đa mã (Query Decomposition).
+- `Supervisor`: Phân phối nhiệm vụ cho các Worker Agents theo từng sub-query.
 - `PriceAgent`: Tra cứu giá khớp lệnh, biên độ, lịch sử giá 10 ngày từ Vnstock.
-- `NewsAgent`: Tổng hợp tin tức từ Vnstock News & CafeF, kèm trích dẫn nguồn.
-- `TechnicalIndicatorService`: Tính RSI(14), SMA(20), SMA(50), Golden/Death Cross.
+- `NewsAgent`: Tổng hợp tin tức tài chính từ Vnstock News & CafeF, kèm trích dẫn nguồn.
+- `TechnicalIndicatorService`: Tính toán RSI(14), SMA(20), SMA(50), Golden/Death Cross.
 - `EvalAgent`: Đánh giá bất thường và xếp hạng rủi ro (`none`, `low`, `medium`, `high`).
-- `ChartAgent`: Sinh biểu đồ nến kèm đường SMA bằng Matplotlib.
-- `AnswerComposer`: Tổng hợp câu trả lời cuối cùng, streaming qua SSE kèm khuyến cáo rủi ro.
+- `ChartAgent`: Sinh biểu đồ nến kỹ thuật và đồ thị giá thực tế qua Matplotlib.
+- `PortfolioWatchAgent`: Quản lý danh mục đầu tư (P&L, NAV) và danh sách theo dõi (Watchlist).
+- `AnswerComposer`: Tổng hợp câu trả lời Markdown hoàn chỉnh, streaming qua SSE.
+
+---
+
+## 5. Hướng Dẫn Báo Cáo Nghiệm Thu
+
+Trước khi tuyên bố task hoàn thành, bạn **bắt buộc** cung cấp:
+- Danh sách tệp đã tạo hoặc chỉnh sửa.
+- Lệnh chạy kiểm thử tự động (`pytest ...`).
+- Các bước kiểm thử thủ công để kiểm chứng tính năng.
+- Cập nhật tương ứng trong `specs/change-log.md` và `specs/implementation-plan.md`.
 
 <!-- vnai-bootstrap | auto-generated -->
 # Vnstock Vibe Onboarding

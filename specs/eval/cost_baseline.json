@@ -1,23 +1,23 @@
 {
-  "generated_at": "2026-09-28T15:00:39Z",
-  "git_sha": "792fa34",
+  "generated_at": "2026-10-04T10:46:46Z",
+  "git_sha": "unknown",
   "dry_run": true,
-  "with_cache": "tier1",
-  "passes": 2,
-  "questions_run": 5,
+  "with_cache": null,
+  "passes": 1,
+  "questions_run": 200,
   "elapsed_sec": 0.0,
   "summary": {
-    "requests": 30,
-    "cache_hits": 15,
-    "cache_hit_rate": 0.5,
-    "total_tokens": 15540,
-    "total_cost_usd": 0.003249,
-    "total_cost_vnd": 82.52,
+    "requests": 600,
+    "cache_hits": 0,
+    "cache_hit_rate": 0.0,
+    "total_tokens": 623940,
+    "total_cost_usd": 0.131364,
+    "total_cost_vnd": 3336.65,
     "by_feature": {
       "chat_replay": {
-        "requests": 30,
-        "tokens": 15540,
-        "cost_usd": 0.0032489999999999993
+        "requests": 600,
+        "tokens": 623940,
+        "cost_usd": 0.131364
       }
     }
   },
@@ -176,151 +176,5851 @@
       "feature": "chat_replay",
       "model": "gpt-4o-mini",
       "prompt_version": "production",
-      "cache_hit": true,
-      "prompt_tokens": 0,
-      "completion_tokens": 0,
-      "total_tokens": 0,
-      "cost_usd": 0.0
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 160,
+      "total_tokens": 960,
+      "cost_usd": 0.000216
     },
     {
       "feature": "chat_replay",
       "model": "gpt-4o-mini",
       "prompt_version": "production",
-      "cache_hit": true,
-      "prompt_tokens": 0,
-      "completion_tokens": 0,
-      "total_tokens": 0,
-      "cost_usd": 0.0
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 160,
+      "total_tokens": 960,
+      "cost_usd": 0.000216
     },
     {
       "feature": "chat_replay",
       "model": "gpt-4o-mini",
       "prompt_version": "production",
-      "cache_hit": true,
-      "prompt_tokens": 0,
-      "completion_tokens": 0,
-      "total_tokens": 0,
-      "cost_usd": 0.0
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 160,
+      "total_tokens": 960,
+      "cost_usd": 0.000216
     },
     {
       "feature": "chat_replay",
       "model": "gpt-4o-mini",
       "prompt_version": "production",
-      "cache_hit": true,
-      "prompt_tokens": 0,
-      "completion_tokens": 0,
-      "total_tokens": 0,
-      "cost_usd": 0.0
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 120,
+      "total_tokens": 970,
+      "cost_usd": 0.0001995
     },
     {
       "feature": "chat_replay",
       "model": "gpt-4o-mini",
       "prompt_version": "production",
-      "cache_hit": true,
-      "prompt_tokens": 0,
-      "completion_tokens": 0,
-      "total_tokens": 0,
-      "cost_usd": 0.0
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 120,
+      "total_tokens": 970,
+      "cost_usd": 0.0001995
     },
     {
       "feature": "chat_replay",
       "model": "gpt-4o-mini",
       "prompt_version": "production",
-      "cache_hit": true,
-      "prompt_tokens": 0,
-      "completion_tokens": 0,
-      "total_tokens": 0,
-      "cost_usd": 0.0
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 120,
+      "total_tokens": 970,
+      "cost_usd": 0.0001995
     },
     {
       "feature": "chat_replay",
       "model": "gpt-4o-mini",
       "prompt_version": "production",
-      "cache_hit": true,
-      "prompt_tokens": 0,
-      "completion_tokens": 0,
-      "total_tokens": 0,
-      "cost_usd": 0.0
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 140,
+      "total_tokens": 1040,
+      "cost_usd": 0.000219
     },
     {
       "feature": "chat_replay",
       "model": "gpt-4o-mini",
       "prompt_version": "production",
-      "cache_hit": true,
-      "prompt_tokens": 0,
-      "completion_tokens": 0,
-      "total_tokens": 0,
-      "cost_usd": 0.0
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 140,
+      "total_tokens": 1040,
+      "cost_usd": 0.000219
     },
     {
       "feature": "chat_replay",
       "model": "gpt-4o-mini",
       "prompt_version": "production",
-      "cache_hit": true,
-      "prompt_tokens": 0,
-      "completion_tokens": 0,
-      "total_tokens": 0,
-      "cost_usd": 0.0
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 140,
+      "total_tokens": 1040,
+      "cost_usd": 0.000219
     },
     {
       "feature": "chat_replay",
       "model": "gpt-4o-mini",
       "prompt_version": "production",
-      "cache_hit": true,
-      "prompt_tokens": 0,
-      "completion_tokens": 0,
-      "total_tokens": 0,
-      "cost_usd": 0.0
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 160,
+      "total_tokens": 1110,
+      "cost_usd": 0.0002385
     },
     {
       "feature": "chat_replay",
       "model": "gpt-4o-mini",
       "prompt_version": "production",
-      "cache_hit": true,
-      "prompt_tokens": 0,
-      "completion_tokens": 0,
-      "total_tokens": 0,
-      "cost_usd": 0.0
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 160,
+      "total_tokens": 1110,
+      "cost_usd": 0.0002385
     },
     {
       "feature": "chat_replay",
       "model": "gpt-4o-mini",
       "prompt_version": "production",
-      "cache_hit": true,
-      "prompt_tokens": 0,
-      "completion_tokens": 0,
-      "total_tokens": 0,
-      "cost_usd": 0.0
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 160,
+      "total_tokens": 1110,
+      "cost_usd": 0.0002385
     },
     {
       "feature": "chat_replay",
       "model": "gpt-4o-mini",
       "prompt_version": "production",
-      "cache_hit": true,
-      "prompt_tokens": 0,
-      "completion_tokens": 0,
-      "total_tokens": 0,
-      "cost_usd": 0.0
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 120,
+      "total_tokens": 1120,
+      "cost_usd": 0.000222
     },
     {
       "feature": "chat_replay",
       "model": "gpt-4o-mini",
       "prompt_version": "production",
-      "cache_hit": true,
-      "prompt_tokens": 0,
-      "completion_tokens": 0,
-      "total_tokens": 0,
-      "cost_usd": 0.0
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 120,
+      "total_tokens": 1120,
+      "cost_usd": 0.000222
     },
     {
       "feature": "chat_replay",
       "model": "gpt-4o-mini",
       "prompt_version": "production",
-      "cache_hit": true,
-      "prompt_tokens": 0,
-      "completion_tokens": 0,
-      "total_tokens": 0,
-      "cost_usd": 0.0
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 120,
+      "total_tokens": 1120,
+      "cost_usd": 0.000222
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 140,
+      "total_tokens": 940,
+      "cost_usd": 0.000204
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 140,
+      "total_tokens": 940,
+      "cost_usd": 0.000204
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 140,
+      "total_tokens": 940,
+      "cost_usd": 0.000204
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 160,
+      "total_tokens": 1010,
+      "cost_usd": 0.0002235
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 160,
+      "total_tokens": 1010,
+      "cost_usd": 0.0002235
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 160,
+      "total_tokens": 1010,
+      "cost_usd": 0.0002235
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 120,
+      "total_tokens": 1020,
+      "cost_usd": 0.000207
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 120,
+      "total_tokens": 1020,
+      "cost_usd": 0.000207
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 120,
+      "total_tokens": 1020,
+      "cost_usd": 0.000207
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 140,
+      "total_tokens": 1090,
+      "cost_usd": 0.0002265
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 140,
+      "total_tokens": 1090,
+      "cost_usd": 0.0002265
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 140,
+      "total_tokens": 1090,
+      "cost_usd": 0.0002265
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 160,
+      "total_tokens": 1160,
+      "cost_usd": 0.000246
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 160,
+      "total_tokens": 1160,
+      "cost_usd": 0.000246
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 160,
+      "total_tokens": 1160,
+      "cost_usd": 0.000246
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 120,
+      "total_tokens": 920,
+      "cost_usd": 0.000192
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 120,
+      "total_tokens": 920,
+      "cost_usd": 0.000192
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 120,
+      "total_tokens": 920,
+      "cost_usd": 0.000192
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 140,
+      "total_tokens": 990,
+      "cost_usd": 0.0002115
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 140,
+      "total_tokens": 990,
+      "cost_usd": 0.0002115
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 140,
+      "total_tokens": 990,
+      "cost_usd": 0.0002115
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 160,
+      "total_tokens": 1060,
+      "cost_usd": 0.000231
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 160,
+      "total_tokens": 1060,
+      "cost_usd": 0.000231
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 160,
+      "total_tokens": 1060,
+      "cost_usd": 0.000231
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 120,
+      "total_tokens": 1070,
+      "cost_usd": 0.0002145
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 120,
+      "total_tokens": 1070,
+      "cost_usd": 0.0002145
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 120,
+      "total_tokens": 1070,
+      "cost_usd": 0.0002145
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 140,
+      "total_tokens": 1140,
+      "cost_usd": 0.000234
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 140,
+      "total_tokens": 1140,
+      "cost_usd": 0.000234
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 140,
+      "total_tokens": 1140,
+      "cost_usd": 0.000234
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 160,
+      "total_tokens": 960,
+      "cost_usd": 0.000216
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 160,
+      "total_tokens": 960,
+      "cost_usd": 0.000216
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 160,
+      "total_tokens": 960,
+      "cost_usd": 0.000216
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 120,
+      "total_tokens": 970,
+      "cost_usd": 0.0001995
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 120,
+      "total_tokens": 970,
+      "cost_usd": 0.0001995
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 120,
+      "total_tokens": 970,
+      "cost_usd": 0.0001995
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 140,
+      "total_tokens": 1040,
+      "cost_usd": 0.000219
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 140,
+      "total_tokens": 1040,
+      "cost_usd": 0.000219
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 140,
+      "total_tokens": 1040,
+      "cost_usd": 0.000219
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 160,
+      "total_tokens": 1110,
+      "cost_usd": 0.0002385
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 160,
+      "total_tokens": 1110,
+      "cost_usd": 0.0002385
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 160,
+      "total_tokens": 1110,
+      "cost_usd": 0.0002385
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 120,
+      "total_tokens": 1120,
+      "cost_usd": 0.000222
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 120,
+      "total_tokens": 1120,
+      "cost_usd": 0.000222
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 120,
+      "total_tokens": 1120,
+      "cost_usd": 0.000222
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 140,
+      "total_tokens": 940,
+      "cost_usd": 0.000204
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 140,
+      "total_tokens": 940,
+      "cost_usd": 0.000204
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 140,
+      "total_tokens": 940,
+      "cost_usd": 0.000204
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 160,
+      "total_tokens": 1010,
+      "cost_usd": 0.0002235
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 160,
+      "total_tokens": 1010,
+      "cost_usd": 0.0002235
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 160,
+      "total_tokens": 1010,
+      "cost_usd": 0.0002235
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 120,
+      "total_tokens": 1020,
+      "cost_usd": 0.000207
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 120,
+      "total_tokens": 1020,
+      "cost_usd": 0.000207
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 120,
+      "total_tokens": 1020,
+      "cost_usd": 0.000207
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 140,
+      "total_tokens": 1090,
+      "cost_usd": 0.0002265
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 140,
+      "total_tokens": 1090,
+      "cost_usd": 0.0002265
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 140,
+      "total_tokens": 1090,
+      "cost_usd": 0.0002265
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 160,
+      "total_tokens": 1160,
+      "cost_usd": 0.000246
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 160,
+      "total_tokens": 1160,
+      "cost_usd": 0.000246
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 160,
+      "total_tokens": 1160,
+      "cost_usd": 0.000246
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 120,
+      "total_tokens": 920,
+      "cost_usd": 0.000192
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 120,
+      "total_tokens": 920,
+      "cost_usd": 0.000192
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 120,
+      "total_tokens": 920,
+      "cost_usd": 0.000192
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 140,
+      "total_tokens": 990,
+      "cost_usd": 0.0002115
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 140,
+      "total_tokens": 990,
+      "cost_usd": 0.0002115
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 140,
+      "total_tokens": 990,
+      "cost_usd": 0.0002115
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 160,
+      "total_tokens": 1060,
+      "cost_usd": 0.000231
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 160,
+      "total_tokens": 1060,
+      "cost_usd": 0.000231
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 160,
+      "total_tokens": 1060,
+      "cost_usd": 0.000231
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 120,
+      "total_tokens": 1070,
+      "cost_usd": 0.0002145
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 120,
+      "total_tokens": 1070,
+      "cost_usd": 0.0002145
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 120,
+      "total_tokens": 1070,
+      "cost_usd": 0.0002145
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 140,
+      "total_tokens": 1140,
+      "cost_usd": 0.000234
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 140,
+      "total_tokens": 1140,
+      "cost_usd": 0.000234
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 140,
+      "total_tokens": 1140,
+      "cost_usd": 0.000234
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 160,
+      "total_tokens": 960,
+      "cost_usd": 0.000216
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 160,
+      "total_tokens": 960,
+      "cost_usd": 0.000216
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 160,
+      "total_tokens": 960,
+      "cost_usd": 0.000216
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 120,
+      "total_tokens": 970,
+      "cost_usd": 0.0001995
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 120,
+      "total_tokens": 970,
+      "cost_usd": 0.0001995
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 120,
+      "total_tokens": 970,
+      "cost_usd": 0.0001995
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 140,
+      "total_tokens": 1040,
+      "cost_usd": 0.000219
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 140,
+      "total_tokens": 1040,
+      "cost_usd": 0.000219
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 140,
+      "total_tokens": 1040,
+      "cost_usd": 0.000219
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 160,
+      "total_tokens": 1110,
+      "cost_usd": 0.0002385
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 160,
+      "total_tokens": 1110,
+      "cost_usd": 0.0002385
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 160,
+      "total_tokens": 1110,
+      "cost_usd": 0.0002385
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 120,
+      "total_tokens": 1120,
+      "cost_usd": 0.000222
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 120,
+      "total_tokens": 1120,
+      "cost_usd": 0.000222
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 120,
+      "total_tokens": 1120,
+      "cost_usd": 0.000222
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 140,
+      "total_tokens": 940,
+      "cost_usd": 0.000204
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 140,
+      "total_tokens": 940,
+      "cost_usd": 0.000204
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 140,
+      "total_tokens": 940,
+      "cost_usd": 0.000204
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 160,
+      "total_tokens": 1010,
+      "cost_usd": 0.0002235
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 160,
+      "total_tokens": 1010,
+      "cost_usd": 0.0002235
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 160,
+      "total_tokens": 1010,
+      "cost_usd": 0.0002235
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 120,
+      "total_tokens": 1020,
+      "cost_usd": 0.000207
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 120,
+      "total_tokens": 1020,
+      "cost_usd": 0.000207
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 120,
+      "total_tokens": 1020,
+      "cost_usd": 0.000207
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 140,
+      "total_tokens": 1090,
+      "cost_usd": 0.0002265
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 140,
+      "total_tokens": 1090,
+      "cost_usd": 0.0002265
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 140,
+      "total_tokens": 1090,
+      "cost_usd": 0.0002265
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 160,
+      "total_tokens": 1160,
+      "cost_usd": 0.000246
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 160,
+      "total_tokens": 1160,
+      "cost_usd": 0.000246
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 160,
+      "total_tokens": 1160,
+      "cost_usd": 0.000246
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 120,
+      "total_tokens": 920,
+      "cost_usd": 0.000192
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 120,
+      "total_tokens": 920,
+      "cost_usd": 0.000192
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 120,
+      "total_tokens": 920,
+      "cost_usd": 0.000192
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 140,
+      "total_tokens": 990,
+      "cost_usd": 0.0002115
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 140,
+      "total_tokens": 990,
+      "cost_usd": 0.0002115
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 140,
+      "total_tokens": 990,
+      "cost_usd": 0.0002115
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 160,
+      "total_tokens": 1060,
+      "cost_usd": 0.000231
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 160,
+      "total_tokens": 1060,
+      "cost_usd": 0.000231
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 160,
+      "total_tokens": 1060,
+      "cost_usd": 0.000231
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 120,
+      "total_tokens": 1070,
+      "cost_usd": 0.0002145
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 120,
+      "total_tokens": 1070,
+      "cost_usd": 0.0002145
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 120,
+      "total_tokens": 1070,
+      "cost_usd": 0.0002145
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 140,
+      "total_tokens": 1140,
+      "cost_usd": 0.000234
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 140,
+      "total_tokens": 1140,
+      "cost_usd": 0.000234
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 140,
+      "total_tokens": 1140,
+      "cost_usd": 0.000234
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 160,
+      "total_tokens": 960,
+      "cost_usd": 0.000216
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 160,
+      "total_tokens": 960,
+      "cost_usd": 0.000216
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 160,
+      "total_tokens": 960,
+      "cost_usd": 0.000216
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 120,
+      "total_tokens": 970,
+      "cost_usd": 0.0001995
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 120,
+      "total_tokens": 970,
+      "cost_usd": 0.0001995
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 120,
+      "total_tokens": 970,
+      "cost_usd": 0.0001995
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 140,
+      "total_tokens": 1040,
+      "cost_usd": 0.000219
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 140,
+      "total_tokens": 1040,
+      "cost_usd": 0.000219
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 140,
+      "total_tokens": 1040,
+      "cost_usd": 0.000219
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 160,
+      "total_tokens": 1110,
+      "cost_usd": 0.0002385
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 160,
+      "total_tokens": 1110,
+      "cost_usd": 0.0002385
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 160,
+      "total_tokens": 1110,
+      "cost_usd": 0.0002385
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 120,
+      "total_tokens": 1120,
+      "cost_usd": 0.000222
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 120,
+      "total_tokens": 1120,
+      "cost_usd": 0.000222
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 120,
+      "total_tokens": 1120,
+      "cost_usd": 0.000222
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 140,
+      "total_tokens": 940,
+      "cost_usd": 0.000204
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 140,
+      "total_tokens": 940,
+      "cost_usd": 0.000204
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 140,
+      "total_tokens": 940,
+      "cost_usd": 0.000204
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 160,
+      "total_tokens": 1010,
+      "cost_usd": 0.0002235
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 160,
+      "total_tokens": 1010,
+      "cost_usd": 0.0002235
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 160,
+      "total_tokens": 1010,
+      "cost_usd": 0.0002235
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 120,
+      "total_tokens": 1020,
+      "cost_usd": 0.000207
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 120,
+      "total_tokens": 1020,
+      "cost_usd": 0.000207
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 120,
+      "total_tokens": 1020,
+      "cost_usd": 0.000207
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 140,
+      "total_tokens": 1090,
+      "cost_usd": 0.0002265
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 140,
+      "total_tokens": 1090,
+      "cost_usd": 0.0002265
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 140,
+      "total_tokens": 1090,
+      "cost_usd": 0.0002265
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 160,
+      "total_tokens": 1160,
+      "cost_usd": 0.000246
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 160,
+      "total_tokens": 1160,
+      "cost_usd": 0.000246
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 160,
+      "total_tokens": 1160,
+      "cost_usd": 0.000246
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 120,
+      "total_tokens": 920,
+      "cost_usd": 0.000192
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 120,
+      "total_tokens": 920,
+      "cost_usd": 0.000192
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 120,
+      "total_tokens": 920,
+      "cost_usd": 0.000192
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 140,
+      "total_tokens": 990,
+      "cost_usd": 0.0002115
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 140,
+      "total_tokens": 990,
+      "cost_usd": 0.0002115
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 140,
+      "total_tokens": 990,
+      "cost_usd": 0.0002115
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 160,
+      "total_tokens": 1060,
+      "cost_usd": 0.000231
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 160,
+      "total_tokens": 1060,
+      "cost_usd": 0.000231
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 160,
+      "total_tokens": 1060,
+      "cost_usd": 0.000231
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 120,
+      "total_tokens": 1070,
+      "cost_usd": 0.0002145
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 120,
+      "total_tokens": 1070,
+      "cost_usd": 0.0002145
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 120,
+      "total_tokens": 1070,
+      "cost_usd": 0.0002145
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 140,
+      "total_tokens": 1140,
+      "cost_usd": 0.000234
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 140,
+      "total_tokens": 1140,
+      "cost_usd": 0.000234
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 140,
+      "total_tokens": 1140,
+      "cost_usd": 0.000234
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 160,
+      "total_tokens": 960,
+      "cost_usd": 0.000216
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 160,
+      "total_tokens": 960,
+      "cost_usd": 0.000216
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 160,
+      "total_tokens": 960,
+      "cost_usd": 0.000216
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 120,
+      "total_tokens": 970,
+      "cost_usd": 0.0001995
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 120,
+      "total_tokens": 970,
+      "cost_usd": 0.0001995
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 120,
+      "total_tokens": 970,
+      "cost_usd": 0.0001995
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 140,
+      "total_tokens": 1040,
+      "cost_usd": 0.000219
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 140,
+      "total_tokens": 1040,
+      "cost_usd": 0.000219
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 140,
+      "total_tokens": 1040,
+      "cost_usd": 0.000219
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 160,
+      "total_tokens": 1110,
+      "cost_usd": 0.0002385
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 160,
+      "total_tokens": 1110,
+      "cost_usd": 0.0002385
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 160,
+      "total_tokens": 1110,
+      "cost_usd": 0.0002385
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 120,
+      "total_tokens": 1120,
+      "cost_usd": 0.000222
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 120,
+      "total_tokens": 1120,
+      "cost_usd": 0.000222
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 120,
+      "total_tokens": 1120,
+      "cost_usd": 0.000222
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 140,
+      "total_tokens": 940,
+      "cost_usd": 0.000204
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 140,
+      "total_tokens": 940,
+      "cost_usd": 0.000204
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 140,
+      "total_tokens": 940,
+      "cost_usd": 0.000204
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 160,
+      "total_tokens": 1010,
+      "cost_usd": 0.0002235
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 160,
+      "total_tokens": 1010,
+      "cost_usd": 0.0002235
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 160,
+      "total_tokens": 1010,
+      "cost_usd": 0.0002235
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 120,
+      "total_tokens": 1020,
+      "cost_usd": 0.000207
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 120,
+      "total_tokens": 1020,
+      "cost_usd": 0.000207
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 120,
+      "total_tokens": 1020,
+      "cost_usd": 0.000207
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 140,
+      "total_tokens": 1090,
+      "cost_usd": 0.0002265
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 140,
+      "total_tokens": 1090,
+      "cost_usd": 0.0002265
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 140,
+      "total_tokens": 1090,
+      "cost_usd": 0.0002265
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 160,
+      "total_tokens": 1160,
+      "cost_usd": 0.000246
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 160,
+      "total_tokens": 1160,
+      "cost_usd": 0.000246
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 160,
+      "total_tokens": 1160,
+      "cost_usd": 0.000246
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 120,
+      "total_tokens": 920,
+      "cost_usd": 0.000192
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 120,
+      "total_tokens": 920,
+      "cost_usd": 0.000192
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 120,
+      "total_tokens": 920,
+      "cost_usd": 0.000192
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 140,
+      "total_tokens": 990,
+      "cost_usd": 0.0002115
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 140,
+      "total_tokens": 990,
+      "cost_usd": 0.0002115
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 140,
+      "total_tokens": 990,
+      "cost_usd": 0.0002115
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 160,
+      "total_tokens": 1060,
+      "cost_usd": 0.000231
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 160,
+      "total_tokens": 1060,
+      "cost_usd": 0.000231
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 160,
+      "total_tokens": 1060,
+      "cost_usd": 0.000231
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 120,
+      "total_tokens": 1070,
+      "cost_usd": 0.0002145
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 120,
+      "total_tokens": 1070,
+      "cost_usd": 0.0002145
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 120,
+      "total_tokens": 1070,
+      "cost_usd": 0.0002145
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 140,
+      "total_tokens": 1140,
+      "cost_usd": 0.000234
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 140,
+      "total_tokens": 1140,
+      "cost_usd": 0.000234
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 140,
+      "total_tokens": 1140,
+      "cost_usd": 0.000234
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 160,
+      "total_tokens": 960,
+      "cost_usd": 0.000216
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 160,
+      "total_tokens": 960,
+      "cost_usd": 0.000216
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 160,
+      "total_tokens": 960,
+      "cost_usd": 0.000216
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 120,
+      "total_tokens": 970,
+      "cost_usd": 0.0001995
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 120,
+      "total_tokens": 970,
+      "cost_usd": 0.0001995
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 120,
+      "total_tokens": 970,
+      "cost_usd": 0.0001995
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 140,
+      "total_tokens": 1040,
+      "cost_usd": 0.000219
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 140,
+      "total_tokens": 1040,
+      "cost_usd": 0.000219
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 140,
+      "total_tokens": 1040,
+      "cost_usd": 0.000219
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 160,
+      "total_tokens": 1110,
+      "cost_usd": 0.0002385
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 160,
+      "total_tokens": 1110,
+      "cost_usd": 0.0002385
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 160,
+      "total_tokens": 1110,
+      "cost_usd": 0.0002385
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 120,
+      "total_tokens": 1120,
+      "cost_usd": 0.000222
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 120,
+      "total_tokens": 1120,
+      "cost_usd": 0.000222
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 120,
+      "total_tokens": 1120,
+      "cost_usd": 0.000222
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 140,
+      "total_tokens": 940,
+      "cost_usd": 0.000204
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 140,
+      "total_tokens": 940,
+      "cost_usd": 0.000204
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 140,
+      "total_tokens": 940,
+      "cost_usd": 0.000204
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 160,
+      "total_tokens": 1010,
+      "cost_usd": 0.0002235
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 160,
+      "total_tokens": 1010,
+      "cost_usd": 0.0002235
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 160,
+      "total_tokens": 1010,
+      "cost_usd": 0.0002235
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 120,
+      "total_tokens": 1020,
+      "cost_usd": 0.000207
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 120,
+      "total_tokens": 1020,
+      "cost_usd": 0.000207
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 120,
+      "total_tokens": 1020,
+      "cost_usd": 0.000207
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 140,
+      "total_tokens": 1090,
+      "cost_usd": 0.0002265
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 140,
+      "total_tokens": 1090,
+      "cost_usd": 0.0002265
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 140,
+      "total_tokens": 1090,
+      "cost_usd": 0.0002265
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 160,
+      "total_tokens": 1160,
+      "cost_usd": 0.000246
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 160,
+      "total_tokens": 1160,
+      "cost_usd": 0.000246
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 160,
+      "total_tokens": 1160,
+      "cost_usd": 0.000246
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 120,
+      "total_tokens": 920,
+      "cost_usd": 0.000192
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 120,
+      "total_tokens": 920,
+      "cost_usd": 0.000192
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 120,
+      "total_tokens": 920,
+      "cost_usd": 0.000192
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 140,
+      "total_tokens": 990,
+      "cost_usd": 0.0002115
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 140,
+      "total_tokens": 990,
+      "cost_usd": 0.0002115
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 140,
+      "total_tokens": 990,
+      "cost_usd": 0.0002115
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 160,
+      "total_tokens": 1060,
+      "cost_usd": 0.000231
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 160,
+      "total_tokens": 1060,
+      "cost_usd": 0.000231
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 160,
+      "total_tokens": 1060,
+      "cost_usd": 0.000231
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 120,
+      "total_tokens": 1070,
+      "cost_usd": 0.0002145
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 120,
+      "total_tokens": 1070,
+      "cost_usd": 0.0002145
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 120,
+      "total_tokens": 1070,
+      "cost_usd": 0.0002145
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 140,
+      "total_tokens": 1140,
+      "cost_usd": 0.000234
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 140,
+      "total_tokens": 1140,
+      "cost_usd": 0.000234
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 140,
+      "total_tokens": 1140,
+      "cost_usd": 0.000234
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 160,
+      "total_tokens": 960,
+      "cost_usd": 0.000216
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 160,
+      "total_tokens": 960,
+      "cost_usd": 0.000216
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 160,
+      "total_tokens": 960,
+      "cost_usd": 0.000216
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 120,
+      "total_tokens": 970,
+      "cost_usd": 0.0001995
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 120,
+      "total_tokens": 970,
+      "cost_usd": 0.0001995
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 120,
+      "total_tokens": 970,
+      "cost_usd": 0.0001995
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 140,
+      "total_tokens": 1040,
+      "cost_usd": 0.000219
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 140,
+      "total_tokens": 1040,
+      "cost_usd": 0.000219
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 140,
+      "total_tokens": 1040,
+      "cost_usd": 0.000219
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 160,
+      "total_tokens": 1110,
+      "cost_usd": 0.0002385
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 160,
+      "total_tokens": 1110,
+      "cost_usd": 0.0002385
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 160,
+      "total_tokens": 1110,
+      "cost_usd": 0.0002385
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 120,
+      "total_tokens": 1120,
+      "cost_usd": 0.000222
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 120,
+      "total_tokens": 1120,
+      "cost_usd": 0.000222
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 120,
+      "total_tokens": 1120,
+      "cost_usd": 0.000222
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 140,
+      "total_tokens": 940,
+      "cost_usd": 0.000204
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 140,
+      "total_tokens": 940,
+      "cost_usd": 0.000204
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 140,
+      "total_tokens": 940,
+      "cost_usd": 0.000204
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 160,
+      "total_tokens": 1010,
+      "cost_usd": 0.0002235
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 160,
+      "total_tokens": 1010,
+      "cost_usd": 0.0002235
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 160,
+      "total_tokens": 1010,
+      "cost_usd": 0.0002235
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 120,
+      "total_tokens": 1020,
+      "cost_usd": 0.000207
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 120,
+      "total_tokens": 1020,
+      "cost_usd": 0.000207
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 120,
+      "total_tokens": 1020,
+      "cost_usd": 0.000207
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 140,
+      "total_tokens": 1090,
+      "cost_usd": 0.0002265
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 140,
+      "total_tokens": 1090,
+      "cost_usd": 0.0002265
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 140,
+      "total_tokens": 1090,
+      "cost_usd": 0.0002265
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 160,
+      "total_tokens": 1160,
+      "cost_usd": 0.000246
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 160,
+      "total_tokens": 1160,
+      "cost_usd": 0.000246
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 160,
+      "total_tokens": 1160,
+      "cost_usd": 0.000246
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 120,
+      "total_tokens": 920,
+      "cost_usd": 0.000192
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 120,
+      "total_tokens": 920,
+      "cost_usd": 0.000192
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 120,
+      "total_tokens": 920,
+      "cost_usd": 0.000192
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 140,
+      "total_tokens": 990,
+      "cost_usd": 0.0002115
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 140,
+      "total_tokens": 990,
+      "cost_usd": 0.0002115
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 140,
+      "total_tokens": 990,
+      "cost_usd": 0.0002115
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 160,
+      "total_tokens": 1060,
+      "cost_usd": 0.000231
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 160,
+      "total_tokens": 1060,
+      "cost_usd": 0.000231
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 160,
+      "total_tokens": 1060,
+      "cost_usd": 0.000231
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 120,
+      "total_tokens": 1070,
+      "cost_usd": 0.0002145
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 120,
+      "total_tokens": 1070,
+      "cost_usd": 0.0002145
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 120,
+      "total_tokens": 1070,
+      "cost_usd": 0.0002145
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 140,
+      "total_tokens": 1140,
+      "cost_usd": 0.000234
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 140,
+      "total_tokens": 1140,
+      "cost_usd": 0.000234
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 140,
+      "total_tokens": 1140,
+      "cost_usd": 0.000234
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 160,
+      "total_tokens": 960,
+      "cost_usd": 0.000216
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 160,
+      "total_tokens": 960,
+      "cost_usd": 0.000216
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 160,
+      "total_tokens": 960,
+      "cost_usd": 0.000216
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 120,
+      "total_tokens": 970,
+      "cost_usd": 0.0001995
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 120,
+      "total_tokens": 970,
+      "cost_usd": 0.0001995
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 120,
+      "total_tokens": 970,
+      "cost_usd": 0.0001995
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 140,
+      "total_tokens": 1040,
+      "cost_usd": 0.000219
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 140,
+      "total_tokens": 1040,
+      "cost_usd": 0.000219
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 140,
+      "total_tokens": 1040,
+      "cost_usd": 0.000219
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 160,
+      "total_tokens": 1110,
+      "cost_usd": 0.0002385
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 160,
+      "total_tokens": 1110,
+      "cost_usd": 0.0002385
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 160,
+      "total_tokens": 1110,
+      "cost_usd": 0.0002385
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 120,
+      "total_tokens": 1120,
+      "cost_usd": 0.000222
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 120,
+      "total_tokens": 1120,
+      "cost_usd": 0.000222
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 120,
+      "total_tokens": 1120,
+      "cost_usd": 0.000222
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 140,
+      "total_tokens": 940,
+      "cost_usd": 0.000204
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 140,
+      "total_tokens": 940,
+      "cost_usd": 0.000204
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 140,
+      "total_tokens": 940,
+      "cost_usd": 0.000204
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 160,
+      "total_tokens": 1010,
+      "cost_usd": 0.0002235
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 160,
+      "total_tokens": 1010,
+      "cost_usd": 0.0002235
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 160,
+      "total_tokens": 1010,
+      "cost_usd": 0.0002235
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 120,
+      "total_tokens": 1020,
+      "cost_usd": 0.000207
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 120,
+      "total_tokens": 1020,
+      "cost_usd": 0.000207
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 120,
+      "total_tokens": 1020,
+      "cost_usd": 0.000207
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 140,
+      "total_tokens": 1090,
+      "cost_usd": 0.0002265
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 140,
+      "total_tokens": 1090,
+      "cost_usd": 0.0002265
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 140,
+      "total_tokens": 1090,
+      "cost_usd": 0.0002265
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 160,
+      "total_tokens": 1160,
+      "cost_usd": 0.000246
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 160,
+      "total_tokens": 1160,
+      "cost_usd": 0.000246
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 160,
+      "total_tokens": 1160,
+      "cost_usd": 0.000246
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 120,
+      "total_tokens": 920,
+      "cost_usd": 0.000192
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 120,
+      "total_tokens": 920,
+      "cost_usd": 0.000192
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 120,
+      "total_tokens": 920,
+      "cost_usd": 0.000192
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 140,
+      "total_tokens": 990,
+      "cost_usd": 0.0002115
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 140,
+      "total_tokens": 990,
+      "cost_usd": 0.0002115
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 140,
+      "total_tokens": 990,
+      "cost_usd": 0.0002115
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 160,
+      "total_tokens": 1060,
+      "cost_usd": 0.000231
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 160,
+      "total_tokens": 1060,
+      "cost_usd": 0.000231
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 160,
+      "total_tokens": 1060,
+      "cost_usd": 0.000231
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 120,
+      "total_tokens": 1070,
+      "cost_usd": 0.0002145
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 120,
+      "total_tokens": 1070,
+      "cost_usd": 0.0002145
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 120,
+      "total_tokens": 1070,
+      "cost_usd": 0.0002145
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 140,
+      "total_tokens": 1140,
+      "cost_usd": 0.000234
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 140,
+      "total_tokens": 1140,
+      "cost_usd": 0.000234
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 140,
+      "total_tokens": 1140,
+      "cost_usd": 0.000234
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 160,
+      "total_tokens": 960,
+      "cost_usd": 0.000216
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 160,
+      "total_tokens": 960,
+      "cost_usd": 0.000216
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 160,
+      "total_tokens": 960,
+      "cost_usd": 0.000216
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 120,
+      "total_tokens": 970,
+      "cost_usd": 0.0001995
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 120,
+      "total_tokens": 970,
+      "cost_usd": 0.0001995
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 120,
+      "total_tokens": 970,
+      "cost_usd": 0.0001995
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 140,
+      "total_tokens": 1040,
+      "cost_usd": 0.000219
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 140,
+      "total_tokens": 1040,
+      "cost_usd": 0.000219
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 140,
+      "total_tokens": 1040,
+      "cost_usd": 0.000219
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 160,
+      "total_tokens": 1110,
+      "cost_usd": 0.0002385
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 160,
+      "total_tokens": 1110,
+      "cost_usd": 0.0002385
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 160,
+      "total_tokens": 1110,
+      "cost_usd": 0.0002385
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 120,
+      "total_tokens": 1120,
+      "cost_usd": 0.000222
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 120,
+      "total_tokens": 1120,
+      "cost_usd": 0.000222
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 120,
+      "total_tokens": 1120,
+      "cost_usd": 0.000222
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 140,
+      "total_tokens": 940,
+      "cost_usd": 0.000204
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 140,
+      "total_tokens": 940,
+      "cost_usd": 0.000204
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 140,
+      "total_tokens": 940,
+      "cost_usd": 0.000204
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 160,
+      "total_tokens": 1010,
+      "cost_usd": 0.0002235
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 160,
+      "total_tokens": 1010,
+      "cost_usd": 0.0002235
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 160,
+      "total_tokens": 1010,
+      "cost_usd": 0.0002235
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 120,
+      "total_tokens": 1020,
+      "cost_usd": 0.000207
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 120,
+      "total_tokens": 1020,
+      "cost_usd": 0.000207
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 120,
+      "total_tokens": 1020,
+      "cost_usd": 0.000207
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 140,
+      "total_tokens": 1090,
+      "cost_usd": 0.0002265
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 140,
+      "total_tokens": 1090,
+      "cost_usd": 0.0002265
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 140,
+      "total_tokens": 1090,
+      "cost_usd": 0.0002265
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 160,
+      "total_tokens": 1160,
+      "cost_usd": 0.000246
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 160,
+      "total_tokens": 1160,
+      "cost_usd": 0.000246
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 160,
+      "total_tokens": 1160,
+      "cost_usd": 0.000246
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 120,
+      "total_tokens": 920,
+      "cost_usd": 0.000192
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 120,
+      "total_tokens": 920,
+      "cost_usd": 0.000192
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 120,
+      "total_tokens": 920,
+      "cost_usd": 0.000192
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 140,
+      "total_tokens": 990,
+      "cost_usd": 0.0002115
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 140,
+      "total_tokens": 990,
+      "cost_usd": 0.0002115
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 140,
+      "total_tokens": 990,
+      "cost_usd": 0.0002115
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 160,
+      "total_tokens": 1060,
+      "cost_usd": 0.000231
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 160,
+      "total_tokens": 1060,
+      "cost_usd": 0.000231
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 160,
+      "total_tokens": 1060,
+      "cost_usd": 0.000231
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 120,
+      "total_tokens": 1070,
+      "cost_usd": 0.0002145
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 120,
+      "total_tokens": 1070,
+      "cost_usd": 0.0002145
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 120,
+      "total_tokens": 1070,
+      "cost_usd": 0.0002145
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 140,
+      "total_tokens": 1140,
+      "cost_usd": 0.000234
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 140,
+      "total_tokens": 1140,
+      "cost_usd": 0.000234
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 140,
+      "total_tokens": 1140,
+      "cost_usd": 0.000234
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 160,
+      "total_tokens": 960,
+      "cost_usd": 0.000216
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 160,
+      "total_tokens": 960,
+      "cost_usd": 0.000216
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 160,
+      "total_tokens": 960,
+      "cost_usd": 0.000216
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 120,
+      "total_tokens": 970,
+      "cost_usd": 0.0001995
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 120,
+      "total_tokens": 970,
+      "cost_usd": 0.0001995
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 120,
+      "total_tokens": 970,
+      "cost_usd": 0.0001995
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 140,
+      "total_tokens": 1040,
+      "cost_usd": 0.000219
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 140,
+      "total_tokens": 1040,
+      "cost_usd": 0.000219
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 140,
+      "total_tokens": 1040,
+      "cost_usd": 0.000219
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 160,
+      "total_tokens": 1110,
+      "cost_usd": 0.0002385
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 160,
+      "total_tokens": 1110,
+      "cost_usd": 0.0002385
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 160,
+      "total_tokens": 1110,
+      "cost_usd": 0.0002385
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 120,
+      "total_tokens": 1120,
+      "cost_usd": 0.000222
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 120,
+      "total_tokens": 1120,
+      "cost_usd": 0.000222
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 120,
+      "total_tokens": 1120,
+      "cost_usd": 0.000222
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 140,
+      "total_tokens": 940,
+      "cost_usd": 0.000204
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 140,
+      "total_tokens": 940,
+      "cost_usd": 0.000204
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 140,
+      "total_tokens": 940,
+      "cost_usd": 0.000204
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 160,
+      "total_tokens": 1010,
+      "cost_usd": 0.0002235
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 160,
+      "total_tokens": 1010,
+      "cost_usd": 0.0002235
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 160,
+      "total_tokens": 1010,
+      "cost_usd": 0.0002235
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 120,
+      "total_tokens": 1020,
+      "cost_usd": 0.000207
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 120,
+      "total_tokens": 1020,
+      "cost_usd": 0.000207
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 120,
+      "total_tokens": 1020,
+      "cost_usd": 0.000207
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 140,
+      "total_tokens": 1090,
+      "cost_usd": 0.0002265
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 140,
+      "total_tokens": 1090,
+      "cost_usd": 0.0002265
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 140,
+      "total_tokens": 1090,
+      "cost_usd": 0.0002265
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 160,
+      "total_tokens": 1160,
+      "cost_usd": 0.000246
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 160,
+      "total_tokens": 1160,
+      "cost_usd": 0.000246
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 160,
+      "total_tokens": 1160,
+      "cost_usd": 0.000246
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 120,
+      "total_tokens": 920,
+      "cost_usd": 0.000192
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 120,
+      "total_tokens": 920,
+      "cost_usd": 0.000192
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 120,
+      "total_tokens": 920,
+      "cost_usd": 0.000192
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 140,
+      "total_tokens": 990,
+      "cost_usd": 0.0002115
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 140,
+      "total_tokens": 990,
+      "cost_usd": 0.0002115
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 140,
+      "total_tokens": 990,
+      "cost_usd": 0.0002115
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 160,
+      "total_tokens": 1060,
+      "cost_usd": 0.000231
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 160,
+      "total_tokens": 1060,
+      "cost_usd": 0.000231
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 160,
+      "total_tokens": 1060,
+      "cost_usd": 0.000231
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 120,
+      "total_tokens": 1070,
+      "cost_usd": 0.0002145
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 120,
+      "total_tokens": 1070,
+      "cost_usd": 0.0002145
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 120,
+      "total_tokens": 1070,
+      "cost_usd": 0.0002145
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 140,
+      "total_tokens": 1140,
+      "cost_usd": 0.000234
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 140,
+      "total_tokens": 1140,
+      "cost_usd": 0.000234
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 140,
+      "total_tokens": 1140,
+      "cost_usd": 0.000234
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 160,
+      "total_tokens": 960,
+      "cost_usd": 0.000216
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 160,
+      "total_tokens": 960,
+      "cost_usd": 0.000216
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 160,
+      "total_tokens": 960,
+      "cost_usd": 0.000216
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 120,
+      "total_tokens": 970,
+      "cost_usd": 0.0001995
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 120,
+      "total_tokens": 970,
+      "cost_usd": 0.0001995
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 120,
+      "total_tokens": 970,
+      "cost_usd": 0.0001995
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 140,
+      "total_tokens": 1040,
+      "cost_usd": 0.000219
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 140,
+      "total_tokens": 1040,
+      "cost_usd": 0.000219
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 140,
+      "total_tokens": 1040,
+      "cost_usd": 0.000219
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 160,
+      "total_tokens": 1110,
+      "cost_usd": 0.0002385
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 160,
+      "total_tokens": 1110,
+      "cost_usd": 0.0002385
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 160,
+      "total_tokens": 1110,
+      "cost_usd": 0.0002385
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 120,
+      "total_tokens": 1120,
+      "cost_usd": 0.000222
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 120,
+      "total_tokens": 1120,
+      "cost_usd": 0.000222
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 120,
+      "total_tokens": 1120,
+      "cost_usd": 0.000222
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 140,
+      "total_tokens": 940,
+      "cost_usd": 0.000204
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 140,
+      "total_tokens": 940,
+      "cost_usd": 0.000204
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 140,
+      "total_tokens": 940,
+      "cost_usd": 0.000204
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 160,
+      "total_tokens": 1010,
+      "cost_usd": 0.0002235
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 160,
+      "total_tokens": 1010,
+      "cost_usd": 0.0002235
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 160,
+      "total_tokens": 1010,
+      "cost_usd": 0.0002235
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 120,
+      "total_tokens": 1020,
+      "cost_usd": 0.000207
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 120,
+      "total_tokens": 1020,
+      "cost_usd": 0.000207
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 120,
+      "total_tokens": 1020,
+      "cost_usd": 0.000207
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 140,
+      "total_tokens": 1090,
+      "cost_usd": 0.0002265
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 140,
+      "total_tokens": 1090,
+      "cost_usd": 0.0002265
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 140,
+      "total_tokens": 1090,
+      "cost_usd": 0.0002265
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 160,
+      "total_tokens": 1160,
+      "cost_usd": 0.000246
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 160,
+      "total_tokens": 1160,
+      "cost_usd": 0.000246
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 160,
+      "total_tokens": 1160,
+      "cost_usd": 0.000246
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 120,
+      "total_tokens": 920,
+      "cost_usd": 0.000192
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 120,
+      "total_tokens": 920,
+      "cost_usd": 0.000192
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 120,
+      "total_tokens": 920,
+      "cost_usd": 0.000192
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 140,
+      "total_tokens": 990,
+      "cost_usd": 0.0002115
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 140,
+      "total_tokens": 990,
+      "cost_usd": 0.0002115
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 140,
+      "total_tokens": 990,
+      "cost_usd": 0.0002115
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 160,
+      "total_tokens": 1060,
+      "cost_usd": 0.000231
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 160,
+      "total_tokens": 1060,
+      "cost_usd": 0.000231
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 160,
+      "total_tokens": 1060,
+      "cost_usd": 0.000231
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 120,
+      "total_tokens": 1070,
+      "cost_usd": 0.0002145
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 120,
+      "total_tokens": 1070,
+      "cost_usd": 0.0002145
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 120,
+      "total_tokens": 1070,
+      "cost_usd": 0.0002145
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 140,
+      "total_tokens": 1140,
+      "cost_usd": 0.000234
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 140,
+      "total_tokens": 1140,
+      "cost_usd": 0.000234
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 140,
+      "total_tokens": 1140,
+      "cost_usd": 0.000234
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 160,
+      "total_tokens": 960,
+      "cost_usd": 0.000216
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 160,
+      "total_tokens": 960,
+      "cost_usd": 0.000216
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 160,
+      "total_tokens": 960,
+      "cost_usd": 0.000216
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 120,
+      "total_tokens": 970,
+      "cost_usd": 0.0001995
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 120,
+      "total_tokens": 970,
+      "cost_usd": 0.0001995
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 120,
+      "total_tokens": 970,
+      "cost_usd": 0.0001995
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 140,
+      "total_tokens": 1040,
+      "cost_usd": 0.000219
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 140,
+      "total_tokens": 1040,
+      "cost_usd": 0.000219
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 140,
+      "total_tokens": 1040,
+      "cost_usd": 0.000219
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 160,
+      "total_tokens": 1110,
+      "cost_usd": 0.0002385
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 160,
+      "total_tokens": 1110,
+      "cost_usd": 0.0002385
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 160,
+      "total_tokens": 1110,
+      "cost_usd": 0.0002385
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 120,
+      "total_tokens": 1120,
+      "cost_usd": 0.000222
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 120,
+      "total_tokens": 1120,
+      "cost_usd": 0.000222
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 120,
+      "total_tokens": 1120,
+      "cost_usd": 0.000222
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 140,
+      "total_tokens": 940,
+      "cost_usd": 0.000204
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 140,
+      "total_tokens": 940,
+      "cost_usd": 0.000204
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 140,
+      "total_tokens": 940,
+      "cost_usd": 0.000204
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 160,
+      "total_tokens": 1010,
+      "cost_usd": 0.0002235
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 160,
+      "total_tokens": 1010,
+      "cost_usd": 0.0002235
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 160,
+      "total_tokens": 1010,
+      "cost_usd": 0.0002235
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 120,
+      "total_tokens": 1020,
+      "cost_usd": 0.000207
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 120,
+      "total_tokens": 1020,
+      "cost_usd": 0.000207
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 120,
+      "total_tokens": 1020,
+      "cost_usd": 0.000207
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 140,
+      "total_tokens": 1090,
+      "cost_usd": 0.0002265
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 140,
+      "total_tokens": 1090,
+      "cost_usd": 0.0002265
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 140,
+      "total_tokens": 1090,
+      "cost_usd": 0.0002265
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 160,
+      "total_tokens": 1160,
+      "cost_usd": 0.000246
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 160,
+      "total_tokens": 1160,
+      "cost_usd": 0.000246
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 160,
+      "total_tokens": 1160,
+      "cost_usd": 0.000246
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 120,
+      "total_tokens": 920,
+      "cost_usd": 0.000192
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 120,
+      "total_tokens": 920,
+      "cost_usd": 0.000192
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 120,
+      "total_tokens": 920,
+      "cost_usd": 0.000192
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 140,
+      "total_tokens": 990,
+      "cost_usd": 0.0002115
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 140,
+      "total_tokens": 990,
+      "cost_usd": 0.0002115
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 140,
+      "total_tokens": 990,
+      "cost_usd": 0.0002115
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 160,
+      "total_tokens": 1060,
+      "cost_usd": 0.000231
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 160,
+      "total_tokens": 1060,
+      "cost_usd": 0.000231
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 160,
+      "total_tokens": 1060,
+      "cost_usd": 0.000231
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 120,
+      "total_tokens": 1070,
+      "cost_usd": 0.0002145
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 120,
+      "total_tokens": 1070,
+      "cost_usd": 0.0002145
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 120,
+      "total_tokens": 1070,
+      "cost_usd": 0.0002145
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 140,
+      "total_tokens": 1140,
+      "cost_usd": 0.000234
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 140,
+      "total_tokens": 1140,
+      "cost_usd": 0.000234
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 140,
+      "total_tokens": 1140,
+      "cost_usd": 0.000234
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 160,
+      "total_tokens": 960,
+      "cost_usd": 0.000216
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 160,
+      "total_tokens": 960,
+      "cost_usd": 0.000216
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 160,
+      "total_tokens": 960,
+      "cost_usd": 0.000216
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 120,
+      "total_tokens": 970,
+      "cost_usd": 0.0001995
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 120,
+      "total_tokens": 970,
+      "cost_usd": 0.0001995
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 120,
+      "total_tokens": 970,
+      "cost_usd": 0.0001995
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 140,
+      "total_tokens": 1040,
+      "cost_usd": 0.000219
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 140,
+      "total_tokens": 1040,
+      "cost_usd": 0.000219
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 140,
+      "total_tokens": 1040,
+      "cost_usd": 0.000219
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 160,
+      "total_tokens": 1110,
+      "cost_usd": 0.0002385
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 160,
+      "total_tokens": 1110,
+      "cost_usd": 0.0002385
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 160,
+      "total_tokens": 1110,
+      "cost_usd": 0.0002385
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 120,
+      "total_tokens": 1120,
+      "cost_usd": 0.000222
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 120,
+      "total_tokens": 1120,
+      "cost_usd": 0.000222
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 120,
+      "total_tokens": 1120,
+      "cost_usd": 0.000222
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 140,
+      "total_tokens": 940,
+      "cost_usd": 0.000204
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 140,
+      "total_tokens": 940,
+      "cost_usd": 0.000204
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 140,
+      "total_tokens": 940,
+      "cost_usd": 0.000204
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 160,
+      "total_tokens": 1010,
+      "cost_usd": 0.0002235
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 160,
+      "total_tokens": 1010,
+      "cost_usd": 0.0002235
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 160,
+      "total_tokens": 1010,
+      "cost_usd": 0.0002235
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 120,
+      "total_tokens": 1020,
+      "cost_usd": 0.000207
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 120,
+      "total_tokens": 1020,
+      "cost_usd": 0.000207
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 120,
+      "total_tokens": 1020,
+      "cost_usd": 0.000207
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 140,
+      "total_tokens": 1090,
+      "cost_usd": 0.0002265
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 140,
+      "total_tokens": 1090,
+      "cost_usd": 0.0002265
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 140,
+      "total_tokens": 1090,
+      "cost_usd": 0.0002265
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 160,
+      "total_tokens": 1160,
+      "cost_usd": 0.000246
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 160,
+      "total_tokens": 1160,
+      "cost_usd": 0.000246
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 160,
+      "total_tokens": 1160,
+      "cost_usd": 0.000246
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 120,
+      "total_tokens": 920,
+      "cost_usd": 0.000192
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 120,
+      "total_tokens": 920,
+      "cost_usd": 0.000192
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 800,
+      "completion_tokens": 120,
+      "total_tokens": 920,
+      "cost_usd": 0.000192
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 140,
+      "total_tokens": 990,
+      "cost_usd": 0.0002115
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 140,
+      "total_tokens": 990,
+      "cost_usd": 0.0002115
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 850,
+      "completion_tokens": 140,
+      "total_tokens": 990,
+      "cost_usd": 0.0002115
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 160,
+      "total_tokens": 1060,
+      "cost_usd": 0.000231
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 160,
+      "total_tokens": 1060,
+      "cost_usd": 0.000231
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 900,
+      "completion_tokens": 160,
+      "total_tokens": 1060,
+      "cost_usd": 0.000231
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 120,
+      "total_tokens": 1070,
+      "cost_usd": 0.0002145
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 120,
+      "total_tokens": 1070,
+      "cost_usd": 0.0002145
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 950,
+      "completion_tokens": 120,
+      "total_tokens": 1070,
+      "cost_usd": 0.0002145
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 140,
+      "total_tokens": 1140,
+      "cost_usd": 0.000234
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 140,
+      "total_tokens": 1140,
+      "cost_usd": 0.000234
+    },
+    {
+      "feature": "chat_replay",
+      "model": "gpt-4o-mini",
+      "prompt_version": "production",
+      "cache_hit": false,
+      "prompt_tokens": 1000,
+      "completion_tokens": 140,
+      "total_tokens": 1140,
+      "cost_usd": 0.000234
     }
   ]
 }

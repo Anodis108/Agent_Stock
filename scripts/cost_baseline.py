@@ -48,11 +48,11 @@ def load_replay_faq(path: Path | None = None) -> list[dict]:
     p = path or REPLAY_PATH
     data = yaml.safe_load(p.read_text(encoding="utf-8"))
     questions = data.get("questions") or []
-    if len(questions) != 50:
-        raise ValueError(f"replay_faq cần 50 câu, có {len(questions)}")
+    if len(questions) not in (50, 200):
+        raise ValueError(f"replay_faq cần 50 hoặc 200 câu, có {len(questions)}")
     dups = sum(1 for q in questions if q.get("near_duplicate_of"))
-    if dups < 14:
-        raise ValueError(f"Cần ~30% near-duplicate, có {dups}")
+    if dups / len(questions) < 0.25:
+        raise ValueError(f"Cần ~30% near-duplicate, có {dups} ({dups/len(questions):.1%})")
     return questions
 
 
@@ -77,7 +77,7 @@ def format_report_md(
         "",
         f"- **Generated:** {datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}",
         f"- **Git SHA:** `{git_sha}`",
-        f"- **Dataset:** `resources/eval/replay_faq.yaml` (50 FAQ, ~30% near-duplicate)",
+        f"- **Dataset:** `resources/eval/replay_faq.yaml` ({questions_run} FAQ, ~30% near-duplicate)",
         f"- **Mode:** {mode}",
         f"- **Passes:** {passes}",
         f"- **Questions run:** {questions_run}",
@@ -234,6 +234,7 @@ def run_baseline(
 
 
 def main() -> int:
+    default_out_dir = Path("/app/data") if Path("/app/data").is_dir() else (ROOT / "specs" / "eval")
     parser = argparse.ArgumentParser(description="Cost baseline replay")
     parser.add_argument("--limit", type=int, default=None, help="Chỉ chạy N câu đầu")
     parser.add_argument(
@@ -247,11 +248,25 @@ def main() -> int:
         default=None,
         help="Bật exact cache tier1; chạy 2 pass cùng dataset",
     )
+    parser.add_argument(
+        "--output-md",
+        type=Path,
+        default=default_out_dir / "cost_baseline.md",
+        help="Đường dẫn file markdown kết quả",
+    )
+    parser.add_argument(
+        "--output-json",
+        type=Path,
+        default=default_out_dir / "cost_baseline.json",
+        help="Đường dẫn file json kết quả",
+    )
     args = parser.parse_args()
     run_baseline(
         limit=args.limit,
         dry_run=args.dry_run,
         with_cache=args.with_cache,
+        output_md=args.output_md,
+        output_json=args.output_json,
     )
     return 0
 

@@ -291,6 +291,7 @@ def format_report_md(payload: dict, *, questions_run: int) -> str:
 
 
 def main() -> int:
+    default_out_dir = Path("/app/data") if Path("/app/data").is_dir() else (ROOT / "specs" / "eval")
     parser = argparse.ArgumentParser(description="Cache benchmark — 3 chế độ trên replay FAQ")
     parser.add_argument("--limit", type=int, default=None, help="Chỉ chạy N câu đầu")
     parser.add_argument(
@@ -298,8 +299,25 @@ def main() -> int:
         action="store_true",
         help="Mô phỏng hit/miss (không gọi LLM)",
     )
+    parser.add_argument(
+        "--output-md",
+        type=Path,
+        default=default_out_dir / "cache_benchmark.md",
+        help="Đường dẫn file markdown kết quả",
+    )
+    parser.add_argument(
+        "--output-json",
+        type=Path,
+        default=default_out_dir / "cache_benchmark.json",
+        help="Đường dẫn file json kết quả",
+    )
     args = parser.parse_args()
-    run_benchmark(limit=args.limit, dry_run=args.dry_run)
+    run_benchmark(
+        limit=args.limit,
+        dry_run=args.dry_run,
+        output_md=args.output_md,
+        output_json=args.output_json,
+    )
     return 0
 
 

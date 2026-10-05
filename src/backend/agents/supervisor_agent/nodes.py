@@ -46,6 +46,12 @@ _TICKER_STOPWORDS = frozenset(
         "CHI",  # «chỉ» (chỉ báo, chỉ số)
         "BAO",  # «bao» / «báo» (bao nhiêu, chỉ báo, bài báo)
         "NEN",  # «nên» / «nến» (nên mua, biểu đồ nến)
+        "TRA",  # «tra» (kiểm tra, tra cứu)
+        "KIE",  # «kiểm»
+        "DANH", # «danh» (danh mục, danh sách)
+        "XIN",  # «xin» (xin vui lòng, xin chào)
+        "VUI",  # «vui» (xin vui lòng)
+        "LONG", # «lòng»
         "LUC",  # «lúc»
         "KHI",  # «khi»
         "BAN",  # «bán» / «bản»
@@ -54,7 +60,7 @@ _TICKER_STOPWORDS = frozenset(
         "DIN",  # «đỉnh»
         "XEM",  # «xem»
         "HOI",  # «hỏi»
-        "DAN",  # «dẫn»
+        "DAN",  # «dẫn» / «danh»
         "PHU",  # «phụ»
         "TOP",  # «top»
         "BOT",  # «bot»
@@ -184,6 +190,10 @@ _CHART_PHRASES = (
     "so sánh chart",
     "so sanh chart",
     "chart",
+    "nến",
+    "nen",
+    "candlestick",
+    "candle",
 )
 _FOLLOWUP_RE = re.compile(
     r"("
@@ -196,8 +206,64 @@ _FOLLOWUP_RE = re.compile(
     r")",
     re.IGNORECASE,
 )
-_ALLOWED_AGENTS = frozenset({"price", "news", "eval", "diagram", "chart"})
-_ALLOWED_INTENTS = frozenset({"price_lookup", "news_lookup", "explain", "diagram", "chart"})
+_PORTFOLIO_PHRASES = (
+    "danh mục",
+    "danh muc",
+    "portfolio",
+    "lãi lỗ",
+    "lai lo",
+    "lãi hay lỗ",
+    "lai hay lo",
+    "lời lỗ",
+    "loi lo",
+    "lời hay lỗ",
+    "loi hay lo",
+    "tổng giá trị nav",
+    "tong gia tri nav",
+    "giá trị nav",
+    "gia tri nav",
+    "tổng nav",
+    "tong nav",
+    "hiệu suất p&l",
+    "hieu suat p&l",
+    "p&l",
+    "pnl",
+    "nắm giữ",
+    "nam giu",
+    "vị thế",
+    "vi the",
+)
+_WATCHLIST_PHRASES = (
+    "watchlist",
+    "danh sách theo dõi",
+    "danh sach theo doi",
+    "mã theo dõi",
+    "ma theo doi",
+    "danh mục theo dõi",
+    "danh muc theo doi",
+    "các mã trong danh sách theo dõi",
+    "cac ma trong danh sach theo doi",
+    "ngưỡng cảnh báo biến động",
+    "nguong canh bao bien dong",
+    "ngưỡng cảnh báo",
+    "nguong canh bao",
+    "danh sách cảnh báo",
+    "danh sach canh bao",
+)
+
+
+def _has_portfolio_intent(text: str) -> bool:
+    lowered = text.lower()
+    return any(p in lowered for p in _PORTFOLIO_PHRASES)
+
+
+def _has_watchlist_intent(text: str) -> bool:
+    lowered = text.lower()
+    return any(p in lowered for p in _WATCHLIST_PHRASES)
+
+
+_ALLOWED_AGENTS = frozenset({"price", "news", "eval", "diagram", "chart", "portfolio_watch"})
+_ALLOWED_INTENTS = frozenset({"price_lookup", "news_lookup", "explain", "diagram", "chart", "portfolio", "watchlist"})
 
 
 @dataclass(slots=True)
@@ -361,39 +427,66 @@ def _has_chart_intent(lower: str) -> bool:
 
 
 def _is_actionless_followup(q: str) -> bool:
-    """Kiểm tra câu hỏi tỉnh lược hành động (chỉ nêu mã hoặc hỏi lửng lơ: 'Còn VNM thì sao?')."""
-    q_lower = (q or "").strip().lower()
-    patterns = (
-        "thì sao", "thi sao", "thế nào", "the nao", "sao rồi", "sao roi", "còn ", "con ", "thế còn", "the con"
-    )
-    has_followup_pattern = any(p in q_lower for p in patterns)
+    """Kiểm tra câu hỏi tỉnh lược hành động (chỉ nêu mã hoặc hỏi lửng lơ: 'Còn VNM thì sao?', 'HPG?', 'Vậy còn HPG?')."""
+    q_clean = (q or "").strip()
+    if not q_clean:
+        return False
+    q_lower = q_clean.lower()
     has_explicit_action = (
         _has_chart_intent(q_lower)
         or _has_diagram_intent(q_lower)
         or any(h in q_lower for h in _EXPLAIN_HINTS)
         or _has_news_intent(q_lower)
-        or any(k in q_lower for k in ("giá bao nhiêu", "gia bao nhieu", "đóng cửa", "dong cua"))
+        or _has_portfolio_intent(q_lower)
+        or _has_watchlist_intent(q_lower)
+        or any(k in q_lower for k in ("giá bao nhiêu", "gia bao nhieu", "đóng cửa", "dong cua", "khớp lệnh", "khop lenh"))
     )
-    return has_followup_pattern and not has_explicit_action
+    if has_explicit_action:
+        return False
+
+    followup_patterns = (
+        "thì sao", "thi sao", "thế nào", "the nao", "sao rồi", "sao roi", "ra sao",
+        "còn", "con", "thế còn", "the con", "vậy còn", "vay con", "với", "voi",
+        "sang", "qua", "như nào", "nhu nao", "thế", "the",
+    )
+    if any(p in q_lower for p in followup_patterns):
+        return True
+
+    words = re.findall(r"\w+", q_lower)
+    syms = _extract_symbols(q)
+    if len(words) <= 4 and syms:
+        return True
+
+    return False
 
 
 def _get_prev_intent_and_action(conversation: list[dict]) -> tuple[str | None, str | None]:
-    """Lấy intent và hành động của lượt người dùng liền trước trong hội thoại."""
+    """Lấy intent và hành động của lượt trao đổi liền trước trong hội thoại."""
     for turn in reversed(conversation or []):
+        content = str(turn.get("content") or "").strip()
+        c_lower = content.lower()
         if turn.get("role") == "user":
-            content = str(turn.get("content") or "").strip()
-            c_lower = content.lower()
             if _has_chart_intent(c_lower):
                 return "chart", "Vẽ biểu đồ giá"
             if _has_diagram_intent(c_lower):
                 return "diagram", "Vẽ sơ đồ"
+            if _has_watchlist_intent(c_lower):
+                return "watchlist", "Theo dõi danh mục"
+            if _has_portfolio_intent(c_lower):
+                return "portfolio", "Tra cứu danh mục"
             if any(h in c_lower for h in _EXPLAIN_HINTS):
                 return "explain", "Giải thích biến động"
             if _has_news_intent(c_lower):
                 return "news_lookup", "Tra cứu tin tức"
             if any(k in c_lower for k in ("giá", "gia")):
                 return "price_lookup", "Tra cứu giá"
+        elif turn.get("role") == "assistant":
+            if turn.get("chart_path") or "![biểu đồ" in c_lower or "đã tạo biểu đồ" in c_lower:
+                return "chart", "Vẽ biểu đồ giá"
+            if "### 💼 báo cáo hiệu suất danh mục" in c_lower or "tổng nav" in c_lower:
+                return "portfolio", "Tra cứu danh mục"
     return None, None
+
 
 
 def _decompose_query(
@@ -467,6 +560,12 @@ def _decompose_query(
                     f"Tin tức và nguyên nhân tác động đến biến động giá cổ phiếu {sym} gần đây là gì?",
                 ]
 
+        if intent == "chart" and symbols:
+            return [f"Vẽ biểu đồ kỹ thuật cho cổ phiếu {s}" for s in symbols]
+
+        if intent == "diagram":
+            return ["Vẽ sơ đồ luồng hệ thống"]
+
         if llm_sub_questions and len(llm_sub_questions) == 1 and llm_sub_questions[0].strip():
             return [llm_sub_questions[0].strip()]
 
@@ -526,6 +625,10 @@ class HeuristicRewriteBrain:
             intent = "chart"
         elif _has_diagram_intent(lower):
             intent = "diagram"
+        elif _has_watchlist_intent(lower):
+            intent = "watchlist"
+        elif _has_portfolio_intent(lower):
+            intent = "portfolio"
         elif any(h in lower for h in _EXPLAIN_HINTS):
             intent = "explain"
         elif _has_news_intent(lower):
@@ -536,6 +639,11 @@ class HeuristicRewriteBrain:
                 intent = prev_intent
 
         symbol, symbols = _normalize_symbols(primary=symbol, from_text=symbols)
+        if intent in ("portfolio", "watchlist"):
+            has_explicit_ticker = any(k in lower for k in ("mã", "ma", "cổ phiếu", "co phieu", "cp"))
+            if not has_explicit_ticker and symbols:
+                symbol = None
+                symbols = []
 
         # Nếu câu hỏi dạng so sánh hoặc nguyên nhân 'tại sao lại giảm/tăng' không có ticker, chuẩn hoá câu hỏi tự nhiên
         rewritten_candidate = q
@@ -543,6 +651,10 @@ class HeuristicRewriteBrain:
             rewritten_candidate = f"So sánh cổ phiếu {symbols[0]} và {symbols[1]} về biến động giá và tin tức gần đây."
         elif len(symbols) >= 2 and re.search(r"\b(?:vs|versus)\b", lower):
             rewritten_candidate = f"So sánh cổ phiếu {symbols[0]} và {symbols[1]}."
+        elif _is_actionless_followup(q):
+            prev_intent, prev_action = _get_prev_intent_and_action(conversation)
+            if prev_action and symbol:
+                rewritten_candidate = f"{prev_action} cổ phiếu {symbol}."
         elif symbol and symbol not in _extract_symbols(q):
             if re.search(
                 r"(?:tại sao|tai sao|vì sao|vi sao|sao lại|sao lai|lý do|ly do|nguyên nhân|nguyen nhan)\s+(?:lại\s+)?giảm",
@@ -556,10 +668,6 @@ class HeuristicRewriteBrain:
                 rewritten_candidate = f"Tại sao giá cổ phiếu {symbol} lại tăng hôm nay?"
             elif _has_chart_intent(lower):
                 rewritten_candidate = f"{q} của cổ phiếu {symbol}"
-            elif _is_actionless_followup(q):
-                prev_intent, prev_action = _get_prev_intent_and_action(conversation)
-                if prev_action:
-                    rewritten_candidate = f"{prev_action} cổ phiếu {symbol}."
 
         rewritten = _ground_rewritten(q, symbols, rewritten_candidate)
         sub_questions = _decompose_query(
@@ -599,6 +707,12 @@ class HeuristicSupervisorBrain:
         elif intent == "news_lookup":
             agents = ["price", "news"]
             reason = "câu hỏi về tin → price+news"
+        elif intent == "portfolio":
+            agents = ["portfolio_watch"]
+            reason = "truy vấn danh mục đầu tư (P&L/NAV) → portfolio_watch_agent"
+        elif intent == "watchlist":
+            agents = ["portfolio_watch"]
+            reason = "truy vấn danh sách theo dõi (Watchlist) → portfolio_watch_agent"
         else:
             agents = ["price"]
             reason = "tra cứu giá → chỉ PriceAgent"
@@ -703,13 +817,24 @@ class LlmRewriteBrain:
             conversation=conversation,
             memories=memories,
         )
-        symbol, symbols = _normalize_symbols(primary=symbol, from_text=symbols)
-        rewritten = _ground_rewritten(q, symbols, rewritten)
         # Action inheritance: nếu câu hỏi tỉnh lược mã mới không có action, kế thừa action lượt trước
         if _is_actionless_followup(q):
-            prev_intent, _ = _get_prev_intent_and_action(conversation)
-            if prev_intent and intent == "price_lookup":
+            prev_intent, prev_action = _get_prev_intent_and_action(conversation)
+            if prev_intent:
                 intent = prev_intent
+                if prev_action and symbol:
+                    rewritten_lower = rewritten.lower()
+                    needs_rewrite_override = (
+                        (prev_intent == "chart" and not _has_chart_intent(rewritten_lower))
+                        or (prev_intent == "news_lookup" and not _has_news_intent(rewritten_lower))
+                        or (prev_intent == "diagram" and not _has_diagram_intent(rewritten_lower))
+                        or (prev_intent == "explain" and not any(h in rewritten_lower for h in _EXPLAIN_HINTS))
+                        or any(k in rewritten_lower for k in ("thì sao", "như thế nào", "thông tin", "giá hiện tại", "giá cổ phiếu"))
+                    )
+                    if needs_rewrite_override:
+                        rewritten = f"{prev_action} cổ phiếu {symbol}."
+                        if hasattr(output, "sub_questions"):
+                            output.sub_questions = [f"{prev_action} cổ phiếu {symbol}."]
 
         # Đa mã / từ khóa trực tiếp từ blob câu hỏi -> chart, diagram, explain
         blob = f"{q} {rewritten}".lower()
@@ -717,10 +842,22 @@ class LlmRewriteBrain:
             intent = "chart"
         elif _has_diagram_intent(blob):
             intent = "diagram"
+        elif _has_watchlist_intent(blob):
+            intent = "watchlist"
+        elif _has_portfolio_intent(blob):
+            intent = "portfolio"
         elif len(symbols) > 1 or any(h in blob for h in _EXPLAIN_HINTS):
             if intent == "price_lookup":
                 intent = "explain"
 
+        if intent in ("portfolio", "watchlist"):
+            has_explicit_ticker = any(k in q.lower() for k in ("mã", "ma", "cổ phiếu", "co phieu", "cp"))
+            if not has_explicit_ticker and symbols:
+                symbol = None
+                symbols = []
+
+        symbol, symbols = _normalize_symbols(primary=symbol, from_text=symbols)
+        rewritten = _ground_rewritten(q, symbols, rewritten)
         sub_questions = _decompose_query(
             question=q,
             rewritten=rewritten,
@@ -789,6 +926,10 @@ class LlmSupervisorBrain:
                 fallback_agents = ["price", "news", "eval"]
             elif intent == "news_lookup":
                 fallback_agents = ["price", "news"]
+            elif intent == "portfolio":
+                fallback_agents = ["portfolio_watch"]
+            elif intent == "watchlist":
+                fallback_agents = ["portfolio_watch"]
             else:
                 fallback_agents = ["price"]
             output = SupervisorOutput(
@@ -801,7 +942,9 @@ class LlmSupervisorBrain:
             name = str(a).strip().lower()
             if name in _ALLOWED_AGENTS and name not in agents:
                 agents.append(name)
-        if rewritten.intent == "chart":
+        if rewritten.intent in ("portfolio", "watchlist"):
+            agents = ["portfolio_watch"]
+        elif rewritten.intent == "chart":
             if "chart" not in agents:
                 agents.append("chart")
             if "price" not in agents:

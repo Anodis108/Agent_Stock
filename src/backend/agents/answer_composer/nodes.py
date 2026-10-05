@@ -7,11 +7,38 @@ Phase 8: mặc định dùng LLM qua Prompt Registry (`answer_compose`) +
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Protocol
 
 _logger = logging.getLogger(__name__)
+
+
+def sanitize_answer_chart_markdown(text: str) -> str:
+    """Chuẩn hóa cú pháp markdown ảnh biểu đồ trong câu trả lời.
+
+    1. Gỡ bỏ tiền tố nhầm 'chart_path:' (ví dụ ![alt](chart_path:/charts/xyz.png) -> ![alt](/charts/xyz.png))
+    2. Đảm bảo đường dẫn biểu đồ cục bộ có dấu '/' dẫn đầu (ví dụ ![alt](charts/xyz.png) -> ![alt](/charts/xyz.png))
+    """
+    if not text:
+        return text
+
+    def _fix_image_url(match: re.Match) -> str:
+        alt = match.group(1)
+        raw_url = match.group(2).strip()
+        cleaned_url = re.sub(r"^chart_path:\s*", "", raw_url, flags=re.IGNORECASE)
+        if not (
+            cleaned_url.startswith("/")
+            or cleaned_url.startswith("http://")
+            or cleaned_url.startswith("https://")
+            or cleaned_url.startswith("data:")
+        ):
+            cleaned_url = "/" + cleaned_url
+        return f"![{alt}]({cleaned_url})"
+
+    return re.sub(r"!\[([^\]]*)\]\(([^)]+)\)", _fix_image_url, text)
+
 
 from backend.agents.eval_agent import EvalAgentResult
 from backend.agents.news_agent import NewsAgentResult
@@ -333,7 +360,7 @@ class LlmAnswerDraftBrain:
 
         if not answer:
             raise ValueError("AnswerComposer LLM trả về rỗng")
-        return answer
+        return sanitize_answer_chart_markdown(answer)
 
 
 # Production mặc định = LLM; pytest monkeypatch → Heuristic (conftest).
@@ -359,6 +386,7 @@ def build_evidence(
     news_list: list[NewsAgentResult] | None = None,
     chart_path: str | None = None,
     portfolio_summary: Any | None = None,
+    portfolio_watch_result: Any | None = None,
 ) -> list[str]:
     evidence: list[str] = []
     price_rows = prices if prices else ([price] if price is not None else [])
@@ -383,7 +411,10 @@ def build_evidence(
         evidence.extend(eval_result.severity.evidence)
         evidence.append(f"level:{eval_result.severity.level.value}")
     if chart_path:
-        evidence.append(f"chart_path:{chart_path}")
+        norm_cp = str(chart_path).strip()
+        if not (norm_cp.startswith("/") or norm_cp.startswith("http://") or norm_cp.startswith("https://")):
+            norm_cp = "/" + norm_cp
+        evidence.append(f"chart_path:{norm_cp}")
         evidence.append("chart_status:đã_tạo_biểu_đồ_thành_công")
     if portfolio_summary is not None:
         items = getattr(portfolio_summary, "items", None) or []
@@ -406,6 +437,15 @@ def build_evidence(
                 evidence.append(
                     f"holding:{it.symbol}:qty={it.quantity}:cost={it.cost_basis}:pnl={it.unrealized_pnl}:pnl_pct={it.pnl_pct:.2f}%"
                 )
+    if portfolio_watch_result is not None:
+        pw_items = getattr(portfolio_watch_result, "watchlist_items", []) or []
+        if pw_items:
+            evidence.append("watchlist_status:active")
+            for it in pw_items:
+                evidence.append(f"watchlist_symbol:{it.symbol}:threshold={it.threshold_pct:.1f}%")
+        elif getattr(portfolio_watch_result, "intent", "") == "watchlist":
+            evidence.append("watchlist_status:empty")
+
     # dedupe giữ thứ tự
     seen: set[str] = set()
     out: list[str] = []
@@ -433,6 +473,7 @@ def run_answer_composer(
     news_list: list[NewsAgentResult] | None = None,
     chart_path: str | None = None,
     portfolio_summary: Any | None = None,
+    portfolio_watch_result: Any | None = None,
     turn: str = "",
     on_token: Callable[[str], None] | None = None,
 ) -> AnswerComposeResult:
@@ -452,6 +493,7 @@ def run_answer_composer(
     from backend.infra.cost.tracker import set_cost_context
 
     set_cost_context(feature="answer_composer", prompt_version=str(prompt_version))
+    effective_summary = portfolio_summary or (getattr(portfolio_watch_result, "portfolio_summary", None) if portfolio_watch_result else None)
     evidence = build_evidence(
         price,
         news,
@@ -459,8 +501,26 @@ def run_answer_composer(
         prices=prices,
         news_list=news_list,
         chart_path=chart_path,
-        portfolio_summary=portfolio_summary,
+        portfolio_summary=effective_summary,
+        portfolio_watch_result=portfolio_watch_result,
     )
+
+    # Nếu đây là câu hỏi danh mục/watchlist và PortfolioWatchAgent đã định dạng bảng chuẩn
+    if portfolio_watch_result is not None and getattr(portfolio_watch_result, "formatted_markdown", ""):
+        formatted_ans = portfolio_watch_result.formatted_markdown
+        if on_token:
+            words = formatted_ans.split(" ")
+            for i, w in enumerate(words):
+                sep = " " if i < len(words) - 1 else ""
+                on_token(w + sep)
+        return AnswerComposeResult(
+            answer=formatted_ans,
+            model="portfolio_watch_direct",
+            draft_attempts=1,
+            guardrail_violations=[],
+            evidence=evidence,
+            hitl_used=False,
+        )
     model = select_answer_model(eval_result)
     violations: list[str] = []
     answer = ""
@@ -540,7 +600,7 @@ def run_answer_composer(
             }
         if check.ok and ground.ok:
             return AnswerComposeResult(
-                answer=answer,
+                answer=sanitize_answer_chart_markdown(answer),
                 model=model,
                 draft_attempts=attempts,
                 guardrail_violations=[],
@@ -553,7 +613,7 @@ def run_answer_composer(
     safe = rewrite_keep_grounding(last_grounded or answer, evidence)
     final_check = check_output("", safe, evidence)
     return AnswerComposeResult(
-        answer=safe,
+        answer=sanitize_answer_chart_markdown(safe),
         model=model,
         draft_attempts=attempts,
         guardrail_violations=[] if final_check.ok else list(final_check.violations),

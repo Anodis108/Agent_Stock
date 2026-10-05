@@ -1,42 +1,45 @@
-# Product Spec — VN Stock Swarm & Portfolio Watch (MVP Monorepo)
+# Product Spec — VN Stock Swarm & Portfolio Watch (SDD MVP)
 
-## 1. Goal (Mục Tiêu Ứng Dụng)
-
-Xây dựng hệ thống Web App Multi-Agent Swarm (LangGraph) hỗ trợ phân tích chứng khoán Việt Nam và quản lý danh mục đầu tư đa người dùng theo chuẩn **Spec-Driven Development (SDD)**:
-1. **Chuẩn hóa cấu trúc Monorepo (Monorepo Flattening)**: Đưa toàn bộ mã nguồn, cấu hình và tài nguyên từ thư mục con `llm-backend-ref-portfolio-watch/` ra thư mục gốc `vn-stock-swarm/`, tinh gọn đường dẫn, tối ưu quy trình Docker và CI/CD GitHub Actions.
-2. **Hợp nhất và phát huy trọn vẹn năng lực Multi-Agent**:
-   - Tra cứu giá thị trường, giá khớp lệnh, biên độ, lịch sử giá 10 ngày (PriceAgent).
-   - Ma trận 10D Market Watch cho rổ VN30 (`/api/v1/market/matrix-10d`).
-   - Tổng hợp tin tức tài chính đa nguồn Vnstock News & CafeF (NewsAgent).
-   - Tính toán chỉ báo kỹ thuật RSI(14), SMA(20), SMA(50), Golden/Death Cross.
-   - Đánh giá bất thường và xếp hạng rủi ro định lượng (EvalAgent).
-   - Phân rã câu hỏi phức tạp / so sánh đa mã thành các sub-queries độc lập (RewriteBrain).
-   - Quản lý danh mục đầu tư & tính toán Lãi/Lỗ thực tế (Unrealized P&L, NAV) theo từng người dùng (Multi-tenant).
-   - Danh mục theo dõi (Watchlist) và cấu hình ngưỡng cảnh báo riêng biệt.
-   - Sinh biểu đồ nến và chỉ báo kỹ thuật tự động bằng Matplotlib (ChartAgent).
-   - Tường lửa an toàn Guardrails (chặn Prompt Injection, Out-of-scope, miễn trừ tư vấn).
-   - Web App tương tác thời gian thực: Streaming SSE Markdown, Live Agent Graph cho phép hover xem system prompt và trạng thái của từng Node.
-3. **Bộ Golden Dataset mới toàn diện (Minimal & Comprehensive)**: Thiết kế bộ dữ liệu đánh giá mới gồm 10 lát cắt chức năng với số lượng câu hỏi tối giản nhưng bao quát 100% tình huống thực tế.
-4. **Quan sát định lượng (Observation & Trace)**: Thu thập và lưu vết chi tiết Token usage, Latency, Chi phí ước tính (Cost USD), Execution Trace và điểm chất lượng (Rule Pass Rate, LLM Judge).
-5. **Kịch bản Demo chuẩn xác 100%**: Kịch bản chạy mẫu từng bước đảm bảo tất cả các chức năng đều trình diễn mượt mà trên Web UI.
+## 1. App Name
+**VN Stock Swarm & Portfolio Watch** (Trợ lý phân tích chứng khoán Việt Nam & Quản lý danh mục đầu tư đa người dùng).
 
 ---
 
-## 2. Target Users (Đối Tượng Người Dùng)
+## 2. Goal (Mục Tiêu Ứng Dụng)
 
-1. **Nhà đầu tư chứng khoán cá nhân tại Việt Nam**:
-   - Cần tra cứu nhanh thông tin giá, tin tức và xu hướng kỹ thuật cổ phiếu trong ngày.
-   - Cần quản lý danh mục nắm giữ thực tế, theo dõi lãi/lỗ VND, % sinh lời và biến động tổng tài sản ròng (NAV).
-   - Muốn đặt câu hỏi tự nhiên bằng tiếng Việt (câu đơn lẻ hoặc so sánh đa chiều phức tạp) và nhận câu trả lời phân tích có cơ sở.
-2. **Kỹ sư AI / Nhà phát triển Agent**:
-   - Cần một hệ thống Swarm mẫu phân tầng rõ ràng (LangGraph), có thể kiểm chứng định lượng chất lượng (Eval Pipeline).
-   - Cần cơ chế giám sát chi phí vận hành (Cost Tracker) và chống suy giảm chất lượng (Regression Gate).
+Xây dựng và nâng cấp hệ thống Multi-Agent Swarm (LangGraph) phục vụ phân tích chứng khoán Việt Nam theo chuẩn **Spec-Driven Development (SDD)**, tập trung giải quyết 3 mục tiêu cốt lõi:
+
+1. **Thỏa mãn 100% độ chính xác bộ dữ liệu `golden_v6_comprehensive.yaml`**:
+   - Trả lời chính xác, đầy đủ dữ liệu và tuân thủ tuyệt đối các ràng buộc `must_include` / `must_not_include` cho toàn bộ 20 câu hỏi thuộc 10 lát cắt chuẩn hóa (`lookup`, `news`, `indicator`, `comparison`, `portfolio`, `watchlist`, `chart`, `out_of_scope`, `injection`, `disclaimer`).
+2. **Cơ chế nối thẳng câu chào hỏi (Greeting Fast-Path)**:
+   - Nhận diện các câu chào hỏi giao tiếp ("Xin chào", "Chào bạn", "Hello", "Hi bot") là an toàn ngay tại Guardrail.
+   - Nối thẳng sang Chat LLM/Composer để phản hồi thân thiện, giới thiệu các năng lực của trợ lý và gợi ý câu hỏi mẫu — không bị Guardrail chặn từ chối và không bị ép tra cứu giá lỗi do thiếu mã cổ phiếu.
+3. **Bổ sung `PortfolioWatchAgent` chuyên trách**:
+   - Tạo Agent chuyên trách quản lý danh mục nắm giữ (Holdings, Unrealized P&L, NAV) và danh sách theo dõi (Watchlist, alert thresholds) theo `user_id`.
+   - Ngăn chặn triệt để tình trạng Supervisor nhận nhầm các từ ngữ tiếng Việt ("Kiểm tra" -> TRA, "NAV" -> NAV, "Xem" -> XEM) thành mã cổ phiếu.
 
 ---
 
-## 3. Core User Flow (Luồng Trải Nghiệm Người Dùng Cốt Lõi)
+## 3. Target Users (Đối Tượng Người Dùng)
 
-Quy trình trải nghiệm người dùng trên hệ thống gồm 6 bước khép kín:
+- **Nhà đầu tư chứng khoán cá nhân tại Việt Nam**: Cần tra cứu nhanh thị giá, tin tức doanh nghiệp, chỉ báo RSI/SMA, so sánh cổ phiếu, xem biểu đồ nến và theo dõi lãi/lỗ danh mục đầu tư một cách khách quan, bảo mật.
+- **Kỹ sư AI / Nhà phát triển Agent**: Cần hệ thống Swarm mẫu phân tầng rõ ràng (LangGraph), có khả năng kiểm chứng chất lượng định lượng qua bộ dữ liệu chuẩn hóa (Golden Dataset v6), ghi nhận trace và đo lường token/chi phí.
+
+---
+
+## 4. Core User Flow (Luồng Trải Nghiệm Người Dùng Cốt Lõi)
+
+### 4.1. Các bước trải nghiệm chính:
+1. **Truy cập & Chọn tài khoản**: Người dùng mở Web App tại `http://localhost:8000`, chọn tài khoản từ dropdown User Switcher (`User A`, `User B`, `Default`).
+2. **Gửi tin nhắn**: Người dùng nhập tin nhắn vào khung chat (câu chào hỏi, câu hỏi chứng khoán, hỏi danh mục, hoặc yêu cầu vẽ biểu đồ).
+3. **Xử lý qua Guardrail & Swarm Orchestrator**:
+   - *Câu chào hỏi (Greeting Fast-Path)*: Guardrail nhận diện an toàn -> nối thẳng sang Chat LLM/Composer phản hồi thân thiện tức thì (TTFT < 1.0s, bỏ qua các Worker).
+   - *Tấn công / Ngoài phạm vi*: Guardrail chặn đứng (Injection) hoặc từ chối lịch sự (Out-of-Scope) kèm khuyến cáo rủi ro (Disclaimer).
+   - *Câu hỏi chứng khoán hợp lệ*: Rewrite chuẩn hóa câu hỏi -> Supervisor phân phối song song tới các Worker Agents tương ứng: `PriceAgent`, `NewsAgent`, `IndicatorEngine`, `ChartAgent`, `PortfolioWatchAgent` -> `EvalAgent` đánh giá rủi ro -> `AnswerComposer` tổng hợp.
+4. **Hiển thị kết quả thời gian thực**: Web App streaming câu trả lời Markdown qua SSE, hiển thị ảnh biểu đồ nến (nếu có), cập nhật đồ thị Live Agent Graph và bảng P&L / Watchlist.
+5. **Tiếp tục tương tác**: Người dùng tiếp tục đặt câu hỏi follow-up, thêm/bớt mã trong watchlist hoặc chuyển đổi tài khoản.
+
+### 4.2. Sơ đồ tuần tự (Sequence Diagram):
 
 ```mermaid
 sequenceDiagram
@@ -44,105 +47,98 @@ sequenceDiagram
     actor User as Người dùng
     participant UI as Web App UI
     participant Backend as FastAPI Server
-    participant Swarm as Multi-Agent Swarm
-    participant DB as SQLite Storage
+    participant Guardrail as Input Guardrail
+    participant Swarm as Swarm Orchestrator
+    participant PWAgent as PortfolioWatchAgent
+    participant Composer as Answer Composer / Chat LLM
 
-    User->>UI: 1. Truy cập Web App & Chọn tài khoản (User A / User B)
-    UI->>Backend: Gửi header X-User-ID
-    Backend->>DB: Lấy Watchlist & Portfolio Holdings của user
-    DB-->>UI: Hiển thị bảng P&L, NAV và Watchlist riêng biệt
-
-    User->>UI: 2. Nhập câu hỏi (VD: "So sánh giá và tin tức FPT với HPG")
-    UI->>Backend: POST /chat (kèm message + user_id)
-    Backend->>Swarm: Khởi tạo luồng Swarm (LangGraph)
+    User->>UI: 1. Truy cập Web App & Nhập tin nhắn
+    UI->>Backend: POST /chat (message, user_id)
+    Backend->>Guardrail: Kiểm tra an toàn đầu vào
     
-    Swarm->>Swarm: 3. Guardrail kiểm duyệt -> Rewrite & Decompose sub-queries
-    Swarm->>Swarm: 4. Supervisor gọi song song Worker Agents (Price, News, Indicator)
-    Swarm->>Swarm: 5. EvalAgent đánh giá rủi ro -> AnswerComposer tổng hợp
-    
-    Swarm-->>UI: 6. Streaming SSE: Cập nhật Live Graph + Markdown phản hồi
-    UI-->>User: Hiển thị câu trả lời hoàn chỉnh, đồ thị nến (nếu có) & trạng thái node
+    alt Trường hợp 1: Tấn công Injection / Ngoài phạm vi Out-of-Scope
+        Guardrail-->>Backend: Vi phạm an toàn hoặc phi tài chính
+        Backend->>Composer: Soạn phản hồi từ chối an toàn / lịch sự
+        Composer-->>UI: SSE Streaming thông báo từ chối
+    else Trường hợp 2: Chào hỏi giao tiếp (Greeting Fast-Path)
+        Guardrail-->>Backend: Phân loại Greeting an toàn (is_safe=True)
+        Note over Backend,Composer: Nối thẳng sang Chat LLM (Bypass Workers)
+        Backend->>Composer: Sinh câu chào thân thiện & gợi ý năng lực
+        Composer-->>UI: SSE Streaming câu chào ngay lập tức (TTFT < 1.0s)
+    else Trường hợp 3: Hỏi danh mục P&L / Watchlist
+        Guardrail-->>Backend: An toàn (Account Query)
+        Backend->>Swarm: Điều phối sang PortfolioWatchAgent
+        Swarm->>PWAgent: Truy vấn Holdings, NAV, P&L, Watchlist theo user_id
+        PWAgent-->>Swarm: Trả về số liệu danh mục chính xác
+        Swarm->>Composer: Tổng hợp dữ liệu hiển thị
+        Composer-->>UI: SSE Streaming bảng P&L / danh sách Watchlist
+    else Trường hợp 4: Tra cứu giá / Tin tức / Kỹ thuật / Biểu đồ
+        Guardrail-->>Backend: An toàn (Market Query)
+        Backend->>Swarm: Rewrite & Decomposition -> Gọi song song Worker Agents
+        par Gọi Worker song song
+            Swarm->>Swarm: PriceAgent (Giá khớp, biến động 10D)
+            Swarm->>Swarm: NewsAgent (Tin tức Vnstock & CafeF)
+            Swarm->>Swarm: IndicatorEngine (RSI 14 / SMA 20-50)
+            Swarm->>Swarm: ChartAgent (Vẽ biểu đồ nến Matplotlib)
+        end
+        Swarm->>Swarm: EvalAgent (Đánh giá bất thường & rủi ro)
+        Swarm->>Composer: Tổng hợp câu trả lời khách quan kèm Disclaimer
+        Composer-->>UI: SSE Streaming Markdown + Ảnh biểu đồ + Live Graph
+    end
+    UI-->>User: Hiển thị phản hồi trực quan trên màn hình
 ```
 
-* **Bước 1 (Chọn người dùng)**: Người dùng mở Web App tại `http://localhost:8000`, chọn tài khoản từ thanh User Switcher góc trên (`User A`, `User B`, `Default`).
-* **Bước 2 (Xem danh mục & P&L)**: Giao diện nạp bảng Danh mục nắm giữ riêng biệt của tài khoản: số lượng, giá vốn, thị giá hiện tại, Lãi/Lỗ VND, % sinh lời và tổng NAV.
-* **Bước 3 (Gửi câu hỏi)**: Người dùng nhập câu hỏi vào ô chat (hỏi giá, hỏi tin tức, hỏi chỉ báo kỹ thuật, so sánh 2 mã, yêu cầu vẽ biểu đồ nến, hoặc hỏi về danh mục).
-* **Bước 4 (Xử lý Multi-Agent)**: 
-  - `Guardrail`: Kiểm tra an toàn, loại bỏ câu hỏi độc hại hoặc ngoài phạm vi.
-  - `RewriteBrain`: Chuẩn hóa tiếng Việt, sửa lỗi gõ («hiện tịa»), phân rã câu hỏi so sánh thành các sub-queries độc lập.
-  - `Supervisor`: Phân phối nhiệm vụ cho các Worker Agents (PriceAgent, NewsAgent, IndicatorEngine, ChartAgent).
-  - `EvalAgent`: Phân tích bất thường, định lượng rủi ro từ RSI/SMA và tin tức.
-  - `AnswerComposer`: Tổng hợp phản hồi, định dạng bảng so sánh và bổ sung khuyến cáo rủi ro.
-* **Bước 5 (Trải nghiệm thời gian thực)**: Giao diện streaming câu trả lời bằng Markdown, hiển thị đồ thị nến (nếu có yêu cầu) và cập nhật đồ thị Live Agent Graph theo thời gian thực (hover xem system prompt của node).
-* **Bước 6 (Đánh giá & Kiểm thử)**: Kỹ sư/Admin chạy lệnh đánh giá tự động trên tập Golden Dataset để đo lường token, độ trễ và tỷ lệ đạt chuẩn.
+---
+
+## 5. Features in Scope (Phạm Vi Tính Năng MVP)
+
+### 5.1. Luồng Chào Hỏi Thông Minh (Greeting Fast-Path)
+- Nhận diện các câu chào hỏi ("Xin chào", "Chào bạn", "Hello", "Hi bot", "Bạn là ai", "Bạn có thể làm gì").
+- Nối thẳng sang Chat LLM/Composer, bỏ qua phân tích mã và gọi worker, phản hồi nhanh chóng với độ trễ thấp.
+
+### 5.2. Đáp Ứng Trọn Vẹn 10 Lát Cắt Trong `golden_v6_comprehensive.yaml`
+1. **Lát cắt `lookup` (2 câu - FPT, VNM)**: Tra cứu thị giá, % biến động phiên của cổ phiếu đơn lẻ; tuyệt đối không chứa khuyến nghị mua/bán.
+2. **Lát cắt `news` (2 câu - VNM, HPG)**: Tổng hợp tin tức nóng từ Vnstock News & CafeF, trích dẫn nguồn uy tín minh bạch.
+3. **Lát cắt `indicator` (2 câu - HPG, FPT)**: Phân tích chỉ báo RSI(14) và SMA(20/50) khách quan, bộ lọc loại trừ triệt để các mã giả lập (QUA, RSI, MA20).
+4. **Lát cắt `comparison` (2 câu - FPT vs HPG, VNM vs HPG)**: Phân rã câu hỏi so sánh đa mã thành các sub-queries độc lập, đối chiếu dữ liệu giá trong bảng rõ ràng.
+5. **Lát cắt `portfolio` (2 câu - Hiệu suất P&L, NAV)**: Quản lý danh mục nắm giữ theo `user_id`, tính Unrealized P&L (VND & %) và tổng NAV qua `PortfolioWatchAgent`.
+6. **Lát cắt `watchlist` (2 câu - Danh sách theo dõi & Ngưỡng alert)**: Truy xuất danh sách mã theo dõi và ngưỡng cảnh báo biến động (`alert_threshold_pct`) qua `PortfolioWatchAgent`.
+7. **Lát cắt `chart` (2 câu - Biểu đồ nến FPT, HPG)**: Tự động vẽ biểu đồ nến kỹ thuật kết hợp SMA qua Matplotlib, nhúng URL ảnh tĩnh (`/static/charts/...`) vào câu trả lời.
+8. **Lát cắt `out_of_scope` (2 câu - Thời tiết Hà Nội, Cổ phiếu Apple sàn Nasdaq)**: Từ chối lịch sự, nêu rõ phạm vi hỗ trợ là thị trường chứng khoán Việt Nam.
+9. **Lát cắt `injection` (2 câu - Tấn công lộ secret prompt, ép khuyên mua)**: Chặn đứng 100% các hành vi can thiệp hệ thống.
+10. **Lát cắt `disclaimer` (2 câu - Hỏi có nên mua FPT, có nên bán hết HPG)**: Từ chối tư vấn trực tiếp, bắt buộc chứa cụm từ *"miễn trừ trách nhiệm"*, tuyệt đối không chứa *"nên mua"* hay *"nên bán"*.
+
+### 5.3. Giao Diện Web App & Quan Sát Swarm
+- Khung Chat Markdown streaming qua SSE, hỗ trợ render bảng và ảnh biểu đồ.
+- Đồ thị Live Agent Graph cập nhật trạng thái các node theo thời gian thực (hover xem System Prompt và dữ liệu I/O).
+- Bảng tóm tắt P&L/NAV và User Switcher (`User A`, `User B`, `Default`) cô lập dữ liệu hoàn toàn.
 
 ---
 
-## 4. Features in Scope (Phạm Vi Tính Năng MVP)
+## 6. Features out of Scope (Ngoài Phạm Vi MVP)
 
-Hệ thống tập trung vào các tính năng thiết yếu, giải quyết trọn vẹn nhu cầu của người dùng:
-
-1. **Chuẩn hóa Monorepo Root**:
-   - Di chuyển toàn bộ mã nguồn từ thư mục con ra root, loại bỏ phụ thuộc trung gian.
-   - Cập nhật `.github/workflows/` (CI Pipeline, Eval Gate, CD Pipeline) chạy trực tiếp tại root.
-   - Đồng bộ `Dockerfile` và `docker-compose.yml`.
-2. **Dữ liệu giá & Thị trường 10D**:
-   - Tra cứu giá khớp lệnh, biên độ, lịch sử giá 10 ngày (PriceAgent).
-   - API `/api/v1/market/matrix-10d` cung cấp ma trận giá và sparkline top 10 cổ phiếu VN30.
-   - Cơ chế fallback dữ liệu mẫu khi thị trường đóng cửa hoặc mất mạng ngoài.
-3. **Tin tức tài chính đa nguồn**:
-   - Cào và tổng hợp tin tức nóng từ Vnstock News và CafeF (NewsAgent), có trích dẫn nguồn.
-4. **Chỉ báo kỹ thuật định lượng**:
-   - Tính toán RSI(14) (nhận diện vùng quá mua >70, quá bán <30), SMA(20), SMA(50).
-   - Nhận diện giao cắt xu hướng Golden Cross (tăng giá) và Death Cross (giảm giá).
-5. **Đánh giá bất thường & Rủi ro (EvalAgent)**:
-   - Kết hợp chỉ số kỹ thuật và tin tức để xếp hạng rủi ro (`none`, `low`, `medium`, `high`).
-6. **Phân rã câu hỏi đa ý (Query Decomposition)**:
-   - Tự động tách câu hỏi so sánh hoặc đa mã thành các sub-queries độc lập, điều phối gom đủ dữ liệu.
-7. **Quản lý danh mục & Lãi/Lỗ đa người dùng (Multi-tenant)**:
-   - Lưu trữ vị thế (`symbol`, `quantity`, `avg_buy_price`, `purchase_date`) theo `user_id`.
-   - Tính toán giá trị vốn, thị giá hiện tại, Unrealized P&L (VND & %) và Tổng NAV.
-8. **Danh mục theo dõi (Watchlist) & Cảnh báo**:
-   - Quản lý danh sách mã theo dõi và ngưỡng cảnh báo biến động (`alert_threshold_pct`) cho từng user.
-9. **Vẽ biểu đồ nến kỹ thuật (ChartAgent)**:
-   - Tự động vẽ biểu đồ nến kèm đường SMA bằng Matplotlib, trả về ảnh hiển thị trực tiếp trên chat.
-10. **Tường lửa an toàn & Miễn trừ trách nhiệm**:
-    - Chặn 100% Prompt Injection / Jailbreak.
-    - Từ chối câu hỏi ngoài phạm vi tài chính chứng khoán.
-    - Luôn đính kèm khuyến cáo rủi ro trung lập đối với câu hỏi xin ý kiến mua/bán trực tiếp.
-11. **Giao diện Web UI trực quan**:
-    - Chat Markdown streaming qua SSE, bảng Portfolio P&L, User Switcher.
-    - Live Agent Graph: hiển thị mạng lưới agent động, hover xem system prompt và trạng thái từng node.
-12. **Bộ Golden Dataset mới & Đo lường định lượng**:
-    - File dataset 10 lát cắt chức năng (`specs/eval/golden_v6_comprehensive.yaml`).
-    - Lưu vết chi tiết Token usage, Latency, Cost USD và chuỗi Execution Trace.
-13. **Kịch bản Demo đầu cuối**:
-    - Kịch bản 10 bước kiểm thử thành công 100% mọi chức năng trên giao diện.
+Để đảm bảo dự án đơn giản, tập trung vào MVP và không bị over-engineering:
+* **Không đặt lệnh giao dịch thật**: Không kết nối API tài khoản CTCK để mua/bán tiền thật.
+* **Không truyền phát tick-by-tick thời gian thực**: Sử dụng nến ngày 1D và polling giá khớp gần nhất.
+* **Không làm hệ thống Authentication phức tạp**: Sử dụng User Switcher qua header `X-User-ID` để phân tách tenant.
+* **Không tính thuế & phí margin nâng cao**: Chưa hỗ trợ thuế TNCN chi tiết, phí lưu ký hay lãi vay margin phức tạp.
 
 ---
 
-## 5. Features out of Scope (Ngoài Phạm Vi MVP)
+## 7. Acceptance Criteria (Tiêu Chí Nghiệm Thu Đo Lường Được)
 
-Để đảm bảo dự án tinh gọn, đúng trọng tâm và không bị over-engineering, các tính năng sau **không** thuộc phạm vi MVP này:
-
-* **Không tích hợp đặt lệnh giao dịch thật**: Không liên kết API tài khoản chứng khoán (VPS, SSI, TCBS) để mua/bán tiền thật.
-* **Không truyền phát Realtime WebSocket tick-by-tick**: Hệ thống sử dụng dữ liệu nến ngày 1D và polling giá khớp gần nhất.
-* **Không xây dựng hệ thống Authentication phức tạp**: Không dùng OAuth2, JWT, SMS OTP, đăng ký/quên mật khẩu (sử dụng User Switcher / Header `X-User-ID` để phân tách tenant theo chuẩn MVP).
-* **Không tính toán thuế & phí giao dịch nâng cao**: Chưa hỗ trợ tính thuế TNCN chi tiết, phí lưu ký, tỷ lệ vay margin hay điều chỉnh chia cổ tức phức tạp.
-
----
-
-## 6. Acceptance Criteria (Tiêu Chí Nghiệm Thu Đo Lường Được)
-
-Các tiêu chí nghiệm thu được đánh dấu cụ thể để kiểm chứng sau khi hoàn thành:
-
-* [x] **AC-1 (Monorepo Flattening Thành Công)**: Toàn bộ source code, tests, resources và cấu hình nằm ở thư mục gốc `vn-stock-swarm/`; dự án chạy độc lập không còn phụ thuộc vào thư mục con `llm-backend-ref-portfolio-watch/`.
-* [x] **AC-2 (Test Suite 100% Pass)**: Chạy lệnh `pytest tests/ -v` từ thư mục gốc, toàn bộ 178+ test cases đạt trạng thái PASS 100%, không phát sinh lỗi hồi quy (zero regression). Đã kiểm thử thực tế đạt 180/180 passed.
-* [x] **AC-3 (CI/CD Pipeline Chuyển Xanh)**: Các workflow GitHub Actions (`ci.yml`, `eval-gate.yml`, `cd.yml`) được cập nhật đường dẫn chính xác và vượt qua kiểm thử tự động.
-* [x] **AC-4 (Core User Flow Hoạt Động Mượt Mà)**: Người dùng thực hiện trọn vẹn 6 bước trong luồng cốt lõi: chuyển đổi tài khoản, xem P&L, chat streaming, quan sát Live Graph và nhận biểu đồ nến mà không gặp lỗi 500. Đã kiểm chứng tự động qua `test_demo_walkthrough_core_sequence` đạt 100% PASS.
-* [x] **AC-5 (Bao Phủ 10 Lát Cắt Golden Dataset)**: File dataset `golden_v6_comprehensive.yaml` bao phủ đầy đủ 10 lát cắt năng lực (`lookup`, `news`, `indicator`, `comparison`, `portfolio`, `watchlist`, `chart`, `out_of_scope`, `injection`, `disclaimer`). Đã kiểm chứng tự động qua `test_golden_v6_structure_and_slices` đạt 100% PASS.
-* [x] **AC-6 (Ghi Nhận Đầy Đủ Observation & Trace)**: Chạy pipeline đánh giá thành công, xuất file báo cáo `specs/eval/eval_summary_v6.md` và `.json` (kèm `specs/eval/eval_observations_v6.md` và `.json`) ghi nhận đầy đủ token (19,259 tokens), cost ($0.0036 USD), độ trễ (TTFT 2.86s, E2E 4.31s) và chuỗi trace qua các agent cho 20/20 test cases.
-* [x] **AC-7 (Cô Lập Đa Người Dùng Tuyệt Đối)**: Thao tác thêm/xóa mã trong Watchlist, Holdings và thay đổi ngưỡng cảnh báo của `User A` không làm ảnh hưởng đến dữ liệu của `User B`. Đã kiểm chứng qua bài test `test_phase2_user_switcher_wiring_and_tenant_isolation` và `test_database.py`.
-* [x] **AC-8 (Kịch Bản Demo Thành Công 100%)**: Kịch bản kiểm thử 10 bước trong `specs/test-plan.md` được chạy thực tế trên Web UI và đạt kết quả thành công 100%. Đã kiểm chứng tự động qua `tests/test_demo_walkthrough.py` (11/11 tests passed).
-* [x] **AC-9 (Bảo Vệ An Toàn 100%)**: 100% câu hỏi Prompt Injection (2/2 blocked) và Out-of-scope (2/2 refused) trong dataset mới được hệ thống từ chối an toàn và lịch sự.
-* [x] **AC-10 (Đồng Bộ Hồ Sơ SDD)**: Toàn bộ tài liệu đặc tả (`product-spec.md`, `implementation-plan.md`, `test-plan.md`, `change-log.md`, `README.md`, `AGENTS.md`) đồng bộ 100% với kiến trúc mã nguồn. Cả 7 Phase trong implementation plan đều đã hoàn thành 100%.
+- [x] **AC-1 (100% Golden Dataset v6 Pass)**: Chạy pipeline đánh giá trên `specs/eval/golden_v6_comprehensive.yaml`, toàn bộ 20/20 test cases đạt trạng thái PASS 100%, thỏa mãn đầy đủ các ràng buộc `must_include` và `must_not_include`.
+- [x] **AC-2 (Nối Thẳng Luồng Chào Hỏi)**: Các câu chào hỏi ("Xin chào", "Chào bạn", "Hello", "Hi bot") được Guardrail nhận diện an toàn (`is_safe=True`), nối thẳng sang Chat LLM phản hồi tức thì với TTFT < 1.0s, không bị từ chối và không gọi nhầm PriceAgent.
+- [x] **AC-3 (Bổ Sung `PortfolioWatchAgent` Hoạt Động Chuẩn Xác)**:
+  - Trả về đúng số liệu danh mục P&L, NAV của từng tài khoản `user_id`, khắc phục hoàn toàn lỗi nhận nhầm "Kiểm tra" -> TRA và "NAV" -> NAV.
+  - Trả về danh sách watchlist và ngưỡng cảnh báo biến động, khắc phục lỗi nhận nhầm "Xem" -> XEM.
+- [x] **AC-4 (Tường Lửa Guardrail & An Toàn 100%)**: 100% câu hỏi Prompt Injection (2/2) bị chặn đứng; 100% câu hỏi Out-of-Scope (2/2) được từ chối an toàn, lịch sự.
+- [x] **AC-5 (Miễn Trừ Trách Nhiệm)**: 100% câu hỏi xin tư vấn mua/bán (2/2) được từ chối chỉ định trực tiếp, bắt buộc chứa cụm từ *"miễn trừ trách nhiệm"*, không chứa *"nên mua"* hoặc *"nên bán"*.
+- [x] **AC-6 (Sinh Đồ Thị Nến & Phân Tích Kỹ Thuật)**: Trả về phân tích RSI(14) và SMA(20/50) khách quan; tạo và nhúng thành công ảnh biểu đồ nến hợp lệ (`/static/charts/...`) vào chat.
+- [x] **AC-7 (Bảo Toàn Test Suite - Zero Regression)**: Chạy `pytest tests/ -v`, toàn bộ 291/291 bài test hiện có đạt 100% PASS.
+- [x] **AC-8 (Đồng Bộ Hồ Sơ SDD)**: Toàn bộ các tệp đặc tả (`README.md`, `AGENTS.md`, `specs/product-spec.md`, `specs/implementation-plan.md`, `specs/test-plan.md`, `specs/change-log.md`) đồng bộ 100% với nhau.
+- [x] **AC-9 (Bộ Dữ Liệu Replay FAQ 200 Câu, 2-Tier Cache Optimization & Đồng Bộ Watchlist DB)**:
+  - Mở rộng tập Replay FAQ đạt 200 câu hỏi (140 canonical + 60 near-duplicates = 30.0%) đáp ứng chuẩn Hands-on Module 3 Production LLMOps.
+  - Benchmark hệ thống Cache 2 tầng (Exact Hash + Semantic Cosine >= 0.93) đạt tỷ lệ trúng cache 30.0%, tiết kiệm 30.0% chi phí ($0.131364 xuống $0.091944).
+  - Đánh giá kiểm chuẩn 60 câu Golden v5+v6 đạt 59/60 PASS (98.3%), xuất báo cáo định dạng Excel chi tiết kèm cột chi phí USD và VNĐ.
+  - Đồng bộ dữ liệu Watchlist giữa Web UI và Chatbot qua CSDL SQLite `backend_store.db`, khắc phục triệt để lỗi cuộn khung chat.

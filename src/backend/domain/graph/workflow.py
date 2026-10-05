@@ -6,8 +6,14 @@ Conditional edge = hàm routing thật từ production (`should_auto_send`, `_is
 
 from __future__ import annotations
 
+import sys
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal, TypedDict
+
+_SRC_DIR = str(Path(__file__).resolve().parents[3])
+if _SRC_DIR not in sys.path:
+    sys.path.insert(0, _SRC_DIR)
 
 from langgraph.graph import END, START, StateGraph
 

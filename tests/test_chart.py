@@ -56,10 +56,32 @@ def _make_sample_bars(symbol: str, count: int = 15, base_price: float = 100000.0
 
 
 def test_charts_directory_is_in_root_resources():
-    """Kiểm tra đường dẫn thư mục charts nằm chính xác tại root resources/data/charts/."""
+    """Kiểm tra đường dẫn thư mục charts nằm chính xác tại root resources/data/charts/ hoặc /app/data/charts."""
     charts_dir = get_charts_dir()
     assert "src" not in charts_dir.parts[-3:]
-    assert charts_dir.parts[-3:] == ("resources", "data", "charts")
+    assert charts_dir.parts[-3:] in (("resources", "data", "charts"), ("app", "data", "charts"))
+
+
+def test_sanitize_answer_chart_markdown():
+    """Kiểm tra hàm chuẩn hóa đường dẫn markdown biểu đồ."""
+    from backend.agents.answer_composer.nodes import sanitize_answer_chart_markdown
+
+    # Case 1: Lỗi phổ biến LLM copy tiền tố chart_path:
+    raw1 = "Đã vẽ xong: ![Biểu đồ FPT](chart_path:/charts/chart_FPT_3139be08.png)"
+    assert sanitize_answer_chart_markdown(raw1) == "Đã vẽ xong: ![Biểu đồ FPT](/charts/chart_FPT_3139be08.png)"
+
+    # Case 2: Thiếu leading slash
+    raw2 = "Biểu đồ: ![Biểu đồ giá](charts/chart_FPT_7e30df1b.png)"
+    assert sanitize_answer_chart_markdown(raw2) == "Biểu đồ: ![Biểu đồ giá](/charts/chart_FPT_7e30df1b.png)"
+
+    # Case 3: URL ngoài / absolute url giữ nguyên
+    raw3 = "![External](https://example.com/chart.png)"
+    assert sanitize_answer_chart_markdown(raw3) == "![External](https://example.com/chart.png)"
+
+    # Case 4: Text rỗng / không có ảnh
+    assert sanitize_answer_chart_markdown("") == ""
+    assert sanitize_answer_chart_markdown("Không có ảnh") == "Không có ảnh"
+
 
 
 def test_plot_price_history_line_chart(tmp_path: Path):
@@ -669,5 +691,30 @@ def test_chat_graph_multi_symbol_comparison_chart_still_supported(tmp_path: Path
     assert chat_res.chart_result.chart_type == "comparison"
     assert chat_res.chart_path is not None
     assert chat_res.chart_path.startswith("/charts/chart_cmp_")
+
+
+def test_chart_action_inheritance_on_followup_question():
+    """Kiểm tra câu hỏi nối tiếp tỉnh lược (vậy còn HPG?) kế thừa hành động vẽ biểu đồ từ lượt trước."""
+    from backend.agents.supervisor_agent.nodes import (
+        HeuristicRewriteBrain,
+        HeuristicSupervisorBrain,
+    )
+
+    conv = [
+        {"role": "user", "content": "vẽ biểu đồ FPT"},
+        {"role": "assistant", "content": "Đã tạo biểu đồ kỹ thuật cho cổ phiếu FPT.", "chart_path": "/charts/chart_FPT.png"},
+    ]
+
+    for q in ["vậy còn HPG?", "còn HPG?", "thế còn HPG?", "HPG thì sao?", "với HPG?", "HPG?"]:
+        rw = HeuristicRewriteBrain().rewrite(q, conv)
+        assert rw.symbol == "HPG"
+        assert rw.intent == "chart"
+        assert "HPG" in rw.rewritten
+        assert "biểu đồ" in rw.rewritten.lower()
+
+        rt = HeuristicSupervisorBrain().route(rw)
+        assert rt.route == "chart"
+        assert "chart" in rt.agents_to_call
+
 
 

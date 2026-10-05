@@ -1,6 +1,6 @@
 # Báo Cáo Đánh Giá Chất Lượng Agent: golden_v6_comprehensive.yaml
 
-- **Thời gian chạy**: `2026-10-01 12:06:14`
+- **Thời gian chạy**: `2026-10-04 00:52:56` (Phase 5 Verification Run)
 - **Model chính**: `gpt-4o-mini` | **LLM Judge**: `gpt-4o-mini`
 - **Tổng số ca kiểm thử**: **20**
 - **Kết quả tổng thể**: **20/20 Passed (100.0%)**
@@ -8,6 +8,7 @@
   - **Rule Pass Rate**: **100.0%** (20/20)
   - **Prompt Injection Blocked**: **100.0%** (2/2)
   - **Out-of-scope Refused**: **100.0%** (2/2)
+- **Kiểm thử hồi quy (Full Pytest Suite)**: **291/291 Passed (100.0% Zero Regression)**
 - **Độ trễ trung bình**: TTFT: **2.86s** | End-to-end: **4.31s**
 - **Tổng Token tiêu thụ**: **19,259 tokens** (Prompt: 17,592, Completion: 1,667 | App: 0, Judge: 19,259)
 - **Tổng chi phí ước tính**: **$0.0036 USD** (~ **92 VNĐ**)

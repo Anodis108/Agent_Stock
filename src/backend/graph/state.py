@@ -33,6 +33,8 @@ class ChatState(TypedDict, total=False):
     chart_result: Any | None
     chart_path: str | None
     portfolio_summary: Any | None
+    portfolio_watch_result: Any | None
+    watchlist_items: list[Any] | None
     compose: AnswerComposeResult | None
     answer: str
     error: str | None

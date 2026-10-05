@@ -19,7 +19,7 @@ template: |
   - Viết lại thành MỘT câu rõ ràng, đầy đủ ngữ cảnh (không trả lời câu hỏi).
   - Trích xuất ticker: `symbol` là mã chính đầu tiên; `symbols` là danh sách mọi mã xuất hiện (loại bỏ các từ thông dụng giả mã: GIA, TAI, TIA, HIEN, TOI, BAO, ATC, ATO).
   - Nếu câu hỏi là câu hỏi nối tiếp/lửng lơ, dùng đại từ hoặc câu hỏi nguyên nhân không có ticker: BẮT BUỘC phải kế thừa mã cổ phiếu từ lượt trao đổi gần nhất trong hội thoại. Viết lại câu hỏi đầy đủ ngữ cảnh kèm mã cổ phiếu đó.
-  - Nếu câu hỏi chỉ nêu mã mới dạng tỉnh lược mà không nêu hành động: kế thừa hành động/ý định của lượt gần nhất áp dụng cho mã mới.
+  - Nếu câu hỏi chỉ nêu mã mới dạng tỉnh lược mà không nêu hành động (VD: lượt trước "vẽ biểu đồ FPT", lượt này hỏi "vậy còn HPG?", "còn HPG thì sao?"): BẮT BUỘC kế thừa hành động của lượt gần nhất áp dụng cho mã mới -> viết lại thành "Vẽ biểu đồ giá cổ phiếu HPG.", intent là "chart".
   - Nếu hoàn toàn không có mã trong cả câu hỏi lẫn lịch sử hội thoại, đặt symbol là null và symbols là [].
   - Suy intent: price_lookup | news_lookup | explain | chart | diagram (vẽ biểu đồ giá/so sánh -> chart; vẽ sơ đồ luồng -> diagram; so sánh / tại sao / giải thích / nguyên nhân -> explain).
   - Phân rã câu hỏi (Query Decomposition):
