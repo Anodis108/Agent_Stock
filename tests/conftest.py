@@ -41,7 +41,7 @@ def build_real_deps(db_path: str) -> AppDeps:
     conn = get_connection(db_path)
     memory = SqliteMemoryStore(db_path)
     deps = AppDeps(
-        price_source=VnstockPriceSource(),
+        price_source=VnstockPriceSource(fallback_on_error=True),
         news_source=CafefNewsSource(),
         history_store=SqlitePriceHistoryStore(db_path),
         memory_store=memory,
@@ -70,6 +70,7 @@ def real_deps(tmp_path, monkeypatch):
     monkeypatch.setenv("BACKEND_SQLITE_PATH", str(tmp_path / "backend_store.db"))
     monkeypatch.setenv("MONITORING_ENABLED", "false")
     monkeypatch.setenv("LLM_MAX_RETRIES", "1")
+    monkeypatch.setenv("PRICE_FALLBACK_ON_ERROR", "true")
     clear_deps_cache()
     deps = build_real_deps(str(db))
     set_app_deps(deps)
@@ -86,6 +87,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setenv("BACKEND_SQLITE_PATH", str(tmp_path / "test_store.db"))
     monkeypatch.setenv("MONITORING_ENABLED", "false")
     monkeypatch.setenv("LLM_MAX_RETRIES", "1")
+    monkeypatch.setenv("PRICE_FALLBACK_ON_ERROR", "true")
     clear_deps_cache()
     deps = build_real_deps(str(temp_db))
     set_app_deps(deps)

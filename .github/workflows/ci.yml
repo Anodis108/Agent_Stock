@@ -29,8 +29,12 @@ jobs:
   test:
     name: lint-and-test
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     env:
       PYTHONPATH: src
+      PRICE_FALLBACK_ON_ERROR: "true"
+      MONITORING_ENABLED: "false"
+      LLM_MAX_RETRIES: "1"
     steps:
       - name: Check out repository
         uses: actions/checkout@v4

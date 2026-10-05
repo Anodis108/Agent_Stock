@@ -145,8 +145,21 @@ def run_benchmark(
     output_json: Path = REPORT_JSON,
 ) -> dict:
     questions = load_replay_faq()
-    if limit is not None:
-        questions = questions[:limit]
+    if limit is not None and limit < len(questions):
+        canonical = [q for q in questions if not q.get("near_duplicate_of")]
+        dups = [q for q in questions if q.get("near_duplicate_of")]
+        if dups:
+            dup_count = max(1, int(limit * 0.3))
+            canon_count = max(1, limit - dup_count)
+            canon_sample = canonical[:canon_count]
+            canon_ids = {str(q.get("id")) for q in canon_sample}
+            matching_dups = [q for q in dups if str(q.get("near_duplicate_of")) in canon_ids]
+            if len(matching_dups) < dup_count:
+                other_dups = [q for q in dups if q not in matching_dups]
+                matching_dups.extend(other_dups[: dup_count - len(matching_dups)])
+            questions = canon_sample + matching_dups[:dup_count]
+        else:
+            questions = questions[:limit]
 
     results: dict[str, dict] = {}
     t0 = time.perf_counter()
