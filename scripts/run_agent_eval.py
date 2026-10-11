@@ -38,14 +38,14 @@ def main() -> int:
         "--output-dir",
         type=str,
         default=None,
-        help="Thư mục xuất báo cáo (mặc định: specs/eval).",
+        help="Thư mục xuất báo cáo (mặc định: resources/eval).",
     )
     args = parser.parse_args()
 
     sample_str = f"{args.sample} mẫu" if args.sample else "toàn bộ"
     print(f"🚀 Bắt đầu chạy Agent Evaluation Benchmark ({sample_str})...")
 
-    out_dir = Path(args.output_dir) if args.output_dir else ROOT / "specs" / "eval"
+    out_dir = Path(args.output_dir) if args.output_dir else ROOT / "resources" / "eval"
 
     try:
         summary = run_agent_eval(sample=args.sample)

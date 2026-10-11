@@ -8,7 +8,6 @@ on:
       - main
     paths:
       - "src/**"
-      - "deploy/**"
       - "docker-compose.yml"
       - "pyproject.toml"
       - ".github/workflows/cd.yml"
@@ -32,7 +31,7 @@ jobs:
         id: lkg-cache
         uses: actions/cache@v4
         with:
-          path: deploy/lkg
+          path: src/deploy/lkg
           key: portfolio-watch-lkg-sha
           restore-keys: |
             portfolio-watch-lkg-sha
@@ -63,20 +62,20 @@ jobs:
 
       - name: Smoke test
         id: smoke
-        run: python deploy/smoke.py --url http://localhost:8000
+        run: python src/deploy/smoke.py --url http://localhost:8000
 
       - name: Save last-known-good SHA
         if: success()
         run: |
-          mkdir -p deploy/lkg
-          echo "${{ github.sha }}" > deploy/lkg/sha.txt
+          mkdir -p src/deploy/lkg
+          echo "${{ github.sha }}" > src/deploy/lkg/sha.txt
           echo "Saved LKG: ${{ github.sha }}"
 
       - name: Rollback to last-known-good on failure
         if: failure() && steps.lkg-cache.outputs.cache-hit == 'true' && steps.smoke.outcome == 'failure'
         run: |
           set -euo pipefail
-          LKG=$(cat deploy/lkg/sha.txt)
+          LKG=$(cat src/deploy/lkg/sha.txt)
           echo "Rolling back to LKG commit: ${LKG}"
           git checkout "${LKG}" -- .
           cp .env.example .env
@@ -90,7 +89,7 @@ jobs:
             fi
             sleep 2
           done
-          python deploy/smoke.py --url http://localhost:8000
+          python src/deploy/smoke.py --url http://localhost:8000
           echo "::warning::Deploy of ${{ github.sha }} failed; rolled back to ${LKG}"
 
       - name: Tear down containers

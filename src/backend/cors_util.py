@@ -1,11 +1,7 @@
-"""Tiện ích phân giải CORS origins từ cấu hình môi trường FRONTEND_ORIGIN."""
+"""Backward compatibility redirect to backend.api.middleware.cors."""
 
 from __future__ import annotations
 
+from backend.api.middleware.cors import resolve_cors_origins
 
-def resolve_cors_origins(frontend_origin: str | None) -> list[str]:
-    """Phân giải cấu hình CORS: `*` hoặc rỗng cho phép mọi origin; ngược lại trả về origin cụ thể."""
-    value = (frontend_origin or "*").strip() or "*"
-    if value == "*":
-        return ["*"]
-    return [value]
+__all__ = ["resolve_cors_origins"]

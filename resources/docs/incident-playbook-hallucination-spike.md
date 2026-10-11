@@ -30,7 +30,7 @@ Kiểm tra `specs/eval/runs/<latest>/report.json` → `metrics.hallucination_rat
 4. Chạy lại eval subset:
 
 ```bash
-PYTHONPATH=src python scripts/run_golden_v5_eval_bundle.py --skip-agent-eval --limit 20
+PYTHONPATH=src python scripts/run_agent_eval.py --sample 20
 ```
 
 5. Nếu pass → deploy config; nếu fail → rollback git tag LKG (xem `incident-playbook-provider-outage.md`)

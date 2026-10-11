@@ -1,0 +1,65 @@
+{
+  "total_cases": 2,
+  "passed_cases": 2,
+  "overall_pass_rate": 100.0,
+  "avg_routing_accuracy": 100.0,
+  "avg_routing_precision": 100.0,
+  "avg_routing_recall": 100.0,
+  "avg_decomposition_quality": 100.0,
+  "avg_groundedness_score": 100.0,
+  "avg_task_success_rate": 100.0,
+  "guardrails_pass_rate": 100.0,
+  "overall_score": 100.0,
+  "slice_scores": {
+    "lookup": 100.0,
+    "comparison": 100.0
+  },
+  "details": [
+    {
+      "case_id": "lookup_01",
+      "question": "Giá FPT hôm nay bao nhiêu?",
+      "slice_type": "lookup",
+      "passed": true,
+      "routing_accuracy": 1.0,
+      "routing_precision": 1.0,
+      "routing_recall": 1.0,
+      "decomposition_quality": 1.0,
+      "groundedness_score": 1.0,
+      "task_success": 1.0,
+      "actual_agents": [
+        "price"
+      ],
+      "expected_agents": [],
+      "sub_questions": [
+        "Giá cổ phiếu FPT hôm nay là bao nhiêu?"
+      ],
+      "answer": "Giá cổ phiếu FPT hôm nay là 61.9. So với phiên trước, giá cổ phiếu này đã giảm 0.32% (giá phiên trước là 62.1). Hiện không có tin tức nào liên quan đến cổ phiếu FPT.",
+      "issues": []
+    },
+    {
+      "case_id": "comparison_01",
+      "question": "So sánh VNM và HPG tuần này",
+      "slice_type": "comparison",
+      "passed": true,
+      "routing_accuracy": 1.0,
+      "routing_precision": 1.0,
+      "routing_recall": 1.0,
+      "decomposition_quality": 1.0,
+      "groundedness_score": 1.0,
+      "task_success": 1.0,
+      "actual_agents": [
+        "price",
+        "news",
+        "eval"
+      ],
+      "expected_agents": [],
+      "sub_questions": [
+        "So sánh giá cổ phiếu VNM trong tuần này.",
+        "So sánh giá cổ phiếu HPG trong tuần này."
+      ],
+      "answer": "**So sánh giá cổ phiếu VNM và HPG trong tuần này:**\n\n**1. Mục so sánh giá:**\n- **VNM:** \n  - Giá đóng cửa gần nhất: 57.2\n  - Tỷ lệ thay đổi: -0.17%\n- **HPG:** \n  - Giá đóng cửa gần nhất: 20.5\n  - Tỷ lệ thay đổi: 2.24%\n\n**2. Mục thông tin/tin tức sự kiện:**\n- **VNM:**\n  - Những địa chỉ đắt giá nhất Việt Nam: 1 góc ở Long Biên “chứa” hơn 2,35 triệu tỷ đồng, phố Lê Duẩn đứng đầu Tp. Hồ Chí Minh (nguồn: CafeF).\n  - Sửa Luật An toàn thực phẩm: Ngành sữa đề xuất quản lý theo rủi ro, giảm thủ tục tiền kiểm (nguồn: Vnstock).\n  \n- **HPG:**\n  - Tỷ phú Trần Đình Long “lấy lại” gần 1.000 tỷ đồng sau thông tin con trai muốn gom 50 triệu cổ phiếu Hòa Phát (nguồn: CafeF).\n  - Ngỡ ngàng khối tài sản ở tuổi 30 của thiếu gia vừa đăng ký mua 50 triệu cổ phiếu Hòa Phát (nguồn: CafeF).\n\n**Đánh giá:** Thiếu dữ liệu về % thay đổi và không có chỉ báo kỹ thuật rõ ràng để đánh giá mức độ nghiêm trọng.",
+      "issues": []
+    }
+  ],
+  "timestamp": "2026-10-05T15:30:51.814411+00:00"
+}

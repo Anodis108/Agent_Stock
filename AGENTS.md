@@ -1,77 +1,102 @@
-# AGENTS.md
+# AGENTS.md — Quy Chuẩn Phát Triển Spec-Driven Development (SDD)
 
-Dự án này tuân theo phương pháp **Spec-Driven Development (SDD)**.
+Dự án này là sản phẩm đồ án tốt nghiệp cuối khóa, tuân thủ nghiêm ngặt phương pháp **Spec-Driven Development (SDD)**.
 
-Mọi AI Coding Assistant khi làm việc trên repository này **bắt buộc tuân thủ các quy tắc dưới đây**:
+Mọi AI Coding Assistant khi làm việc trên repository này **bắt buộc tuân thủ 100% các nguyên tắc dưới đây**:
 
 ---
 
 ## 1. Nguyên Tắc Cốt Lõi (Core Rules)
 
-- **Always read the specs before coding**: Luôn đọc kỹ các tệp trong `specs/` (`product-spec.md`, `implementation-plan.md`, `test-plan.md`) trước khi thực hiện bất kỳ thay đổi nào.
-- **Implement only one phase or task at a time**: Chỉ triển khai duy nhất 01 phase hoặc 01 checklist item được chỉ định tại một thời điểm. Không làm trước các phần chưa được yêu cầu.
-- **Keep the app simple**: Giữ giải pháp đơn giản, tập trung vào MVP. Không over-engineer, không tạo abstraction thừa.
-- **Do not add unnecessary libraries**: Tận dụng tối đa các thư viện đã có trong `pyproject.toml` (FastAPI, LangGraph, Vnstock, Matplotlib, Pydantic, SQLite). Không tự ý cài đặt thêm thư viện ngoài.
-- **Do not change architecture unless the spec is updated**: Không tự ý thay đổi luồng Swarm Agent, cấu trúc cơ sở dữ liệu hoặc hợp đồng API nếu spec chưa cập nhật.
-- **After each implementation, update `specs/change-log.md`**: Ghi nhận chi tiết những tệp đã thay đổi và cập nhật trạng thái checklist ngay sau khi hoàn thành.
-- **After each implementation, explain how to test the change**: Luôn giải thích rõ lệnh chạy và các bước kiểm thử thủ công để người dùng nghiệm thu ngay.
-- **Do not write code yet unless explicitly requested**: Ở bước lập kế hoạch và review spec, chỉ cập nhật tài liệu đặc tả và chờ chỉ đạo tiếp theo.
-- **Preserve test suite integrity (Zero Regression)**: Toàn bộ 180+ bài test hiện có phải tiếp tục PASS 100% sau mỗi lần chỉnh sửa.
+1. **Always read the specs before coding**:
+   - Luôn đọc kỹ các tệp đặc tả trong thư mục `specs/` ([specs/product-spec.md](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/specs/product-spec.md), [specs/implementation-plan.md](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/specs/implementation-plan.md), [specs/test-plan.md](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/specs/test-plan.md)) trước khi chạm vào bất kỳ file code nào.
+2. **Implement only one phase or task at a time**:
+   - Chỉ triển khai duy nhất **01 phase hoặc 01 checklist item** được người dùng yêu cầu tại một thời điểm. Tuyệt đối không làm gộp, không làm tắt.
+3. **Keep the app simple**:
+   - Luôn giữ giải pháp đơn giản, tập trung vào MVP. Tuyệt đối không over-engineering, không tạo abstraction thừa thãi hay wrapper phức tạp không cần thiết.
+4. **Do not add unnecessary libraries**:
+   - Tận dụng tối đa các thư viện đã khai báo trong `pyproject.toml` (FastAPI, LangGraph, Vnstock, Matplotlib, Pydantic, SQLite). Không tự ý cài đặt thêm thư viện bên ngoài trừ khi người dùng yêu cầu cụ thể.
+5. **Do not change architecture unless the spec is updated**:
+   - Không tự ý thay đổi luồng Swarm Agent, cấu trúc CSDL hoặc hợp đồng API nếu spec chưa cập nhật và chưa được phê duyệt.
+6. **After each implementation, update `specs/change-log.md`**:
+   - Sau mỗi lần triển khai xong một phase/task, lập tức ghi nhận chi tiết những tệp đã thay đổi, kết quả kiểm thử và cập nhật trạng thái checklist trong [specs/implementation-plan.md](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/specs/implementation-plan.md).
+7. **After each implementation, explain how to test the change**:
+   - Luôn giải thích rõ ràng kết quả, cung cấp lệnh chạy kiểm thử tự động và hướng dẫn người dùng các bước kiểm thử thủ công cụ thể.
 
 ---
 
-## 2. Quy Chuẩn Làm Việc Theo Từng Task (Workflow)
+## 2. Quy Tắc Bổ Sung Cho Giai Đoạn Lập Kế Hoạch (Planning Constraint)
 
-Với mỗi task được giao:
-1. Đọc tệp spec liên quan (`specs/product-spec.md`, `specs/implementation-plan.md`, `specs/test-plan.md`).
-2. Tóm tắt ngắn gọn: Bạn sẽ làm gì, sửa những tệp nào, kiểm thử ra sao trước khi bắt đầu.
-3. Chỉ chỉnh sửa tối thiểu các tệp cần thiết cho task đó.
-4. Chạy kiểm thử tự động (`pytest ...`) xác nhận thay đổi hoạt động chính xác và không gây lỗi hồi quy.
-5. Cập nhật checklist trong `specs/implementation-plan.md` và ghi nhật ký vào `specs/change-log.md`.
-6. Cung cấp lệnh chạy và hướng dẫn kiểm thử thủ công.
+- **Do not write code yet unless explicitly requested**:
+  - Khi đang ở bước lập đặc tả, đánh giá hoặc chuẩn bị kế hoạch, chỉ cập nhật các tài liệu trong `specs/` và `README.md`. Chờ chỉ đạo rõ ràng từ người dùng trước khi viết mã nguồn thực tế.
+- **Preserve test suite integrity (Zero Regression)**:
+  - Toàn bộ các bài test hiện có trong hệ thống phải tiếp tục PASS 100% sau mỗi lần cập nhật.
 
 ---
 
-## 3. Quy Chuẩn Kỹ Thuật Dự Án (Project Specifics)
+## 3. Quy Tắc Quản Trị Cấu Hình & Bí Mật (Config Decoupling Rule)
 
-- **Ngôn ngữ**: Python $\ge$ 3.10, có type hints rõ ràng, cấu trúc module tường minh.
-- **Xử lý ngoại lệ**: Mọi cuộc gọi bên ngoài (Vnstock, CafeF, LLM) phải luôn có `try...except` và cơ chế fallback an toàn, không để ứng dụng văng lỗi HTTP 500.
-- **Bảo mật**: Không hardcode API key / secret. Toàn bộ thông tin nhạy cảm đọc qua `Settings`.
-- **Luồng Chào Hỏi (Greeting Fast-Path)**:
-  - Phân loại câu chào hỏi ("Xin chào", "Chào bạn", "Hello", "Hi bot") là an toàn (`category="greeting"`, `is_safe=True`).
-  - Nối thẳng sang Chat LLM/Composer, bỏ qua `rewrite`, `supervisor` và các Worker tra cứu dữ liệu.
-- **Agent Mới: `PortfolioWatchAgent`**:
-  - Chuyên trách xử lý danh mục nắm giữ (Holdings, P&L, NAV) và danh sách theo dõi (Watchlist, alert thresholds) của từng user.
-  - Supervisor điều phối đúng intent `portfolio` và `watchlist`, loại trừ triệt để các mã giả lập (`TRA`, `XEM`, `NAV`).
-- **Độ chính xác Golden Dataset v6**:
-  - Tuân thủ tuyệt đối các ràng buộc `must_include` và `must_not_include` cho 10 lát cắt.
-  - Lát cắt `disclaimer`: Luôn chứa *"miễn trừ trách nhiệm"*, không chứa *"nên mua"* hoặc *"nên bán"*.
-  - Lát cắt `injection`: Chặn đứng 100% can thiệp hệ thống.
+- **File `.env` CHỈ ĐƯỢC CHỨA CÁC BIẾN BÍ MẬT QUAN TRỌNG (API Keys, Access Tokens)**:
+  - Chỉ chứa: `OPENAI_API_KEYS`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `QDRANT_API_KEY`.
+  - **Tuyệt đối không đưa các biến cấu hình ứng dụng vào `.env`** (chẳng hạn: model name, temperature, token limit, timeouts, SQLite paths, cache settings, log level).
+- **File `resources/configs/config.yaml` là Nguồn Cấu Hình Duy Nhất Của Hệ Thống (Single Source of Truth)**:
+  - Toàn bộ tham số vận hành, model LLM, đường dẫn CSDL, tham số bộ nhớ, ngưỡng cảnh báo phải được định nghĩa rõ ràng, có cấu trúc trong [resources/configs/config.yaml](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/resources/configs/config.yaml).
 
 ---
 
-## 4. Kiến Trúc Tham Chiếu Swarm Multi-Agent
+## 4. Quy Tắc Cấu Trúc Mã Nguồn Sạch & Thư Mục Gốc Thanh Thoát (Clean Architecture)
 
-- `Guardrail`: Kiểm tra an toàn, chặn Prompt Injection, từ chối Out-of-Scope, phân luồng Greeting Fast-Path.
-- `RewriteBrain`: Chuẩn hóa tiếng Việt, phân rã câu hỏi so sánh đa mã (Query Decomposition).
-- `Supervisor`: Phân phối nhiệm vụ cho các Worker Agents theo từng sub-query.
-- `PriceAgent`: Tra cứu giá khớp lệnh, biên độ, lịch sử giá 10 ngày từ Vnstock.
-- `NewsAgent`: Tổng hợp tin tức tài chính từ Vnstock News & CafeF, kèm trích dẫn nguồn.
-- `TechnicalIndicatorService`: Tính toán RSI(14), SMA(20), SMA(50), Golden/Death Cross.
-- `EvalAgent`: Đánh giá bất thường và xếp hạng rủi ro (`none`, `low`, `medium`, `high`).
-- `ChartAgent`: Sinh biểu đồ nến kỹ thuật và đồ thị giá thực tế qua Matplotlib.
-- `PortfolioWatchAgent`: Quản lý danh mục đầu tư (P&L, NAV) và danh sách theo dõi (Watchlist).
-- `AnswerComposer`: Tổng hợp câu trả lời Markdown hoàn chỉnh, streaming qua SSE.
+- **Toàn bộ mã nguồn code thực thi PHẢI NẰM TRONG `src/`**:
+  - `src/backend/`: Toàn bộ logic backend (API, Agents, Domain, Infra, Services, Eval).
+  - `src/frontend/`: Toàn bộ giao diện người dùng (HTML, CSS, JS SSE client).
+  - `src/deploy/`: Toàn bộ kịch bản triển khai (Dockerfile, Docker Compose, Nginx conf, smoke test).
+- **Gốc dự án (Root Directory) phải giữ sạch sẽ tuyệt đối**:
+  - Gốc chỉ được chứa các file tĩnh cấu hình dự án (`.env`, `.env.example`, `pyproject.toml`, `docker-compose.yml`, `README.md`, `AGENTS.md`) và các thư mục tĩnh: `resources/`, `specs/`, `tests/`, `scripts/`, `src/`.
+  - Tuyệt đối không tạo file mã nguồn Python, file nháp, hay file kết quả chạy ở thư mục gốc.
+- **Không để file rời rạc (loose files) trong `src/backend/`**:
+  - Mọi chức năng phải được gom vào đúng module nghiệp vụ:
+    - `src/backend/api/`: routers, middleware, schemas, app entrypoint.
+    - `src/backend/agents/`: 7 Worker Agents + Supervisor + Composer (mỗi agent một thư mục riêng biệt).
+    - `src/backend/domain/`: guardrails, indicators, memory, models.
+    - `src/backend/infra/`: llm, cache, market_data, storage, monitoring, cost.
+    - `src/backend/services/`: portfolio, market, alert.
+    - `src/backend/eval/`: eval gate, scorers.
 
 ---
 
-## 5. Hướng Dẫn Báo Cáo Nghiệm Thu
+## 5. Quy Tắc Kiểm Thử 3 Tầng & Tối Ưu CI Pipeline (< 5 Phút)
 
-Trước khi tuyên bố task hoàn thành, bạn **bắt buộc** cung cấp:
-- Danh sách tệp đã tạo hoặc chỉnh sửa.
-- Lệnh chạy kiểm thử tự động (`pytest ...`).
-- Các bước kiểm thử thủ công để kiểm chứng tính năng.
-- Cập nhật tương ứng trong `specs/change-log.md` và `specs/implementation-plan.md`.
+- **Tổ chức bộ kiểm thử thành 3 tầng chuẩn mực**:
+  - `tests/unit/`: Kiểm thử cô lập từng hàm/class, không I/O mạng, không gọi API ngoài, thời gian chạy dưới 1 giây.
+  - `tests/integration/`: Kiểm thử tích hợp API, CSDL SQLite, StateGraph, Cache 2 tầng.
+  - `tests/e2e/`: Kiểm thử luồng người dùng đầu cuối, Golden Dataset v6 (20 câu 10 lát cắt: 100% Pass), Docker smoke test.
+- **Quy chuẩn Mock Offline**:
+  - Tuyệt đối không thực hiện cuộc gọi internet đến các dịch vụ bên ngoài trong bài test.
+  - Luôn sử dụng cơ chế fallback offline an toàn (`VnstockPriceSource(fallback_on_error=True)`).
+  - Pipeline CI trên GitHub Actions phải hoàn tất trong **< 5 phút** (cấu hình `timeout-minutes: 5`).
+
+---
+
+## 6. Quy Tắc Quản Lý Tài Nguyên Đánh Giá & Đặc Tả
+
+- **Thư mục `specs/` chỉ chứa tài liệu đặc tả SDD Markdown**:
+  - Bao gồm: `product-spec.md`, `implementation-plan.md`, `test-plan.md`, `change-log.md`, `project-summary.md`.
+  - **Tuyệt đối không lưu log chạy, file kết quả test hay baseline JSON trong `specs/`**.
+- **Thư mục `resources/eval/` chứa toàn bộ dữ liệu kiểm chuẩn & kết quả**:
+  - Chỉ giữ các tệp tổng hợp/final: `golden_v6_comprehensive.yaml`, `replay_faq.yaml` (200 câu), `v6_baseline.json`, và bảng Excel kết quả tổng hợp.
+  - Thường xuyên dọn dẹp các tệp log chạy nháp tạm thời.
+
+---
+
+## 7. Quy Trình Thực Thi Từng Task (Step-by-Step Workflow)
+
+Với mỗi yêu cầu lập trình từ người dùng:
+1. **Review Spec**: Mở và đọc các tệp đặc tả tương ứng trong `specs/`.
+2. **Khai báo kế hoạch**: Tóm tắt ngắn gọn những tệp sẽ sửa/tạo và cách thức kiểm thử trước khi sửa.
+3. **Thực hiện thay đổi tối thiểu**: Chỉ sửa đúng phạm vi yêu cầu, không lan man sang các module khác.
+4. **Chạy kiểm thử tự động**: Chạy lệnh `pytest ...` tương ứng, bảo đảm 100% pass và không gây lỗi hồi quy.
+5. **Đồng bộ hồ sơ SDD**: Đánh dấu hoàn thành checklist trong [specs/implementation-plan.md](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/specs/implementation-plan.md) và ghi nhật ký vào [specs/change-log.md](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/specs/change-log.md).
+6. **Báo cáo & Hướng dẫn nghiệm thu**: Trình bày rõ ràng kết quả và cung cấp lệnh kiểm thử cho người dùng.
 
 <!-- vnai-bootstrap | auto-generated -->
 # Vnstock Vibe Onboarding

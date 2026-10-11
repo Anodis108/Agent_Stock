@@ -1372,15 +1372,6 @@
     }
   }
 
-  function normalizeChartUrl(url) {
-    if (!url) return "";
-    var cleaned = String(url).trim().replace(/^chart_path:\s*/i, "");
-    if (!cleaned.startsWith("/") && !cleaned.startsWith("http://") && !cleaned.startsWith("https://") && !cleaned.startsWith("data:")) {
-      cleaned = "/" + cleaned;
-    }
-    return cleaned;
-  }
-
   function openChartModal(src, caption) {
     var modal = document.getElementById("chart-modal");
     var modalImg = document.getElementById("chart-modal-img");
@@ -1427,6 +1418,15 @@
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#039;");
+  }
+
+  function normalizeChartUrl(url) {
+    if (!url) return "";
+    var cleaned = String(url).trim().replace(/^chart_path:\s*/i, "");
+    if (!cleaned.startsWith("/") && !cleaned.startsWith("http://") && !cleaned.startsWith("https://") && !cleaned.startsWith("data:")) {
+      cleaned = "/" + cleaned;
+    }
+    return cleaned;
   }
 
   function renderMarkdown(mdText) {

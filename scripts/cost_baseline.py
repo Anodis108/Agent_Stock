@@ -40,8 +40,8 @@ from backend.infra.cost.tracker import (  # noqa: E402
 )
 
 REPLAY_PATH = ROOT / "resources" / "eval" / "replay_faq.yaml"
-REPORT_MD = ROOT / "specs" / "eval" / "cost_baseline.md"
-REPORT_JSON = ROOT / "specs" / "eval" / "cost_baseline.json"
+REPORT_MD = ROOT / "resources" / "eval" / "cost_baseline.md"
+REPORT_JSON = ROOT / "resources" / "eval" / "cost_baseline.json"
 
 
 def load_replay_faq(path: Path | None = None) -> list[dict]:
@@ -234,7 +234,7 @@ def run_baseline(
 
 
 def main() -> int:
-    default_out_dir = Path("/app/data") if Path("/app/data").is_dir() else (ROOT / "specs" / "eval")
+    default_out_dir = Path("/app/data") if Path("/app/data").is_dir() else (ROOT / "resources" / "eval")
     parser = argparse.ArgumentParser(description="Cost baseline replay")
     parser.add_argument("--limit", type=int, default=None, help="Chỉ chạy N câu đầu")
     parser.add_argument(

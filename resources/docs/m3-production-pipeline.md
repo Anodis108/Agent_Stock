@@ -11,7 +11,7 @@ flowchart TD
     EvalGate{"⚖️ Eval Gate\n(backend.eval)"}
     Cache[".eval_cache"]
     Deploy["🚀 Deploy\n(Docker/ngrok)"]
-    SmokeTest["💨 Smoke Test\n(deploy/smoke.py)"]
+    SmokeTest["💨 Smoke Test\n(src/deploy/smoke.py)"]
     Monitor["📊 Monitor\n(Langfuse/tracing)"]
     HITL["🧑‍⚖️ HITL Feedback\n(hitl_feedback.json)"]
     HitlToGolden["⚙️ hitl_to_golden_draft.py"]

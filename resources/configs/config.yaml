@@ -1,0 +1,87 @@
+# ==============================================================================
+# Master Application Configuration — VN Stock Swarm & Portfolio Watch
+# ==============================================================================
+# Single Source of Truth (SSOT) cho toàn bộ tham số vận hành của hệ thống.
+# Toàn bộ bí mật (API Keys / Passwords) được lưu trữ riêng biệt tại .env.
+# ==============================================================================
+
+# 1. Cấu hình ứng dụng và máy chủ HTTP (App & Server Gateway)
+app:
+  name: "Portfolio Watch & Chat Agent"
+  host: "127.0.0.1"
+  port: 8000
+  log_level: "INFO"
+  cors_origins:
+    - "*"
+  frontend_origin: "http://127.0.0.1:5173"
+  backend_base_url: "http://127.0.0.1:8000"
+  ai_base_url: "http://127.0.0.1:8001"
+  ai_transport: "inprocess"
+  ai_http_timeout: 60
+  ai_api_host: "127.0.0.1"
+  ai_api_port: 8001
+  app_host_port: 8088
+
+# 2. Cấu hình mô hình ngôn ngữ lớn (LLM Engine & Cascading)
+llm:
+  backend: "openai"                 # openai | ollama | vllm
+  base_url: null                    # URL tùy biến khi dùng Ollama/vLLM
+  model: "gpt-4o-mini"
+  temperature: 0.2
+  max_completion_tokens: 800
+  top_p: 1.0
+  max_retries: 3
+  model_cascade: ""                 # Model dự phòng khi model chính quá tải
+  fallback_backends: ""             # Backend dự phòng khi OpenAI gặp sự cố (ollama, vllm)
+
+# 3. Bộ nhớ đệm 2 tầng (2-Tier Caching System)
+cache:
+  exact_enabled: true               # Tầng 1: Exact Hash Cache (MD5/SHA256, TTL 24h)
+  semantic_enabled: true            # Tầng 2: Semantic Cache (Vector Cosine Similarity)
+  semantic_threshold: 0.93          # Ngưỡng cosine tương đồng tối thiểu
+  ttl_seconds: 86400                # Thời gian sống của cache (24 giờ)
+
+# 4. Quản lý bộ nhớ ngắn hạn & dài hạn (Memory Engineering)
+memory:
+  short_term_window: 20             # Số lượng tin nhắn tối đa trong sliding window
+  short_term_ttl_minutes: 60        # Thời gian sống của hội thoại (phút)
+  embedding_model: "text-embedding-3-small"
+  embedding_dim: 1536
+  qdrant_collection: "portfolio_watch_memory"
+
+# 5. Hệ thống lưu trữ CSDL & Tệp (Storage & Persistence)
+storage:
+  sqlite_path: "./resources/data/portfolio_watch.db"
+  backend_sqlite_path: "./resources/data/backend_store.db"
+  chart_dir: "./resources/data/charts"
+
+# 6. Nguồn dữ liệu thị trường & Danh mục theo dõi (Market Data & Watchlist)
+market_data:
+  price_source: "vnstock"           # vnstock | mock
+  news_source: "cafef"              # cafef | vnstock | mock
+  fallback_on_error: true           # Tự động chuyển sang dữ liệu mẫu khi mất mạng
+  default_watchlist: "FPT,VNM,HPG"
+  default_alert_threshold_pct: 3.0
+  scan_interval_minutes: 60
+
+# 7. Đánh giá & Giám sát chi phí (Evaluation & Token Economics)
+eval:
+  golden_dataset_path: "./resources/eval/golden_v6_comprehensive.yaml"
+  replay_faq_path: "./resources/eval/replay_faq.yaml"
+  eval_cache_enabled: true
+  eval_cache_dir: ".eval_cache"
+  cost_daily_limit_usd: 0.0         # 0.0 = không giới hạn ngân sách
+  cost_alert_threshold_usd: 1.0
+  confidence_auto_send_min: 0.8
+  prompt_ab_enabled: false
+  prompt_ab_version_a: "production"
+  prompt_ab_version_b: "v2"
+  prompt_ab_split_pct: 50
+
+# 8. Quan sát hệ thống & Thu thập dấu vết (Observability & Tracing)
+monitoring:
+  enabled: true                     # Kích hoạt giám sát Langfuse
+  sample_rate: 1.0                  # Tỷ lệ ghi nhận trace mặc định
+  error_sample_rate: 1.0            # 100% lỗi và guardrail block được ghi nhận
+  normal_sample_rate: 0.05          # 5% truy vấn bình thường
+  pii_redaction: true               # Che giấu số điện thoại và email

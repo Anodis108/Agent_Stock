@@ -39,8 +39,8 @@ from backend.infra.cost.tracker import (  # noqa: E402
 )
 
 REPLAY_PATH = ROOT / "resources" / "eval" / "replay_faq.yaml"
-REPORT_MD = ROOT / "specs" / "eval" / "cache_benchmark.md"
-REPORT_JSON = ROOT / "specs" / "eval" / "cache_benchmark.json"
+REPORT_MD = ROOT / "resources" / "eval" / "cache_benchmark.md"
+REPORT_JSON = ROOT / "resources" / "eval" / "cache_benchmark.json"
 
 MODES = ("none", "tier1", "tier1_tier2")
 LLM_CALLS_PER_QUESTION = 3
@@ -304,7 +304,7 @@ def format_report_md(payload: dict, *, questions_run: int) -> str:
 
 
 def main() -> int:
-    default_out_dir = Path("/app/data") if Path("/app/data").is_dir() else (ROOT / "specs" / "eval")
+    default_out_dir = Path("/app/data") if Path("/app/data").is_dir() else (ROOT / "resources" / "eval")
     parser = argparse.ArgumentParser(description="Cache benchmark — 3 chế độ trên replay FAQ")
     parser.add_argument("--limit", type=int, default=None, help="Chỉ chạy N câu đầu")
     parser.add_argument(

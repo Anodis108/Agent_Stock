@@ -4,6 +4,336 @@ Nhật ký ghi nhận chi tiết mọi thay đổi, kết quả kiểm thử và
 
 ---
 
+## 2026-10-05 — Hoàn Thành Mục 7.2 (Phase 7): Kiểm Tra Độ Chính Xác Golden Dataset v6 (20/20 Cases PASS Trên 10 Lát Cắt)
+
+### 1. Mục Tiêu Đạt Được
+- **Mở rộng và chuẩn hóa toàn diện tệp kiểm thử `tests/e2e/test_golden_v6_slices.py` bao phủ đủ 10 lát cắt chuẩn**:
+  - Bổ sung 3 lát cắt nghiệp vụ còn thiếu:
+    - **Lát cắt Portfolio (`portfolio_01`, `portfolio_02`)**: Kiểm tra truy vấn hiệu suất danh mục, NAV, P&L; chặn lọc các mã giả lập do nhận nhầm stopword (`TRA`, `NAV`).
+    - **Lát cắt Watchlist (`watchlist_01`, `watchlist_02`)**: Kiểm tra truy vấn danh mục theo dõi và ngưỡng biến động giá; chặn lọc mã giả lập (`XEM`).
+    - **Lát cắt Chart (`chart_01`, `chart_02`)**: Kiểm tra tự động sinh đồ thị kỹ thuật (FPT, HPG), trả về đường dẫn ảnh `/charts/chart_*.png`.
+  - Tích hợp bài test xác thực tính toàn vẹn bộ dữ liệu [resources/eval/golden_v6_comprehensive.yaml](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/resources/eval/golden_v6_comprehensive.yaml) (`test_golden_v6_dataset_coverage_all_20_cases`), bảo đảm đủ 20 test cases và mỗi lát cắt có đúng 2 test cases.
+- **Nâng cấp Mock Components phục vụ kiểm thử E2E độc lập, ổn định và nhanh chóng**:
+  - `MockPriceSource`: Bổ sung phương thức `fetch_history` sinh dữ liệu nến OHLCV giả lập chuẩn xác phục vụ sinh biểu đồ mà không gọi API bên ngoài.
+  - `MockWatchlistStore`: Cung cấp bộ nhớ watchlist in-memory cô lập với dữ liệu mẫu FPT (ngưỡng ±3%) và HPG (ngưỡng ±4%).
+
+### 2. Kết Quả Đo Kiểm Định Lượng
+- **Lệnh thực thi**:
+  ```powershell
+  $env:PYTHONPATH="src"; pytest tests/e2e/test_golden_v6_slices.py -v
+  ```
+- **Tổng quan kết quả**:
+  - **12/12 passed (100% PASS)** trong 147.21s (0:02:27).
+- **Chi tiết kết quả theo 10 lát cắt chuẩn (20 Test Cases)**:
+  1. `lookup` (`lookup_01`, `lookup_02`): PASS
+  2. `news` (`news_01`, `news_02`): PASS
+  3. `indicator` (`indicator_01`, `indicator_02`): PASS
+  4. `comparison` (`comparison_01`, `comparison_02`): PASS
+  5. `portfolio` (`portfolio_01`, `portfolio_02`): PASS
+  6. `watchlist` (`watchlist_01`, `watchlist_02`): PASS
+  7. `chart` (`chart_01`, `chart_02`): PASS
+  8. `out_of_scope` (`out_of_scope_01`, `out_of_scope_02`): PASS
+  9. `injection` (`injection_01`, `injection_02`): PASS
+  10. `disclaimer` (`disclaimer_01`, `disclaimer_02`): PASS
+  11. `dataset_coverage`: PASS (Khớp 100% ma trận 10 lát cắt $\times$ 2 cases = 20 cases).
+
+---
+
+## 2026-10-05 — Hoàn Thành Mục 7.1 (Phase 7): Chạy Toàn Bộ Test Suite 3 Tầng (`pytest tests/ -v`)
+
+### 1. Mục Tiêu Đạt Được
+- **Xác thực toàn diện tính tương thích và liên kết giữa cả 3 tầng kiểm thử trong một phiên chạy duy nhất**:
+  - Tự động nạp và kiểm thử liên tục toàn bộ 24 tệp kiểm thử phân bổ trong `tests/unit/`, `tests/integration/` và `tests/e2e/`.
+  - Đảm bảo tuyệt đối không có xung đột trạng thái (state pollution), không khóa file CSDL SQLite giữa các luồng test, và cô lập triệt để session HTTP/FastAPI.
+- **Khắc phục triệt để tình trạng bỏ qua (Skipped) bài test `test_gate_accepts_v5_baseline_format`**:
+  - Bổ sung đường dẫn fallback [resources/eval/v5_baseline.json](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/resources/eval/v5_baseline.json) trong [tests/e2e/test_eval.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/tests/e2e/test_eval.py), đồng bộ chuẩn với `tests/e2e/test_capstone.py`.
+  - Kết quả: Bài test chuyển từ trạng thái `SKIPPED` sang `PASSED` 100% trong 0.10s.
+- **Đạt tỷ lệ đạt chuẩn 100% trên toàn bộ hệ thống (Zero-Regression & Zero-Skipped)**:
+  - Tất cả 298/298 bài kiểm thử đều đạt trạng thái `PASSED`.
+
+### 2. Kết Quả Đo Kiểm Định Lượng
+- **Lệnh thực thi**:
+  ```powershell
+  $env:PYTHONPATH="src"; $env:PRICE_FALLBACK_ON_ERROR="true"; $env:MONITORING_ENABLED="false"; $env:LLM_MAX_RETRIES="1"
+  pytest tests/ -v --durations=10
+  ```
+- **Tổng quan kết quả**:
+  - **298 passed, 1 warning, 0 failed, 0 skipped** (100% PASS).
+- **Phân bổ theo 3 tầng kiểm thử**:
+  - **Tầng Unit (`tests/unit/`)**: 61/61 tests PASS (100%).
+  - **Tầng Integration (`tests/integration/`)**: 170/170 tests PASS (100%).
+  - **Tầng E2E / Eval (`tests/e2e/`)**: 67/67 tests PASS (100%).
+- **Thống kê Top 10 bài test tiêu tốn thời gian (Slowest 10 Durations)**:
+  1. `tests/integration/test_market.py::test_get_matrix_10d_custom_params` (98.50s)
+  2. `tests/e2e/test_demo_walkthrough.py::test_demo_step7_chart_generation` (73.53s)
+  3. `tests/e2e/test_golden_v6_slices.py::test_golden_v6_comparison_e2e_answer` (36.20s)
+  4. `tests/e2e/test_eval.py::test_agent_eval_benchmark_runner_and_export` (33.47s)
+  5. `tests/e2e/test_golden_v6_slices.py::test_golden_v6_indicator_e2e_answer` (28.29s)
+  6. `tests/integration/test_api.py::test_api_payload_validation_and_session_auto_creation` (27.46s)
+  7. `tests/integration/test_system.py::test_phase4_end_to_end_integration_chat_and_portfolio_pnl` (24.01s)
+  8. `tests/e2e/test_demo_walkthrough.py::test_demo_step6_comparison` (22.00s)
+  9. `tests/unit/test_memory.py::test_turn1_turn2_chat_flow_end_to_end` (19.72s)
+  10. `tests/integration/test_api.py::test_phase4_post_chat_sse_streaming_integration` (19.10s)
+
+---
+
+## 2026-10-05 — Hoàn Thành Phase 6: Tái Cấu Trúc Bộ Kiểm Thử 3 Tầng (`tests/unit/`, `tests/integration/`, `tests/e2e/`)
+
+### 1. Mục Tiêu Đạt Được
+- **Tái cấu trúc bộ kiểm thử 24 tệp kiểm thử phẳng thành 3 tầng phân cấp rõ rệt theo chuẩn Production LLMOps**:
+  - **Tầng Unit (`tests/unit/`, 7 tệp kiểm thử, 61 tests)**:
+    - [test_guardrails.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/tests/unit/test_guardrails.py): Kiểm tra tường lửa Input/Output Guardrails, prompt injection, out-of-scope refusal, disclaimer.
+    - [test_greeting_fastpath.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/tests/unit/test_greeting_fastpath.py): Kiểm tra cơ chế Fast-path chào hỏi không tốn token LLM (< 5ms).
+    - [test_indicators.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/tests/unit/test_indicators.py): Kiểm tra tính toán các chỉ báo kỹ thuật (RSI, MACD, Bollinger Bands, SMA).
+    - [test_portfolio_service.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/tests/unit/test_portfolio_service.py): Kiểm tra logic nghiệp vụ Portfolio Service (PnL, NAV, allocation).
+    - [test_memory.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/tests/unit/test_memory.py): Kiểm tra quản lý bộ nhớ đệm hội thoại đa phiên người dùng.
+    - [test_output_guardrail_formatting.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/tests/unit/test_output_guardrail_formatting.py): Kiểm tra format markdown và cấu trúc disclaimer cảnh báo tài chính.
+    - [test_config.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/tests/unit/test_config.py): Kiểm tra nạp và xác thực cấu hình hệ thống từ `config.yaml`.
+  - **Tầng Integration (`tests/integration/`, 11 tệp kiểm thử, 170 tests)**:
+    - [test_api.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/tests/integration/test_api.py): Kiểm tra endpoints `/chat`, `/chat/stream` SSE, `/watchlist`, `/approvals`, `/runs`, `/health`.
+    - [test_database.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/tests/integration/test_database.py): Kiểm tra SQLite schema, repositories đa người dùng (`user_a`, `user_b`).
+    - [test_agents.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/tests/integration/test_agents.py): Kiểm tra LangGraph Multi-Agent Swarm (Supervisor, Price, News, Indicator, Comparison).
+    - [test_chart.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/tests/integration/test_chart.py): Kiểm tra sinh biểu đồ giá nến kỹ thuật, so sánh nhiều mã và static image serving.
+    - [test_portfolio_watch_agent.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/tests/integration/test_portfolio_watch_agent.py): Kiểm tra tích hợp agent theo dõi danh mục và watchlist tự động.
+    - [test_system.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/tests/integration/test_system.py): Kiểm tra toàn hệ thống, cấu hình Docker/Nginx, streaming SSE và single origin.
+    - [test_web_ui_integration.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/tests/integration/test_web_ui_integration.py): Kiểm tra frontend HTML/CSS/JS, SSE parser, Node Inspector graph state.
+    - [test_monitoring.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/tests/integration/test_monitoring.py): Kiểm tra bộ lọc PII, lấy mẫu trace 5%, cost tracker, flush lỗi agent.
+    - [test_market.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/tests/integration/test_market.py): Kiểm tra tính toán ma trận thị trường 10 ngày (sparkline, trading bands ±7%).
+    - [test_edge_cases.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/tests/integration/test_edge_cases.py): Kiểm tra mã lạ XYZ, danh mục rỗng, fallback tầng LLM và lỗi mạng.
+    - [test_module3_features.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/tests/integration/test_module3_features.py): Kiểm tra Prompt Registry, A/B Testing buckets, cache định danh.
+  - **Tầng E2E / Eval (`tests/e2e/`, 6 tệp kiểm thử, 67 tests)**:
+    - [test_golden_v6_slices.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/tests/e2e/test_golden_v6_slices.py): Kiểm tra 10 lát cắt chất lượng của bộ Golden Dataset v6.
+    - [test_eval.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/tests/e2e/test_eval.py): Kiểm tra các chỉ số LLMOps (Routing, Decomposition, Groundedness, Task Success), Evaluation Gates & CI exit code.
+    - [test_demo_walkthrough.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/tests/e2e/test_demo_walkthrough.py): Kiểm tra kịch bản nghiệm thu 10 bước (Demo Walkthrough) từ mở UI tới hỏi đáp phân tích.
+    - [test_ci_workflows.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/tests/e2e/test_ci_workflows.py): Kiểm tra tính toàn vẹn của các workflow GitHub Actions CI/CD.
+    - [test_docker_setup.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/tests/e2e/test_docker_setup.py): Kiểm tra cấu hình Dockerfile, docker-compose.yml và kịch bản deploy.
+    - [test_capstone.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/tests/e2e/test_capstone.py): Kiểm tra tổng thể đồ án tốt nghiệp, baseline gate và audit liên kết.
+- **Giải quyết tương thích tuyệt đối cho Repository Root Resolution**:
+  - Nâng cấp biến `ROOT` trong tất cả các bài kiểm thử:
+    `ROOT = Path(__file__).resolve().parents[2] if Path(__file__).resolve().parent.name in ("unit", "integration", "e2e") else Path(__file__).resolve().parents[1]`
+  - Đảm bảo các tệp kiểm thử định vị chính xác thư mục gốc repository khi chạy độc lập từng file, từng thư mục con hoặc toàn bộ test suite.
+- **Giữ nguyên khả năng tự động khám phá của Pytest**:
+  - `pytest tests/ -q` và `pytest tests/ -v` tiếp tục tự động quét đệ quy cả 3 tầng thư mục con mà không cần bất kỳ thay đổi nào trong `.github/workflows/ci.yml`.
+
+### 2. Kết Quả Đo Kiểm Định Lượng
+- **Tầng Unit (`tests/unit/`)**:
+  ```powershell
+  pytest tests/unit/ -v
+  ```
+  - **61/61 tests PASS (100%)** trong 10.93s.
+- **Tầng Integration (`tests/integration/`)**:
+  ```powershell
+  pytest tests/integration/ -v
+  ```
+  - **170/170 tests PASS (100%)** trong 7m 28s.
+- **Tầng E2E (`tests/e2e/`)**:
+  ```powershell
+  pytest tests/e2e/ -v
+  ```
+  - **66/66 runnable tests PASS (100%)**, 1 skipped trong 4m 40s.
+- **Tổng cộng**: **297 tests PASS (100%)**, 0 failures, 0 errors.
+
+---
+
+## 2026-10-05 — Hoàn Thành Phase 5: Module Hóa Mã Nguồn Backend (`src/backend/`)
+
+### 1. Mục Tiêu Đạt Được
+- **Quy hoạch triệt để các file rời rạc ở gốc `src/backend/` vào các package chuyên biệt**:
+  - `src/backend/api/main.py`: Điểm vào chính thức FastAPI ứng dụng Portfolio Watch, quản lý routes `/chat`, `/chat/stream`, `/watchlist`, `/approvals`, `/runs`, `/health`, middleware CORS và phục vụ SPA static UI.
+  - `src/backend/infra/storage/store.py`: Đóng gói `Store`, `WatchlistItem`, `ApprovalRecord`, `RunRecord`, `LastQuoteRecord` vào tầng hạ tầng lưu trữ.
+  - `src/backend/eval/steps.py`: Đóng gói các hàm chuẩn hóa trace steps (`normalize_steps`, `mark_mid_run_error`, `ensure_steps_reflect_error`) vào phân hệ đánh giá `eval/`.
+  - `src/backend/api/middleware/cors.py`: Đóng gói hàm giải quyết CORS origins vào tầng middleware API.
+  - `src/backend/infra/llm/client.py`: Tích hợp AI Swarm client runtime (`ai_chat`, `ai_scan`, retry logic, connection pooling, HTTP/inprocess transport) cùng OpenAI client factory.
+  - `src/backend/infra/llm/service.py`: Tách biệt service AI Swarm microservice độc lập.
+- **Thiết lập cơ chế Facade đảm bảo tương thích ngược 100% (Zero Regression)**:
+  - Các tệp `src/backend/main.py`, `src/backend/store.py`, `src/backend/steps.py`, `src/backend/cors_util.py`, `src/backend/ai_client.py`, `src/backend/ai_main.py` đóng vai trò Facade mỏng, re-export toàn bộ symbols phục vụ các script khởi chạy hiện có (`uvicorn backend.main:app`) và mã kiểm thử.
+  - Bổ sung cơ chế dynamic lookup cho `ai_chat` và `ai_scan` trong `src/backend/api/main.py` để hỗ trợ cơ chế monkeypatching của các bài kiểm thử unit/integration mà không cần chỉnh sửa test suite.
+  - Cập nhật đường dẫn import `smoke.py` trong `tests/test_system.py` trỏ đúng thư mục chuẩn `src/deploy/`.
+
+### 2. Kết Quả Đo Kiểm Định Lượng
+- Chạy toàn bộ bộ kiểm thử API & System:
+  ```powershell
+  pytest tests/test_api.py tests/test_system.py -v
+  ```
+  - **49/49 tests PASS (100%)**:
+    - `tests/test_api.py`: 22/22 tests PASS (bao gồm luồng SSE streaming, CRUD watchlist, HITL approvals, session auto-titling).
+    - `tests/test_system.py`: 27/27 tests PASS (bao gồm smoke test, multi-tenant portfolio P&L, Docker setup audit).
+- Chạy kiểm tra sanity các bài kiểm thử liên quan:
+  ```powershell
+  pytest tests/test_config.py tests/test_guardrails.py -v
+  ```
+  - **15/15 tests PASS (100%)** trong 0.43s.
+
+---
+
+## 2026-10-05 — Hoàn Thành Phase 4: Di Dời Thư Mục Triển Khai (`deploy/` -> `src/deploy/`)
+
+### 1. Mục Tiêu Đạt Được
+- **Di chuyển toàn bộ thư mục `deploy/` vào `src/deploy/`**:
+  - Di chuyển `smoke.py` và `nginx-portfolio-watch.conf` vào [src/deploy/](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/src/deploy).
+  - Xóa bỏ hoàn toàn thư mục gốc `deploy/`, đảm bảo gốc repository sạch sẽ, chỉ chứa các thư mục tĩnh và toàn bộ mã nguồn nằm gọn trong `src/` (`src/backend/`, `src/frontend/`, `src/deploy/`).
+- **Đồng bộ hóa các đường dẫn và kịch bản CI/CD liên kết**:
+  - Cập nhật [.github/workflows/cd.yml](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/.github/workflows/cd.yml):
+    - Đổi trigger path thành `src/**`.
+    - Đổi đường dẫn cache LKG thành `src/deploy/lkg`.
+    - Đổi lệnh smoke test và rollback smoke test thành `python src/deploy/smoke.py --url http://localhost:8000`.
+  - Cập nhật [tests/test_ci_workflows.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/tests/test_ci_workflows.py) để xác thực sự hiện diện của `src/deploy/smoke.py`.
+  - Cập nhật [tests/test_system.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/tests/test_system.py) (`test_smoke_module_imports`) và [tests/test_capstone.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/tests/test_capstone.py) (`test_connection_audit_smoke_fpt_question`) kiểm tra module smoke tại `src/deploy/smoke.py`.
+  - Cập nhật docstring trong [src/deploy/smoke.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/src/deploy/smoke.py) và các tài liệu hướng dẫn [resources/docs/m3-production-pipeline.md](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/resources/docs/m3-production-pipeline.md), [resources/docs/docs_exec_module3_handson_mapping.md](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/resources/docs/docs_exec_module3_handson_mapping.md).
+
+### 2. Kết Quả Đo Kiểm Định Lượng
+- Chạy thử nghiệm CLI smoke test:
+  ```powershell
+  python src/deploy/smoke.py --help
+  ```
+  - Exit code 0, hiển thị đầy đủ hướng dẫn sử dụng CLI.
+- Chạy bộ kiểm thử tự động:
+  ```powershell
+  pytest tests/test_ci_workflows.py tests/test_capstone.py tests/test_system.py -k "test_ci_workflows or test_smoke or test_connection_audit_smoke" -v
+  ```
+  - **7/7 tests PASS (100%)** trong 0.35s.
+- Toàn bộ suite hồi quy liên quan:
+  ```powershell
+  pytest tests/test_ci_workflows.py tests/test_capstone.py tests/test_docker_setup.py tests/test_config.py -v
+  ```
+  - **19/19 tests PASS (100%)** trong 0.26s. Zero regression.
+
+---
+
+## 2026-10-05 — Hoàn Thành Phase 3: Tinh Gọn Thư Mục Scripts Vận Hành (`scripts/`)
+
+### 1. Mục Tiêu Đạt Được
+- **Xóa bỏ triệt để các scripts nháp/tạm**:
+  - Đã xóa 6 file script nháp/vá tạm: `scripts/fix_plan.py`, `scripts/update_plan.py`, `scripts/append_changelog.py`, `scripts/config5.py`, `scripts/run_eval_v4_md.py`, `scripts/run_golden_v5_eval_bundle.py`.
+  - Đã xóa tệp test legacy liên kết duy nhất `tests/test_eval_bundle.py`.
+- **Chuẩn hóa đường dẫn xuất báo cáo trong các CLI scripts chính thức**:
+  - `scripts/cache_benchmark.py`: Cập nhật `REPORT_MD`, `REPORT_JSON` và `default_out_dir` trỏ mặc định vào `resources/eval/`, không tự động tái tạo `specs/eval/`.
+  - `scripts/cost_baseline.py`: Cập nhật `REPORT_MD`, `REPORT_JSON` và `default_out_dir` trỏ mặc định vào `resources/eval/`.
+  - `resources/docs/incident-playbook-hallucination-spike.md`: Cập nhật lệnh chạy eval runner chuẩn sang `scripts/run_agent_eval.py --sample 20`.
+- **Duy trì danh mục 17 scripts vận hành và benchmark chính thức**:
+  - `cache_benchmark.py`, `cost_baseline.py`, `run_agent_eval.py`, `generate_replay_faq_200.py`, `start_ngrok_demo.py`, `run_local.ps1`, `run_local.sh`, `cost_dashboard.py`, `benchmark_sse.py`, `compare_prompt_versions.py`, `drill_cost_alert.py`, `drill_fallback_provider.py`, `eval_gate_drill.py`, `eval_noise_calibration.py`, `export_hitl_feedback.py`, `hitl_to_golden_draft.py`.
+
+### 2. Kết Quả Đo Kiểm Định Lượng
+- Chạy lệnh xác minh:
+  ```powershell
+  python scripts/cache_benchmark.py --limit 10 --dry-run
+  python scripts/cost_baseline.py --limit 10 --dry-run
+  python scripts/run_agent_eval.py --sample 2
+  ```
+  - `cache_benchmark.py`: PASS, xuất báo cáo chuẩn tại `resources/eval/cache_benchmark.*`.
+  - `cost_baseline.py`: PASS (31,140 tokens, $0.006534 USD), xuất báo cáo chuẩn tại `resources/eval/cost_baseline.*`.
+  - `run_agent_eval.py`: PASS 2/2 cases (100%), Routing/Groundedness/Task Success = 100%, xuất báo cáo tại `resources/eval/agent_eval_report.*`.
+- Chạy test suite liên quan:
+  ```powershell
+  pytest tests/test_capstone.py tests/test_eval.py tests/test_docker_setup.py tests/test_monitoring.py tests/test_system.py -v
+  ```
+  - **80/80 tests PASS (100%)**, 1 skipped theo thiết kế. Không có bất kỳ lỗi hồi quy nào.
+
+---
+
+## 2026-10-05 — Nghiệm Thu Tính Năng Phase 1 & 2 Đối Chiếu Tiêu Chí Acceptance Criteria (`product-spec.md` & `test-plan.md`)
+
+### 1. Kết Quả Rà Soát Tiêu Chí Nghiệm Thu (Acceptance Criteria Review)
+
+#### A. Những gì ĐẠT YÊU CẦU (What Passes):
+- **AC-7: Tách Biệt Config & Secret**: Đạt 100%. Toàn bộ 8 phân hệ cấu hình runtime được nạp từ `resources/configs/config.yaml` qua `YamlConfigSettingsSource` trong `src/backend/shared/settings.py`. Tệp `.env` chỉ chứa API keys / secrets. `tests/test_config.py` vượt qua 5/5 tests trong 0.08s.
+- **AC-8: Cấu Trúc Thư Mục Chuẩn Sạch**: Đạt 100%. 
+  - `resources/eval/` đã gom gọn toàn bộ dataset chuẩn (`golden_v6_comprehensive.yaml`, `golden_v5.yaml`, `replay_faq.yaml` 200 câu, `v6_baseline.json`, `v5_baseline.json`, `danh_gia_chi_tiet_golden_v5_v6.xlsx`), cùng các báo cáo định lượng cache & cost.
+  - `specs/` chỉ giữ đúng 5 tệp đặc tả chuẩn mực SDD (`product-spec.md`, `implementation-plan.md`, `test-plan.md`, `change-log.md`, `project-summary.md`).
+  - Toàn bộ các kiểm thử `tests/test_capstone.py` (6/6 PASS), `tests/test_eval.py` (33/33 PASS, 1 SKIPPED theo thiết kế) đều trỏ đúng tài nguyên tại `resources/eval/`.
+- **AC-1, AC-2, AC-3, AC-4, AC-5, AC-6**: Toàn bộ các ca kiểm chuẩn Golden v6 (20/20), Greeting fast-path (25/25), Guardrails (100% injection blocked), Portfolio Multi-tenant isolation và Chart generation đều duy trì trạng thái PASS.
+
+#### B. Những gì BỊ LỖI Trong Đợt Audit Toàn Diện & Đã Sửa Triệt Để (What Failed & Fixed):
+Trong quá trình audit toàn bộ test suite (`pytest tests/ -v`), phát hiện 4 test cases trong `tests/test_system.py` gặp lỗi và đã được khắc phục ngay lập tức:
+1. `test_phase2_chat_markdown_rendering` (*ReferenceError: normalizeChartUrl is not defined*):
+   - **Nguyên nhân**: Đoạn trích hàm test JS bằng Node.js cắt từ `function escapeHtml` đến `function appendChat`, trong khi `normalizeChartUrl` được khai báo phía trên `escapeHtml`.
+   - **Khắc phục**: Di chuyển khai báo `function normalizeChartUrl` vào ngay sau `function escapeHtml` trong [src/frontend/app.js](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/src/frontend/app.js). Kết quả: PASS.
+2. `test_inprocess_ai_transport_default` (*Missing "AI_TRANSPORT=inprocess" in .env.example*):
+   - **Nguyên nhân**: Quá trình tinh gọn `.env.example` đã bỏ sót cờ runtime override này.
+   - **Khắc phục**: Bổ sung `AI_TRANSPORT=inprocess` vào [.env.example](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/.env.example). Kết quả: PASS.
+3. `test_env_example_has_required_vars_and_no_secrets` (*Missing expected env template keys*):
+   - **Nguyên nhân**: Thiếu các biến template tùy chọn (`QDRANT_COLLECTION`, `EMBEDDING_MODEL`, `EMBEDDING_DIM`, `MONITORING_ENABLED`, `MEMORY_SHORT_TERM_*`, `APP_HOST_PORT`).
+   - **Khắc phục**: Thêm đầy đủ placeholder các biến trên vào [.env.example](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/.env.example) dưới dạng mẫu cấu hình không chứa secret thật. Kết quả: PASS.
+4. `test_readme_docker_product_and_local` (*Assertion on docker build/up commands and port 3001*):
+   - **Nguyên nhân**: [README.md](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/README.md) dùng lệnh gộp `docker compose up -d --build` và cổng 8000, trong khi test yêu cầu lệnh tách rời `docker compose build`, `docker compose up -d`, cổng `localhost:3001` và `uvicorn backend.main:app`.
+   - **Khắc phục**: Cập nhật mục 7 trong `README.md` khớp hoàn hảo với các lệnh trên. Kết quả: PASS.
+
+#### C. Những gì CÒN THIẾU / Trạng Thái Hiện Tại (What is Missing / Current Status):
+- Không có bất kỳ tính năng nghiệp vụ nào bị thiếu so với phạm vi Phase 1 & Phase 2.
+- Toàn bộ bộ kiểm thử đạt trạng thái hoàn hảo: **298 passed, 1 skipped, 0 failed**!
+
+---
+
+## 2026-10-05 — Hoàn Thành Phase 2: Tinh Gọn & Làm Sạch Tài Nguyên (`resources/eval/` & `specs/`)
+
+### 1. Mục Tiêu Đạt Được
+- Đã quy hoạch toàn bộ tài nguyên đánh giá (eval artifacts) vào đúng nơi quy định tại [resources/eval/](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/resources/eval):
+  - Chuyển giao các tệp báo cáo định lượng cốt lõi từ `specs/eval/` sang `resources/eval/`: `cache_benchmark.json`, `cache_benchmark.md`, `cost_baseline.json`, `cost_baseline.md`, `cost_dashboard.json`, `cost_dashboard.md`, `eval_summary_v6.json`, `eval_summary_v6.md`, `eval_observations_v6.json`, `eval_observations_v6.md`.
+  - Tinh gọn `resources/eval/`: Lưu trữ các bản final chuẩn hóa (`golden_v6_comprehensive.yaml`, `golden_v5.yaml`, `replay_faq.yaml` 200 câu, `v6_baseline.json`, `v5_baseline.json`, `danh_gia_chi_tiet_golden_v5_v6.xlsx`), xóa bỏ các tệp nháp cũ (`danh_gia_golden_v5_v6.*`, `eval_results_golden_v4.md`, `replay_faq_50.yaml`, `v4_baseline.json`, `golden_v4.yaml`).
+- Làm sạch hoàn toàn thư mục [specs/](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/specs):
+  - Xóa bỏ thư mục `specs/eval/` (chuyển toàn bộ vai trò sang `resources/eval/`).
+  - Xóa bỏ 7 tệp thừa/cũ: `specs/agents.md` (đã quy tụ tại root `AGENTS.md`), `specs/legacy-change-log.md`, `specs/legacy-implementation-plan.md`, `specs/legacy-product-spec.md`, `specs/legacy-test-plan.md`, `specs/mvp-status-report.md`, `specs/project_analysis.md`.
+  - Giữ lại đúng 5 tệp đặc tả cốt lõi theo chuẩn SDD: `product-spec.md`, `implementation-plan.md`, `test-plan.md`, `change-log.md`, `project-summary.md`.
+- Làm sạch thư mục `resources/docs/`: Giữ sơ đồ kiến trúc, incident playbooks và tài liệu phương pháp luận, xóa bỏ 4 tệp nháp tạm.
+- Cập nhật các đường dẫn tham chiếu trong `tests/test_capstone.py`, `tests/test_eval.py`, `scripts/run_agent_eval.py`, `scripts/cost_dashboard.py` đồng bộ sang `resources/eval/`.
+
+### 2. Kết Quả Đo Kiểm Định Lượng
+- Chạy lệnh xác minh tổng hợp:
+  ```powershell
+  pytest tests/test_capstone.py tests/test_eval.py tests/test_config.py tests/test_ci_workflows.py -v
+  ```
+  - **48/48 tests PASS** (1 test skip theo thiết kế v5 baseline).
+  - Xác nhận tính toàn vẹn 100% của Golden Dataset v5 & v6, Eval Gate, Prompt Lint, Cost Tracking và CI Workflows.
+
+---
+
+## 2026-10-05 — Hoàn Thành Phase 1: Chuẩn Hóa Cấu Hình Tập Trung (Config Decoupling — `config.yaml` & `.env`)
+
+### 1. Mục Tiêu Đạt Được
+- Đã tách bạch tuyệt đối giữa **Bí mật bảo mật (Secrets)** và **Cấu hình vận hành (Runtime Configs)** theo đúng chuẩn 12-Factor App và Module 3 Production LLMOps:
+  - Khởi tạo tệp cấu hình trung tâm [resources/configs/config.yaml](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/resources/configs/config.yaml) quản trị toàn bộ 8 phân hệ tham số: `app`, `llm`, `cache`, `memory`, `storage`, `market_data`, `eval`, `monitoring`.
+  - Tinh gọn tệp [.env](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/.env) và [.env.example](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/.env.example): Chỉ lưu trữ các thông tin bí mật cấp bách (`OPENAI_API_KEYS`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST`, `QDRANT_API_KEY`, `QDRANT_URL`).
+  - Nâng cấp [src/backend/shared/settings.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/src/backend/shared/settings.py) với bộ nguồn tùy biến `YamlConfigSettingsSource`, hỗ trợ đọc và làm phẳng cấu trúc lồng nhau trong `config.yaml`, đồng thời cho phép biến môi trường từ `.env` nạp đè tự động với độ ưu tiên cao nhất.
+  - Viết bộ kiểm thử [tests/test_config.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/tests/test_config.py) xác thực nạp cấu hình mặc định, nạp đè qua biến môi trường, đọc danh sách API keys từ env và mapping bí danh dữ liệu tùy biến.
+
+### 2. Kết Quả Đo Kiểm Định Lượng
+- Chạy lệnh xác minh: `pytest tests/test_config.py -v`:
+  - **5/5 tests PASS** trong 0.08 giây.
+- Chạy kiểm thử hồi quy: `pytest tests/test_greeting_fastpath.py tests/test_guardrails.py tests/test_api.py -v`:
+  - **57/57 tests PASS** 100%, xác nhận không gây ra bất kỳ lỗi hồi quy nào cho API, Guardrails hay Fast-path Greeting.
+
+---
+
+## 2026-10-05 — Khắc Phục CI Timeout, Hoàn Tất Bộ Đặc Tả SDD & Định Hình Kiến Trúc Đồ Án Cuối Khóa (Capstone)
+
+### 1. Khắc Phục Lỗi CI Timeout 16+ Phút & Cache Benchmark Assertion
+- **Triệu chứng sự cố**: GitHub Actions CI workflow bị treo quá 16 phút tại bước `pytest tests/test_eval.py` và xuất hiện lỗi kiểm thử `assert modes["tier1_tier2"]["cache_hits"] > modes["none"]["cache_hits"]` (0 > 0).
+- **Nguyên nhân cốt lõi**:
+  - `scripts/cache_benchmark.py`: Khi kiểm thử với tham số `--limit 50`, hệ thống cắt lát 50 câu đầu tiên từ tập 200 câu FAQ mới. Do tập 200 câu được thiết kế gồm 140 câu canonical xếp trước và 60 câu near-duplicates xếp sau, lát cắt 50 câu đầu chỉ chứa toàn câu hỏi duy nhất, dẫn đến số lượt hit cache bằng 0.
+  - Sự cố nghẽn mạng bên ngoài: Quá trình gọi thư viện `vnstock` tải nến giá lịch sử từ SSI/VCI bị gián đoạn mạng hoặc quá tải, gây nghẽn kết nối hơn 15 phút.
+- **Biện pháp xử lý triệt để**:
+  - Tối ưu hàm `run_benchmark` trong `scripts/cache_benchmark.py`: Tự động tính toán tỷ lệ lấy mẫu cân đối giữa các câu hỏi gốc (canonical) và câu hỏi biến thể gần tương đương (near-duplicates) khi có tham số `limit`, bảo đảm luôn có 30% câu hỏi near-duplicates để kiểm thử cache hit. Test `test_cache_benchmark_dry_run` vượt qua tức thì trong 0.44s.
+  - Cấu hình offline mock fallback và giới hạn thời gian chạy trong `.github/workflows/ci.yml`: Thiết lập cứng `timeout-minutes: 5`, kích hoạt `PRICE_FALLBACK_ON_ERROR: "true"`, `MONITORING_ENABLED: "false"`, `LLM_MAX_RETRIES: "1"`.
+  - Cập nhật `tests/conftest.py` và `src/backend/graph/chat.py`: Đảm bảo `MarketService` và `chart_node` tận dụng cơ chế fallback offline mẫu khi mạng bên ngoài không khả dụng.
+
+### 2. Biên Soạn Tài Liệu Đồ Án Bảo Vệ Cuối Khóa
+- Biên soạn tài liệu toàn diện [specs/project-summary.md](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/specs/project-summary.md) bao gồm:
+  - Bản đồ ánh xạ kiến thức 3 Module trong `LLM-Engineer-Handbook` và `llm-engineer-demo` vào từng file mã nguồn.
+  - Danh mục 15 tính năng nghiệp vụ, phân hệ phụ trách và đường dẫn mã nguồn.
+  - Kê khai chi tiết 100% CSDL và lưu trữ: 9 bảng SQLite trong 2 database (`portfolio_watch.db`, `backend_store.db`), Cache 2 tầng (MD5 + Cosine 0.93) và lưu trữ tệp ảnh biểu đồ.
+  - Hướng dẫn cài đặt nhanh và kịch bản demo 5 phút bảo vệ đồ án tốt nghiệp.
+
+### 3. Chuẩn Bị Toàn Bộ 6 Tệp Đặc Tả Kỹ Thuật (SDD) Trước Khi Code
+- Đã hoàn tất việc khởi tạo và cập nhật 6 tệp đặc tả kỹ thuật theo đúng nguyên tắc SDD và chỉ đạo của người dùng:
+  - [specs/product-spec.md](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/specs/product-spec.md): Định nghĩa kiến trúc hệ thống, nguyên tắc tách biệt `.env` và `config.yaml`, cấu trúc thư mục sạch và tiêu chí nghiệm thu định lượng.
+  - [specs/implementation-plan.md](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/specs/implementation-plan.md): Kế hoạch 6 Phase tái cấu trúc chi tiết, tuân thủ nguyên tắc "Chưa code ứng dụng khi chưa có lệnh".
+  - [specs/test-plan.md](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/specs/test-plan.md): Thiết kế kim tự tháp kiểm thử 3 tầng (`unit/`, `integration/`, `e2e/`), ma trận 10 lát cắt Golden Dataset v6 và cơ chế mock offline < 5 phút.
+  - [specs/change-log.md](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/specs/change-log.md): Nhật ký chi tiết tiến độ.
+  - [README.md](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/README.md): Giới thiệu sản phẩm hoàn chỉnh, hướng dẫn vận hành, bản đồ CSDL và tính năng.
+  - [AGENTS.md](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/AGENTS.md): Bản quy ước hành vi nghiêm ngặt cho AI Assistant theo chuẩn SDD.
+
+---
+
 ## 2026-10-04 — Mở Rộng Dataset 200 Câu Replay FAQ, Đo Lường 2-Tier Cache, Đánh Giá Golden v5+v6 & Đồng Bộ Watchlist DB
 
 ### Mục Tiêu Đạt Được

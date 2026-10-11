@@ -35,7 +35,9 @@ def main() -> int:
     p95_latency = None
     latencies = []
     
-    history_dir = Path("specs/eval/history")
+    history_dir = Path("resources/eval/history")
+    if not history_dir.exists():
+        history_dir = Path("resources/eval")
     if history_dir.exists():
         for file in history_dir.glob("*.json"):
             try:
@@ -78,11 +80,11 @@ def main() -> int:
 ```
 """
 
-    out_md = Path("specs/eval/cost_dashboard.md")
+    out_md = Path("resources/eval/cost_dashboard.md")
     out_md.parent.mkdir(parents=True, exist_ok=True)
     out_md.write_text(dashboard_md, encoding="utf-8")
     
-    out_json = Path("specs/eval/cost_dashboard.json")
+    out_json = Path("resources/eval/cost_dashboard.json")
     budget_limit = settings.cost_daily_limit_usd
     alert_threshold = settings.cost_alert_threshold_usd
     over_alert = is_over_alert_threshold()

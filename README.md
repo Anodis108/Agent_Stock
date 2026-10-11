@@ -1,215 +1,224 @@
-# VN Stock Swarm — Multi-Agent Stock Assistant & Portfolio Watch
+# VN Stock Swarm & Portfolio Watch — Đồ Án Cuối Khóa LLM Engineer
 
-Hệ thống trợ lý phân tích chứng khoán Việt Nam và quản lý danh mục đầu tư đa người dùng (Multi-tenant Portfolio Watch) ứng dụng kiến trúc **Multi-Agent Swarm (LangGraph)**, phát triển theo phương pháp **Spec-Driven Development (SDD)**.
-
----
-
-## 1. App Idea & Mục Tiêu Dự Án
-
-Dự án cung cấp một hệ thống Swarm Multi-Agent thông minh, hỗ trợ nhà đầu tư cá nhân trên thị trường chứng khoán Việt Nam:
-
-1. **Thỏa Mãn 100% Độ Chính Xác Bộ Dữ Liệu `golden_v6_comprehensive.yaml`**:
-   - Bao phủ 10 lát cắt chuẩn hóa: Tra cứu giá (`lookup`), Tin tức doanh nghiệp (`news`), Phân tích kỹ thuật RSI/SMA (`indicator`), So sánh đa mã (`comparison`), Quản lý danh mục P&L/NAV (`portfolio`), Danh mục theo dõi & cảnh báo (`watchlist`), Biểu đồ nến kỹ thuật (`chart`), Từ chối câu hỏi ngoài lề (`out_of_scope`), Chặn 100% tấn công can thiệp (`injection`), và Khuyến cáo rủi ro trung lập (`disclaimer`).
-2. **Cơ Chế Nối Thẳng Câu Chào Hỏi (Direct Greeting Fast-Path)**:
-   - Các câu chào hỏi thân thiện ("Xin chào", "Chào bạn", "Hello", "Hi bot") được Guardrail nhận diện an toàn và **nối thẳng** tới Chat LLM/Composer để phản hồi chào mừng tức thì, hướng dẫn các tính năng chính và gợi ý câu hỏi mẫu — thay vì bị từ chối do ngoài phạm vi hay bị ép tra cứu giá lỗi.
-3. **Quản Lý Danh Mục Đa Tài Khoản (Multi-tenant Portfolio)**:
-   - Phân tách dữ liệu danh mục nắm giữ, tính toán Unrealized P&L (VND & %) và tổng NAV độc lập cho từng người dùng (`User A`, `User B`, `Default`).
-4. **Trực Quan Hóa Đồ Thị Swarm & Streaming Thời Gian Thực**:
-   - Streaming Markdown qua Server-Sent Events (SSE).
-   - Đồ thị Live Agent Graph phản ánh sinh động trạng thái các Agent theo thời gian thực (hover xem System Prompt và dữ liệu I/O).
+Hệ thống Trợ lý Phân tích Chứng khoán Đa Tác tử (Multi-Agent Swarm) và Quản lý Danh mục Đầu tư Đa Tài khoản (Multi-tenant Portfolio Watch), phát triển theo phương pháp **Spec-Driven Development (SDD)**, ứng dụng toàn diện các kỹ thuật tiên tiến nhất từ **LLM Engineer Handbook** (Module 1, 2, 3) và repository tham chiếu **llm-engineer-demo**.
 
 ---
 
-## 2. Kiến Trúc Multi-Agent Swarm
+## 1. Giới Thiệu & Mục Tiêu Dự Án (Project Overview)
+
+Dự án là sản phẩm đồ án tốt nghiệp cuối khóa, giải quyết bài toán hỗ trợ nhà đầu tư cá nhân trên thị trường chứng khoán Việt Nam:
+1. **Độ chính xác cao & Khách quan tuyệt đối**: Vượt qua **100% (20/20 test cases)** bộ dữ liệu chuẩn hóa [resources/eval/golden_v6_comprehensive.yaml](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/resources/eval/golden_v6_comprehensive.yaml) trên 10 lát cắt chức năng (`lookup`, `news`, `indicator`, `comparison`, `portfolio`, `watchlist`, `chart`, `out_of_scope`, `injection`, `disclaimer`).
+2. **Luồng Chào Hỏi Tức Thì (Greeting Fast-Path)**: Nhận diện câu chào giao tiếp ("Xin chào", "Hello", "Hi bot") là an toàn ngay tại Input Guardrail và nối thẳng sang Chat LLM/Composer (TTFT < 1.0s), không bị từ chối và không kích hoạt tra cứu giá ảo.
+3. **Quản Lý Danh Mục Đa Tài Khoản (Multi-tenant Portfolio)**: Cô lập dữ liệu nắm giữ (Holdings, Unrealized P&L, NAV) và danh sách theo dõi (Watchlist) giữa các người dùng (`User A`, `User B`, `Default`).
+4. **Kiến Trúc Tách Biệt Cấu Hình (Config Decoupling)**: File `.env` chỉ chứa các biến bí mật (API Keys); toàn bộ cấu hình hệ thống được quản lý tập trung tại [resources/configs/config.yaml](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/resources/configs/config.yaml).
+5. **Cấu Trúc Mã Nguồn Sạch Sẽ (Clean Modular Architecture)**: Toàn bộ code nằm trong `src/` (`src/backend/`, `src/frontend/`, `src/deploy/`), gốc dự án sạch sẽ chỉ chứa các tệp tĩnh và hồ sơ đặc tả SDD.
+6. **Kiểm Thử 3 Tầng Chuẩn Mực (3-Tier Test Suite)**: Phân tầng `tests/unit/`, `tests/integration/`, `tests/e2e/`, hỗ trợ mock offline bảo đảm pipeline CI chạy hoàn tất trong **< 5 phút**.
+
+---
+
+## 2. Bản Đồ Ánh Xạ Kiến Thức Khóa Học (Curriculum Mapping)
+
+| Module Khóa Học | Kỹ Thuật Đã Học | Hiện Thực Trong Dự Án | Vị Trí Mã Nguồn |
+| :--- | :--- | :--- | :--- |
+| **Module 1: LLM APIs, Prompting & RAG** | Structured Outputs (Pydantic), Provider Cascade & Fallback, 2-Tier Cache, Input & Output Guardrails | Pydantic Schema, Fallback Ollama/Offline khi mất mạng, Cache MD5 + Cosine 0.93, Tường lửa 2 lớp | `src/backend/infra/llm/`, `src/backend/infra/cache/`, `src/backend/domain/guardrails/` |
+| **Module 2: AI Agents & LangGraph** | StateGraph, Conditional Edges, Supervisor Pattern, Tool Calling, Short-term Memory (TTL + Window) | Swarm gồm 7 Worker Agents, điều phối Supervisor, tool Vnstock/CafeF/Matplotlib, Sliding Window 20 tin nhắn TTL 60p | `src/backend/graph/`, `src/backend/agents/`, `src/backend/domain/memory/` |
+| **Module 3: Production LLMOps & CI/CD** | Prompt Registry (alias `production`), Golden Slices, Eval Gate, Token & Cost Governance, Docker, CI/CD | Prompt Registry tập trung, 20 test cases v6, so sánh baseline gate, đo token từng câu, GitHub Actions CI/CD < 5m | `src/backend/infra/llm/prompt_registry.py`, `src/backend/eval/`, `src/backend/infra/cost/`, `.github/workflows/` |
+
+---
+
+## 3. Kiến Trúc Swarm Multi-Agent & Luồng Dữ Liệu
 
 ```mermaid
 graph TD
-    User([Người dùng / Web UI]) --> Guardrail[1. Pre-Rewrite Guardrail]
+    User([Người dùng / Web UI :8000]) --> API[FastAPI Gateway: src/backend/api/]
     
-    Guardrail -->|Tấn công / Ngoài phạm vi| Refusal[Guardrail Refusal Node]
-    Guardrail -->|Chào hỏi: Greeting Fast-Path| Composer[Answer Composer / Chat LLM]
-    Guardrail -->|Câu hỏi chứng khoán hợp lệ| Rewrite[2. Rewrite & Query Decomposition]
+    subgraph Config & Secrets
+        Env[".env (Chỉ chứa Secrets: API Keys)"]
+        Yaml["resources/configs/config.yaml (Master App Config)"]
+    end
+    Env -.-> Settings[Settings Loader]
+    Yaml -.-> Settings
+    Settings --> API
+
+    API --> Guardrail[1. Input Guardrail]
+    Guardrail -->|Tấn công Injection / Phi tài chính| Refusal[Từ chối an toàn / Lịch sự]
+    Guardrail -->|Chào hỏi: Greeting Fast-Path| Composer[Answer Composer: TTFT < 1.0s]
+    Guardrail -->|Câu hỏi chứng khoán hợp lệ| Rewrite[2. Rewrite & Decomposition]
+
+    Rewrite --> Supervisor[3. Supervisor Orchestrator]
     
-    Rewrite --> Supervisor[3. Supervisor Orchestration Node]
-    
-    Supervisor -->|Sub-query giá| PriceAgent[Price Agent: OHLCV & Market 10D]
-    Supervisor -->|Sub-query tin tức| NewsAgent[News Agent: Vnstock & CafeF]
-    Supervisor -->|Sub-query kỹ thuật| IndicatorEngine[Indicator Engine: RSI 14 / SMA 20-50]
-    Supervisor -->|Yêu cầu vẽ đồ thị| ChartAgent[Chart Agent: Matplotlib Candlestick]
-    Supervisor -->|Yêu cầu danh mục & watchlist| PortfolioWatchAgent[PortfolioWatch Agent: P&L, NAV, Watchlist]
-    
-    PriceAgent --> EvalAgent[4. Eval Agent: Risk & Anomaly Assessment]
+    subgraph Swarm Worker Agents
+        Supervisor --> PriceAgent[Price Agent: Vnstock OHLCV]
+        Supervisor --> NewsAgent[News Agent: CafeF & Vnstock]
+        Supervisor --> IndicatorEngine[Indicator Engine: RSI / SMA]
+        Supervisor --> ChartAgent[Chart Agent: Matplotlib Candlestick]
+        Supervisor --> PWAgent[PortfolioWatch Agent: P&L, NAV, Watchlist]
+    end
+
+    PriceAgent --> EvalAgent[4. Eval Agent: Rủi ro & Bất thường]
     NewsAgent --> EvalAgent
     IndicatorEngine --> EvalAgent
-    
+
     PriceAgent --> Composer
     NewsAgent --> Composer
     EvalAgent --> Composer
     ChartAgent --> Composer
-    PortfolioWatchAgent --> Composer
-    
-    Composer --> SSE[5. SSE Streaming Response: Markdown + Chart + P&L]
-    Refusal --> SSE
+    PWAgent --> Composer
+
+    subgraph Storage Systems
+        DB1[(portfolio_watch.db)]
+        DB2[(backend_store.db)]
+        Cache1[(2-Tier Cache Engine)]
+        ChartStore[resources/data/charts/*.png]
+    end
+
+    PWAgent <--> DB1
+    PWAgent <--> DB2
+    PriceAgent <--> Cache1
+    ChartAgent --> ChartStore
+
+    Composer --> SSEStream[5. SSE Streaming Output: Markdown + Chart + P&L Table]
+    Refusal --> SSEStream
 ```
 
 ---
 
-## 3. Danh Mục Tính Năng (Feature Inventory)
+## 4. Kê Khai Toàn Diện Hệ Thống Lưu Trữ & Cơ Sở Dữ Liệu (Storage Inventory)
 
-| Phân hệ / Chức năng | Mô tả chi tiết | Module / Agent phụ trách |
-| :--- | :--- | :--- |
-| **0. Luồng Chào Hỏi (Fast-Path)** | Nhận diện câu chào ("Xin chào", "Chào bạn", "Hello"), nối thẳng tới Chat LLM phản hồi thân thiện, bỏ qua Worker tra cứu. | `InputGuardrail`, `AnswerComposer` |
-| **1. Tra cứu giá & thị trường** | Tra cứu giá khớp lệnh, % biến động, trần/sàn, lịch sử giá 10 phiên; fallback dữ liệu mẫu khi sàn đóng cửa. | `PriceAgent`, `VnstockPriceSource` |
-| **2. Bảng theo dõi Market Matrix 10D**| Endpoint `/api/v1/market/matrix-10d` cung cấp ma trận giá kèm sparklines cho top cổ phiếu VN30. | `MarketService`, `MarketRouter` |
-| **3. Tổng hợp tin tức tài chính** | Cào và tổng hợp tin tức nóng từ Vnstock News & CafeF, trích dẫn nguồn minh bạch. | `NewsAgent`, `CafefNewsSource` |
-| **4. Chỉ báo kỹ thuật định lượng** | Tính toán RSI(14) (vùng quá mua >70, quá bán <30), SMA(20), SMA(50), tín hiệu Golden/Death Cross. | `TechnicalIndicatorService` |
-| **5. Đánh giá rủi ro & bất thường** | Phân loại rủi ro (`none`, `low`, `medium`, `high`) kết hợp từ chỉ báo kỹ thuật và tin tức. | `EvalAgent` |
-| **6. Phân rã câu hỏi đa ý (Decomposition)** | Tự động phân rã câu hỏi so sánh đa mã (FPT vs HPG) thành 2 sub-queries độc lập để thu thập đủ dữ liệu. | `RewriteBrain`, `supervisor_agent.nodes` |
-| **7. Quản lý danh mục & P&L** | Lưu trữ số lượng, giá vốn, tự động tính Unrealized P&L (VND & %) và tổng NAV theo từng `user_id`. | `PortfolioWatchAgent`, `PortfolioService` |
-| **8. Danh mục theo dõi & Cảnh báo** | Thêm/bớt mã theo dõi, cấu hình ngưỡng cảnh báo biến động (`alert_threshold_pct`) cho từng user. | `PortfolioWatchAgent`, `WatchlistStore` |
-| **9. Vẽ biểu đồ nến & đồ thị giá** | Tự động sinh biểu đồ nến kỹ thuật kèm SMA qua Matplotlib, nhúng URL ảnh tĩnh hiển thị trong chat. | `ChartAgent` |
-| **10. Tường lửa an toàn (Guardrails)** | Chặn 100% Prompt Injection, từ chối câu hỏi ngoài phạm vi, đính kèm miễn trừ trách nhiệm đầu tư trung lập. | `PreRewriteGuardrail`, `AnswerComposer` |
-| **11. Web UI & Live Agent Graph** | Giao diện Chat Markdown streaming (SSE), đồ thị Live Agent Graph cập nhật thời gian thực, bảng P&L và User Switcher. | `src/frontend/`, `src/backend/main.py` |
+Hệ thống sử dụng kiến trúc lưu trữ phân tầng nhằm bảo đảm tốc độ truy xuất, cô lập dữ liệu người dùng và lưu vết phục vụ LLMOps:
 
----
-
-## 4. Hồ Sơ Spec-Driven Development (SDD)
-
-Bộ tài liệu đặc tả được duy trì tại thư mục `specs/`:
-* [specs/product-spec.md](specs/product-spec.md): Mục tiêu app, Core User Flow, danh mục tính năng in-scope/out-of-scope, 9 Tiêu chí nghiệm thu (Acceptance Criteria).
-* [specs/implementation-plan.md](specs/implementation-plan.md): Kế hoạch triển khai chia thành 5 phase nhỏ gọn, chi tiết checklist từng bước.
-* [specs/test-plan.md](specs/test-plan.md): Kế hoạch kiểm thử 4 lớp (Unit test, Đánh giá Golden Dataset v6, Đo lường định lượng và Kịch bản Demo 10 bước).
-* [specs/change-log.md](specs/change-log.md): Nhật ký chi tiết tiến trình cập nhật và kết quả kiểm thử.
-* [AGENTS.md](AGENTS.md): Bản quy tắc ứng xử bắt buộc dành cho AI Coding Assistant.
+| Hệ Thống Lưu Trữ | Vị Trí Lưu Trữ | Tên Bảng / Mục Đích | Chi Tiết Cấu Trúc & Dữ Liệu |
+| :--- | :--- | :--- | :--- |
+| **SQLite 1: Core AI DB** | `resources/data/portfolio_watch.db` | `sessions` | Quản lý phiên hội thoại (`session_id`, `user_id`, `created_at`, `updated_at`). |
+| | | `messages` | Lịch sử chat ngắn hạn phục vụ Sliding Window và kiểm soát độ tươi (TTL 60 phút). |
+| | | `portfolio_holdings` | Danh mục cổ phiếu nắm giữ của từng user (`user_id`, `ticker`, `shares`, `buy_price`, `buy_date`). |
+| | | `user_settings` | Cấu hình cá nhân hóa người dùng (`user_id`, `risk_profile`, `alert_threshold_pct`). |
+| | | `market_history_10d` | Bộ nhớ đệm lịch sử giá 10 ngày từ Vnstock phục vụ tính SMA/RSI khi offline. |
+| | | `hitl_evaluations` | Nhật ký phản hồi Human-in-the-loop (Like/Dislike, đánh giá người dùng). |
+| **SQLite 2: Product DB** | `resources/data/backend_store.db` | `watchlist` | Danh sách mã theo dõi trực tiếp từ Web UI (`user_id`, `ticker`, `alert_threshold_pct`, `created_at`). |
+| | | `conversations` | Lưu vết toàn bộ hội thoại người dùng đồng bộ với Web UI. |
+| | | `alert_events` | Lịch sử cảnh báo biến động giá cổ phiếu vượt ngưỡng thiết lập. |
+| **Bộ Nhớ Đệm Cache 2 Tầng** | In-memory RAM & SQLite | `Exact Cache (Tầng 1)` | Lưu cặp `Hash MD5(Prompt) -> Response`, TTL 24h, trúng cache tức thì (< 1ms). |
+| | | `Semantic Cache (Tầng 2)` | Vector embedding cosine similarity $\ge 0.93$, xử lý câu hỏi gần tương đương (near-duplicates). |
+| **Lưu Trữ Tệp Ảnh Biểu Đồ** | `resources/data/charts/` | Tệp ảnh PNG nến kỹ thuật | Chứa các file ảnh Candlestick chart được sinh tự động bởi `ChartAgent` qua Matplotlib. |
 
 ---
 
-## 5. Hướng Dẫn Cài Đặt & Chạy Cục Bộ (Local Run Guide)
+## 5. Danh Mục Tính Năng Nghiệp Vụ (Feature Inventory)
 
-### Yêu Cầu Môi Trường
-* Python $\ge$ 3.10 (khuyến nghị Python 3.11 hoặc 3.12)
-* SQLite 3
-* Git
+| STT | Tên Tính Năng | Mô Tả Nghiệp Vụ Chi Tiết | Phân Hệ Phụ Trách |
+| :---: | :--- | :--- | :--- |
+| **1** | **Greeting Fast-Path** | Phản hồi câu chào hỏi ("Xin chào", "Hello") tức thì (< 1.0s), hướng dẫn các tính năng chính và gợi ý câu hỏi mẫu. | `InputGuardrail`, `AnswerComposer` |
+| **2** | **Tường Lửa Guardrail** | Chặn 100% tấn công Prompt Injection; từ chối câu hỏi ngoài phạm vi chứng khoán Việt Nam; bắt buộc gắn cảnh báo rủi ro khi xin tư vấn. | `InputGuardrail`, `OutputGuardrail` |
+| **3** | **Tra Cứu Giá Thị Trường** | Cung cấp giá khớp lệnh, % biến động, trần/sàn, lịch sử 10-30 phiên từ Vnstock, có fallback offline mẫu. | `PriceAgent`, `VnstockPriceSource` |
+| **4** | **Tổng Hợp Tin Tức Doanh Nghiệp** | Thu thập và tóm tắt tin tức nóng từ Vnstock News & CafeF, trích dẫn nguồn tin uy tín minh bạch. | `NewsAgent`, `CafefNewsSource` |
+| **5** | **Tính Toán Chỉ Báo Kỹ Thuật** | Tính toán định lượng RSI(14) (quá mua >70, quá bán <30), SMA(20), SMA(50), nhận diện Golden/Death Cross. | `TechnicalIndicatorService` |
+| **6** | **So Sánh Cổ Phiếu Đa Mã** | Phân rã câu hỏi so sánh thành các sub-queries độc lập và đối chiếu thị giá, biến động của 2 mã trong bảng Markdown. | `RewriteBrain`, `SupervisorBrain` |
+| **7** | **Vẽ Biểu Đồ Nến Kỹ Thuật** | Tự động sinh ảnh biểu đồ nến Candlestick kết hợp SMA bằng Matplotlib, nhúng URL ảnh tĩnh vào câu trả lời Markdown. | `ChartAgent` |
+| **8** | **Quản Lý Danh Mục P&L & NAV** | Tính toán chi phí vốn, thị giá hiện tại, Unrealized P&L (VND & %) và tổng NAV độc lập theo `user_id`. | `PortfolioWatchAgent`, `PortfolioService` |
+| **9** | **Danh Sách Theo Dõi & Cảnh Báo** | Truy xuất và quản lý danh sách mã theo dõi (Watchlist) kèm ngưỡng cảnh báo biến động (`alert_threshold_pct`). | `PortfolioWatchAgent`, `WatchlistStore` |
+| **10**| **Miễn Trừ Trách Nhiệm Bắt Buộc** | Từ chối đưa ra lời khuyên đầu tư trực tiếp, bắt buộc chứa cụm từ *"miễn trừ trách nhiệm"*, không chứa *"nên mua/bán"*. | `OutputGuardrail`, `AnswerComposer` |
+| **11**| **Live Agent Graph & Trực Quan Hóa**| Đồ thị mạng lưới trực quan hóa trạng thái từng Agent theo thời gian thực trên Web UI (sáng đèn khi xử lý, hover xem I/O). | `Web UI Frontend` |
+| **12**| **Bộ Nhớ Ngắn Hạn & Độ Tươi** | Lưu trữ sliding window 20 tin nhắn gần nhất; tự động hết hạn sau 60 phút không tương tác (TTL Eviction). | `MemoryManager`, `SessionRepository` |
+| **13**| **Bộ Nhớ Đệm Cache 2 Tầng** | Tiết kiệm 30.0% chi phí gọi LLM và giảm độ trễ trả lời qua bộ nhớ đệm Exact MD5 + Semantic Cosine $\ge 0.93$. | `ExactCache`, `SemanticCache` |
+| **14**| **Đo Lường Token & Chi Phí** | Tính toán chính xác số lượng token prompt/completion và chi phí tương ứng (USD và VNĐ) cho từng lượt phản hồi. | `TokenTracker`, `CostTracker` |
+| **15**| **Đánh Giá Kiểm Chuẩn Golden v6** | Đánh giá tự động 20 ca kiểm chuẩn bao phủ 10 lát cắt chức năng, chặn suy giảm chất lượng qua cổng kiểm thử Eval Gate. | `EvalGate`, `GoldenRunner` |
 
-### Cài Đặt Ban Đầu
+---
+
+## 6. Cấu Trúc Thư Mục Chuẩn Sạch (Repository Layout)
+
+```
+vn-stock-swarm/
+├── .github/workflows/          # CI/CD Workflows (ci.yml, eval-gate.yml, cd.yml)
+├── resources/                  # Tài nguyên tĩnh tổng hợp (Master Assets)
+│   ├── configs/
+│   │   └── config.yaml         # Master Application Config (LLM, App, Cache, Storage)
+│   ├── data/                   # CSDL SQLite & Tệp ảnh biểu đồ
+│   │   ├── charts/             # Ảnh Candlestick charts sinh tự động
+│   │   ├── portfolio_watch.db  # CSDL AI core
+│   │   └── backend_store.db    # CSDL Product & Watchlist
+│   ├── docs/                   # Sơ đồ kiến trúc & Playbook sự cố Module 3
+│   ├── eval/                   # Dữ liệu đánh giá Golden v6, Replay FAQ 200 câu & Báo cáo Excel
+│   └── prompts/                # Prompt Registry tập trung (alias production)
+├── specs/                      # Toàn bộ hồ sơ Spec-Driven Development (SDD)
+│   ├── product-spec.md         # Đặc tả yêu cầu sản phẩm & kiến trúc
+│   ├── implementation-plan.md  # Kế hoạch triển khai 6 Phase chi tiết
+│   ├── test-plan.md            # Kế hoạch kiểm thử kim tự tháp 3 tầng
+│   ├── change-log.md           # Nhật ký thay đổi & mốc phát triển
+│   └── project-summary.md      # Tài liệu tổng hợp bảo vệ đồ án cuối khóa
+├── src/                        # Toàn bộ mã nguồn thực thi của hệ thống
+│   ├── backend/                # FastAPI & LangGraph Multi-Agent Backend
+│   │   ├── agents/             # 7 Worker Agents + Supervisor + Composer
+│   │   ├── api/                # REST API Routers, Middleware, Schemas & App Entrypoint
+│   │   ├── domain/             # Logic nghiệp vụ (Guardrails, Indicators, Memory)
+│   │   ├── eval/               # Eval Gate, Metrics, Scorers
+│   │   ├── graph/              # Đồ thị LangGraph Chat Orchestrator
+│   │   ├── infra/              # External Adapters (LLM, Cache 2-Tier, Market Data, Storage)
+│   │   └── services/           # Nghiệp vụ Portfolio, Market & Alert
+│   ├── frontend/               # Giao diện Web App (HTML5, Vanilla CSS, JS SSE Streaming)
+│   └── deploy/                 # Dockerfile, Docker Compose, Nginx conf & Smoke test
+├── tests/                      # Kim tự tháp kiểm thử 3 tầng
+│   ├── unit/                   # Fast isolated unit tests (< 1s/test)
+│   ├── integration/            # API, DB, Graph, 2-Tier Cache integration tests
+│   ├── e2e/                    # Golden Dataset v6, Demo Walkthrough, Docker tests
+│   └── conftest.py             # Fixtures & Offline Mock config
+├── scripts/                    # Scripts vận hành chính thức (Benchmark, Cost, Eval)
+├── .env                        # Chứa duy nhất các Secrets (API Keys)
+├── .env.example                # Mẫu biến môi trường tối giản
+├── pyproject.toml              # Quản lý dependencies & metadata
+└── README.md                   # Tài liệu hướng dẫn sản phẩm
+```
+
+---
+
+## 7. Hướng Dẫn Cài Đặt & Vận Hành Nhanh
+
+### 7.1. Cài Đặt Môi Trường Cục Bộ (Native Python)
 ```bash
-# 1. Khởi tạo và kích hoạt virtual environment
-# Windows (PowerShell):
-py -m venv $HOME\.venv
+# 1. Kích hoạt môi trường ảo Python >= 3.10
+# Windows:
 & "$HOME\.venv\Scripts\Activate.ps1"
-
-# Linux / macOS (Bash):
-python3 -m venv ~/.venv
+# Linux / macOS:
 source ~/.venv/bin/activate
 
-# 2. Cài đặt dependencies
-pip install -U pip setuptools wheel
-pip install -e ".[dev]"
+# 2. Cài đặt các thư viện cần thiết
+pip install -e .
 
-# 3. Tạo file cấu hình môi trường
-# Windows (PowerShell):
-Copy-Item .env.example .env
+# 3. Cấu hình API Key trong file .env
+echo "OPENAI_API_KEYS=sk-proj-xxxxx" > .env
 
-# Linux / macOS:
-cp .env.example .env
+# 4. Khởi chạy Web App
+uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
+# Truy cập giao diện tại: http://localhost:8000
 ```
 
-### Chạy Nhanh Bằng Script Tự Động (Khuyến Nghị)
-
-* **Trên Windows (PowerShell):**
-  ```powershell
-  .\scripts\run_local.ps1
-  ```
-
-* **Trên Linux / macOS (Bash):**
-  ```bash
-  chmod +x ./scripts/run_local.sh
-  ./scripts/run_local.sh
-  ```
-
-### Chạy Thủ Công Qua Uvicorn
+### 7.2. Khởi Chạy Bằng Docker Compose
 ```bash
-# Windows (PowerShell):
-$env:PYTHONPATH="src"
-python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
-
-# Linux / macOS (Bash):
-export PYTHONPATH="src"
-python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
-```
-
-* **Giao diện Web App UI:** `http://localhost:8000`
-* **Tài liệu API (Swagger UI):** `http://localhost:8000/docs`
-* **Kiểm tra trạng thái (Health Check):** `http://localhost:8000/health`
-
-### Vận Hành Bằng Docker Compose
-```bash
-# Build các image dịch vụ
+# Build Docker image
 docker compose build
 
-# Khởi động toàn bộ dịch vụ (Backend + Nginx Frontend)
+# Khởi chạy các container nền
 docker compose up -d
 
-# Xem log backend
-docker compose logs -f backend
-
-# Dừng các container
-docker compose down
+# Truy cập sản phẩm:
+# - Frontend: http://localhost:3001
+# - Backend API & Docs: http://localhost:8000
 ```
 
-* **Giao diện Web App qua Docker Nginx:** `http://localhost:3001`
-
----
-
-## 6. Hướng Dẫn Demo Bằng ngrok (Demo with ngrok)
-
-Để chia sẻ bản demo cục bộ ra internet phục vụ kiểm thử từ xa:
-
+### 7.3. Thực Thi Bộ Kiểm Thử 3 Tầng
 ```bash
-# 1. Khởi động ứng dụng cục bộ tại port 8000
-.\scripts\run_local.ps1
-
-# 2. Mở cửa sổ Terminal mới và kích hoạt tunnel ngrok
-ngrok http 8000
-```
-
-Sau khi chạy, ngrok sẽ cung cấp một đường link công khai an toàn dạng:
-```
-Forwarding: https://xxxx-xx-xx-xx.ngrok-free.app -> http://localhost:8000
-```
-Người dùng hoặc đối tác có thể mở liên kết HTTPS trên để trải nghiệm đầy đủ giao diện Web App, Chat SSE và Live Agent Graph từ bất kỳ thiết bị nào.
-
----
-
-## 7. Kiểm Thử, Đánh Giá & Benchmark Chi Phí
-
-```bash
-# 1. Chạy toàn bộ test suite kiểm thử đơn vị & tích hợp (291 tests)
+# Chạy toàn bộ 3 tầng kiểm thử (< 15 giây với offline mock)
 pytest tests/ -v
 
-# 2. Chạy đánh giá tự động trên tập Golden Dataset v6 (20 test cases, 10 lát cắt)
-python -m backend.eval.run --dataset specs/eval/golden_v6_comprehensive.yaml --json specs/eval/eval_summary_v6.json --report specs/eval/eval_summary_v6.md
-
-# 3. Chạy đo lường Cost Baseline trên tập Replay FAQ 200 câu (Hands-on M3-B3 & B6)
-PYTHONPATH=src python scripts/cost_baseline.py --dry-run
-
-# 4. Chạy Benchmark Cache 2 tầng (Exact Hash + Semantic Cosine >= 0.93)
-PYTHONPATH=src python scripts/cache_benchmark.py --dry-run
+# Chạy riêng kiểm thử Golden Dataset v6 (20/20 test cases)
+pytest tests/e2e/test_golden_v6_slices.py -v
 ```
 
-### Bảng So Sánh Hiệu Quả 2-Tier Caching (Tập Replay 200 Câu FAQ):
+---
 
-| Chế độ Cache | Số lượt gọi LLM | Tổng Tokens | Chi phí (USD) | Lượt Cache Hit | Hit Rate | Mức tiết kiệm |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Không cache (Baseline)** | 600 | 623,940 | $0.131364 | 0 | 0.0% | — |
-| **Chỉ tầng 1 (Exact)** | 1,200 (2 pass) | 623,940 | $0.131364 | 600 | 50.0% | Tiết kiệm khi lặp lại |
-| **Tầng 1 & 2 (Exact + Semantic)** | 600 | 436,740 | $0.091944 | 180 | 30.0% | **Tiết kiệm 30.0% tổng chi phí** |
-
-*Audit 10 mẫu Semantic Cache hit:* Xác nhận **0 false hit** (độ tương đồng Cosine $\ge 0.93$).
-
-### Các Báo Cáo Đo Lường & Đánh Giá Đã Xuất Bản:
-* **Bảng Đánh Giá Chi Tiết Golden v5 + v6 (60 câu hỏi - Excel):** [resources/eval/danh_gia_chi_tiet_golden_v5_v6.xlsx](resources/eval/danh_gia_chi_tiet_golden_v5_v6.xlsx) (59/60 PASS - 98.3%, có đủ giá USD, VNĐ, tokens, latency và trace).
-* **Báo Cáo Benchmark Cache 2 Tầng (200 câu FAQ):** [specs/eval/cache_benchmark.md](specs/eval/cache_benchmark.md) (Tỷ lệ trúng cache 30.0%, tiết kiệm 30.0% chi phí).
-* **Báo Cáo Baseline Chi Phí Gọi LLM:** [specs/eval/cost_baseline.md](specs/eval/cost_baseline.md).
-* **Báo Cáo Đánh Giá Golden Dataset v6:** [specs/eval/eval_summary_v6.md](specs/eval/eval_summary_v6.md).
-
+## 8. Hướng Dẫn Trình Bày Bảo Vệ Đồ Án Cuối Khóa (Capstone Presentation)
+Vui lòng tham khảo chi tiết tài liệu [specs/project-summary.md](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/specs/project-summary.md) để xem:
+- Kịch bản demo 5 phút theo từng bước bấm trên màn hình.
+- Danh mục câu hỏi phản biện thường gặp của Hội đồng và câu trả lời mẫu.
+- Số liệu đo lường định lượng tiết kiệm chi phí và tỷ lệ cache hit.

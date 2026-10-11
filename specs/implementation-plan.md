@@ -1,138 +1,158 @@
-# Implementation Plan — VN Stock Swarm (Cập Nhật Golden v6 & Luồng Chào Hỏi)
+# Implementation Plan — VN Stock Swarm (Capstone Refactoring & Modular SDD)
 
-Kế hoạch triển khai được chia thành các phase nhỏ, có thể thực hiện và kiểm thử độc lập từng bước theo đúng phương pháp **Spec-Driven Development (SDD)**.
+Kế hoạch tái cấu trúc và chuẩn hóa toàn diện dự án theo phương pháp **Spec-Driven Development (SDD)**, chia thành các **Phase nhỏ, độc lập và có tiêu chí nghiệm thu rõ ràng**.
 
-> **Nguyên tắc**: Mỗi lần chỉ thực hiện duy nhất 01 task hoặc 01 phase được người dùng yêu cầu. Chưa viết bất kỳ mã nguồn nào khi chưa có chỉ đạo tiếp theo.
-
----
-
-## Danh Sách Các Phase Triển Khai
-
-- [x] **Phase 1: Luồng Chào Hỏi Nối Thẳng (Greeting Fast-Path)** (Hoàn thành - 25/25 unit tests passed)
-- [x] **Phase 2: Xây Dựng `PortfolioWatchAgent` (Quản Lý Danh Mục P&L & Watchlist)** (Hoàn thành - 8/8 unit tests passed)
-- [x] **Phase 3: Tối Ưu Độ Chính Xác Các Lát Cắt Thị Trường & Tường Lửa (Golden v6)** (Hoàn thành - 20/20 Golden v6 cases & 8/8 unit tests passed)
-- [x] **Phase 4: Tích Hợp Web UI Streaming & Live Agent Graph** (Hoàn thành - 6/6 UI integration tests & 84/84 regression tests passed)
-- [x] **Phase 5: Đánh Giá Toàn Diện Golden Dataset v6 & Kiểm Thử Hồi Quy** (Hoàn thành - 20/20 Golden v6 cases & 291/291 unit tests passed)
-- [x] **Phase 6: Mở Rộng Dataset 200 Câu Replay FAQ, Benchmark 2-Tier Cache & Đồng Bộ Watchlist DB** (Hoàn thành - 200 FAQ cases, 30.0% Cache Hit Rate & Cost Savings, 59/60 Golden Eval passed)
+> **Quy tắc thực thi cốt lõi (Core Execution Rules)**:
+> 1. Mỗi lần chỉ thực hiện duy nhất **01 phase hoặc 01 checklist item** được chỉ định.
+> 2. **Chưa viết bất kỳ dòng mã nguồn nào khi chưa có sự xác nhận từ người dùng** (*"Do not write code yet"*).
+> 3. Sau mỗi phase, luôn chạy lệnh kiểm thử xác minh và cập nhật trạng thái checklist kèm nhật ký tại [specs/change-log.md](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/specs/change-log.md).
 
 ---
 
-## Chi Tiết Các Phase & Checklist Triển Khai
+## Danh Sách Các Phase Triển Khai (Phase Overview)
 
-### Phase 1: Luồng Chào Hỏi Nối Thẳng (Greeting Fast-Path)
-> **Mục tiêu**: Nhận diện câu chào hỏi thông thường là an toàn tại Guardrail, nối thẳng sang Chat LLM/Composer để phản hồi thân thiện tức thì, không bị Guardrail từ chối và không kích hoạt các Worker tra cứu giá (tránh lỗi thiếu mã).
-
-- [x] **1.1. Cập nhật Input Guardrail (`src/backend/domain/guardrails/input_guardrail.py`)**:
-  - Bổ sung bộ nhận diện chào hỏi thông dụng (`_GREETING_PATTERNS` / `_GREETING_REGEXES`): "xin chào", "chào bạn", "chào bot", "hello", "hi", "chào buổi sáng", "bạn là ai", "bạn có thể làm gì".
-  - Bổ sung phân loại `category="greeting"`, đánh dấu `is_safe=True` (không bị đưa vào `out_of_scope_general`).
-- [x] **1.2. Định tuyến Fast-Path trong Swarm Graph (`src/backend/graph/chat.py`)**:
-  - Tại hàm `route_after_guardrail`: Nếu `guardrail_result.category == "greeting"` -> định tuyến trực tiếp sang `composer_node` (hoặc `greeting_node`).
-  - Bỏ qua hoàn toàn `rewrite_node`, `supervisor_node` và toàn bộ các Worker Agents (`PriceAgent`, `NewsAgent`, `ChartAgent`, `IndicatorEngine`).
-- [x] **1.3. Nội dung phản hồi chào hỏi thân thiện & Gợi ý năng lực**:
-  - Trả lời lời chào nồng nhiệt, giới thiệu 5 năng lực chính: Tra cứu thị giá, Tin tức CafeF/Vnstock, Chỉ báo RSI/SMA, So sánh cổ phiếu, Danh mục P&L/NAV và Vẽ biểu đồ nến.
-  - Gợi ý 2-3 câu hỏi mẫu để người dùng bắt đầu.
-- [x] **1.4. Viết Unit Test cho luồng Chào hỏi (`tests/test_greeting_fastpath.py`)**:
-  - Kiểm thử các câu chào tiếng Việt và tiếng Anh đi qua Guardrail an toàn.
-  - Kiểm thử phản hồi nhanh với TTFT < 1.0s, xác nhận không gọi nhầm `PriceAgent`.
+- [x] **Phase 1: Chuẩn Hóa Cấu Hình Tập Trung (Config Decoupling — `config.yaml` & `.env`)** (Hoàn thành - 5/5 tests passed)
+- [x] **Phase 2: Tinh Gọn & Làm Sạch Tài Nguyên (`resources/eval/` & `specs/`)** (Hoàn thành - 48/48 tests passed)
+- [x] **Phase 3: Tinh Gọn Thư Mục Scripts Vận Hành (`scripts/`)** (Hoàn thành - dry-run & eval runner verified)
+- [x] **Phase 4: Di Dời Thư Mục Triển Khai (`deploy/` -> `src/deploy/`)** (Hoàn thành - CI workflows & smoke tests passed)
+- [x] **Phase 5: Module Hóa Mã Nguồn Backend (`src/backend/`)** (Hoàn thành - 49/49 tests passed)
+- [ ] **Phase 6: Tái Cấu Trúc Bộ Kiểm Thử 3 Tầng (`tests/unit/`, `tests/integration/`, `tests/e2e/`)**
+- [ ] **Phase 7: Kiểm Thử Toàn Diện, Đo Lường Tốc Độ CI & Nghiệm Thu Đồ Án**
 
 ---
 
-### Phase 2: Xây Dựng `PortfolioWatchAgent` (Quản Lý Danh Mục P&L & Watchlist)
-> **Mục tiêu**: Bổ sung Agent chuyên trách xử lý trọn vẹn 2 lát cắt `portfolio` và `watchlist`, khắc phục triệt để lỗi Supervisor nhận nhầm các từ tiếng Việt (`TRA`, `XEM`, `NAV`) thành mã cổ phiếu.
+## Chi Tiết Từng Phase & Checklist Thực Thi
 
-- [x] **2.1. Xây dựng module `PortfolioWatchAgent` (`src/backend/agents/portfolio_watch_agent/`)**:
-  - Tạo các file `__init__.py`, `nodes.py`, `schemas.py`.
-  - Tích hợp `PortfolioService` & `PortfolioHoldingRepository`: Tính toán giá trị vốn, thị giá hiện tại, Unrealized P&L (VND & %) và tổng NAV theo `user_id`.
-  - Tích hợp `WatchlistStore` & `UserSettingsRepository`: Lấy danh sách mã theo dõi và ngưỡng cảnh báo biến động (`alert_threshold_pct`).
-- [x] **2.2. Nâng cấp Supervisor Router (`src/backend/agents/supervisor_agent/nodes.py`)**:
-  - Thêm intent `portfolio` và `watchlist` vào `_ALLOWED_INTENTS`.
-  - Điều phối cuộc gọi sang `PortfolioWatchAgent` khi người dùng hỏi về danh mục hoặc danh sách theo dõi.
-  - Bổ sung bộ lọc chặn bóc tách ticker ảo: Khi câu hỏi thuộc intent portfolio/watchlist, không nhận nhầm `TRA` (trong "Kiểm tra"), `NAV` (trong "tổng giá trị NAV"), `XEM` (trong "Xem các mã").
-- [x] **2.3. Tích hợp `PortfolioWatchAgent` vào Swarm Graph (`src/backend/graph/chat.py`)**:
-  - Bổ sung node gọi `PortfolioWatchAgent` trong đồ thị LangGraph hoặc tích hợp trong `workers_node`.
-  - Truyền kết quả vào `AnswerComposer` để định dạng bảng tóm tắt P&L và danh sách watchlist chuẩn Markdown.
-- [x] **2.4. Viết Unit Test cho `PortfolioWatchAgent` (`tests/test_portfolio_watch_agent.py`)**:
-  - Kiểm thử truy vấn danh mục cho `User A`, `User B` và `Default` (cô lập đa tài khoản).
-  - Kiểm thử truy vấn watchlist kèm ngưỡng cảnh báo.
-  - Xác nhận câu hỏi `portfolio_02` không còn bị bóc tách nhầm thành mã `TRA` và `NAV`.
+### Phase 1: Chuẩn Hóa Cấu Hình Tập Trung (Config Decoupling)
+> **Mục tiêu**: Tách bạch tuyệt đối giữa **Bí mật (Secrets)** và **Cấu hình vận hành (Runtime Configs)**. File `.env` chỉ chứa API keys; toàn bộ tham số ứng dụng được quản lý tập trung tại [resources/configs/config.yaml](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/resources/configs/config.yaml).
 
----
-
-### Phase 3: Tối Ưu Độ Chính Xác Các Lát Cắt Thị Trường & Tường Lửa (Golden v6)
-> **Mục tiêu**: Rà soát và đảm bảo 8 lát cắt còn lại trong `specs/eval/golden_v6_comprehensive.yaml` đáp ứng đầy đủ các ràng buộc `must_include` và `must_not_include`.
-
-- [x] **3.1. Lát cắt `lookup` (Tra cứu giá FPT, VNM)**:
-  - Đảm bảo trích xuất chính xác mã cổ phiếu, trả về thị giá và % biến động phiên.
-  - Ràng buộc: Tuyệt đối không chứa khuyến nghị mua bán ("nên mua", "nên bán").
-- [x] **3.2. Lát cắt `news` (Tin tức VNM, HPG)**:
-  - Thu thập tin tức mới nhất từ Vnstock News & CafeF, trích dẫn nguồn tin uy tín (CafeF / Vnstock).
-  - Ràng buộc: Tuyệt đối không chứa khuyến nghị mua bán.
-- [x] **3.3. Lát cắt `indicator` (Chỉ báo kỹ thuật HPG, FPT)**:
-  - Phân tích khách quan RSI(14) và các đường trung bình SMA20/50.
-  - Đảm bảo bộ lọc stopwords loại trừ triệt để các mã giả lập (QUA, RSI, MA20).
-- [x] **3.4. Lát cắt `comparison` (So sánh FPT vs HPG, VNM vs HPG)**:
-  - Phân rã câu hỏi so sánh thành các sub-queries độc lập qua Query Decomposition.
-  - Đối chiếu dữ liệu thị giá và biến động của cả 2 mã trong bảng so sánh rõ ràng.
-- [x] **3.5. Lát cắt `chart` (Vẽ biểu đồ nến kỹ thuật FPT, HPG)**:
-  - Sinh biểu đồ nến kỹ thuật kết hợp SMA bằng Matplotlib qua `ChartAgent`.
-  - Nhúng đường dẫn ảnh tĩnh hợp lệ (`/static/charts/...`) vào câu trả lời Markdown.
-- [x] **3.6. Lát cắt `out_of_scope` (Thời tiết Hà Nội, Cổ phiếu Mỹ sàn Nasdaq)**:
-  - Guardrail từ chối lịch sự, nêu rõ phạm vi hỗ trợ là thị trường chứng khoán Việt Nam.
-- [x] **3.7. Lát cắt `injection` (Tấn công lộ secret prompt, ép khuyên mua)**:
-  - Guardrail chặn đứng 100% các hành vi can thiệp hệ thống và ép khuyên đầu tư.
-- [x] **3.8. Lát cắt `disclaimer` (Hỏi có nên mua FPT, có nên bán hết HPG)**:
-  - Từ chối đưa ra lời khuyên đầu tư trực tiếp, bắt buộc chứa cụm từ *"miễn trừ trách nhiệm"*, tuyệt đối không chứa *"nên mua"* hoặc *"nên bán"*.
+- [x] **1.1. Soạn thảo tệp cấu hình `resources/configs/config.yaml` chuẩn mực**:
+  - `app`: tên ứng dụng, host, port (8000), log_level (INFO), cors_origins.
+  - `llm`: backend (`openai`/`ollama`/`vllm`), model (`gpt-4o-mini`), temperature (0.2), max_completion_tokens (800), top_p (1.0), max_retries (3), cascade_models, fallback_backends.
+  - `cache`: exact_enabled (true), semantic_enabled (true), semantic_threshold (0.93), ttl_seconds (86400).
+  - `memory`: short_term_window (20), short_term_ttl_minutes (60).
+  - `storage`: sqlite_path (`resources/data/portfolio_watch.db`), backend_sqlite_path (`resources/data/backend_store.db`), chart_dir (`resources/data/charts`).
+  - `market_data`: price_source (`vnstock`), news_source (`cafef`), fallback_on_error (true).
+  - `eval`: golden_dataset_path (`resources/eval/golden_v6_comprehensive.yaml`), eval_cache_dir (`.eval_cache`), cost_daily_limit_usd (0.0).
+  - `monitoring`: enabled (true), error_sample_rate (1.0), normal_sample_rate (0.05), pii_redaction (true).
+- [x] **1.2. Tinh gọn `.env` và `.env.example`**:
+  - Chỉ giữ lại các trường secrets: `OPENAI_API_KEYS`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST`, `QDRANT_API_KEY`, `QDRANT_HOST`.
+- [x] **1.3. Cập nhật module `Settings` nạp cấu hình**:
+  - Đọc `config.yaml` làm giá trị gốc, nạp đè từ biến môi trường `.env` nếu có secrets.
+- [x] **1.4. Viết Unit Test xác thực nạp cấu hình**:
+  - Tạo `tests/test_config.py` kiểm tra nạp đúng các tham số từ YAML và override từ env.
+- **Lệnh xác minh**: `pytest tests/test_config.py -v` (Đã PASS 5/5 tests trong 0.08s)
 
 ---
 
-### Phase 4: Tích Hợp Web UI Streaming & Live Agent Graph
-> **Mục tiêu**: Đảm bảo trải nghiệm trực quan trên giao diện Web UI mượt mà, phản hồi streaming câu chào và dữ liệu phân tích không bị gián đoạn.
+### Phase 2: Tinh Gọn & Làm Sạch Tài Nguyên (`resources/eval/` & `specs/`)
+> **Mục tiêu**: Đưa toàn bộ dữ liệu đánh giá và artifact từ `specs/eval/` sang `resources/eval/`, chỉ giữ các bản tổng hợp final của product, làm sạch `specs/`.
 
-- [x] **4.1. Tích hợp Streaming SSE cho Luồng Chào Hỏi**:
-  - Phát các token câu chào qua SSE với độ trễ tối thiểu (TTFT < 1.0s).
-  - Đồ thị Live Agent Graph phản ánh luồng Fast-Path: `Guardrail` sáng -> chuyển thẳng sang `GreetingResponder`, các worker khác ở trạng thái `idle`.
-- [x] **4.2. Hiển thị Node `PortfolioWatchAgent` trên Live Agent Graph**:
-  - Thêm node `PortfolioWatchAgent` vào mạng lưới trực quan của đồ thị trên Web UI (`src/frontend/app.js`, `style.css`).
-  - Hiển thị hiệu ứng sáng đèn khi xử lý câu hỏi danh mục hoặc watchlist; hỗ trợ hover xem I/O Inspector.
-- [x] **4.3. Hiển thị Markdown & Ảnh Biểu Đồ Nến**:
-  - Đảm bảo thẻ ảnh biểu đồ nến (`/static/charts/...`) hiển thị sắc nét trực tiếp trong khung chat.
-  - Bảng P&L và bảng so sánh đa mã hiển thị cân đối trên cả desktop và thiết bị di động.
-
----
-
-### Phase 5: Đánh Giá Toàn Diện Golden Dataset v6 & Kiểm Thử Hồi Quy
-> **Mục tiêu**: Chạy pipeline đánh giá tự động và kiểm thử hồi quy toàn bộ hệ thống, xác nhận 100% tiêu chí nghiệm thu đạt chuẩn.
-
-- [x] **5.1. Chạy Đánh Giá Bộ Golden Dataset v6 (20 Cases)**:
-  - Thực thi lệnh: `python -m backend.eval.run --dataset specs/eval/golden_v6_comprehensive.yaml --json specs/eval/eval_summary_v6.json --report specs/eval/eval_summary_v6.md`.
-  - Tiêu chí đạt: 20/20 cases đạt 100% PASS, thỏa mãn mọi điều kiện `must_include` và `must_not_include`.
-- [x] **5.2. Chạy Toàn Bộ Test Suite Kiểm Thử Hồi Quy**:
-  - Thực thi lệnh: `pytest tests/ -v`.
-  - Tiêu chí đạt: Toàn bộ 291/291 bài test đạt 100% PASS (Zero Regression).
-- [x] **5.3. Cập Nhật Báo Cáo Đo Lường Định Lượng (Observation Report)**:
-  - Ghi nhận chi tiết: Token usage, Cost USD, Latency TTFT & End-to-end, Execution Trace vào `specs/eval/eval_observations_v6.md`.
-- [x] **5.4. Đồng Bộ Hồ Sơ Đặc Tả SDD**:
-  - Cập nhật nhật ký [specs/change-log.md](specs/change-log.md) đánh dấu hoàn thành các hạng mục.
+- [x] **2.1. Di dời & Quy hoạch `resources/eval/`**:
+  - Chuyển các file đánh giá quan trọng từ `specs/eval/` sang `resources/eval/`.
+  - Giữ các tệp chuẩn final:
+    - Dataset: `golden_v6_comprehensive.yaml` (20 câu 10 lát cắt), `replay_faq.yaml` (200 câu FAQ).
+    - Baseline: `v6_baseline.json`, `v5_baseline.json`.
+    - Báo cáo kết quả: `danh_gia_chi_tiet_golden_v5_v6.xlsx`, `cache_benchmark.json`, `cost_baseline.json`, `eval_summary_v6.json`, `eval_observations_v6.json`.
+  - Xóa bỏ các thư mục nháp/tạm (`history/`, `runs/`, `*.log`, `baseline_debug.json`).
+- [x] **2.2. Làm sạch thư mục `specs/`**:
+  - Xóa thư mục `specs/eval/` sau khi đã đưa sang `resources/eval/`.
+  - Xóa các file thừa: `specs/legacy-*`, `specs/agents.md` (đã có `AGENTS.md` tại gốc), `specs/mvp-status-report.md`, `specs/project_analysis.md`.
+  - Giữ lại đúng 5 tệp đặc tả cốt lõi:
+    - [specs/product-spec.md](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/specs/product-spec.md)
+    - [specs/implementation-plan.md](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/specs/implementation-plan.md)
+    - [specs/test-plan.md](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/specs/test-plan.md)
+    - [specs/change-log.md](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/specs/change-log.md)
+    - [specs/project-summary.md](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/specs/project-summary.md)
+- [x] **2.3. Tinh gọn thư mục `resources/docs/`**:
+  - Giữ sơ đồ kiến trúc (`agent_graph.png`, `chat_agent_graph.png`), playbook xử lý sự cố Module 3 (`incident-playbook-*.md`), tài liệu phương pháp luận, và `m3-production-pipeline.md`.
+  - Xóa các file nháp tạm không dùng.
+- **Lệnh xác minh**: `pytest tests/test_capstone.py tests/test_eval.py tests/test_ci_workflows.py -v` (Đã PASS 48/48 tests)
 
 ---
 
-### Phase 6: Mở Rộng Dataset 200 Câu Replay FAQ, Benchmark 2-Tier Cache & Đồng Bộ Watchlist DB
-> **Mục tiêu**: Hiện thực hóa đầy đủ các yêu cầu bài tập Hands-on Module 3 Production LLMOps (Bài 3 & Bài 6): mở rộng tập replay lên 200 câu hỏi, đo lường benchmark Cache 2 tầng, kiểm chuẩn 60 câu Golden v5+v6 xuất bảng Excel chuyên nghiệp, đồng bộ CSDL Watchlist và sửa giao diện cuộn tin nhắn chat.
+### Phase 3: Tinh Gọn Thư Mục Scripts Vận Hành (`scripts/`)
+> **Mục tiêu**: Giữ lại các công cụ vận hành và benchmark chính thức, loại bỏ hoàn toàn các file script scratch/vá tạm.
 
-- [x] **6.1. Mở Rộng Replay FAQ Lên 200 Câu Hỏi (`resources/eval/replay_faq.yaml`)**:
-  - Sao lưu 50 câu ban đầu vào `resources/eval/replay_faq_50.yaml`.
-  - Sinh 200 câu hỏi bao gồm 140 câu canonical đa dạng nhóm cổ phiếu VN30 trên 7 lát cắt và 60 câu near-duplicates (đạt đúng 30.0% tỷ lệ lặp lại).
-  - Cập nhật ràng buộc `len(questions) in (50, 200)` trong `scripts/cost_baseline.py` và `tests/test_eval.py`.
-- [x] **6.2. Đo Lường Cost Baseline & Benchmark Cache 2 Tầng (Exact + Semantic)**:
-  - Chạy `scripts/cost_baseline.py` và `scripts/cache_benchmark.py` trên 200 câu hỏi trong container Docker backend.
-  - Xác nhận tiết kiệm 30.0% chi phí khi kích hoạt Tier 1 + Tier 2 Cache (từ $0.131364 xuống $0.091944).
-  - Kiểm toán 10 mẫu Semantic Cache hit: 0 false hit.
-  - Xuất báo cáo `specs/eval/cost_baseline.md` và `specs/eval/cache_benchmark.md` kèm tệp JSON.
-- [x] **6.3. Đánh Giá Toàn Diện 60 Câu Hỏi (Golden v5 + Golden v6) & Báo Cáo Excel**:
-  - Đánh giá kiểm chuẩn 60 câu hỏi tổng hợp, đạt tỷ lệ 59/60 PASS (98.3%).
-  - Xuất báo cáo chuyên nghiệp có cột giá USD và VND: `resources/eval/danh_gia_chi_tiet_golden_v5_v6.xlsx`.
-- [x] **6.4. Đồng Bộ CSDL Watchlist SQLite (`BACKEND_SQLITE_PATH`)**:
-  - Cấu hình `portfolio_watch_agent` kết nối trực tiếp vào `backend_store.db` thay vì instance tạm thời, giúp đồng bộ thời gian thực giữa Web UI và Chatbot.
-- [x] **6.5. Tối Ưu Trải Nghiệm Giao Diện Người Dùng (Chat UI Scrolling)**:
-  - Sửa lỗi thanh cuộn tin nhắn chat tại `src/frontend/style.css` và `src/frontend/index.html`.
-  - Bổ sung tự động cuộn xuống dưới cùng khi có phản hồi streaming mới.
+- [x] **3.1. Danh mục script vận hành chính thức giữ lại**:
+  - [scripts/cache_benchmark.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/scripts/cache_benchmark.py): Benchmark tỷ lệ hit và tiết kiệm chi phí của Cache 2 tầng (đã trỏ mặc định về `resources/eval/`).
+  - [scripts/cost_baseline.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/scripts/cost_baseline.py): Đo lường chi phí LLM và token baseline (đã trỏ mặc định về `resources/eval/`).
+  - [scripts/run_agent_eval.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/scripts/run_agent_eval.py): Runner đánh giá Golden Dataset tự động (đã xuất báo cáo chuẩn tại `resources/eval/`).
+  - [scripts/generate_replay_faq_200.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/scripts/generate_replay_faq_200.py): Sinh bộ dữ liệu 200 câu hỏi FAQ rổ VN30.
+  - [scripts/start_ngrok_demo.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/scripts/start_ngrok_demo.py): Khởi chạy demo chia sẻ public URL.
+  - [scripts/run_local.ps1](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/scripts/run_local.ps1) & [scripts/run_local.sh](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/scripts/run_local.sh): Khởi chạy cục bộ nhanh.
+- [x] **3.2. Loại bỏ các scripts nháp/tạm**:
+  - Đã xóa hoàn toàn: `fix_plan.py`, `update_plan.py`, `append_changelog.py`, `config5.py`, `run_eval_v4_md.py`, `run_golden_v5_eval_bundle.py` (và `tests/test_eval_bundle.py`).
+- **Lệnh xác minh**: `python scripts/cache_benchmark.py --limit 10 --dry-run` (Đã PASS)
+
+---
+
+### Phase 4: Di Dời Thư Mục Triển Khai (`deploy/` -> `src/deploy/`)
+> **Mục tiêu**: Đưa toàn bộ mã nguồn và cấu hình triển khai vào `src/deploy/`, giữ thư mục gốc sạch sẽ, cập nhật đường dẫn liên kết.
+
+- [x] **4.1. Di chuyển thư mục `deploy/`**:
+  - Đã chuyển toàn bộ `deploy/` thành `src/deploy/` (chứa `smoke.py`, `nginx-portfolio-watch.conf`). Xóa bỏ thư mục gốc `deploy/`.
+- [x] **4.2. Cập nhật các tệp liên kết triển khai**:
+  - Cập nhật `.github/workflows/cd.yml` phản ánh vị trí mới `src/deploy/smoke.py` và `src/deploy/lkg`.
+  - Cập nhật [tests/test_ci_workflows.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/tests/test_ci_workflows.py), [tests/test_system.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/tests/test_system.py), và [tests/test_capstone.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/tests/test_capstone.py) để kiểm tra đường dẫn mới `src/deploy/smoke.py`.
+- **Lệnh xác minh**: `pytest tests/test_ci_workflows.py tests/test_capstone.py -v` (Đã PASS 100%)
+
+---
+
+### Phase 5: Module Hóa Mã Nguồn Backend (`src/backend/`)
+> **Mục tiêu**: Xóa bỏ toàn bộ tình trạng file rời rạc ở gốc `src/backend/`, đóng gói các chức năng vào đúng thư mục chuyên biệt.
+
+- [x] **5.1. Quy hoạch các file rời rạc ở gốc `src/backend/`**:
+  - `main.py` -> Quy hoạch thành `src/backend/api/main.py`.
+  - `ai_client.py` & `ai_main.py` -> Tích hợp vào `src/backend/infra/llm/client.py` và `src/backend/infra/llm/service.py`.
+  - `cors_util.py` -> Tích hợp vào `src/backend/api/middleware/cors.py`.
+  - `steps.py` -> Tích hợp vào `src/backend/eval/steps.py`.
+  - `store.py` -> Tích hợp vào `src/backend/infra/storage/store.py`.
+- [x] **5.2. Hoàn thiện cấu trúc package chuẩn trong `src/backend/`**:
+  - `src/backend/api/`: Quản lý routes, middleware, schemas và app entrypoint.
+  - `src/backend/agents/`: 7 Worker Agents + Supervisor + Composer, mỗi agent là 1 subfolder hoàn chỉnh.
+  - `src/backend/domain/`: Logic nghiệp vụ lõi (guardrails, chỉ báo RSI/SMA, memory models).
+  - `src/backend/infra/`: Hạ tầng external adapters (LLM, Cache 2 tầng, Market data, Storage, Monitoring).
+  - `src/backend/services/`: Dịch vụ nghiệp vụ (PortfolioService, MarketService, AlertService).
+  - `src/backend/eval/`: Bộ công cụ đánh giá (gate, metrics, scorers).
+- [x] **5.3. Cập nhật các đường dẫn import liên quan**:
+  - Đảm bảo toàn bộ import nội bộ nhất quán và không phát sinh lỗi `ModuleNotFoundError`.
+- **Lệnh xác minh**: `pytest tests/test_api.py tests/test_system.py -v` (Đã PASS 49/49 tests)
+
+---
+
+### Phase 6: Tái Cấu Trúc Bộ Kiểm Thử 3 Tầng (`tests/unit/`, `tests/integration/`, `tests/e2e/`)
+> **Mục tiêu**: Gom gộp 24 file test phẳng thành 3 tầng chuẩn Production LLMOps theo Module 3 `LLM-Engineer-Handbook`.
+
+- [x] **6.1. Thiết lập cấu trúc thư mục 3 tầng**:
+  - Tạo: `tests/unit/`, `tests/integration/`, `tests/e2e/`.
+- [x] **6.2. Phân bổ các bài test vào đúng tầng**:
+  - **Tầng Unit (`tests/unit/`)**:
+    - `test_guardrails.py`, `test_greeting_fastpath.py`, `test_indicators.py`, `test_portfolio_service.py`, `test_memory.py`, `test_output_guardrail_formatting.py`, `test_config.py`.
+  - **Tầng Integration (`tests/integration/`)**:
+    - `test_api.py`, `test_database.py`, `test_agents.py`, `test_chart.py`, `test_portfolio_watch_agent.py`, `test_system.py`, `test_web_ui_integration.py`, `test_monitoring.py`, `test_market.py`, `test_edge_cases.py`, `test_module3_features.py`.
+  - **Tầng E2E / Eval (`tests/e2e/`)**:
+    - `test_golden_v6_slices.py`, `test_eval.py`, `test_demo_walkthrough.py`, `test_ci_workflows.py`, `test_docker_setup.py`, `test_capstone.py`.
+- [x] **6.3. Chuẩn hóa `tests/conftest.py`**:
+  - Thiết lập fixture mock offline dùng chung (`VnstockPriceSource(fallback_on_error=True)`), đảm bảo không gọi internet và chạy siêu tốc.
+- **Lệnh xác minh**:
+  ```bash
+  pytest tests/unit/ -v         # Đã PASS 61/61 tests (100%)
+  pytest tests/integration/ -v  # Đã PASS 170/170 tests (100%)
+  pytest tests/e2e/ -v          # Đã PASS 66/66 runnable tests (1 skipped baseline format)
+  ```
+
+---
+
+### Phase 7: Kiểm Thử Toàn Diện, Đo Lường Tốc Độ CI & Nghiệm Thu Đồ Án
+> **Mục tiêu**: Nghiệm thu sản phẩm đồ án tốt nghiệp cuối khóa, đảm bảo zero-regression, CI chạy < 5 phút và hồ sơ bảo vệ đồ án sẵn sàng.
+
+- [x] **7.1. Chạy toàn bộ Test Suite 3 tầng**:
+  - Chạy `pytest tests/ -v`, bảo đảm 100% bài test đạt trạng thái PASS (Đã hoàn thành: 298/298 tests PASS, 0 failures, 0 skipped).
+- [x] **7.2. Kiểm tra độ chính xác Golden Dataset v6 (20/20 cases PASS)**:
+  - Chạy `pytest tests/e2e/test_golden_v6_slices.py -v` đạt 100% PASS trên 10 lát cắt (Đã hoàn thành: 12/12 tests PASS, bao phủ trọn vẹn 20/20 test cases).
+- [ ] **7.3. Đo lường tốc độ CI Pipeline**:
+  - Xác nhận toàn bộ bài test hoàn tất trong **< 5 phút**.
+- [ ] **7.4. Đồng bộ hồ sơ SDD & Cập nhật `specs/change-log.md`**:
+  - Ghi nhận chi tiết kết quả tái cấu trúc và bàn giao cho người dùng.
+- **Lệnh xác minh**: `pytest tests/ -v --durations=10`
