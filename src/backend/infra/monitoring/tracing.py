@@ -29,6 +29,7 @@ _pending_requests: dict[str, dict[str, Any]] = {}
 _pending_agent_spans: dict[str, list[dict[str, Any]]] = {}
 _guardrail_turns: set[str] = set()
 _error_turns: set[str] = set()
+_cache_hit_turns: set[str] = set()
 _lock = threading.RLock()
 _client: Any = None
 _warned_missing_keys = False
@@ -74,12 +75,15 @@ def should_sample(
     slow_threshold_s: float = 5.0,
     normal_rate: float = 0.05,
     seed: str | None = None,
+    cache_hit: bool = False,
 ) -> bool:
-    """Return True always for error, guardrail block, or slow requests."""
+    """Giữ trace khi lỗi, guardrail, hoặc request chậm. Cache hit thì bỏ."""
     if is_error or is_guardrail:
         return True
     if latency_s is not None and latency_s >= slow_threshold_s:
         return True
+    if cache_hit:
+        return False
     if seed:
         h = int(hashlib.md5(seed.encode()).hexdigest(), 16)
         return (h % 10000) / 10000.0 < normal_rate
@@ -100,6 +104,19 @@ def mark_turn_error(turn: str) -> None:
     if turn:
         with _lock:
             _error_turns.add(turn)
+
+
+def mark_turn_cache_hit(turn: str) -> None:
+    """Exact cache trên stream: bỏ trace, trừ lỗi, guardrail, hoặc request chậm."""
+    if turn:
+        with _lock:
+            _cache_hit_turns.add(turn)
+
+
+def mark_current_turn_cache_hit() -> None:
+    turn = _current_turn.get()
+    if turn:
+        mark_turn_cache_hit(turn)
 
 
 def _output_indicates_error(output: Any) -> bool:
@@ -130,8 +147,12 @@ def _should_trace_turn(turn: str, *, latency_s: float | None = None) -> bool:
     with _lock:
         if turn in _guardrail_turns or turn in _error_turns:
             return True
+        cache_hit = turn in _cache_hit_turns
     return should_sample(
-        latency_s=latency_s, seed=turn, normal_rate=_sample_rate()
+        latency_s=latency_s,
+        cache_hit=cache_hit,
+        seed=turn,
+        normal_rate=_sample_rate(),
     )
 
 
@@ -179,6 +200,7 @@ def _flush_pending_spans(turn: str, root: Any) -> None:
 
 
 def _wants_trace(turn: str, agent_name: str = "", *, force: bool = False) -> bool:
+    """Chỉ mở trace giữa chừng khi lỗi hoặc guardrail. Cache hit quyết định ở cuối request."""
     if force:
         return True
     with _lock:
@@ -186,7 +208,7 @@ def _wants_trace(turn: str, agent_name: str = "", *, force: bool = False) -> boo
             return True
     if agent_name == "guardrail_refusal":
         return True
-    return should_sample(seed=turn, normal_rate=_sample_rate())
+    return False
 
 
 def _ensure_root(turn: str, *, agent_name: str = "", force: bool = False) -> Any | None:
@@ -321,6 +343,7 @@ def reset_client_for_tests() -> None:
         _pending_requests.clear()
         _guardrail_turns.clear()
         _error_turns.clear()
+        _cache_hit_turns.clear()
         _turn_usage_totals.clear()
 
 
@@ -357,8 +380,6 @@ def trace_request(
                 "started_at_ms": int(time.time() * 1000),
             }
         turn_token = _current_turn.set(turn)
-        if _wants_trace(turn):
-            _ensure_root(turn, force=True)
 
     box: dict[str, Any] = {}
     start = time.perf_counter()
@@ -416,6 +437,7 @@ def trace_request(
                 _turn_usage_totals.pop(turn, None)
                 _guardrail_turns.discard(turn)
                 _error_turns.discard(turn)
+                _cache_hit_turns.discard(turn)
             if turn_token is not None:
                 _current_turn.reset(turn_token)
 

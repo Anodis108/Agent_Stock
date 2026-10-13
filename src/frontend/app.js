@@ -2809,6 +2809,35 @@
     voteGroup.appendChild(btnDown);
     toolbar.appendChild(voteGroup);
 
+    var signalGroup = document.createElement("div");
+    signalGroup.className = "hitl-signal-group";
+    [
+      { id: "copied", label: "Đã copy" },
+      { id: "regenerated", label: "Hỏi lại" },
+      { id: "abandoned", label: "Bỏ dở" },
+    ].forEach(function (item) {
+      var signalBtn = document.createElement("button");
+      signalBtn.type = "button";
+      signalBtn.className = "btn-hitl-signal";
+      signalBtn.setAttribute("data-signal", item.id);
+      signalBtn.textContent = item.label;
+      signalBtn.addEventListener("click", function () {
+        var buttons = signalGroup.querySelectorAll(".btn-hitl-signal");
+        for (var i = 0; i < buttons.length; i++) {
+          buttons[i].classList.toggle("active", buttons[i] === signalBtn);
+        }
+        sendHitlFeedback({
+          message_id: messageId || "",
+          session_id: sessionId || currentSessionId || "",
+          reason: item.id,
+          feedback_text: item.id,
+          is_positive: item.id === "copied",
+        }, container).catch(function () {});
+      });
+      signalGroup.appendChild(signalBtn);
+    });
+    toolbar.appendChild(signalGroup);
+
     // Star Rating (1..5)
     var starGroup = document.createElement("div");
     starGroup.className = "hitl-star-rating";

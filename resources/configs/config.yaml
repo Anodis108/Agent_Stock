@@ -31,11 +31,13 @@ llm:
   max_completion_tokens: 800
   top_p: 1.0
   max_retries: 3
+  max_concurrency: 5                # Số lời gọi LLM đồng thời tối đa trong một process
   model_cascade: ""                 # Model dự phòng khi model chính quá tải
   fallback_backends: ""             # Backend dự phòng khi OpenAI gặp sự cố (ollama, vllm)
 
 # 3. Bộ nhớ đệm 2 tầng (2-Tier Caching System)
 cache:
+  backend: "memory"                 # memory | redis. Service redis có trong docker-compose.
   exact_enabled: true               # Tầng 1: Exact Hash Cache (MD5/SHA256, TTL 24h)
   semantic_enabled: true            # Tầng 2: Semantic Cache (Vector Cosine Similarity)
   semantic_threshold: 0.93          # Ngưỡng cosine tương đồng tối thiểu
@@ -78,7 +80,11 @@ eval:
   prompt_ab_version_b: "v2"
   prompt_ab_split_pct: 50
 
-# 8. Quan sát hệ thống & Thu thập dấu vết (Observability & Tracing)
+# 8. Bí mật lúc chạy (Secret Manager). Tắt thì đọc .env. Bật thì đọc lúc chạy.
+secrets:
+  use_secret_manager: false
+
+# 9. Quan sát hệ thống & Thu thập dấu vết (Observability & Tracing)
 monitoring:
   enabled: true                     # Kích hoạt giám sát Langfuse
   sample_rate: 1.0                  # Tỷ lệ ghi nhận trace mặc định

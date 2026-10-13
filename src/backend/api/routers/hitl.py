@@ -54,6 +54,8 @@ class FeedbackOut(BaseModel):
     reason: str | None = None
     question: str | None = None
     answer: str | None = None
+    signal_score: float | None = None
+    feedback_source: str | None = None
     created_at: str
 
 
@@ -62,6 +64,22 @@ class FeedbackListResponse(BaseModel):
 
     items: list[FeedbackOut] = Field(default_factory=list)
     count: int = 0
+
+
+SIGNAL_SCORE: dict[str, tuple[float, str]] = {
+    "thumbs_up": (1.0, "explicit"),
+    "thumbs_down": (0.0, "explicit"),
+    "copied": (1.0, "implicit"),
+    "regenerated": (0.0, "implicit"),
+    "abandoned": (0.0, "implicit"),
+}
+
+
+def score_for_signal(reason: str | None) -> tuple[float | None, str | None]:
+    """Map a user signal to a 0–1 score and an explicit or implicit label. Does not call Langfuse."""
+    if not reason:
+        return None, None
+    return SIGNAL_SCORE.get(reason, (None, None))
 
 
 def _create_feedback_record(body: FeedbackCreateRequest) -> FeedbackOut:
@@ -75,6 +93,8 @@ def _create_feedback_record(body: FeedbackCreateRequest) -> FeedbackOut:
         effective_rating = body.rating
         if effective_rating is None:
             effective_rating = 5 if body.is_positive else 1
+
+        signal_score, feedback_source = score_for_signal(body.reason)
 
         # Ensure session exists to satisfy foreign key constraint
         sid = body.session_id or "default"
@@ -119,6 +139,8 @@ def _create_feedback_record(body: FeedbackCreateRequest) -> FeedbackOut:
             reason=body.reason,
             question=question,
             answer=answer,
+            signal_score=signal_score,
+            feedback_source=feedback_source,
         )
 
         # Export rich telemetry to resources/data/hitl_feedback.json
@@ -151,6 +173,8 @@ def _create_feedback_record(body: FeedbackCreateRequest) -> FeedbackOut:
             reason=rec.reason,
             question=rec.question,
             answer=rec.answer,
+            signal_score=rec.signal_score,
+            feedback_source=rec.feedback_source,
             created_at=rec.created_at,
         )
     finally:
@@ -179,6 +203,8 @@ def _list_feedbacks_data(session_id: str | None = None, limit: int = 100) -> Fee
                 reason=r.reason,
                 question=r.question,
                 answer=r.answer,
+                signal_score=r.signal_score,
+                feedback_source=r.feedback_source,
                 created_at=r.created_at,
             )
             for r in records
@@ -207,6 +233,8 @@ def _get_feedback_by_id(eval_id: str) -> FeedbackOut:
             reason=rec.reason,
             question=rec.question,
             answer=rec.answer,
+            signal_score=rec.signal_score,
+            feedback_source=rec.feedback_source,
             created_at=rec.created_at,
         )
     finally:

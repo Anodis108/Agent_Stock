@@ -6,6 +6,7 @@ from typing import Any
 
 import yaml
 from dotenv import find_dotenv, load_dotenv
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 # Nạp biến môi trường từ file .env (chỉ nạp các biến chưa có trong process environment)
@@ -75,8 +76,10 @@ def load_config_yaml_data(yaml_path: Path | None = None) -> dict[str, Any]:
         "llm_max_completion_tokens": "llm_max_completion_tokens",
         "llm_top_p": "llm_top_p",
         "llm_max_retries": "llm_max_retries",
+        "llm_max_concurrency": "llm_max_concurrency",
         "llm_model_cascade": "llm_model_cascade",
         "llm_fallback_backends": "llm_fallback_backends",
+        "cache_backend": "cache_backend",
         "cache_exact_enabled": "cache_exact_enabled",
         "cache_semantic_enabled": "cache_semantic_enabled",
         "cache_semantic_threshold": "cache_semantic_threshold",
@@ -106,6 +109,7 @@ def load_config_yaml_data(yaml_path: Path | None = None) -> dict[str, Any]:
         "eval_prompt_ab_version_a": "prompt_ab_version_a",
         "eval_prompt_ab_version_b": "prompt_ab_version_b",
         "eval_prompt_ab_split_pct": "prompt_ab_split_pct",
+        "secrets_use_secret_manager": "use_secret_manager",
         "monitoring_enabled": "monitoring_enabled",
         "monitoring_sample_rate": "langfuse_sample_rate",
     }
@@ -145,6 +149,7 @@ class Settings(BaseSettings):
     llm_max_completion_tokens: int = 800
     llm_top_p: float = 1.0
     llm_max_retries: int = 3
+    llm_max_concurrency: int = 5
     llm_model_cascade: str = ""
     llm_fallback_backends: str = ""
 
@@ -161,7 +166,10 @@ class Settings(BaseSettings):
     replay_faq_path: str = "./resources/eval/replay_faq.yaml"
     confidence_auto_send_min: float = 0.8
 
-    # 4. Cost budget & Governance
+    # 4. Secret Manager. Tắt thì secret lấy từ .env.
+    use_secret_manager: bool = False
+
+    # 5. Cost budget & Governance
     cost_daily_limit_usd: float = 0.0
     cost_alert_threshold_usd: float = 1.0
 
@@ -196,10 +204,19 @@ class Settings(BaseSettings):
     chart_dir: str = "./resources/data/charts"
 
     # 9. 2-Tier Caching System
+    cache_backend: str = "memory"
     cache_exact_enabled: bool = True
     cache_semantic_enabled: bool = True
     cache_semantic_threshold: float = 0.93
     cache_ttl_seconds: int = 86400
+
+    @field_validator("cache_backend")
+    @classmethod
+    def cache_backend_is_memory_or_redis(cls, value: str) -> str:
+        normalized = (value or "").strip().lower()
+        if normalized not in {"memory", "redis"}:
+            raise ValueError("cache.backend phải là memory hoặc redis")
+        return normalized
 
     # 10. Memory short-term & freshness
     memory_short_term_window: int = 20
@@ -265,3 +282,8 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+if settings.use_secret_manager:
+    from backend.shared.secrets import apply_runtime_secrets
+
+    apply_runtime_secrets(settings)

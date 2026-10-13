@@ -1,11 +1,10 @@
 """LLM concurrency limiter — M3-B4 Phase 10.
 
-Giới hạn số LLM call đồng thời qua biến môi trường ``LLM_SEMAPHORE`` (mặc định 5).
+Giới hạn số LLM call đồng thời theo ``llm.max_concurrency`` trong config.yaml.
 """
 
 from __future__ import annotations
 
-import os
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -16,10 +15,11 @@ _semaphore_limit: int | None = None
 
 
 def get_llm_semaphore_limit() -> int:
-    raw = os.environ.get("LLM_SEMAPHORE", "5")
+    from backend.shared.settings import settings
+
     try:
-        return max(1, int(raw))
-    except ValueError:
+        return max(1, int(settings.llm_max_concurrency))
+    except (TypeError, ValueError):
         return 5
 
 

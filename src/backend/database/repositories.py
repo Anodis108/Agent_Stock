@@ -65,6 +65,8 @@ class HITLEvaluationRecord:
     reason: str | None = None
     question: str | None = None
     answer: str | None = None
+    signal_score: float | None = None
+    feedback_source: str | None = None
 
 
 @dataclass
@@ -360,6 +362,24 @@ class MarketHistoryRepository:
         return [row["symbol"] for row in cursor.fetchall()]
 
 
+def _hitl_from_row(row: sqlite3.Row) -> HITLEvaluationRecord:
+    keys = row.keys()
+    return HITLEvaluationRecord(
+        id=row["id"],
+        message_id=row["message_id"],
+        session_id=row["session_id"],
+        rating=row["rating"],
+        feedback=row["feedback"],
+        is_positive=bool(row["is_positive"]),
+        reason=row["reason"] if "reason" in keys else None,
+        question=row["question"] if "question" in keys else None,
+        answer=row["answer"] if "answer" in keys else None,
+        signal_score=row["signal_score"] if "signal_score" in keys else None,
+        feedback_source=row["feedback_source"] if "feedback_source" in keys else None,
+        created_at=row["created_at"],
+    )
+
+
 class HITLEvaluationRepository:
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
@@ -374,6 +394,8 @@ class HITLEvaluationRepository:
         reason: str | None = None,
         question: str | None = None,
         answer: str | None = None,
+        signal_score: float | None = None,
+        feedback_source: str | None = None,
         eval_id: str | None = None,
     ) -> HITLEvaluationRecord:
         eid = eval_id or str(uuid4())
@@ -381,10 +403,16 @@ class HITLEvaluationRepository:
         pos_int = 1 if is_positive else 0
         self.conn.execute(
             """
-            INSERT INTO hitl_evaluations (id, message_id, session_id, rating, feedback, is_positive, reason, question, answer, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO hitl_evaluations (
+                id, message_id, session_id, rating, feedback, is_positive,
+                reason, question, answer, signal_score, feedback_source, created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (eid, message_id, session_id, rating, feedback, pos_int, reason, question, answer, now),
+            (
+                eid, message_id, session_id, rating, feedback, pos_int,
+                reason, question, answer, signal_score, feedback_source, now,
+            ),
         )
         self.conn.commit()
         return HITLEvaluationRecord(
@@ -398,12 +426,14 @@ class HITLEvaluationRepository:
             reason=reason,
             question=question,
             answer=answer,
+            signal_score=signal_score,
+            feedback_source=feedback_source,
         )
 
     def get(self, eval_id: str) -> HITLEvaluationRecord | None:
         cursor = self.conn.execute(
             """
-            SELECT id, message_id, session_id, rating, feedback, is_positive, reason, question, answer, created_at
+            SELECT id, message_id, session_id, rating, feedback, is_positive, reason, question, answer, signal_score, feedback_source, created_at
             FROM hitl_evaluations
             WHERE id = ?
             """,
@@ -412,70 +442,31 @@ class HITLEvaluationRepository:
         row = cursor.fetchone()
         if not row:
             return None
-        return HITLEvaluationRecord(
-            id=row["id"],
-            message_id=row["message_id"],
-            session_id=row["session_id"],
-            rating=row["rating"],
-            feedback=row["feedback"],
-            is_positive=bool(row["is_positive"]),
-            reason=row["reason"] if "reason" in row.keys() else None,
-            question=row["question"] if "question" in row.keys() else None,
-            answer=row["answer"] if "answer" in row.keys() else None,
-            created_at=row["created_at"],
-        )
+        return _hitl_from_row(row)
 
     def list_by_session(self, session_id: str) -> list[HITLEvaluationRecord]:
         cursor = self.conn.execute(
             """
-            SELECT id, message_id, session_id, rating, feedback, is_positive, reason, question, answer, created_at
+            SELECT id, message_id, session_id, rating, feedback, is_positive, reason, question, answer, signal_score, feedback_source, created_at
             FROM hitl_evaluations
             WHERE session_id = ?
             ORDER BY created_at DESC
             """,
             (session_id,),
         )
-        return [
-            HITLEvaluationRecord(
-                id=row["id"],
-                message_id=row["message_id"],
-                session_id=row["session_id"],
-                rating=row["rating"],
-                feedback=row["feedback"],
-                is_positive=bool(row["is_positive"]),
-                reason=row["reason"] if "reason" in row.keys() else None,
-                question=row["question"] if "question" in row.keys() else None,
-                answer=row["answer"] if "answer" in row.keys() else None,
-                created_at=row["created_at"],
-            )
-            for row in cursor.fetchall()
-        ]
+        return [_hitl_from_row(row) for row in cursor.fetchall()]
 
     def list_all(self, limit: int = 100) -> list[HITLEvaluationRecord]:
         cursor = self.conn.execute(
             """
-            SELECT id, message_id, session_id, rating, feedback, is_positive, reason, question, answer, created_at
+            SELECT id, message_id, session_id, rating, feedback, is_positive, reason, question, answer, signal_score, feedback_source, created_at
             FROM hitl_evaluations
             ORDER BY created_at DESC
             LIMIT ?
             """,
             (limit,),
         )
-        return [
-            HITLEvaluationRecord(
-                id=row["id"],
-                message_id=row["message_id"],
-                session_id=row["session_id"],
-                rating=row["rating"],
-                feedback=row["feedback"],
-                is_positive=bool(row["is_positive"]),
-                reason=row["reason"] if "reason" in row.keys() else None,
-                question=row["question"] if "question" in row.keys() else None,
-                answer=row["answer"] if "answer" in row.keys() else None,
-                created_at=row["created_at"],
-            )
-            for row in cursor.fetchall()
-        ]
+        return [_hitl_from_row(row) for row in cursor.fetchall()]
 
 
 class WatchlistRepository:

@@ -6,6 +6,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from pydantic import ValidationError
+
 from backend.shared.settings import Settings, get_config_yaml_path, load_config_yaml_data
 
 
@@ -30,8 +32,10 @@ def test_load_config_yaml_defaults():
     assert settings.llm_model == "gpt-4o-mini"
     assert settings.llm_temperature == 0.2
     assert settings.llm_max_completion_tokens == 800
+    assert settings.llm_max_concurrency == 5
 
     # 3. Nhóm Cache 2 tầng
+    assert settings.cache_backend == "memory"
     assert settings.cache_exact_enabled is True
     assert settings.cache_semantic_enabled is True
     assert settings.cache_semantic_threshold == 0.93
@@ -48,6 +52,7 @@ def test_load_config_yaml_defaults():
     assert settings.price_fallback_on_error is True
 
     # 6. Nhóm Memory
+    assert settings.use_secret_manager is False
     assert settings.memory_short_term_window == 20
     assert settings.memory_short_term_ttl_minutes == 60
 
@@ -86,6 +91,10 @@ app:
 llm:
   model: "claude-3-haiku"
   temperature: 0.7
+cache:
+  backend: "redis"
+secrets:
+  use_secret_manager: true
 storage:
   sqlite_path: "./test_db.db"
 """
@@ -99,7 +108,14 @@ storage:
         assert flat["api_host"] == "0.0.0.0"
         assert flat["llm_model"] == "claude-3-haiku"
         assert flat["llm_temperature"] == 0.7
+        assert flat["cache_backend"] == "redis"
+        assert flat["use_secret_manager"] is True
         assert flat["sqlite_path"] == "./test_db.db"
     finally:
         if temp_path.exists():
             temp_path.unlink()
+
+
+def test_cache_backend_rejects_unknown_value():
+    with pytest.raises(ValidationError):
+        Settings(cache_backend="disk")

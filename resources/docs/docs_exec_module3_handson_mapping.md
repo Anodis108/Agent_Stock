@@ -1,5 +1,7 @@
 # Đối Chiếu Hands-on Module 3 (Production LLMOps) & Dự Án Portfolio Watch
 
+> Đường dẫn `llm-backend-ref-portfolio-watch/` trong bảng dưới không còn trong repo. Code hiện nằm ở gốc: `src/backend/`, `resources/`, `scripts/`, `src/deploy/`. Bản đối chiếu mới với `llm-engineer-demo` sau `01bd450` nằm ở `specs/product-spec.md` mục 0.
+
 Tài liệu này tổng hợp toàn bộ thông tin đối chiếu giữa các bài thực hành **Hands-on** trong cẩm nang `module-3-production-llmops.md` và mã nguồn thực tế của dự án **Portfolio Watch** (`llm-backend-ref-portfolio-watch`).
 
 ---

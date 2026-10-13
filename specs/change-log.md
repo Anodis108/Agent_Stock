@@ -4,6 +4,256 @@ Nhật ký ghi nhận chi tiết mọi thay đổi, kết quả kiểm thử và
 
 ---
 
+## 2026-10-13 — Phase 7: tunnel ngrok vẫn nhận token dần
+
+Sau async `chat_stream`, SSE của `POST /chat` vẫn ra từng token trước khi hết câu khi đi qua một hop chỉ chuyển byte. Response không có `Content-Length`, có `X-Accel-Buffering: no` và `Cache-Control: no-cache`, nên proxy không phải gom cả câu. Không sửa mã chạy.
+
+- Thêm `test_ngrok_hop_receives_async_tokens_before_complete` trong `tests/integration/test_api.py`. Proxy local tắt Nagle, chuyển từng khối. Token sau cách token trước ít nhất 0.04 giây. Xóa exact cache sau test để không làm ô stream UI nhận cả câu một lần.
+- Lệnh `PYTHONPATH=src pytest tests/integration/test_api.py::test_ngrok_hop_receives_async_tokens_before_complete tests/integration/test_api.py::test_ui_stream_receives_async_tokens_before_complete -q` → 2 passed.
+- Đối chiếu spec: bước UI nhận câu trả lời dạng stream vẫn đạt khi có một hop phía trước. Test plan không có dòng riêng cho ngrok. Chưa mở tunnel `ngrok http 8000` thật. Không có lỗi của ô này cần sửa thêm.
+
+---
+
+## 2026-10-13 — Phase 6: README liệt kê secret và chỗ để tham số
+
+Mục 7.1 liệt kê secret lấy từ `.env.example`: `OPENAI_API_KEYS`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `QDRANT_API_KEY`. Tham số model, cache, cổng, bộ nhớ, monitoring, embedding nằm ở `resources/configs/config.yaml`. Nếu cùng một giá trị có ở cả hai file, `.env` ghi đè.
+
+- Chỉ sửa `README.md`. Giữ `.env.example` vì `test_env_example_has_required_vars_and_no_secrets` vẫn cần các biến mẫu trong file đó.
+- Đối chiếu spec: AC-7 khớp câu hướng dẫn (`.env` cho secret, app đọc `config.yaml`). U7 không đổi. Test plan không có lệnh pytest cho ô README này. Không có lỗi của ô này cần sửa thêm.
+
+---
+
+## 2026-10-13 — Phase 6: README cache mặc định memory, cách bật Redis
+
+`README.md` mục 7.4 nói exact cache mặc định là `memory` trong `resources/configs/config.yaml`. Bật Redis bằng `pip install redis`, `docker compose up -d redis`, đổi `cache.backend` thành `redis`, rồi khởi động lại app. Máy host dùng `REDIS_URL` (mặc định `redis://localhost:6379`). Compose đã có `REDIS_URL=redis://redis:6379` nhưng vẫn giữ memory cho đến khi đổi config. Semantic cache không đi qua Redis. Bảng lưu trữ ở mục 4 ghi cùng mặc định.
+
+- Chỉ sửa `README.md`. Không đổi `config.yaml` và không bật Redis trên app đang chạy.
+- Đối chiếu spec: câu “Redis cho exact cache. Mặc định vẫn memory.” khớp mục 7.4 và code (`cache.backend`, `RedisStore`, `REDIS_URL`). Test plan không có lệnh pytest cho ô README này. Kiểm của cả phase 6 (máy sạch mở `http://localhost:8000`) chưa làm, vì còn ô `.env.example`. Không có lỗi của ô này cần sửa thêm.
+
+---
+
+## 2026-10-13 — Phase 5: cache hit trên stream không ghi trace
+
+Exact cache trúng trên `chat_stream` đánh dấu lượt hiện tại. Cuối `trace_request`, `should_sample(cache_hit=True)` bỏ trace: không gọi `langfuse.trace` và không flush. Span agent phát sinh trước đó được giữ tạm và bị bỏ cùng lượt. Lỗi, guardrail, và request từ 5 giây vẫn ghi. Root không tạo giữa chừng cho lượt mẫu thường, để quyết định cache hit còn kịp trước khi ghi.
+
+- Sửa `src/backend/infra/monitoring/tracing.py`, `src/backend/infra/llm/completion.py`, `tests/integration/test_monitoring.py`.
+- Lệnh `PYTHONPATH=src pytest tests/unit/test_async_client.py tests/unit/test_secret_manager.py tests/integration/test_monitoring.py tests/unit/test_guardrails.py -q` → 36 passed.
+- Đối chiếu spec: U5 đạt trên luồng stream, kể cả khi đã có span agent. Lỗi, guardrail, và request chậm vẫn ghi. Test plan mục D, phần `cache_hit=True` thì không sample, đạt trên stream. `chat()` và `chat_parsed()` không nằm trong ô này. Không chạy full `pytest tests/`. Không có lỗi của ô này cần sửa thêm.
+
+---
+
+## 2026-10-13 — Phase 5: Secret Manager thiếu project hoặc lỗi
+
+Khi cờ bật mà không có `GCP_PROJECT_ID`, hoặc client GCP lỗi lúc tạo, app không sập và không ghi đè key đang có từ `.env`. Không cài thư viện GCP.
+
+- Sửa `tests/unit/test_secret_manager.py`. Hai ca: thiếu project, và `SecretManagerServiceClient` ném lỗi.
+- Lệnh `PYTHONPATH=src pytest tests/unit/test_async_client.py tests/unit/test_secret_manager.py tests/integration/test_monitoring.py tests/unit/test_guardrails.py -q` → 35 passed.
+- Đối chiếu spec: U7 đạt. Test plan mục E đạt: mock thành công thì đè key, mock lỗi thì giữ `.env`, tắt thì không gọi client. Thiếu project và lỗi tạo client cũng giữ `.env`. Không có lỗi cần sửa trong code chạy.
+
+---
+
+## 2026-10-13 — Phase 5: trả slot khi async client lỗi
+
+`async_llm_slot` nhả semaphore trong `finally`. Lỗi lúc mở stream, hoặc lỗi sau khi đã có token, đều trả slot. Lượt `chat_stream` tiếp theo lấy được slot. Không gọi mạng.
+
+- Sửa `tests/unit/test_async_client.py`. Thêm trường hợp đứt giữa stream, và gọi lại sau lỗi mở stream.
+- Lệnh `PYTHONPATH=src pytest tests/unit/test_async_client.py tests/unit/test_secret_manager.py tests/integration/test_monitoring.py tests/unit/test_guardrails.py -q` → 33 passed.
+- Đối chiếu spec: U1 đạt phần slot trả sau khi xong hoặc lỗi. Test plan mục A đạt. Không có lỗi cần sửa trong code chạy.
+
+---
+
+## 2026-10-13 — Phase 4: stream UI vẫn hiện từng phần
+
+Sau khi `chat_stream` đi qua async client, `POST /chat` với `Accept: text/event-stream` vẫn đẩy từng token trước khi hết câu. UI ghi chữ lên khung đang stream ngay khi nhận sự kiện `token`, rồi mới thay bằng câu đầy đủ lúc `final_answer`.
+
+- Thêm `test_ui_stream_receives_async_tokens_before_complete` trong `tests/integration/test_api.py`. Não soạn câu thật gọi `chat_stream`. Client đọc socket và thấy token sau cách token trước ít nhất 0.04 giây.
+- Lệnh `PYTHONPATH=src pytest tests/unit/test_feedback_signals.py tests/integration/test_api.py -q` → 25 passed.
+- Mở `http://127.0.0.1:8000`, giả lập SSE từng token. Khung đang stream lần lượt là `Mot `, `Mot hai `, `Mot hai ba`, sau đó câu hoàn chỉnh là `Mot hai ba`.
+- Đối chiếu spec: bước UI nhận câu trả lời dạng stream vẫn đạt. U1 và U2 không đổi. Không có lỗi của ô này cần sửa thêm.
+
+---
+
+## 2026-10-13 — Phase 4: điểm 0–1 và nhãn nguồn
+
+API feedback lưu `signal_score` từ 0 đến 1 và `feedback_source` là `explicit` hoặc `implicit`. Copied là 1.0 implicit. Hỏi lại và bỏ dở là 0.0 implicit. Thích và không thích là 1.0 và 0.0 explicit khi `reason` là `thumbs_up` hoặc `thumbs_down`. Không gọi Langfuse. Điểm sao 1–5 của nút thích giữ nguyên.
+
+- Sửa `src/backend/api/routers/hitl.py`, `src/backend/database/connection.py`, `src/backend/database/repositories.py`. Thêm `tests/unit/test_feedback_signals.py`.
+- Lệnh `PYTHONPATH=src pytest tests/unit/test_feedback_signals.py tests/integration/test_api.py tests/integration/test_monitoring.py -q` → 35 passed. Không gọi Langfuse.
+- Đối chiếu spec: U6 đạt. Test plan mục D, phần điểm và nhãn của copied / regenerated / abandoned, đạt. Nút thích trên UI vẫn gửi rating 1–5, không gửi `thumbs_up`, nên bản ghi thích không có điểm 0–1. Spec không yêu cầu đổi nút thích. Không có lỗi của ô này cần sửa thêm.
+
+---
+
+## 2026-10-13 — Phase 4: ba nút gọi API feedback
+
+Bấm Đã copy, Hỏi lại, hoặc Bỏ dở gửi `POST /hitl/feedback`. `reason` và `feedback_text` là `copied`, `regenerated`, hoặc `abandoned`. Nút đang chọn vẫn chỉ một.
+
+- Sửa `src/frontend/app.js`.
+- Kiểm trên `http://127.0.0.1:8000`: bấm Đã copy rồi Hỏi lại. Request có `reason=copied` rồi `reason=regenerated`. API lưu cả hai. Chỉ Hỏi lại còn trạng thái chọn.
+- Đối chiếu spec: ô này đạt vì ba hành động gọi API. U6 chưa đạt: điểm vẫn là 5 hoặc 1 theo `is_positive`, chưa có nhãn explicit/implicit. Đó là ô kế tiếp. Không sửa thêm ở ô này.
+
+---
+
+## 2026-10-13 — Phase 3: đọc secret lúc chạy
+
+Khi `secrets.use_secret_manager` bật, app đọc `OPENAI_API_KEYS`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` và ghi đè settings. Cờ tắt thì không gọi client. Client lỗi hoặc không trả giá trị thì giữ key từ `.env`. Không cài thư viện GCP; test dùng client giả.
+
+- Sửa `src/backend/shared/secrets.py`. Gọi `apply_runtime_secrets` ở cuối `settings.py` chỉ khi cờ bật.
+- Test: `tests/unit/test_secret_manager.py`. Lệnh `PYTHONPATH=src pytest tests/unit/test_secret_manager.py tests/unit/test_config.py -q` → pass, kèm test import secret cũ. Không gọi GCP.
+- Đối chiếu spec: U7 đạt. Test plan mục E đạt: mock thành công thì đè key, mock lỗi thì giữ `.env`, tắt thì không gọi client.
+- Ô phase 5 vẫn để xác nhận riêng trường hợp thiếu project. Không có lỗi của ô này cần sửa thêm.
+
+---
+
+## 2026-10-13 — Phase 3: sampling bỏ cache hit
+
+`should_sample(cache_hit=True)` trả về false, nên trace bị bỏ. Lỗi, guardrail, và request chậm hơn ngưỡng vẫn trả về true dù có cache hit.
+
+- Sửa `src/backend/infra/monitoring/tracing.py`. Test trong `tests/integration/test_monitoring.py`.
+- Lệnh `PYTHONPATH=src pytest tests/integration/test_monitoring.py -q` → 11 passed. Không gọi Langfuse.
+- Đối chiếu spec: quy tắc U5 trên hàm sampling đạt. Test plan mục D, phần `cache_hit=True` thì không sample, đạt.
+- Luồng stream chưa truyền `cache_hit` vào `should_sample`. Đó là ô phase 5. Tín hiệu copied / regenerated / abandoned chưa làm. Không có lỗi của ô này cần sửa thêm.
+
+---
+
+## 2026-10-13 — Phase 3: script rollback prompt
+
+`scripts/prompt_rollback.py` ghi `production.txt` thành `vN` của version liền trước. File `vN.yaml` không bị xoá. Đang ở version cũ nhất thì dừng và không sửa file. Prompt thật trong `resources/prompts/` không bị chạy script.
+
+- Test: `tests/unit/test_prompt_rollback.py`. Lint cũ: `tests/e2e/test_eval.py::test_prompt_lint_passes_on_resources_prompts`.
+- Lệnh `PYTHONPATH=src pytest tests/unit/test_prompt_rollback.py tests/e2e/test_eval.py::test_prompt_lint_passes_on_resources_prompts -q` → 5 passed.
+- Đối chiếu spec: U4 đạt. Test plan mục C đạt: `production.txt` đổi, `vN.yaml` còn nguyên, lint vẫn pass.
+- Chưa làm sampling bỏ trace khi cache hit (ô kế tiếp). Không có lỗi của ô này cần sửa thêm.
+
+---
+
+## 2026-10-13 — Phase 3: service redis trong Docker
+
+`docker-compose.yml` có service `redis` (`redis:7-alpine`, volume `redis_data`, healthcheck `redis-cli ping`). Backend chờ Redis khỏe và đặt `REDIS_URL=redis://redis:6379`. `RedisStore` đọc biến đó. Cache mặc định vẫn `memory`.
+
+- Cổng máy mặc định `6379`. Máy này đã có process chiếm 6379, nên kiểm bằng `REDIS_PORT=6380`. `redis-cli ping` trả `PONG`.
+- Test: `PYTHONPATH=src pytest tests/e2e/test_docker_setup.py tests/unit/test_redis_store.py -q` → 9 passed. `docker compose config --services` có `redis`.
+- Đối chiếu spec: U3 vẫn đạt (store giả). Service Redis có trong Compose. App chưa chuyển `cache.backend` sang `redis`.
+- Chưa có script rollback prompt (ô kế tiếp). Không có lỗi của ô này cần sửa thêm.
+
+---
+
+## 2026-10-13 — Phase 3: store get/setex và RedisStore
+
+Exact cache đi qua store chỉ có `get` và `setex`. `InMemoryStore` là mặc định. `RedisStore` nhận client giả trong test, hoặc import `redis` trong `__init__` khi chưa có client. `cache.backend=redis` mới tạo `RedisStore`. `memory` không import gói redis.
+
+- Thêm `src/backend/infra/cache/redis_store.py`. Sửa `src/backend/infra/cache/exact.py`.
+- Test: `tests/unit/test_redis_store.py`. Lệnh `PYTHONPATH=src pytest tests/unit/test_redis_store.py -q` → 4 passed. Không cần Redis.
+- Exact cache cũ và stream hit vẫn pass (7 passed khi chạy kèm).
+- Đối chiếu spec: U3 đạt. Test plan mục B, phần store giả dùng chung `ExactCache`, đạt.
+- Chưa thêm service `redis` trong Docker (ô kế tiếp). Không có lỗi của ô này cần sửa thêm.
+
+---
+
+## 2026-10-13 — Phase 3: exact cache trên chat_stream
+
+`chat_stream` đọc exact cache trước khi mở stream. Trúng thì trả câu đã lưu và không gọi model. Stream xong mới ghi cache. Lỗi hoặc dừng giữa chừng thì không ghi. Đổi `prompt_version` vẫn gọi model.
+
+- Sửa `src/backend/infra/llm/completion.py`. Test trong `tests/unit/test_async_client.py`.
+- Lệnh `PYTHONPATH=src pytest tests/unit/test_async_client.py -q` → 8 passed. Không gọi API.
+- Đối chiếu spec: U2 đạt. Test plan mục B, phần stream trùng câu và trùng `prompt_version` thì hit, đạt.
+- Chưa làm: `RedisStore` với `get` / `setex` (ô kế tiếp). Không bỏ trace khi cache hit (ô sampling sau). Không có lỗi của ô này cần sửa thêm. Assert số lần gọi model khi lỗi đã tính cả backend dự phòng.
+
+---
+
+## 2026-10-13 — Phase 3: chat_stream gọi async client
+
+`chat_stream` mở stream bằng `AsyncOpenAI`, retry bằng `acall_with_retry`, và giữ `async_llm_slot` đến khi stream xong hoặc lỗi. Composer vẫn đọc từng token qua iterator sync.
+
+- Sửa `src/backend/infra/llm/completion.py` và `src/backend/infra/llm/async_client.py` (một event loop dùng chung).
+- Test: `PYTHONPATH=src pytest tests/unit/test_async_client.py -q` → 5 passed. Không gọi API.
+- Đối chiếu spec: U1 đạt. Test plan mục A đạt: slot trả sau khi xong và sau lỗi, `chat_stream` không gọi SDK sync.
+- Chưa làm: exact cache trên stream (ô kế tiếp), tín hiệu UI, Redis, rollback, sampling, Secret Manager. Không có lỗi của ô này cần sửa thêm.
+
+---
+
+## 2026-10-13 — Phase 3: async LLM client
+
+Thêm `src/backend/infra/llm/async_client.py`. `AsyncOpenAI` tắt retry của SDK. `acall_with_retry` chờ bằng `asyncio.sleep`. `async_llm_slot` lấy giới hạn từ `llm.max_concurrency` và trả slot trong `finally`.
+
+- Test: `tests/unit/test_async_client.py`. Lệnh `PYTHONPATH=src pytest tests/unit/test_async_client.py -q` → 3 passed. Không gọi API.
+- Đối chiếu spec: slot trả sau khi xong và sau lỗi, đạt phần đó của U1. `chat_stream` vẫn dùng client sync. Đó là ô kế tiếp, chưa nối.
+- Không có lỗi cần sửa thêm trong module này.
+
+---
+
+## 2026-10-13 — Phase 2: nút Đã copy, Hỏi lại, Bỏ dở
+
+Ba nút nằm cạnh thích / không thích trên mỗi câu trả lời. Bấm chỉ đổi nút đang chọn. Chưa gọi `/hitl/feedback`.
+
+- Sửa: `src/frontend/app.js`, `src/frontend/style.css`.
+- Kiểm trên `http://127.0.0.1:8000`: thấy ba nút; bấm Đã copy rồi Hỏi lại thì chỉ Hỏi lại còn chọn; số lần gọi API hitl là 0.
+- Đối chiếu spec: ô phase 2 đạt. U6 (điểm 0–1 và gọi API) thuộc phase 4, chưa làm. Không có lỗi cần sửa thêm.
+
+---
+
+## 2026-10-13 — Rà phase 1 với tiêu chí nghiệm thu
+
+`cache.backend` chỉ nhận `memory` hoặc `redis`. Test mapping YAML kiểm `redis` và `use_secret_manager: true`. Giá trị lạ thì `Settings` báo lỗi.
+
+- Sửa: `src/backend/shared/settings.py`, `tests/unit/test_config.py`.
+- Kiểm: `PYTHONPATH=src pytest tests/unit/test_config.py -q` → 6 passed.
+- AC-7 đạt. U1–U7 thuộc phase sau, chưa làm. U8 (cả `pytest tests/`) chưa chạy lại trong lần rà này.
+
+---
+
+## 2026-10-13 — Phase 1: `cache.backend` và cờ Secret Manager
+
+Thêm tham số, chưa nối Redis và chưa gọi GCP.
+
+- `resources/configs/config.yaml`: `cache.backend` = `memory`; `secrets.use_secret_manager` = `false`.
+- `src/backend/shared/settings.py`: field `cache_backend`, `use_secret_manager`.
+- `tests/unit/test_config.py`: kiểm hai giá trị mặc định.
+- Kiểm: `PYTHONPATH=src pytest tests/unit/test_config.py -q` → 5 passed.
+- Chưa làm: Redis store, đọc secret từ GCP, UI, async client.
+
+---
+
+## 2026-10-13 — `llm.max_concurrency` trong `config.yaml`
+
+Giới hạn lời gọi LLM đồng thời đọc từ `llm.max_concurrency` (mặc định 5). Semaphore không còn đọc `LLM_SEMAPHORE`.
+
+- Sửa: `resources/configs/config.yaml`, `src/backend/shared/settings.py`, `src/backend/infra/llm/semaphore.py`, `scripts/benchmark_sse.py`, `tests/unit/test_config.py`, `tests/integration/test_system.py`.
+- Kiểm: `PYTHONPATH=src pytest tests/unit/test_config.py tests/integration/test_system.py::test_llm_semaphore_limits_concurrency -q` → 6 passed.
+- Đối chiếu spec: AC-7 giữ (tham số ở yaml, không ở `.env`). U1–U7 chưa thuộc ô này. Test plan phase 1, lệnh `test_config.py`, pass.
+
+---
+
+## 2026-10-13 — Rút gọn `AGENTS.md`
+
+Chưa sửa mã nguồn. Phần quy tắc còn bảy bước: đọc spec, một ô mỗi lần, giữ đơn giản, không thêm thư viện, không đổi kiến trúc khi spec chưa đổi, ghi `change-log.md`, và nói cách test. Khối cài `vnstock` giữ nguyên.
+
+---
+
+## 2026-10-13 — Viết lại `specs/implementation-plan.md`
+
+Chưa sửa mã nguồn. Kế hoạch còn lại chia 7 phase: setup, UI, backend, nối UI, lỗi, chạy local, ngrok. Mỗi phase có checklist. Ô đầu tiên chưa tick là thêm `llm.max_concurrency` vào `config.yaml`.
+
+---
+
+## 2026-10-13 — Chỉnh `specs/product-spec.md`
+
+Chưa sửa mã nguồn. Spec giờ có sáu mục: mục tiêu, người dùng, luồng chính, trong phạm vi, ngoài phạm vi, tiêu chí nghiệm thu. Phần đã có và năm lỗ LLMOps nằm trong phạm vi, không còn một bảng đối chiếu tách riêng.
+
+---
+
+## 2026-10-13 — Đối chiếu code Module III với `llm-engineer-demo`
+
+Chưa sửa mã nguồn. Đã đọc `src/backend`, `tests/`, workflow, và app demo sau `01bd450`.
+
+- Bài 1–8 đã có trong repo này: prompt YAML + lint, golden gate, cache 2 tầng, SSE có hủy, Docker, CI/CD rollback SHA, sampling, HITL.
+- Lỗ còn lại: `chat_stream` chưa async và chưa qua cache/semaphore; chưa `RedisStore`; chưa script rollback alias; sampling chưa bỏ cache hit; chưa tín hiệu copied/regenerated/abandoned; `secrets.py` còn stub.
+- Đã sửa `README.md`, `AGENTS.md`, `specs/product-spec.md`, `specs/implementation-plan.md`, `specs/test-plan.md`, `handbook-techniques-mapping.md`.
+- Ô tiếp theo khi được yêu cầu code: Phase A, mục async client cho `chat_stream`.
+
+---
+
+---
+
 ## 2026-10-05 — Hoàn Thành Mục 7.2 (Phase 7): Kiểm Tra Độ Chính Xác Golden Dataset v6 (20/20 Cases PASS Trên 10 Lát Cắt)
 
 ### 1. Mục Tiêu Đạt Được

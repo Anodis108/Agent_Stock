@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """SSE / LLM concurrency benchmark — M3-B4 Phase 10.
 
-Đo p50/p95 thời gian chờ slot LLM_SEMAPHORE với 50 request đồng thời (simulated).
+Đo p50/p95 thời gian chờ slot llm.max_concurrency với 50 request đồng thời (simulated).
 
     PYTHONPATH=src python scripts/benchmark_sse.py
     PYTHONPATH=src python scripts/benchmark_sse.py --requests 50 --job-ms 200
@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import statistics
 import sys
 import threading
@@ -37,6 +36,7 @@ from backend.infra.llm.semaphore import (  # noqa: E402
     llm_semaphore_slot,
     reset_llm_semaphore_for_tests,
 )
+from backend.shared.settings import settings  # noqa: E402
 
 REPORT_MD = ROOT / "specs" / "eval" / "sse_benchmark.md"
 REPORT_JSON = ROOT / "specs" / "eval" / "sse_benchmark.json"
@@ -56,7 +56,7 @@ def run_semaphore_benchmark(
     requests: int,
     job_ms: float,
 ) -> dict:
-    os.environ["LLM_SEMAPHORE"] = str(semaphore)
+    settings.llm_max_concurrency = semaphore
     reset_llm_semaphore_for_tests()
 
     latencies: list[float] = []
@@ -106,9 +106,9 @@ def format_report_md(results: dict[str, dict], *, git_sha: str) -> str:
         f"- **Method:** Simulated LLM job ({results['sem5']['job_ms']:.0f}ms) × "
         f"{results['sem5']['requests']} concurrent requests",
         "",
-        "## p50 / p95 theo LLM_SEMAPHORE",
+        "## p50 / p95 theo llm.max_concurrency",
         "",
-        "| LLM_SEMAPHORE | Requests | Peak concurrent | Wall (s) | p50 (s) | p95 (s) | max (s) |",
+        "| max_concurrency | Requests | Peak concurrent | Wall (s) | p50 (s) | p95 (s) | max (s) |",
         "| ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
     for key, label in (("sem5", "5"), ("sem20", "20")):

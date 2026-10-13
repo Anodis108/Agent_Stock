@@ -1939,6 +1939,28 @@ body {
   box-shadow: 0 0 0 1px #ef4444;
 }
 
+.hitl-signal-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.btn-hitl-signal {
+  background: #ffffff;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  padding: 0.2rem 0.45rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.btn-hitl-signal.active {
+  color: #1d4ed8;
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+
 /* Star Rating */
 .hitl-star-rating {
   display: inline-flex;

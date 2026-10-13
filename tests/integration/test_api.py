@@ -13,6 +13,7 @@ Bao gồm:
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
@@ -150,6 +151,401 @@ def test_chat_stream_sse_flow(client: TestClient):
     event_names = [e[0] for e in events]
     assert "node_start" in event_names
     assert "complete" in event_names
+
+
+def test_ui_stream_receives_async_tokens_before_complete(client: TestClient, monkeypatch):
+    """UI đọc POST /chat dạng SSE. Token từ async chat_stream phải tới trước khi hết câu."""
+    import asyncio
+
+    from backend.agents.supervisor_agent.nodes import RewrittenQuestion
+    from backend.api.routers import chat as chat_router
+    from backend.application.answer_question import AnswerQuestionResult
+    from backend.domain.entities.models import RoutingDecision
+    from backend.infra.llm import async_client
+    from backend.shared.settings import settings
+
+    class _Delta:
+        def __init__(self, content: str) -> None:
+            self.content = content
+
+    class _Choice:
+        def __init__(self, content: str) -> None:
+            self.delta = _Delta(content)
+
+    class _Chunk:
+        def __init__(self, content: str) -> None:
+            self.choices = [_Choice(content)]
+
+    class _SlowStream:
+        def __init__(self, tokens: list[str]) -> None:
+            self._tokens = tokens
+
+        def __aiter__(self):
+            return self._gen()
+
+        async def _gen(self):
+            for index, token in enumerate(self._tokens):
+                if index:
+                    await asyncio.sleep(0.08)
+                yield _Chunk(token)
+
+    class _Completions:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def create(self, **kwargs):
+            self.calls += 1
+            assert kwargs.get("stream") is True
+            return _SlowStream(["Một ", "hai ", "ba"])
+
+    completions = _Completions()
+    fake_client = type("Fake", (), {})()
+    fake_client.chat = type("Chat", (), {"completions": completions})()
+
+    monkeypatch.setattr(settings, "llm_max_concurrency", 1)
+    async_client.reset_async_semaphore_for_tests()
+    monkeypatch.setattr(
+        "backend.infra.llm.completion.get_async_client",
+        lambda backend_name=None: fake_client,
+    )
+    monkeypatch.setattr(
+        "backend.infra.llm.completion.get_client",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("chat_stream gọi SDK sync")),
+    )
+
+    def _fake_answer(question: str, **kwargs):
+        from backend.agents.answer_composer.nodes import LlmAnswerDraftBrain
+
+        callback = kwargs.get("event_callback")
+
+        def _on_token(delta: str) -> None:
+            if callback:
+                callback("token", {"delta": delta})
+
+        answer = LlmAnswerDraftBrain().compose(
+            question=question,
+            symbol=None,
+            price=None,
+            news=None,
+            eval_result=None,
+            evidence=[],
+            model="test-model",
+            attempt=0,
+            previous_violations=[],
+            on_token=_on_token,
+        )
+        return AnswerQuestionResult(
+            question=question,
+            rewritten=RewrittenQuestion(
+                original=question,
+                rewritten=question,
+                symbol=None,
+                intent="explain",
+            ),
+            routing=RoutingDecision(route="qa", reason="test"),
+            answer=answer,
+        )
+
+    monkeypatch.setattr(chat_router, "answer_question", _fake_answer)
+
+    ui = (Path(__file__).resolve().parents[2] / "src" / "frontend" / "app.js").read_text(encoding="utf-8")
+    token_at = ui.find('eventName === "token"')
+    complete_at = ui.find('eventName === "final_answer"')
+    assert token_at != -1 and token_at < complete_at
+    assert "textEl.textContent = streamedText" in ui[token_at:complete_at]
+
+    import socket
+    import threading
+
+    import uvicorn
+
+    from backend.main import app as main_app
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+    config = uvicorn.Config(main_app, host="127.0.0.1", port=port, log_level="error")
+    server = uvicorn.Server(config)
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    deadline = time.perf_counter() + 5
+    while time.perf_counter() < deadline:
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.2):
+                break
+        except OSError:
+            time.sleep(0.05)
+    else:
+        raise RuntimeError("server stream không lên")
+
+    seen: list[tuple[float, str]] = []
+    current = "message"
+    body = json.dumps({"question": "Câu kiểm tra stream"}).encode()
+    request = (
+        "POST /chat HTTP/1.1\r\n"
+        f"Host: 127.0.0.1:{port}\r\n"
+        "Accept: text/event-stream\r\n"
+        "Content-Type: application/json\r\n"
+        f"Content-Length: {len(body)}\r\n"
+        "Connection: close\r\n"
+        "\r\n"
+    ).encode() + body
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=5) as sock:
+            sock.settimeout(10)
+            sock.sendall(request)
+            pending = ""
+            while True:
+                try:
+                    raw = sock.recv(4096)
+                except TimeoutError:
+                    break
+                if not raw:
+                    break
+                pending += raw.decode("utf-8", errors="replace")
+                while "\n" in pending:
+                    line, pending = pending.split("\n", 1)
+                    line = line.strip()
+                    if line.startswith("event:"):
+                        current = line.split(":", 1)[1].strip()
+                    elif line.startswith("data:") and current == "token":
+                        payload = json.loads(line.split(":", 1)[1].strip())
+                        seen.append((time.perf_counter(), payload.get("delta", "")))
+    finally:
+        server.should_exit = True
+        thread.join(timeout=3)
+
+    deltas = [item[1] for item in seen]
+    assert deltas == ["Một ", "hai ", "ba"]
+    assert seen[1][0] - seen[0][0] >= 0.04
+    assert completions.calls == 1
+
+
+def _relay_http_once(upstream_port: int, ready: threading.Event) -> int:
+    """Chuyển một request rồi trả body ngay từng khối, giống tunnel không gom câu."""
+    import socket
+    import threading
+
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+    server.bind(("127.0.0.1", 0))
+    port = server.getsockname()[1]
+    server.listen(1)
+    server.settimeout(10)
+    ready.set()
+
+    def _serve() -> None:
+        try:
+            client, _addr = server.accept()
+        except OSError:
+            server.close()
+            return
+        client.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        upstream = socket.create_connection(("127.0.0.1", upstream_port), timeout=5)
+        upstream.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        try:
+            raw = b""
+            while b"\r\n\r\n" not in raw:
+                piece = client.recv(4096)
+                if not piece:
+                    return
+                raw += piece
+            head, rest = raw.split(b"\r\n\r\n", 1)
+            length = 0
+            for line in head.decode("latin1").split("\r\n"):
+                if line.lower().startswith("content-length:"):
+                    length = int(line.split(":", 1)[1].strip())
+            while len(rest) < length:
+                piece = client.recv(4096)
+                if not piece:
+                    break
+                rest += piece
+            upstream.sendall(head + b"\r\n\r\n" + rest[:length])
+            while True:
+                piece = upstream.recv(256)
+                if not piece:
+                    break
+                client.sendall(piece)
+        finally:
+            upstream.close()
+            client.close()
+            server.close()
+
+    threading.Thread(target=_serve, daemon=True).start()
+    return port
+
+
+def test_ngrok_hop_receives_async_tokens_before_complete(monkeypatch):
+    """Tunnel không buffer vẫn thấy token của async chat_stream trước khi hết câu."""
+    import asyncio
+    import socket
+    import threading
+
+    import uvicorn
+
+    from backend.agents.supervisor_agent.nodes import RewrittenQuestion
+    from backend.api.routers import chat as chat_router
+    from backend.application.answer_question import AnswerQuestionResult
+    from backend.domain.entities.models import RoutingDecision
+    from backend.infra.llm import async_client
+    from backend.main import app as main_app
+    from backend.shared.settings import settings
+
+    class _Delta:
+        def __init__(self, content: str) -> None:
+            self.content = content
+
+    class _Choice:
+        def __init__(self, content: str) -> None:
+            self.delta = _Delta(content)
+
+    class _Chunk:
+        def __init__(self, content: str) -> None:
+            self.choices = [_Choice(content)]
+
+    class _SlowStream:
+        def __aiter__(self):
+            return self._gen()
+
+        async def _gen(self):
+            for index, token in enumerate(["Một ", "hai ", "ba"]):
+                if index:
+                    await asyncio.sleep(0.08)
+                yield _Chunk(token)
+
+    class _Completions:
+        async def create(self, **kwargs):
+            assert kwargs.get("stream") is True
+            return _SlowStream()
+
+    fake_client = type("Fake", (), {})()
+    fake_client.chat = type("Chat", (), {"completions": _Completions()})()
+    monkeypatch.setattr(settings, "llm_max_concurrency", 1)
+    async_client.reset_async_semaphore_for_tests()
+    monkeypatch.setattr(
+        "backend.infra.llm.completion.get_async_client",
+        lambda backend_name=None: fake_client,
+    )
+    monkeypatch.setattr(
+        "backend.infra.llm.completion.get_client",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("chat_stream gọi SDK sync")),
+    )
+
+    def _fake_answer(question: str, **kwargs):
+        from backend.agents.answer_composer.nodes import LlmAnswerDraftBrain
+
+        callback = kwargs.get("event_callback")
+
+        def _on_token(delta: str) -> None:
+            if callback:
+                callback("token", {"delta": delta})
+
+        answer = LlmAnswerDraftBrain().compose(
+            question=question,
+            symbol=None,
+            price=None,
+            news=None,
+            eval_result=None,
+            evidence=[],
+            model="test-model",
+            attempt=0,
+            previous_violations=[],
+            on_token=_on_token,
+        )
+        return AnswerQuestionResult(
+            question=question,
+            rewritten=RewrittenQuestion(
+                original=question,
+                rewritten=question,
+                symbol=None,
+                intent="explain",
+            ),
+            routing=RoutingDecision(route="qa", reason="test"),
+            answer=answer,
+        )
+
+    monkeypatch.setattr(chat_router, "answer_question", _fake_answer)
+    from backend.infra.cache.exact import clear_llm_cache_context, get_exact_cache
+
+    clear_llm_cache_context()
+    get_exact_cache().clear()
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        upstream_port = sock.getsockname()[1]
+    config = uvicorn.Config(main_app, host="127.0.0.1", port=upstream_port, log_level="error")
+    server = uvicorn.Server(config)
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    deadline = time.perf_counter() + 5
+    while time.perf_counter() < deadline:
+        try:
+            with socket.create_connection(("127.0.0.1", upstream_port), timeout=0.2):
+                break
+        except OSError:
+            time.sleep(0.05)
+    else:
+        raise RuntimeError("server stream không lên")
+
+    ready = threading.Event()
+    proxy_port = _relay_http_once(upstream_port, ready)
+    assert ready.wait(2)
+
+    seen: list[tuple[float, str]] = []
+    header_blob = ""
+    current = "message"
+    body = json.dumps({"question": "Câu kiểm tra stream"}).encode()
+    request = (
+        "POST /chat HTTP/1.1\r\n"
+        f"Host: 127.0.0.1:{proxy_port}\r\n"
+        "Accept: text/event-stream\r\n"
+        "Content-Type: application/json\r\n"
+        f"Content-Length: {len(body)}\r\n"
+        "Connection: close\r\n"
+        "\r\n"
+    ).encode() + body
+    try:
+        with socket.create_connection(("127.0.0.1", proxy_port), timeout=5) as sock:
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            sock.settimeout(10)
+            sock.sendall(request)
+            pending = ""
+            headers_done = False
+            while True:
+                try:
+                    raw = sock.recv(256)
+                except TimeoutError:
+                    break
+                if not raw:
+                    break
+                pending += raw.decode("utf-8", errors="replace")
+                if not headers_done and "\r\n\r\n" in pending:
+                    header_blob, pending = pending.split("\r\n\r\n", 1)
+                    headers_done = True
+                if not headers_done:
+                    continue
+                while "\n" in pending:
+                    line, pending = pending.split("\n", 1)
+                    line = line.strip()
+                    if line.startswith("event:"):
+                        current = line.split(":", 1)[1].strip()
+                    elif line.startswith("data:") and current == "token":
+                        payload = json.loads(line.split(":", 1)[1].strip())
+                        seen.append((time.perf_counter(), payload.get("delta", "")))
+    finally:
+        server.should_exit = True
+        thread.join(timeout=3)
+        clear_llm_cache_context()
+        get_exact_cache().clear()
+
+    lowered = header_blob.lower()
+    assert "text/event-stream" in lowered
+    assert "x-accel-buffering: no" in lowered
+    assert "cache-control: no-cache" in lowered
+    assert "content-length:" not in lowered
+    deltas = [item[1] for item in seen]
+    assert deltas == ["Một ", "hai ", "ba"]
+    assert seen[1][0] - seen[0][0] >= 0.04
 
 
 def test_phase4_post_chat_sse_streaming_integration(client: TestClient):

@@ -106,13 +106,15 @@ def test_phase10_nginx_sse_buffering_disabled():
 
 
 def test_llm_semaphore_limits_concurrency(monkeypatch):
-    """LLM_SEMAPHORE giới hạn số call đồng thời."""
+    """llm.max_concurrency giới hạn số call đồng thời."""
     import threading
     import time
 
     from backend.infra.llm.semaphore import llm_semaphore_slot, reset_llm_semaphore_for_tests
+    from backend.shared.settings import settings
 
-    monkeypatch.setenv("LLM_SEMAPHORE", "2")
+    monkeypatch.setenv("LLM_SEMAPHORE", "1")
+    monkeypatch.setattr(settings, "llm_max_concurrency", 2)
     reset_llm_semaphore_for_tests()
     active = 0
     peak = 0

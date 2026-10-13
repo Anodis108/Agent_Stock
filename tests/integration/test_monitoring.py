@@ -18,6 +18,13 @@ def test_should_sample_always_on_guardrail_and_error():
     assert should_sample(is_guardrail=True) is True
     assert should_sample(latency_s=5.0, slow_threshold_s=5.0) is True
 
+
+def test_should_sample_drops_cache_hit_but_keeps_error_guardrail_slow():
+    assert should_sample(cache_hit=True, seed="always", normal_rate=1.0) is False
+    assert should_sample(cache_hit=True, is_error=True) is True
+    assert should_sample(cache_hit=True, is_guardrail=True) is True
+    assert should_sample(cache_hit=True, latency_s=5.0, slow_threshold_s=5.0) is True
+
 def test_should_sample_normal_rate_approx_5_percent():
     # with seed
     sampled = sum(1 for i in range(1000) if should_sample(seed=f"test_{i}", normal_rate=0.05))
@@ -113,7 +120,7 @@ def test_agent_error_turn_flushes_buffered_spans(mock_enabled, mock_get_langfuse
 @patch("backend.infra.monitoring.tracing._get_langfuse")
 @patch("backend.infra.monitoring.tracing._enabled", return_value=True)
 @patch("backend.infra.monitoring.tracing.should_sample", return_value=True)
-def test_trace_request_creates_root_at_start_when_sampled(
+def test_trace_request_writes_trace_when_sampled(
     mock_should_sample, mock_enabled, mock_get_langfuse
 ):
     mock_langfuse = MagicMock()
@@ -123,8 +130,9 @@ def test_trace_request_creates_root_at_start_when_sampled(
     reset_client_for_tests()
 
     with trace_request("chat", "Giá FPT?", metadata={"turn": "sample_turn"}):
-        mock_langfuse.trace.assert_called_once()
+        pass
 
+    mock_langfuse.trace.assert_called_once()
     mock_root.update.assert_called()
     mock_root.end.assert_called()
 
@@ -149,6 +157,76 @@ def test_record_step_usage_aggregates_per_turn(mock_enabled, mock_get_langfuse):
     finally:
         _current_turn.reset(token)
         _turn_usage_totals.pop("turn_usage_test", None)
+
+
+@patch("backend.infra.monitoring.tracing._get_langfuse")
+@patch("backend.infra.monitoring.tracing._enabled", return_value=True)
+def test_stream_cache_hit_does_not_write_trace(mock_enabled, mock_get_langfuse, monkeypatch):
+    """Exact cache trên chat_stream không gọi Langfuse. Lỗi trên cùng lượt vẫn ghi."""
+    from backend.infra.cache.exact import (
+        clear_llm_cache_context,
+        get_exact_cache,
+        normalize_question,
+        set_llm_cache_context,
+    )
+    from backend.infra.llm.completion import chat_stream
+    from backend.infra.llm.providers import resolve_model_chain
+    from backend.infra.monitoring.tracing import (
+        _should_trace_turn,
+        agent_span,
+        mark_turn_cache_hit,
+        mark_turn_error,
+    )
+    from backend.shared.settings import settings
+
+    mock_langfuse = MagicMock()
+    mock_root = MagicMock()
+    mock_langfuse.trace.return_value = mock_root
+    mock_get_langfuse.return_value = mock_langfuse
+    reset_client_for_tests()
+    monkeypatch.setattr(settings, "langfuse_sample_rate", 1.0)
+    monkeypatch.setenv("EXACT_CACHE_ENABLED", "true")
+    get_exact_cache().clear()
+    question = "Giá FPT hôm nay?"
+    model = resolve_model_chain(None)[0]
+    set_llm_cache_context(
+        prompt_name="answer_compose",
+        prompt_version="production",
+        normalized_question=question,
+    )
+    cache = get_exact_cache()
+    cache.set(
+        cache.make_key("answer_compose", "production", model, normalize_question(question)),
+        "Xin chào",
+    )
+    messages = [{"role": "user", "content": "hi"}]
+    try:
+        with trace_request("chat", question, metadata={"turn": "cache_turn"}):
+            with agent_span("cache_turn", "answer_composer"):
+                assert list(chat_stream(messages)) == ["Xin chào"]
+        mock_langfuse.trace.assert_not_called()
+        mock_langfuse.flush.assert_not_called()
+
+        reset_client_for_tests()
+        mock_langfuse.reset_mock()
+        with trace_request("chat", question, metadata={"turn": "cache_error"}):
+            assert list(chat_stream(messages)) == ["Xin chào"]
+            mark_turn_error("cache_error")
+        mock_langfuse.trace.assert_called_once()
+        mock_root.end.assert_called()
+
+        reset_client_for_tests()
+        mark_turn_cache_hit("slow_cache")
+        assert _should_trace_turn("slow_cache", latency_s=0.2) is False
+        assert _should_trace_turn("slow_cache", latency_s=5.0) is True
+        from backend.infra.monitoring.tracing import mark_turn_guardrail
+
+        mark_turn_guardrail("slow_cache")
+        assert _should_trace_turn("slow_cache", latency_s=0.2) is True
+    finally:
+        clear_llm_cache_context()
+        get_exact_cache().clear()
+        reset_client_for_tests()
 
 
 def test_cost_dashboard_script_runs():

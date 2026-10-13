@@ -2,19 +2,29 @@
 
 from __future__ import annotations
 
+import asyncio
+import queue
 import time
 from collections.abc import Iterator
 from typing import Any, TypeVar
 
+from openai import RateLimitError
 from openai.types.chat import ChatCompletion, ChatCompletionMessageParam
 from pydantic import BaseModel
 
 from backend.infra.cost.tracker import check_budget_or_raise
+from backend.infra.llm.async_client import (
+    acall_with_retry,
+    async_llm_slot,
+    ensure_llm_async_loop,
+    get_async_client,
+)
 from backend.infra.llm.client import get_client, mark_current_key_limited
 from backend.infra.llm.params import GenerationParams
 from backend.infra.llm.providers import (
     call_with_backend_fallback,
     call_with_model_cascade,
+    resolve_backend_chain,
     resolve_model_chain,
 )
 from backend.infra.llm.resilience import retry_with_backoff
@@ -200,32 +210,106 @@ def chat_stream(
     *,
     model: str | None = None,
 ) -> Iterator[str]:
+    """Stream token qua AsyncOpenAI. Vẫn là iterator sync vì composer chạy trong thread."""
     params = params or GenerationParams()
     check_budget_or_raise()
     models = resolve_model_chain(model)
     resolved_model = models[0]
-    def _open_stream_on_backend(backend_name: str | None):
-        c = get_client() if backend_name is None else get_client(backend_name)
-        return c.chat.completions.create(
-            model=resolved_model,
-            messages=messages,
-            stream=True,
-            **params.to_openai_kwargs(),
-        )
+    cache_key, cache = _resolve_exact_cache_key(resolved_model)
+    if cache_key is not None and cache is not None:
+        cached = cache.get(cache_key)
+        if cached is not None:
+            _record_cache_hit_cost(model=resolved_model)
+            _emit_llm_cache_hit(resolved_model)
+            from backend.infra.monitoring.tracing import mark_current_turn_cache_hit
 
-    def _open_stream():
-        return call_with_backend_fallback(_open_stream_on_backend)
+            mark_current_turn_cache_hit()
+            yield cached
+            return
 
-    stream = retry_with_backoff(
-        _open_stream,
-        max_retries=settings.llm_max_retries,
-        on_rate_limit=lambda: mark_current_key_limited(get_client()),
-    )
+    loop = ensure_llm_async_loop()
+    out: queue.Queue[Any] = queue.Queue()
+    done = object()
 
-    for chunk in stream:
-        delta = chunk.choices[0].delta.content
-        if delta:
-            yield delta
+    async def _open_stream():
+        chain = resolve_backend_chain()
+        names: list[str | None] = [None] if len(chain) == 1 else [None, *chain[1:]]
+        last_exc: Exception | None = None
+        for backend_name in names:
+            client = (
+                get_async_client()
+                if backend_name is None
+                else get_async_client(backend_name)
+            )
+            try:
+                return await client.chat.completions.create(
+                    model=resolved_model,
+                    messages=messages,
+                    stream=True,
+                    **params.to_openai_kwargs(),
+                )
+            except RateLimitError as exc:
+                mark_current_key_limited(client)
+                if len(names) == 1:
+                    raise
+                last_exc = exc
+                continue
+            except Exception as exc:
+                last_exc = exc
+                if len(names) == 1:
+                    raise
+                continue
+        if isinstance(last_exc, Exception):
+            raise last_exc
+        raise RuntimeError("chat_stream: không mở được stream")
+
+    async def _produce() -> None:
+        try:
+            async with async_llm_slot():
+                stream = await acall_with_retry(
+                    _open_stream,
+                    max_retries=settings.llm_max_retries,
+                )
+                async for chunk in stream:
+                    if not chunk.choices:
+                        continue
+                    delta = chunk.choices[0].delta.content
+                    if delta:
+                        out.put(delta)
+        except Exception as exc:
+            out.put(exc)
+        finally:
+            out.put(done)
+
+    task_box: dict[str, asyncio.Task[None]] = {}
+
+    async def _run() -> None:
+        task_box["task"] = asyncio.current_task()
+        await _produce()
+
+    asyncio.run_coroutine_threadsafe(_run(), loop)
+    collected: list[str] = []
+    completed = False
+    try:
+        while True:
+            item = out.get()
+            if item is done:
+                completed = True
+                break
+            if isinstance(item, Exception):
+                raise item
+            collected.append(item)
+            yield item
+    finally:
+        def _cancel() -> None:
+            task = task_box.get("task")
+            if task is not None and not task.done():
+                task.cancel()
+
+        loop.call_soon_threadsafe(_cancel)
+
+    if completed and cache_key is not None and cache is not None:
+        cache.set(cache_key, "".join(collected))
 
 
 def chat_parsed(

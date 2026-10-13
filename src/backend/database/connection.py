@@ -53,6 +53,8 @@ CREATE TABLE IF NOT EXISTS hitl_evaluations (
     reason TEXT,
     question TEXT,
     answer TEXT,
+    signal_score REAL,
+    feedback_source TEXT,
     created_at TEXT NOT NULL,
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
@@ -130,6 +132,10 @@ def init_db(conn: sqlite3.Connection) -> None:
                 conn.execute("ALTER TABLE hitl_evaluations ADD COLUMN question TEXT")
             if "answer" not in columns:
                 conn.execute("ALTER TABLE hitl_evaluations ADD COLUMN answer TEXT")
+            if "signal_score" not in columns:
+                conn.execute("ALTER TABLE hitl_evaluations ADD COLUMN signal_score REAL")
+            if "feedback_source" not in columns:
+                conn.execute("ALTER TABLE hitl_evaluations ADD COLUMN feedback_source TEXT")
     except Exception:
         pass
 

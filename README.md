@@ -1,6 +1,39 @@
 # VN Stock Swarm & Portfolio Watch — Đồ Án Cuối Khóa LLM Engineer
 
-Hệ thống Trợ lý Phân tích Chứng khoán Đa Tác tử (Multi-Agent Swarm) và Quản lý Danh mục Đầu tư Đa Tài khoản (Multi-tenant Portfolio Watch), phát triển theo phương pháp **Spec-Driven Development (SDD)**, ứng dụng toàn diện các kỹ thuật tiên tiến nhất từ **LLM Engineer Handbook** (Module 1, 2, 3) và repository tham chiếu **llm-engineer-demo**.
+Hệ thống Trợ lý Phân tích Chứng khoán Đa Tác tử (Multi-Agent Swarm) và Quản lý Danh mục Đầu tư Đa Tài khoản (Multi-tenant Portfolio Watch), phát triển theo phương pháp **Spec-Driven Development (SDD)**.
+
+## Đợt cập nhật hiện tại (chưa code)
+
+Port các thay đổi **sau** commit `01bd4505d59d95358732ed074a14fcf52ff66e20` (`cost optimization`) đến `6e5e32e` của `llm-engineer-demo` sang app này. Mốc `01bd450` là baseline đã có (cost tracker, exact cache). Không viết lại swarm, golden set, hay RAG pháp lý.
+
+Spec: [specs/product-spec.md](specs/product-spec.md), [specs/implementation-plan.md](specs/implementation-plan.md), [specs/test-plan.md](specs/test-plan.md).
+
+Module III Bài 1–8 đã có trong code (prompt, eval gate, cache, Docker, CI/CD, tracing, HITL). Việc còn lại, từng ô một:
+
+1. Async client cho `chat_stream` (ngắt SSE đã có).
+2. Cho SSE đi qua exact cache; thêm Redis store, mặc định vẫn memory.
+3. Script rollback alias `production` (lint đã có).
+4. Sampling bỏ cache hit; thêm tín hiệu copied / regenerated / abandoned.
+5. Secret Manager thật, lỗi thì giữ `.env` (`secrets.py` hiện trả `None`).
+
+## Demo with ngrok
+
+App local phục vụ UI và API trên cổng **8000**.
+
+```bash
+uvicorn backend.main:app --app-dir src --host 127.0.0.1 --port 8000 --reload
+ngrok http 8000
+```
+
+Docker tách frontend **3001** và backend **8000**. Expose backend, rồi trỏ frontend tới URL ngrok của backend nếu UI và API không cùng origin:
+
+```bash
+docker compose up -d
+ngrok http 8000
+ngrok http 3001
+```
+
+`proxy_buffering` của nginx đã tắt cho route stream, để token SSE không bị giữ đến khi model sinh xong.
 
 ---
 
@@ -98,7 +131,7 @@ Hệ thống sử dụng kiến trúc lưu trữ phân tầng nhằm bảo đả
 | **SQLite 2: Product DB** | `resources/data/backend_store.db` | `watchlist` | Danh sách mã theo dõi trực tiếp từ Web UI (`user_id`, `ticker`, `alert_threshold_pct`, `created_at`). |
 | | | `conversations` | Lưu vết toàn bộ hội thoại người dùng đồng bộ với Web UI. |
 | | | `alert_events` | Lịch sử cảnh báo biến động giá cổ phiếu vượt ngưỡng thiết lập. |
-| **Bộ Nhớ Đệm Cache 2 Tầng** | In-memory RAM & SQLite | `Exact Cache (Tầng 1)` | Lưu cặp `Hash MD5(Prompt) -> Response`, TTL 24h, trúng cache tức thì (< 1ms). |
+| **Bộ Nhớ Đệm Cache 2 Tầng** | Exact cache mặc định memory. Redis khi `cache.backend` là `redis` | `Exact Cache (Tầng 1)` | Lưu cặp `Hash MD5(Prompt) -> Response`, TTL 24h, trúng cache tức thì (< 1ms). |
 | | | `Semantic Cache (Tầng 2)` | Vector embedding cosine similarity $\ge 0.93$, xử lý câu hỏi gần tương đương (near-duplicates). |
 | **Lưu Trữ Tệp Ảnh Biểu Đồ** | `resources/data/charts/` | Tệp ảnh PNG nến kỹ thuật | Chứa các file ảnh Candlestick chart được sinh tự động bởi `ChartAgent` qua Matplotlib. |
 
@@ -185,13 +218,22 @@ source ~/.venv/bin/activate
 # 2. Cài đặt các thư viện cần thiết
 pip install -e .
 
-# 3. Cấu hình API Key trong file .env
-echo "OPENAI_API_KEYS=sk-proj-xxxxx" > .env
+# 3. Tạo .env và điền secret. Tên biến nằm trong .env.example:
+#    OPENAI_API_KEYS, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, QDRANT_API_KEY
+#    Tham số (model, cache, cổng, bộ nhớ, monitoring) sửa ở resources/configs/config.yaml
 
 # 4. Khởi chạy Web App
 uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
 # Truy cập giao diện tại: http://localhost:8000
 ```
+
+Secret cần điền trong `.env` (mẫu tên biến ở `.env.example`):
+
+- `OPENAI_API_KEYS`: bắt buộc để gọi model. Nhiều key cách nhau bằng dấu phẩy.
+- `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`: tùy chọn, để ghi trace.
+- `QDRANT_API_KEY`: tùy chọn.
+
+Tham số vận hành nằm ở `resources/configs/config.yaml`: model, cache, cổng, bộ nhớ, monitoring, embedding. Sửa tham số ở file đó. Nếu cùng một giá trị có trong cả `.env` và `config.yaml`, `.env` ghi đè.
 
 ### 7.2. Khởi Chạy Bằng Docker Compose
 ```bash
@@ -214,6 +256,24 @@ pytest tests/ -v
 # Chạy riêng kiểm thử Golden Dataset v6 (20/20 test cases)
 pytest tests/e2e/test_golden_v6_slices.py -v
 ```
+
+### 7.4. Exact cache: mặc định memory, cách bật Redis
+
+Exact cache mặc định là **memory**. `resources/configs/config.yaml` có `cache.backend: "memory"`. App dùng bộ nhớ trong tiến trình, không cần Redis và không cần gói `redis`.
+
+Bật Redis cho exact cache:
+
+```bash
+pip install redis
+docker compose up -d redis
+```
+
+Trong `resources/configs/config.yaml`, đổi `cache.backend` thành `redis`, rồi khởi động lại app. `get_exact_cache()` giữ store của lần gọi đầu, nên đổi config khi app đang chạy thì chưa ăn.
+
+- Máy host: `REDIS_URL` mặc định là `redis://localhost:6379`. Nếu cổng 6379 đã bị chiếm, chạy `REDIS_PORT=6380 docker compose up -d redis` và đặt `REDIS_URL=redis://localhost:6380`.
+- Docker Compose: backend đã có `REDIS_URL=redis://redis:6379`. Vẫn phải đổi `cache.backend` thành `redis`. File `resources/` được mount vào container.
+
+Semantic cache không đi qua Redis.
 
 ---
 

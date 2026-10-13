@@ -49,6 +49,14 @@ def test_docker_compose_structure():
     assert "pw_data" in compose_data["volumes"]
     assert compose_data["volumes"]["pw_data"]["name"] == "portfolio-watch-data"
 
+    redis = services["redis"]
+    assert redis["image"] == "redis:7-alpine"
+    assert redis["ports"] == ["${REDIS_PORT:-6379}:6379"]
+    assert "redis_data:/data" in redis["volumes"]
+    assert compose_data["volumes"]["redis_data"]["name"] == "portfolio-watch-redis-data"
+    assert backend_env.get("REDIS_URL") == "redis://redis:6379"
+    assert backend["depends_on"]["redis"]["condition"] == "service_healthy"
+
 
 def test_backend_dockerfile():
     """Verify src/backend/Dockerfile implements multi-stage build and non-root appuser."""

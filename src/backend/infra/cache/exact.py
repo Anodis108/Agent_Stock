@@ -1,7 +1,7 @@
 """Exact-match LLM response cache — M3-B3 Phase 8.
 
 Cache key = hash(prompt_name, prompt_version, model, normalized_question).
-TTL 24h; MVP in-memory (no Redis).
+TTL 24h. Store chỉ cần get và setex. Mặc định là memory.
 """
 
 from __future__ import annotations
@@ -12,8 +12,7 @@ import re
 import time
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass
-from typing import Any, Iterator
+from typing import Any, Iterator, Protocol
 
 TTL_SECONDS = 24 * 3600
 
@@ -37,18 +36,56 @@ def make_cache_key(
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-@dataclass(slots=True)
-class _CacheEntry:
-    value: str
-    expires_at: float
+class CacheStore(Protocol):
+    """Store exact cache. Memory và Redis chỉ cần hai method này."""
+
+    def get(self, key: str) -> str | None: ...
+
+    def setex(self, key: str, ttl_seconds: int, value: str) -> None: ...
+
+
+class InMemoryStore:
+    """Dict trong process. Hết hạn thì get trả None."""
+
+    def __init__(self) -> None:
+        self._data: dict[str, tuple[float, str]] = {}
+
+    def get(self, key: str) -> str | None:
+        entry = self._data.get(key)
+        if entry is None:
+            return None
+        expires_at, value = entry
+        if time.time() >= expires_at:
+            del self._data[key]
+            return None
+        return value
+
+    def setex(self, key: str, ttl_seconds: int, value: str) -> None:
+        self._data[key] = (time.time() + ttl_seconds, value)
+
+    def clear(self) -> None:
+        self._data.clear()
+
+    @property
+    def size(self) -> int:
+        now = time.time()
+        expired = [k for k, (exp, _) in self._data.items() if now >= exp]
+        for key in expired:
+            del self._data[key]
+        return len(self._data)
 
 
 class ExactCache:
-    """In-memory exact cache với TTL."""
+    """Exact cache. get/set đi qua store.setex."""
 
-    def __init__(self, *, ttl_seconds: float = TTL_SECONDS) -> None:
+    def __init__(
+        self,
+        store: CacheStore | None = None,
+        *,
+        ttl_seconds: float = TTL_SECONDS,
+    ) -> None:
         self._ttl = ttl_seconds
-        self._store: dict[str, _CacheEntry] = {}
+        self._store = store if store is not None else InMemoryStore()
 
     def make_key(
         self,
@@ -65,40 +102,47 @@ class ExactCache:
         )
 
     def get(self, key: str) -> str | None:
-        entry = self._store.get(key)
-        if entry is None:
-            return None
-        if time.time() >= entry.expires_at:
-            del self._store[key]
-            return None
-        return entry.value
+        return self._store.get(key)
 
     def set(self, key: str, value: str) -> None:
-        self._store[key] = _CacheEntry(
-            value=value,
-            expires_at=time.time() + self._ttl,
-        )
+        self._store.setex(key, int(self._ttl), value)
 
     def clear(self) -> None:
-        self._store.clear()
+        clear = getattr(self._store, "clear", None)
+        if clear is not None:
+            clear()
 
     @property
     def size(self) -> int:
-        self._purge_expired()
-        return len(self._store)
-
-    def _purge_expired(self) -> None:
-        now = time.time()
-        expired = [k for k, v in self._store.items() if now >= v.expires_at]
-        for k in expired:
-            del self._store[k]
+        size = getattr(self._store, "size", None)
+        if isinstance(size, int):
+            return size
+        return 0
 
 
-_global_cache = ExactCache()
+def _default_store() -> CacheStore:
+    from backend.shared.settings import settings
+
+    if settings.cache_backend == "redis":
+        from backend.infra.cache.redis_store import RedisStore
+
+        return RedisStore()
+    return InMemoryStore()
+
+
+_global_cache: ExactCache | None = None
 
 
 def get_exact_cache() -> ExactCache:
+    global _global_cache
+    if _global_cache is None:
+        _global_cache = ExactCache(store=_default_store())
     return _global_cache
+
+
+def reset_exact_cache_for_tests() -> None:
+    global _global_cache
+    _global_cache = None
 
 
 def is_exact_cache_enabled() -> bool:

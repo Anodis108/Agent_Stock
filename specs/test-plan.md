@@ -1,5 +1,33 @@
 # Test Plan — VN Stock Swarm (3-Tier Testing Pyramid & Capstone Quality Gate)
 
+## Đợt port sau `01bd450`
+
+Bài 1–8 đã có test. Không viết lại các bài đó. Test mới không gọi OpenAI, Langfuse, Redis, hay GCP.
+
+Giữ xanh trước khi vá:
+
+| Đã có | Lệnh |
+| :--- | :--- |
+| Prompt lint, eval gate | `pytest tests/e2e/test_eval.py -q` |
+| Exact / semantic cache | `pytest tests/integration/test_agents.py -q` |
+| Sampling, che PII | `pytest tests/integration/test_monitoring.py -q` |
+| Semaphore thread | `pytest tests/integration/test_system.py::test_llm_semaphore_limits_concurrency -q` |
+| HITL | `pytest tests/integration/test_api.py::test_hitl_feedback_and_telemetry_export -q` |
+
+Việc mới:
+
+| Phase | Chỉ kiểm phần còn thiếu | Lệnh khi đã có file test |
+| :--- | :--- | :--- |
+| A | Async client trả slot sau success và sau lỗi. `chat_stream` không gọi SDK sync. | `pytest tests/unit/test_async_client.py -q` |
+| B | Stream trùng câu và trùng `prompt_version` thì hit. Store giả `get`/`setex` dùng chung `ExactCache`. | `pytest tests/unit/test_redis_store.py tests/integration/test_agents.py -q` |
+| C | Rollback đổi `production.txt`, file `vN.yaml` còn nguyên. Lint cũ vẫn pass. | `pytest tests/unit/test_prompt_rollback.py tests/e2e/test_eval.py -q` |
+| D | `cache_hit=True` thì không sample. Copied / regenerated / abandoned đúng điểm và nhãn. | `pytest tests/integration/test_monitoring.py tests/unit/test_feedback_signals.py -q` |
+| E | Mock thành công thì đè key. Mock lỗi thì giữ `.env`. Tắt thì không gọi client. | `pytest tests/unit/test_secret_manager.py -q` |
+
+Hồi quy khi đụng chat hoặc config: `pytest tests/ -q` với `PRICE_FALLBACK_ON_ERROR=true`. Golden v6: `pytest tests/e2e/test_golden_v6_slices.py -q`.
+
+---
+
 Kế hoạch kiểm thử toàn diện được thiết kế theo đúng chuẩn mực **Production LLMOps** (Module 3 của `LLM-Engineer-Handbook`), phân tầng thành **3 Tầng Kiểm Thử (3-Tier Testing Pyramid)** kết hợp với cổng kiểm chuẩn chất lượng **Golden Dataset v6 Gate**.
 
 ---

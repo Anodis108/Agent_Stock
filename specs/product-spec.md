@@ -1,124 +1,100 @@
-# Product Spec — VN Stock Swarm & Portfolio Watch (Capstone Final Product)
+# Product Spec — VN Stock Swarm & Portfolio Watch
 
-## 1. App Goal (Mục Tiêu Ứng Dụng)
-**VN Stock Swarm & Portfolio Watch** là hệ thống trợ lý phân tích chứng khoán Việt Nam và quản lý danh mục đầu tư đa tài khoản ứng dụng kiến trúc Multi-Agent Swarm (LangGraph), phát triển theo phương pháp **Spec-Driven Development (SDD)** làm sản phẩm đồ án tốt nghiệp cuối khóa LLM Engineer.
+## App goal
 
-Mục tiêu cốt lõi:
-1. **Trợ lý đầu tư chứng khoán chính xác & khách quan**: Đáp ứng 100% (20/20 cases) bộ dữ liệu chuẩn hóa `golden_v6_comprehensive.yaml` trên 10 lát cắt thị trường, luôn kèm miễn trừ trách nhiệm pháp lý.
-2. **Phản hồi tức thì với Greeting Fast-Path**: Nhận diện câu chào hỏi giao tiếp ("Xin chào", "Hello", "Hi bot") an toàn tại Input Guardrail và nối thẳng sang Chat LLM (TTFT < 1.0s), không bị từ chối và không kích hoạt tra cứu giá sai lệch.
-3. **Quản lý danh mục đa tài khoản (Multi-tenant Portfolio)**: Cô lập dữ liệu nắm giữ (Holdings, Unrealized P&L, NAV) và danh sách theo dõi (Watchlist) giữa các tài khoản người dùng (`User A`, `User B`, `Default`).
-4. **Kiến trúc tinh gọn, bảo mật & tách biệt cấu hình (Config Decoupling)**:
-   - File `.env` chỉ chứa các biến bí mật (API Keys).
-   - Toàn bộ cấu hình hệ thống được quản lý tập trung tại [resources/configs/config.yaml](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/resources/configs/config.yaml).
-5. **Mã nguồn sạch sẽ, phân tầng modular**:
-   - Toàn bộ code nằm trong `src/` (`src/backend/`, `src/frontend/`, `src/deploy/`), gốc dự án (root) sạch sẽ chỉ chứa các tệp tĩnh.
-6. **Kiểm thử 3 tầng chuẩn Production LLMOps**:
-   - Phân tầng `tests/unit/`, `tests/integration/`, `tests/e2e/`, hỗ trợ mock offline bảo đảm pipeline CI chạy hoàn tất trong **< 5 phút**.
+VN Stock Swarm là web app trợ lý chứng khoán Việt Nam. Người dùng hỏi giá, tin, chỉ báo, biểu đồ, và danh mục. Hệ thống trả lời bằng nhiều agent, kèm miễn trừ trách nhiệm, và không đặt lệnh mua bán.
 
----
+Đợt này vá các lỗ LLMOps còn lại so với `llm-engineer-demo` sau commit `01bd450` đến `6e5e32e`. Module III Bài 1–8 đã có trong code. Mục tiêu là khép những lỗ đó, giữ golden v6 và suite test hiện tại.
 
-## 2. Target Users (Đối Tượng Người Dùng)
-1. **Nhà đầu tư cá nhân trên thị trường chứng khoán Việt Nam**:
-   - Cần tra cứu nhanh giá thị trường, tin tức doanh nghiệp, chỉ báo kỹ thuật (RSI, SMA), xem biểu đồ nến Candlestick và theo dõi lãi/lỗ danh mục đầu tư một cách khách quan, bảo mật.
-2. **Hội đồng chấm thi / Giảng viên khóa học LLM Engineer**:
-   - Đánh giá năng lực xây dựng sản phẩm AI Agent thực tế: Multi-Agent Swarm (LangGraph), Prompt Engineering, 2-Tier Caching, Guardrails, Memory Engineering, Cost Tracking và CI/CD Automation.
-3. **Kỹ sư AI / MLOps Developer**:
-   - Cần hệ thống mẫu chuẩn mực về Spec-Driven Development, cấu trúc mã nguồn sạch, tách biệt cấu hình và kiểm thử hồi quy tự động (Regression Testing & Eval Gate).
+## Target users
 
----
+- Nhà đầu tư cá nhân tra cứu cổ phiếu Việt Nam và xem lãi lỗ danh mục theo tài khoản đã chọn.
+- Giảng viên chấm phần agent và phần vận hành LLM (prompt, eval, cache, trace, CI).
+- Người chạy demo local hoặc ngrok trên máy mình.
 
-## 3. Core User Flow (Luồng Người Dùng Cốt Lõi)
+## Core user flow
 
-### 3.1. Các bước tương tác chính:
-1. **Truy cập & Chọn tài khoản**: Người dùng truy cập Web App (`http://localhost:8000`), chọn tài khoản từ dropdown (`User A`, `User B`, `Default`).
-2. **Nhập câu hỏi**: Người dùng gửi tin nhắn (chào hỏi, hỏi giá, tin tức, phân tích kỹ thuật, xem biểu đồ, kiểm tra danh mục, hoặc hỏi khuyến nghị).
-3. **Xử lý qua Tường lửa & Swarm Orchestrator**:
-   - *Luồng Chào hỏi (Greeting Fast-Path)*: Guardrail nhận diện an toàn -> nối thẳng sang Chat LLM phản hồi thân thiện, giới thiệu năng lực (TTFT < 1.0s, bỏ qua các worker).
-   - *Tấn công Injection / Ngoài phạm vi*: Guardrail chặn đứng (Injection) hoặc từ chối lịch sự (Out-of-Scope).
-   - *Câu hỏi chứng khoán hợp lệ*: Rewrite chuẩn hóa -> Supervisor phân phối song song tới các Worker Agents tương ứng (`PriceAgent`, `NewsAgent`, `IndicatorEngine`, `ChartAgent`, `PortfolioWatchAgent`) -> `EvalAgent` đánh giá rủi ro -> `AnswerComposer` tổng hợp câu trả lời kèm miễn trừ trách nhiệm.
-4. **Phản hồi thời gian thực qua Web UI**:
-   - Streaming Markdown qua Server-Sent Events (SSE).
-   - Đồ thị Live Agent Graph cập nhật trạng thái node theo thời gian thực (sáng đèn khi xử lý, hover xem I/O).
-   - Hiển thị bảng P&L, danh sách Watchlist và ảnh biểu đồ nến Candlestick (nếu có).
+1. Mở `http://localhost:8000`, chọn User A, User B, hoặc Default.
+2. Gửi một câu: chào, hỏi giá, tin, chỉ báo, so sánh mã, biểu đồ, danh mục, hoặc xin khuyến nghị.
+3. Guardrail xử lý trước:
+   - Chào hỏi đi thẳng tới câu trả lời, không gọi agent giá.
+   - Injection hoặc câu ngoài chứng khoán Việt Nam bị từ chối.
+   - Câu hợp lệ đi qua supervisor tới agent giá, tin, chỉ báo, biểu đồ, hoặc danh mục.
+4. UI nhận câu trả lời dạng stream. Có thể kèm bảng lãi lỗ hoặc ảnh nến.
+5. User bấm thích hoặc không thích. Bản ghi này có thể thành draft cho bộ golden.
 
-### 3.2. Sơ đồ tuần tự (Sequence Diagram):
+Đợt vá thêm vào đúng luồng trên, không thêm màn hình mới:
+
+- Câu lặp trên luồng stream dùng cache, hết slot thì xếp hàng, client ngắt thì dừng sinh token.
+- Trace bỏ các lượt trúng cache. User có thể gửi thêm tín hiệu đã copy, hỏi lại, hoặc bỏ dở.
+- Máy production đọc API key từ Secret Manager. Lỗi thì dùng `.env`.
+
 ```mermaid
 sequenceDiagram
-    autonumber
-    actor User as Người dùng (Web UI)
-    participant API as FastAPI Gateway
-    participant Guardrail as Input Guardrail
-    participant Swarm as Swarm Orchestrator (LangGraph)
-    participant Workers as Worker Agents (Price/News/Chart/Portfolio)
-    participant Composer as Answer Composer
-
-    User->>API: 1. POST /chat (message, user_id)
-    API->>Guardrail: 2. Kiểm tra an toàn & Phân loại Intent
-
-    alt Kịch bản A: Chào hỏi giao tiếp (Greeting Fast-Path)
-        Guardrail-->>API: category="greeting", is_safe=True
-        API->>Composer: Nối thẳng sang Chat LLM (Bypass Workers)
-        Composer-->>User: Phản hồi lời chào & gợi ý câu hỏi (TTFT < 1.0s)
-    else Kịch bản B: Tấn công Injection / Ngoài phạm vi
-        Guardrail-->>API: category="injection" | "out_of_scope", is_safe=False
-        API-->>User: Từ chối an toàn / Lịch sự định hướng thị trường
-    else Kịch bản C: Tra cứu chứng khoán / Danh mục / Biểu đồ
-        Guardrail-->>API: category="market_query", is_safe=True
-        API->>Swarm: Rewrite & Decomposition
-        Swarm->>Workers: Điều phối song song tới các Worker Agents
-        Workers-->>Swarm: Trả về dữ liệu giá, tin tức, RSI, P&L, biểu đồ
-        Swarm->>Composer: Tổng hợp câu trả lời khách quan + Disclaimer
-        Composer-->>User: SSE Streaming Markdown + Bảng P&L + Ảnh Biểu đồ
+    actor User
+    participant API
+    participant Guardrail
+    participant Swarm
+    User->>API: Câu hỏi và user_id
+    API->>Guardrail: Kiểm tra
+    alt Chào hoặc từ chối
+        Guardrail-->>User: Trả lời ngắn
+    else Câu chứng khoán
+        Guardrail->>Swarm: Điều phối agent
+        Swarm-->>User: Stream câu trả lời
     end
 ```
 
----
+## Features in scope
 
-## 4. Features in Scope (Phạm Vi Tính Năng MVP)
+Đã có, không xây lại:
 
-### 4.1. Nhóm Tính Năng Nghiệp Vụ Trợ Lý Swarm
-1. **Greeting Fast-Path**: Phản hồi chào hỏi tức thì (< 1.0s TTFT), bỏ qua các worker tra cứu giá.
-2. **Tường lửa Guardrail**: Chặn 100% prompt injection; từ chối câu hỏi ngoài phạm vi; bắt buộc gắn miễn trừ trách nhiệm.
-3. **Tra cứu thị giá (Price Agent)**: Giá khớp lệnh, % thay đổi, trần/sàn, lịch sử giá 10 ngày từ Vnstock (có fallback offline).
-4. **Tổng hợp tin tức (News Agent)**: Thu thập tin tức mới nhất từ Vnstock & CafeF, trích dẫn nguồn minh bạch.
-5. **Chỉ báo kỹ thuật (Indicator Engine)**: Tính toán định lượng RSI(14), SMA(20), SMA(50), nhận diện Golden/Death Cross.
-6. **So sánh đa mã (Comparison)**: Phân rã câu hỏi so sánh đa mã và đối chiếu trong bảng Markdown.
-7. **Sinh biểu đồ nến (Chart Agent)**: Vẽ biểu đồ nến Candlestick kết hợp SMA bằng Matplotlib, lưu ảnh PNG tĩnh tại `resources/data/charts/`.
-8. **Quản lý danh mục & Watchlist (PortfolioWatchAgent)**: Tính Unrealized P&L, tổng NAV và quản lý danh sách theo dõi kèm ngưỡng cảnh báo theo từng `user_id`.
-9. **Giao diện Web App & Live Agent Graph**: Streaming SSE, hiển thị đồ thị mạng lưới Agent động, bảng P&L và User Switcher.
+- Chào hỏi, chặn injection, từ chối câu ngoài phạm vi, miễn trừ trách nhiệm.
+- Giá, tin, RSI/SMA, so sánh mã, biểu đồ nến, lãi lỗ và watchlist theo `user_id`.
+- Prompt YAML với alias `production`, lint, A/B.
+- Golden v6, eval gate, cache exact và semantic trong memory trên `chat()` và `chat_parsed()`.
+- SSE, dừng khi client ngắt, semaphore thread, Docker, nginx, smoke, ngrok.
+- CI lint, eval gate trên PR, CD build rồi smoke rồi rollback SHA.
+- Sampling lỗi, guardrail, request chậm, che email và số điện thoại, HITL thumbs.
 
-### 4.2. Nhóm Tính Năng Kỹ Thuật & Cấu Trúc Sạch (Engineering & LLMOps)
-1. **Tách biệt cấu hình (Config Decoupling)**: `.env` chỉ chứa secrets; `resources/configs/config.yaml` chứa toàn bộ tham số vận hành.
-2. **Module hóa `src/backend/`**: Đóng gói các chức năng vào folder riêng (`api`, `agents`, `domain`, `infra`, `services`, `eval`), không để file rời rạc ở thư mục gốc backend.
-3. **Di dời `deploy/` vào `src/deploy/`**: Gom toàn bộ mã nguồn và script triển khai vào `src/`.
-4. **Bộ nhớ đệm 2 tầng (2-Tier Cache)**: Exact MD5 Cache + Semantic Cosine Cache ($\ge 0.93$) giúp tiết kiệm 30% chi phí.
-5. **Bộ nhớ ngắn hạn (Short-term Memory)**: Sliding window 20 tin nhắn với TTL 60 phút.
-6. **Kiểm thử 3 tầng (3-Tier Testing Pyramid)**: `tests/unit/`, `tests/integration/`, `tests/e2e/` với cơ chế mock offline < 5 phút.
+Đợt này làm thêm:
 
----
+- `chat_stream` gọi LLM async, có giới hạn đồng thời, và đi qua exact cache.
+- Redis cho exact cache. Mặc định vẫn memory.
+- Script đổi alias `production` về version trước.
+- Sampling bỏ lượt cache hit. Thêm tín hiệu copied, regenerated, abandoned.
+- Đọc secret lúc chạy, lỗi thì giữ `.env`.
 
-## 5. Features out of Scope (Ngoài Phạm Vi MVP)
+## Features out of scope
 
-Để đảm bảo tính đơn giản, tập trung vào MVP và chuẩn mực đồ án cuối khóa:
-1. **Không đặt lệnh giao dịch thật**: Không tích hợp API tài khoản chứng khoán để mua/bán tiền thật.
-2. **Không truyền phát tick-by-tick thời gian thực**: Sử dụng nến ngày EOD và polling giá khớp gần nhất.
-3. **Không làm hệ thống Authentication / RBAC phức tạp**: Sử dụng User Switcher qua header `X-User-ID` để phân tách tenant.
-4. **Không tính thuế & phí margin chi tiết**: Chưa hỗ trợ thuế TNCN chi tiết, phí lưu ký hay lãi vay margin phức tạp.
-5. **Không hỗ trợ thị trường tài chính quốc tế**: Chỉ tập trung vào cổ phiếu niêm yết tại thị trường chứng khoán Việt Nam (rổ VN30, HOSE, HNX).
+- Đặt lệnh mua bán, dữ liệu tick, đăng nhập đầy đủ, thuế và phí margin, thị trường ngoài Việt Nam.
+- Viết lại swarm, golden set, lint prompt, eval gate, cache memory, HITL thumbs.
+- RAG pháp lý, Tavily, Qdrant cho luật, LangSmith Prompt Hub, đồng bộ golden lên LangSmith.
+- vLLM trên GPU và script tạo máy Compute Engine.
 
----
+## Acceptance criteria
 
-## 6. Acceptance Criteria (Tiêu Chí Nghiệm Thu Định Lượng)
+Sản phẩm hiện tại phải giữ:
 
-| Mã AC | Tiêu Chí Nghiệm Thu | Ngưỡng Đạt Yêu Cầu | Phương Pháp Đo Kiểm |
-| :--- | :--- | :--- | :--- |
-| **AC-1** | **Độ chính xác Golden Dataset v6** | **20/20 test cases PASS (100%)** trên 10 lát cắt chuẩn | `pytest tests/e2e/test_golden_v6_slices.py` |
-| **AC-2** | **Greeting Fast-Path Latency** | **TTFT < 1.0s**, không bị Guardrail chặn, không gọi PriceAgent | `pytest tests/unit/test_greeting_fastpath.py` |
-| **AC-3** | **Tường Lửa Guardrail & An Toàn** | 100% Injection bị chặn, 100% Out-of-Scope được từ chối an toàn | `pytest tests/unit/test_guardrails.py` |
-| **AC-4** | **Phân Tách Dữ Liệu Đa Tài Khoản** | P&L, NAV, Watchlist cô lập 100% giữa User A và User B | `pytest tests/integration/test_database.py` |
-| **AC-5** | **Tự Động Sinh Biểu Đồ Nến** | File PNG sinh hợp lệ trong `resources/data/charts/`, hiển thị trên UI | `pytest tests/integration/test_chart.py` |
-| **AC-6** | **Bảo Đảm Miễn Trừ Trách Nhiệm** | 100% câu hỏi xin khuyến nghị có chứa "miễn trừ trách nhiệm", không chứa "nên mua/bán" | `pytest tests/e2e/test_eval.py` |
-| **AC-7** | **Tách Biệt Config & Secret** | `.env` chỉ chứa Secrets; `config.yaml` nạp đầy đủ tham số hệ thống | `pytest tests/unit/test_config.py` |
-| **AC-8** | **Cấu Trúc Thư Mục Chuẩn Sạch** | Toàn bộ code trong `src/`; không còn loose files trong `src/backend/` | Kiểm tra cấu trúc filesystem |
-| **AC-9** | **Tối Ưu Thời Gian CI Pipeline** | Toàn bộ test suite chạy hoàn tất trong **< 5 phút** trên GitHub Actions | `.github/workflows/ci.yml` run log |
-| **AC-10**| **Hiệu Quả 2-Tier Caching** | Tỷ lệ trúng cache $\ge 30\%$ trên tập Replay FAQ 200 câu, tiết kiệm $\ge 30\%$ chi phí | `python scripts/cache_benchmark.py --limit 50` |
+| Mã | Đạt khi | Cách kiểm |
+| :--- | :--- | :--- |
+| AC-1 | Golden v6 đủ 20/20 trên 10 lát cắt | `pytest tests/e2e/test_golden_v6_slices.py` |
+| AC-2 | Câu chào không bị chặn và không gọi agent giá | `pytest tests/unit/test_greeting_fastpath.py` |
+| AC-3 | Injection bị chặn, câu ngoài phạm vi bị từ chối | `pytest tests/unit/test_guardrails.py` |
+| AC-4 | Lãi lỗ và watchlist của User A khác User B | `pytest tests/integration/test_database.py` |
+| AC-5 | Biểu đồ PNG tạo được | `pytest tests/integration/test_chart.py` |
+| AC-6 | Câu xin khuyến nghị có "miễn trừ trách nhiệm" | `pytest tests/e2e/test_eval.py` |
+| AC-7 | `.env` chỉ chứa secret, app đọc `config.yaml` | `pytest tests/unit/test_config.py` |
+
+Đợt vá đạt khi:
+
+| Mã | Đạt khi |
+| :--- | :--- |
+| U1 | `chat_stream` dùng async client. Slot được trả sau khi xong hoặc lỗi. Test không gọi mạng. |
+| U2 | Cùng câu và cùng `prompt_version` trên stream thì không gọi model. |
+| U3 | Redis store chỉ cần `get` và `setex`. Test dùng store giả. |
+| U4 | Script rollback đổi `production.txt` và giữ file version. |
+| U5 | Cache hit thì không ghi trace. Lỗi, guardrail, và request chậm vẫn ghi. |
+| U6 | Copied, regenerated, abandoned có điểm từ 0 đến 1 và nhãn nguồn. |
+| U7 | Secret Manager bật: mock trả key thì dùng key đó. Mock lỗi thì giữ `.env`. |
+| U8 | `pytest tests/` vẫn pass, không gọi internet. |
