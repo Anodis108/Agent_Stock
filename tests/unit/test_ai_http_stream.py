@@ -191,7 +191,7 @@ def test_web_entry_sends_account_lists_only_for_live_questions(tmp_path, monkeyp
     """Số liệu và danh mục kèm hai danh sách của user. Khái niệm không kèm."""
     from backend.api.deps import clear_deps_cache, get_app_deps, set_app_deps
     from backend.main import app as web_app
-    from backend.routes import watchlist as watchlist_routes
+    from backend.api.routers.web import watchlist as watchlist_routes
     from backend.infra.storage.store import Store, WatchlistItem
 
     monkeypatch.setenv("AI_BASE_URL", "http://ai.test:8001")
@@ -479,7 +479,7 @@ def test_concept_questions_omit_watchlist_and_holdings(monkeypatch):
 
 def test_v1_scan_uses_watchlist_from_body(monkeypatch):
     from backend.infra.llm.service import app as ai_app
-    from backend import routes as ai_routes
+    from backend.api.routers.ai import v1 as ai_routes
     from backend.api.deps import get_app_deps
 
     class BoomStore:
@@ -555,7 +555,7 @@ def test_v1_chat_forwards_lists_and_does_not_touch_sessions(monkeypatch):
     from pathlib import Path
 
     from backend.infra.llm.service import app as ai_app
-    from backend import routes as ai_routes
+    from backend.api.routers.ai import v1 as ai_routes
     from backend.api.deps import get_app_deps
 
     seen: dict[str, object] = {}
@@ -612,7 +612,7 @@ def test_v1_chat_forwards_lists_and_does_not_touch_sessions(monkeypatch):
     routes_path = Path(__file__).resolve().parents[2] / "src" / "backend" / "routes.py"
     if not routes_path.exists():
         routes_path = (
-            Path(__file__).resolve().parents[2] / "src" / "backend" / "api" / "routers" / "v1.py"
+            Path(__file__).resolve().parents[2] / "src" / "backend" / "api" / "routers" / "ai" / "v1.py"
         )
     text = routes_path.read_text(encoding="utf-8")
     assert "SessionRepository" not in text

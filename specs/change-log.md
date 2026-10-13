@@ -4,6 +4,26 @@ Nhật ký ghi nhận chi tiết mọi thay đổi, kết quả kiểm thử và
 
 ---
 
+## 2026-10-13 — Phân tách router api thành web/ và ai/, xóa backend/routes trùng lặp, chuyển app code về main.py & ai_main.py
+
+- **Phân tách rõ ràng router thành 2 nhóm microservice trong `src/backend/api/routers/`**:
+  + `src/backend/api/routers/web/`: Chứa toàn bộ router cho Web Backend (`chat.py`, `sessions.py`, `watchlist.py`, `portfolio.py`, `market.py`, `approvals.py`, `hitl.py`, `scan.py`).
+  + `src/backend/api/routers/ai/`: Chứa router cho AI Swarm microservice (`v1.py` với `/health`, `/v1/chat`, `/v1/chat/stream`, `/v1/scan`).
+  + `src/backend/api/routers/__init__.py`: Giữ bí danh tương thích ngược ánh xạ `backend.api.routers.<module>` sang `web` hoặc `ai`.
+- **Xóa bỏ thư mục `src/backend/routes/`**: Loại bỏ hoàn toàn folder duplicate thừa thãi.
+- **Chuyển code thực thi app trực tiếp vào 2 entrypoint chính**:
+  + Chuyển mã nguồn khởi tạo FastAPI app từ `src/backend/api/main.py` trực tiếp vào `src/backend/main.py` (cổng 8000). Giữ `api/main.py` làm re-export facade.
+  + Chuyển mã nguồn khởi tạo AI FastAPI app trực tiếp vào `src/backend/ai_main.py` (cổng 8001). Giữ `infra/llm/service.py` làm re-export facade.
+- **Tái cấu trúc Dependencies**:
+  + Đưa `AppDeps`, `set_app_deps`, `get_app_deps`, `clear_deps_cache` sang `src/backend/shared/deps.py` để tách biệt composition root toàn hệ thống khỏi tầng giao tiếp HTTP.
+  + Giữ `src/backend/api/deps.py` chuyên trách các dependency HTTP Request (`get_current_user_id`).
+- **Tối ưu hóa Database Connection**:
+  + Bổ sung `connect_timeout=2` cho PostgreSQL trong `pg.py` để tránh treo tiến trình khi Docker offline.
+  + Tự động fallback linh hoạt sang SQLite cho môi trường test offline.
+- **Kết quả kiểm thử**: Toàn bộ unit tests đạt 100% pass, tương thích hoàn toàn.
+
+---
+
 ## 2026-10-13 — Tối ưu hóa kiến trúc src/backend: Chỉ giữ 2 Entrypoint tại root, dọn dẹp và di dời 15 file phụ trợ
 
 - **Lược bỏ toàn bộ file shim/facade và tiện ích phụ tại root `src/backend/`**:

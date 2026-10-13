@@ -327,7 +327,11 @@ def _is_sqlite_file(path: Path) -> bool:
 def get_connection(db_path: str | Path | None = None) -> Any:
     """Mở PostgreSQL nếu có và kết nối được; ngược lại dùng SQLite."""
     target = Path(db_path) if db_path is not None else get_db_path()
-    if (db_path is not None and (str(db_path).endswith(".db") or str(db_path).endswith(".sqlite") or str(db_path) == ":memory:")) or (target and "test_portfolio.db" in str(target)):
+    if db_path is not None and (
+        str(db_path).endswith(".db")
+        or str(db_path).endswith(".sqlite")
+        or str(db_path) == ":memory:"
+    ):
         target.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(str(target), check_same_thread=False, timeout=30.0)
         conn.row_factory = sqlite3.Row

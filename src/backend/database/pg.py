@@ -86,7 +86,12 @@ class PgConn:
 
 
 def connect_postgres(database_url: str, *, schema: str) -> PgConn:
-    conn = psycopg.connect(database_url, row_factory=dict_row, autocommit=False)
+    conn = psycopg.connect(
+        database_url,
+        row_factory=dict_row,
+        autocommit=False,
+        connect_timeout=2,
+    )
     conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
     conn.execute(f'SET search_path TO "{schema}"')
     conn.commit()

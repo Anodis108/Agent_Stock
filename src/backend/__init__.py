@@ -19,7 +19,7 @@ _COMPAT_MODULE_MAP = {
     "backend.settings": "backend.shared.settings",
     "backend.logging": "backend.shared.logging",
     "backend.store": "backend.infra.storage.store",
-    "backend.deps": "backend.api.deps",
+    "backend.deps": "backend.shared.deps",
     "backend.validation": "backend.api.helpers.validation",
     "backend.cors_util": "backend.api.middleware.cors",
     "backend.steps": "backend.eval.steps",
@@ -28,6 +28,19 @@ _COMPAT_MODULE_MAP = {
     "backend.answer_question": "backend.application.answer_question",
     "backend.ai_client": "backend.infra.llm.client",
     "backend.app": "backend.ai_main",
+    "backend.routes": "backend.api.routers.ai.v1",
+    "backend.routes.chat": "backend.api.routers.web.chat",
+    "backend.routes.watchlist": "backend.api.routers.web.watchlist",
+    "backend.api.routers.chat": "backend.api.routers.web.chat",
+    "backend.api.routers.hitl": "backend.api.routers.web.hitl",
+    "backend.api.routers.market": "backend.api.routers.web.market",
+    "backend.api.routers.portfolio": "backend.api.routers.web.portfolio",
+    "backend.api.routers.scan": "backend.api.routers.web.scan",
+    "backend.api.routers.sessions": "backend.api.routers.web.sessions",
+    "backend.api.routers.watchlist": "backend.api.routers.web.watchlist",
+    "backend.api.routers.approvals": "backend.api.routers.web.approvals",
+    "backend.api.routers.v1": "backend.api.routers.ai.v1",
+    "backend.api.main": "backend.main",
 }
 
 

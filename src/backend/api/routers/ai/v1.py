@@ -123,7 +123,7 @@ class V1ScanResponse(BaseModel):
 def _dispatch_answer_question(*args: Any, **kwargs: Any) -> Any:
     import sys
 
-    routes_mod = sys.modules.get("backend.routes")
+    routes_mod = sys.modules.get("backend.api.routers.ai.v1") or sys.modules.get("backend.routes")
     fn = getattr(routes_mod, "answer_question", answer_question) if routes_mod else answer_question
     return fn(*args, **kwargs)
 
@@ -131,7 +131,7 @@ def _dispatch_answer_question(*args: Any, **kwargs: Any) -> Any:
 def _dispatch_scan_symbol(*args: Any, **kwargs: Any) -> Any:
     import sys
 
-    routes_mod = sys.modules.get("backend.routes")
+    routes_mod = sys.modules.get("backend.api.routers.ai.v1") or sys.modules.get("backend.routes")
     fn = getattr(routes_mod, "scan_symbol", scan_symbol) if routes_mod else scan_symbol
     return fn(*args, **kwargs)
 

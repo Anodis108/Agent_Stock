@@ -1,22 +1,58 @@
-"""Backward compatibility redirect to backend.infra.llm.service."""
+"""AI Microservice process — port mặc định 8001, phục vụ LangGraph Swarm.
+
+Endpoint duy nhất phục vụ:
+- /health
+- /v1/chat
+- /v1/chat/stream
+- /v1/scan
+
+Chạy lệnh:
+    python -m backend.ai_main
+    uvicorn backend.ai_main:app --port 8001
+"""
 
 from __future__ import annotations
 
-from backend.infra.llm.service import app, health
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
-__all__ = ["app", "health"]
+from backend.api.routers.ai.v1 import router as v1_router
+from backend.shared.logging import get_logger, setup_logging
+from backend.shared.settings import settings
+
+setup_logging(settings.log_level)
+logger = get_logger(__name__)
+
+app = FastAPI(
+    title=f"{settings.app_name} (AI)",
+    version="0.1.0",
+    description="AI multi-agent service — /v1/chat, /v1/scan",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(v1_router)
+
+
+@app.get("/health")
+def health() -> dict[str, str]:
+    return {"status": "ok", "service": "ai"}
+
 
 if __name__ == "__main__":
     import uvicorn
-    from backend.shared.logging import get_logger
-    from backend.shared.settings import settings
 
-    logger = get_logger(__name__)
     port = settings.ai_api_port
     host = settings.ai_api_host
     logger.info("AI service on http://%s:%s", host, port)
     uvicorn.run(
-        "backend.infra.llm.service:app",
+        "backend.ai_main:app",
         host=host,
         port=port,
         reload=False,

@@ -11,8 +11,10 @@ from backend.api.helpers.validation import (
     validate_threshold_pct,
 )
 from backend.domain.entities import WatchlistItem
+from backend.infra.storage.store import Store
 from backend.shared.settings import settings
 
+store = Store()
 router = APIRouter(tags=["watchlist"])
 
 
