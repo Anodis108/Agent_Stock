@@ -17,7 +17,7 @@ from backend.infra.cost.tracker import (  # noqa: E402
     get_cost_tracker,
     is_over_alert_threshold,
 )
-from backend.shared.settings import settings  # noqa: E402
+from backend.settings import settings  # noqa: E402
 
 
 def main() -> int:

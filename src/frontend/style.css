@@ -2441,6 +2441,12 @@ body {
   margin-top: 0;
 }
 
+.msg-source {
+  margin: 0.5rem 0 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
 .msg-text.markdown-body p:last-child {
   margin-bottom: 0;
 }

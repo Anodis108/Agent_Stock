@@ -1,5 +1,37 @@
 # Test Plan — VN Stock Swarm (3-Tier Testing Pyramid & Capstone Quality Gate)
 
+## Đợt tách cây mã và public từ máy này
+
+Chưa viết code ở bước spec này. Khi làm các phase trong `specs/implementation-plan.md`, kiểm như sau. Test không gọi OpenAI, không gọi internet, và không gọi `gcloud`.
+
+| Ô | Việc kiểm | Lệnh |
+| :--- | :--- | :--- |
+| Hai cây | Không còn `src/backend`. Có `src/web_backend` và `src/ai_backend`. Không có `src/ai` hay `src/web`. | `pytest tests/e2e/test_docker_setup.py -q` |
+| Ranh giới import | `web_backend` không import `ai_backend`, `openai`, hay `answer_question`. | `pytest tests/unit/test_config.py -q` |
+| Route AI | AI vẫn chỉ `/health`, `/v1/chat`, `/v1/chat/stream`, `/v1/scan`. | `pytest tests/unit/test_ai_http_stream.py -q` |
+| Hành vi cũ | Chào, từ chối, khái niệm, và stream token vẫn đúng. | `pytest tests/unit/test_greeting_fastpath.py tests/unit/test_guardrails.py tests/unit/test_concept_rag.py tests/unit/test_ai_http_stream.py -q` |
+| Nginx | `src/deploy/nginx.conf` chỉ `listen 80`, proxy `127.0.0.1:8000`, route `/chat` có `proxy_buffering off`. | `pytest tests/integration/test_system.py -q` |
+| Release | `release.ps1` có `up`, `smoke`, `rollback`, `status`, và không chứa `gcloud`. | Đọc file |
+| Public | Làm theo README: `publish.ps1` in URL https, `GET /health` trả 200. | Làm tay khi đã cài `cloudflared` |
+
+`pytest tests/` phải pass mà không cần mạng. Không tạo file `.db` mới. Không sửa 20 ca golden v6.
+
+## Đợt hai image, PostgreSQL, và khái niệm
+
+Chưa viết code ở bước spec này. Khi làm bảy phase trong `specs/implementation-plan.md`, kiểm như sau. Test không gọi OpenAI và không gọi internet.
+
+| Ô | Việc kiểm | Lệnh |
+| :--- | :--- | :--- |
+| Gỡ facade | Compose không còn `ai.app:app` hay `web.app:app`. Không còn package `src/ai`, `src/web`. | `pytest tests/e2e/test_docker_setup.py -q` |
+| Hai image | Compose khai báo hai Dockerfile khác nhau cho web backend và AI backend. | `pytest tests/e2e/test_docker_setup.py -q` |
+| Postgres | Service `postgres` đứng riêng. App đọc `DATABASE_URL`. Không còn `sqlite3.connect` cho dữ liệu app. | `pytest tests/unit/test_config.py tests/integration/test_database.py -q` |
+| Ranh giới process | Import app web không kéo `openai` và không kéo `answer_question`. | `pytest tests/unit/test_config.py -q` |
+| Stream | UI vẫn nhận token qua proxy HTTP khi `AI_TRANSPORT=http`. | `pytest tests/unit/test_ai_http_stream.py -q` |
+| Khái niệm | "RSI là gì" đi retrieval và có tên file nguồn. "RSI của HPG" không đi retrieval. Không có đoạn thì câu trả lời nói không có trong tài liệu. | `pytest tests/unit/test_concept_rag.py -q` |
+| Qdrant | Compose có service `qdrant` riêng. Collection khái niệm khác collection bộ nhớ dài hạn. | `pytest tests/e2e/test_docker_setup.py tests/unit/test_concept_rag.py -q` |
+
+`pytest tests/` phải pass mà không cần mạng. Test đơn vị dùng repository giả và retriever giả. Test tích hợp database chạy khi `DATABASE_URL` trỏ Postgres của Compose. Không tạo file `.db` mới. Không sửa 20 ca golden v6.
+
 ## Đợt port sau `01bd450`
 
 Bài 1–8 đã có test. Không viết lại các bài đó. Test mới không gọi OpenAI, Langfuse, Redis, hay GCP.

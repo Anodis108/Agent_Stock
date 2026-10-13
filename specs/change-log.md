@@ -4,6 +4,696 @@ Nhật ký ghi nhận chi tiết mọi thay đổi, kết quả kiểm thử và
 
 ---
 
+## 2026-10-13 — Rollback cấu trúc thư mục về src/backend và hợp nhất 2 tiến trình độc lập (Web 8000 & AI 8001)
+
+- Hoàn nguyên cấu trúc thư mục: Gộp `src/ai_backend`, `src/web_backend`, và `src/shared` trở lại thành một thư mục duy nhất `src/backend/`, đồng thời duy trì 2 tiến trình độc lập:
+  + Web backend entry: `backend.main:app` (cổng 8000).
+  + AI backend entry: `backend.ai_main:app` (cổng 8001), chỉ phục vụ `/health`, `/v1/chat`, `/v1/chat/stream`, `/v1/scan`.
+- Giữ toàn bộ tính năng mới: Concept RAG với Qdrant & trích dẫn `source_file`, fast-path chào hỏi, input guardrails chặn injection, SSE token streaming, MinIO & disk chart storage, PostgreSQL lưu trữ phiên và HITL evaluations.
+- Tương thích kép PostgreSQL / SQLite: Runtime ưu tiên kết nối PostgreSQL theo `DATABASE_URL`, tự động fallback sang SQLite cho các test fixture cục bộ offline (`:memory:`, file `.db` tạm).
+- Khắc phục các xung đột monkeypatch router, biến `effective_user_id` trong `chat.py`, `_save_and_encode_fig` upload MinIO, và kiểm tra sức khỏe `/health`.
+- Kết quả kiểm thử: `pytest tests/` đạt **371/371 passed (100%)**.
+
+File: `src/backend/`, `tests/`, `docker-compose.yml`, `specs/change-log.md`.
+
+---
+
+## 2026-10-13 — Phase 7: URL HTTPS qua tunnel trả GET /health 200, câu khái niệm có tên file nguồn
+
+Cập nhật hướng dẫn trong `README.md` và kiểm thử tích hợp:
+- `README.md`: Hướng dẫn kiểm tra sức khỏe `GET /health` trả về 200 và gửi câu hỏi khái niệm `RSI là gì` trên URL HTTPS được cấp bởi Cloudflare Tunnel (`publish.ps1`).
+- Bổ sung `test_tunneled_url_health_and_concept_source` vào `tests/integration/test_system.py`:
+  + Endpoint `/health` trả về status 200 `{"status": "ok", ...}`.
+  + Câu khái niệm `RSI là gì` được xử lý qua RAG concepts, trả về câu trả lời định nghĩa RSI và trích dẫn `source_file: "rsi-va-sma.md"`.
+- Hoàn tất 100% tất cả các phase và checkbox trong `specs/implementation-plan.md`.
+
+`pytest tests/integration/test_system.py -k test_tunneled_url_health_and_concept_source -q`: 1 passed.
+`pytest tests/integration/test_system.py -q`: 31 passed.
+
+File: `README.md`, `tests/integration/test_system.py`, `specs/implementation-plan.md`, `specs/change-log.md`.
+
+---
+
+## 2026-10-13 — Phase 7: publish.ps1 chạy Cloudflare Tunnel vào Nginx cổng 80
+
+Tạo script `src/deploy/publish.ps1`:
+- Khởi chạy Cloudflare Tunnel (`cloudflared tunnel --url http://127.0.0.1:80`) để mở URL HTTPS công khai vào Nginx cổng 80 cục bộ.
+- Tự động tìm kiếm binary `cloudflared` trong PATH, WinGet, và thư mục dự án; in hướng dẫn cài đặt nếu chưa có.
+- Kiểm tra kết nối tới Nginx cổng 80 trước khi tunnel.
+- Hỗ trợ tham số `-TargetUrl` (mặc định `http://127.0.0.1:80`) và switch `-CheckOnly`.
+- Không gọi `gcloud`, không dùng `systemd` / `systemctl`, không cấu hình `443`.
+- Bổ sung `test_publish_ps1` vào `tests/integration/test_system.py`.
+
+`pytest tests/integration/test_system.py -k test_publish_ps1 -q`: 1 passed. `publish.ps1 -CheckOnly`: exit code 0.
+
+File: `src/deploy/publish.ps1`, `tests/integration/test_system.py`, `specs/implementation-plan.md`, `specs/change-log.md`.
+
+---
+
+## 2026-10-13 — Phase 7: README giữ mục demo ngrok cho cổng 8000 và 3001
+
+Cập nhật mục "Demo with ngrok" trong `README.md` theo kiến trúc hiện tại:
+- Hướng dẫn demo local cho cổng 8000 với việc chạy hai cây: Web Backend (`web_backend.main:app`, giữ tương thích `backend.main:app`) trên cổng 8000 và AI Backend (`ai_backend.app:app`) trên cổng 8001, sau đó mở `ngrok http 8000`.
+- Hướng dẫn demo Docker Compose với frontend cổng 3001 và web backend cổng 8000 (`docker compose up -d`, `ngrok http 8000`, `ngrok http 3001`).
+- Giữ đầy đủ hướng dẫn cấu hình `BACKEND_BASE_URL` trong `src/frontend/config.js` và cơ chế `proxy_buffering off` cho SSE stream.
+
+`pytest tests/integration/test_system.py::test_readme_docker_product_and_local -q`: 1 passed.
+
+File: `README.md`, `specs/implementation-plan.md`, `specs/change-log.md`.
+
+---
+
+## 2026-10-13 — Phase 6: README nói cách chạy hai cây và release.ps1 trên máy này
+
+Cập nhật `README.md` theo spec:
+- Cập nhật sơ đồ thư mục (Repository Layout) phản ánh đúng cấu trúc hiện tại: `src/web_backend`, `src/ai_backend`, `src/shared`, `src/frontend`, `src/deploy`.
+- Mục 7.1: Hướng dẫn chạy hai cây trên hai tiến trình độc lập tại local máy này:
+  + Web Backend: `uvicorn web_backend.main:app --app-dir src --host 127.0.0.1 --port 8000 --reload`
+  + AI Backend: `uvicorn ai_backend.app:app --app-dir src --host 127.0.0.1 --port 8001 --reload`
+  + Giữ ghi chú tương thích lệnh đơn tiến trình cũ `uvicorn backend.main:app`.
+- Mục 7.2: Cập nhật bảng ánh xạ Docker Compose với hai Dockerfile (`src/web_backend/Dockerfile` cho web và `src/ai_backend/Dockerfile` cho ai).
+- Mục 7.3: Hướng dẫn vận hành bằng `src/deploy/release.ps1` trên Windows PowerShell (`up`, `smoke`, `rollback`, `status`), nêu rõ chạy thuần cục bộ, không gọi `gcloud`, không dùng `systemd` / `systemctl`.
+- Mục 7.7: Cập nhật lệnh nạp khái niệm import từ `ai_backend.retrieval.concepts`.
+
+`pytest tests/integration/test_system.py -q`: 29 passed.
+
+File: `README.md`, `specs/implementation-plan.md`, `specs/change-log.md`.
+
+---
+
+## 2026-10-13 — Phase 6: Script release.ps1 có up, smoke, rollback, status
+
+Tạo `src/deploy/release.ps1` hỗ trợ 4 lệnh release cục bộ:
+- `up`: Khởi tạo `.env` nếu thiếu, lưu git SHA LKG, chạy `docker compose up -d postgres qdrant backend ai`, và kiểm tra trạng thái.
+- `smoke`: Chạy kiểm thử tự động với `src/deploy/smoke.py` trên URL chỉ định (mặc định `http://127.0.0.1:8000`).
+- `rollback`: Chạy script rollback prompt alias `scripts/prompt_rollback.py`, tái khởi động lại containers (`--force-recreate`), và chạy lại smoke test.
+- `status`: Xem trạng thái containers qua `docker compose ps` và kiểm tra endpoint `/health` của Web (8000) và AI (8001).
+
+Script không gọi `gcloud`, không sử dụng `systemd` / `systemctl`. Đã bổ sung `test_release_ps1` vào `tests/integration/test_system.py`.
+
+`pytest tests/integration/test_system.py::test_release_ps1 tests/integration/test_system.py::test_deploy_nginx_conf -q`: 2 passed.
+
+File: `src/deploy/release.ps1`, `tests/integration/test_system.py`, `specs/implementation-plan.md`.
+
+---
+
+## 2026-10-13 — Phase 6: Nginx chỉ listen 80 proxy về 127.0.0.1:8000, tắt proxy_buffering trên /chat
+
+Tạo `src/deploy/nginx.conf` theo spec: chỉ `listen 80`, proxy về `http://127.0.0.1:8000` (cho `/`, `/api/`, `/chat`), các route SSE `/chat` và `/api/` có `proxy_buffering off` và `proxy_cache off`. Không có block `443` hay cấu hình SSL. Thêm test kiểm tra file cấu hình này trong `tests/integration/test_system.py`.
+
+`pytest tests/integration/test_system.py::test_phase10_nginx_sse_buffering_disabled tests/integration/test_system.py::test_deploy_nginx_conf -q`: 2 passed.
+
+File: `src/deploy/nginx.conf`, `tests/integration/test_system.py`, `specs/implementation-plan.md`.
+
+---
+
+## 2026-10-13 — Phase 5: pytest tests/ pass, không mạng, không file .db
+
+Sáu test còn trỏ `src/backend` hoặc `answer_question` trên module chat. Gate v5 chạy `src/ai_backend/eval/gate.py`. Retry 429 gọi `shared.transport._post_json`. Secret nằm ở `src/shared/secrets.py`. Chart là route `/charts/{file_name}` và `/static/charts/{file_name}`. Hai test stream token patch `ai_backend.answer_question.answer_question` và giữ `AI_TRANSPORT=inprocess`.
+
+`pytest tests/ -q`: 382 passed, 488s. Không có file `.db` trong repo.
+
+File: `tests/e2e/test_capstone.py`, `tests/integration/test_api.py`, `tests/integration/test_system.py`, `specs/implementation-plan.md`.
+
+---
+
+## 2026-10-13 — Phase 5: ngắt stream dừng pipeline, thích và không thích ghi Postgres
+
+Đóng `POST /chat` của web đặt cờ hủy và đóng kết nối SSE tới AI, kể cả khi client ngắt ngay tại một token. Nút thích và không thích trên entry web vẫn ghi `hitl_evaluations`: `thumbs_up` là positive, `thumbs_down` là negative.
+
+`pytest tests/unit/test_ai_http_stream.py tests/unit/test_feedback_signals.py -q`: 18 passed.
+
+File: `src/web_backend/routes/chat_stream.py`, `tests/unit/test_ai_http_stream.py`, `tests/unit/test_feedback_signals.py`, `specs/implementation-plan.md`.
+
+---
+
+## 2026-10-13 — Phase 5: thiếu đoạn khái niệm trả Không có trong tài liệu
+
+`chứng quyền là gì` đi retrieval. Collection khái niệm không có đoạn khớp thì `POST /v1/chat/stream` trả đúng `Không có trong tài liệu.` Không có `source_file`, không gọi agent giá.
+
+`pytest tests/unit/test_config.py tests/unit/test_greeting_fastpath.py tests/unit/test_guardrails.py tests/unit/test_concept_rag.py -q`: 56 passed.
+
+File: `tests/unit/test_concept_rag.py`, `specs/implementation-plan.md`.
+
+---
+
+## 2026-10-13 — Phase 5: chào không gọi giá, injection và câu ngoài phạm vi bị từ chối
+
+`POST /v1/chat/stream` vẫn đi guardrail của swarm. `Xin chào` trả lời chào, `route` là `greeting`, `agents_to_call` rỗng, không gọi agent giá. Câu injection và câu thời tiết trả `route` `guardrail`, không có giá, không nhắc FPT.
+
+`pytest tests/unit/test_config.py tests/unit/test_greeting_fastpath.py tests/unit/test_guardrails.py tests/unit/test_concept_rag.py -q`: 55 passed.
+
+File: `tests/unit/test_guardrails.py`, `specs/implementation-plan.md`.
+
+---
+
+## 2026-10-13 — Phase 5: import web không kéo AI
+
+Import `web_backend.main` không nạp `openai`, `ai_backend.answer_question`, hay `ai_backend`. Test ranh giới process web trỏ entry đang chạy, không còn trỏ app chat cũ.
+
+`pytest tests/unit/test_config.py tests/unit/test_web_data.py -q`: 13 passed.
+
+File: `tests/unit/test_config.py`, `specs/implementation-plan.md`.
+
+---
+
+## 2026-10-13 — Phase 4: RSI khái niệm có file nguồn, RSI theo mã đi chỉ báo
+
+`RSI là gì` đi retrieval và payload SSE public có `source_file` là `rsi-va-sma.md`. `RSI của HPG` đi agent chỉ báo (`eval`), có evidence `rsi=`, và không gọi retrieval, không gắn file khái niệm.
+
+`pytest tests/unit/test_ai_http_stream.py tests/unit/test_concept_rag.py -q`: 23 passed.
+
+File: `tests/unit/test_concept_rag.py`, `specs/implementation-plan.md`.
+
+---
+
+## 2026-10-13 — Phase 4: câu số liệu kèm watchlist và holdings
+
+Process web đọc watchlist từ đúng store trang web và holdings từ repo danh mục của user đang chọn. `POST /chat` gửi hai danh sách đó sang AI khi câu là số liệu hoặc danh mục, ví dụ `Giá FPT` và `Danh mục của tôi`. Câu khái niệm `RSI là gì` không có hai field này. Danh sách của user khác không đi kèm.
+
+`pytest tests/unit/test_ai_http_stream.py tests/unit/test_concept_rag.py tests/unit/test_config.py tests/unit/test_web_data.py -q`: 36 passed.
+
+File: `src/ai_backend/infra/llm/account_snapshot.py`, `tests/unit/test_ai_http_stream.py`, `specs/implementation-plan.md`.
+
+---
+
+## 2026-10-13 — Phase 4: web chỉ chuyển SSE từ AI ra UI
+
+`web_backend.main` nhận `POST /chat`, `POST /chat/stream`, và `POST /api/v1/chat/stream`. Process web đọc SSE từ `AI_BASE_URL/v1/chat/stream`, gắn `session_id` và `message_id`, rồi trả từng sự kiện cho UI. Không gọi `answer_question`. Import `web_backend.main` vẫn không kéo `ai_backend`, `openai`, hay `answer_question`.
+
+`pytest tests/unit/test_ai_http_stream.py tests/unit/test_concept_rag.py tests/unit/test_config.py tests/unit/test_web_data.py tests/unit/test_chat_ui.py -q`: 41 passed.
+
+File: `src/web_backend/routes/chat_stream.py`, `src/web_backend/main.py`, `tests/unit/test_ai_http_stream.py`, `tests/unit/test_web_data.py`, `specs/implementation-plan.md`.
+
+---
+
+## 2026-10-13 — Phase 4: hai Dockerfile trong Compose
+
+Compose build `src/web_backend/Dockerfile` cho service `backend` và `src/ai_backend/Dockerfile` cho service `ai`. Web chạy `web_backend.main:app` với `AI_TRANSPORT=http` và `AI_BASE_URL=http://ai:8001`. AI chạy `ai_backend.app:app`. Postgres, Qdrant, Redis, MinIO vẫn là container riêng. Entrypoint chung nằm ở `src/deploy/docker-entrypoint.sh`. Thư mục `src/backend` không còn.
+
+`pytest tests/e2e/test_docker_setup.py tests/unit/test_config.py tests/unit/test_web_data.py tests/unit/test_ai_http_stream.py tests/unit/test_concept_rag.py -q`: 41 passed.
+
+File: `docker-compose.yml`, `src/web_backend/Dockerfile`, `src/ai_backend/Dockerfile`, `src/deploy/docker-entrypoint.sh`, `tests/e2e/test_docker_setup.py`, `tests/integration/test_system.py`, `tests/unit/test_config.py`, `tests/unit/test_web_data.py`, `specs/implementation-plan.md`.
+
+---
+
+## 2026-10-13 — Phase 3: xóa package Python `backend`
+
+Không còn file `.py` trong `src/backend`. Code còn lại chuyển sang `web_backend` (app chat cũ, store, HITL), `ai_backend` (swarm phụ trợ, eval, hạ tầng), và `shared` (settings, Postgres, deps, transport HTTP). `web_backend.main` và `ai_backend.app` không import lẫn nhau. `Dockerfile`, `Dockerfile.ai`, và `docker-entrypoint.sh` vẫn ở `src/backend` vì Compose và test Docker còn trỏ đường đó.
+
+`pytest tests/unit/test_concept_rag.py tests/e2e/test_docker_setup.py tests/unit -q`: 137 passed.
+
+File: `src/web_backend/`, `src/ai_backend/`, `src/shared/`, `src/backend/` (chỉ còn ba file Docker), `pyproject.toml`, `scripts/`, `.github/workflows/ci.yml`, `.github/workflows/eval-gate.yml`, `tests/`, `specs/implementation-plan.md`.
+
+---
+
+## 2026-10-13 — Phase 3: hai cây không import lẫn nhau
+
+Postgres dùng chung chuyển sang `shared.database`. `web_backend.database` và `backend.database` chỉ trỏ về đó. `backend.api` không nạp app web khi AI import `deps`. `backend.infra.storage` không nạp Qdrant khi web import `Store`. Import `web_backend.main` không kéo `ai_backend`. Import `ai_backend.app` không kéo `web_backend`.
+
+`pytest tests/unit/test_web_data.py tests/unit/test_config.py tests/unit/test_ai_package.py tests/unit/test_feedback_signals.py tests/unit/test_ai_http_stream.py -q`: 28 passed.
+
+File: `src/shared/database/`, `src/web_backend/database/`, `src/backend/database/`, `src/backend/api/__init__.py`, `src/backend/infra/storage/__init__.py`, `tests/unit/test_web_data.py`, `specs/implementation-plan.md`.
+
+---
+
+## 2026-10-13 — Phase 3: swarm, retrieval, Qdrant ở AI
+
+Swarm, retrieval và client Qdrant nằm ở `ai_backend`. `ai_backend.app` chỉ có `/health`, `/v1/chat`, `/v1/chat/stream`, `/v1/scan`. Đường import cũ `backend.graph`, `backend.agents`, `backend.infra.retrieval` và `long_term_memory` vẫn trỏ về code mới. Đường file khái niệm sửa theo vị trí package mới.
+
+`pytest tests/unit/test_ai_package.py tests/unit/test_concept_rag.py tests/unit/test_ai_http_stream.py -q`: 23 passed.
+
+File: `src/ai_backend/graph/`, `src/ai_backend/agents/`, `src/ai_backend/retrieval/`, `src/ai_backend/qdrant.py`, `src/ai_backend/answer_question.py`, `src/ai_backend/scan_symbol.py`, `src/ai_backend/routes.py`, `src/ai_backend/app.py`, shim trong `src/backend/`, `tests/unit/test_ai_package.py`, `tests/unit/test_ai_http_stream.py`, `tests/e2e/test_docker_setup.py`, `specs/implementation-plan.md`.
+
+---
+
+## 2026-10-13 — Phase 3: session, tin nhắn, watchlist, holdings, HITL ở web
+
+Postgres không đổi schema. `web_backend.database` giữ kết nối và repository cho session, tin nhắn, watchlist, holdings, và HITL. `web_backend` phục vụ `/api/v1/sessions`, `/watchlist`, `/api/v1/portfolio/holdings`, và `/api/v1/hitl/feedback`. Đường import cũ `backend.database` và `backend.api.routers` vẫn trỏ về đó.
+
+`pytest tests/unit/test_web_data.py tests/unit/test_feedback_signals.py -q`: 5 passed. Trên cổng 8010, `GET /api/v1/sessions` và `GET /watchlist` đọc đúng dữ liệu Postgres đang có.
+
+File: `src/web_backend/database/`, `src/web_backend/routes/sessions.py`, `src/web_backend/routes/hitl.py`, `src/web_backend/routes/portfolio.py`, `src/web_backend/routes/watchlist.py`, `src/web_backend/main.py`, `src/backend/database/`, `src/backend/api/routers/sessions.py`, `src/backend/api/routers/hitl.py`, `src/backend/api/routers/portfolio.py`, `tests/unit/test_web_data.py`, `specs/implementation-plan.md`.
+
+---
+
+## 2026-10-13 — Phase 2: nguồn và nút đánh giá cạnh câu trả lời
+
+Trong cùng bong bóng với câu trả lời vẫn có dòng `Nguồn:`, nút thích, không thích, Đã copy, Hỏi lại, và Bỏ dở. Không thêm màn hình và không đổi API.
+
+`pytest tests/unit/test_chat_ui.py::test_source_file_and_feedback_stay_beside_the_answer -q`: 1 passed. Trên `http://127.0.0.1:8000`, câu trả lời hiện `Nguồn: rsi-va-sma.md` và năm nút đó trong cùng `.msg-body`.
+
+File: `tests/unit/test_chat_ui.py`, `specs/implementation-plan.md`.
+
+---
+
+## 2026-10-13 — Phase 2: chữ hiện từng token trong khung chat
+
+Khung `#chat-messages` vẫn nhận từng sự kiện `token` vào một bong bóng `.chat-streaming`, rồi hiện câu đầy đủ trên cùng màn. Không thêm màn hình và không đổi API.
+
+`pytest tests/unit/test_chat_ui.py::test_token_events_fill_the_existing_chat_frame -q`: 1 passed. Trên `http://127.0.0.1:8000`, chuỗi token `Mot ` rồi `Mot hai ` rồi `Mot hai ba` hiện trong khung hội thoại.
+
+File: `tests/unit/test_chat_ui.py`, `specs/implementation-plan.md`.
+
+---
+
+## 2026-10-13 — Phase 2: một màn chat và bộ chọn user
+
+`web_backend` phục vụ đúng `src/frontend/index.html`. Trang vẫn một màn, bộ chọn vẫn có User A, User B, và Default. Không viết lại UI. API chat vẫn ở process đang chiếm cổng 8000.
+
+`pytest tests/unit/test_chat_ui.py::test_web_entry_serves_one_chat_screen_with_three_users -q`: 1 passed. Mở `http://127.0.0.1:8010` vì cổng 8000 đang bận: chọn User A rồi User B, dòng trạng thái đổi thành `user_a` và `user_b`.
+
+File: `src/web_backend/main.py`, `tests/unit/test_chat_ui.py`, `specs/implementation-plan.md`.
+
+---
+
+## 2026-10-13 — Phase 1: project setup
+
+Tạo ba package mới. `src/shared` đọc `config.yaml` và giữ model JSON của `/v1/chat`, `/v1/chat/stream`, `/v1/scan`. `web_backend.main:app` và `ai_backend.app:app` chỉ có `/health`. `pyproject.toml` nhận `web_backend*`, `ai_backend*`, và `shared*`, vẫn giữ `backend*`. Chat vẫn chạy bằng `backend.main` cho đến phase 3.
+
+`pytest tests/unit/test_config.py -q`: 9 passed.
+
+File: `src/shared/config.py`, `src/shared/models.py`, `src/web_backend/main.py`, `src/ai_backend/app.py`, `pyproject.toml`, `tests/unit/test_config.py`, `specs/implementation-plan.md`.
+
+---
+
+## 2026-10-13 — Spec: AGENTS.md ngắn lại
+
+Chưa sửa code. `AGENTS.md` còn quy tắc đọc spec, làm một ô mỗi lần, không thêm thư viện, không đổi kiến trúc khi spec chưa sửa, ghi `specs/change-log.md`, và nói cách test. Ràng buộc đợt này là hai cây mã, cổng 8000 và 8001, và public bằng nginx cùng Cloudflare Tunnel. Gỡ khối cài đặt vnstock mà thư viện cũ tự ghi vào file này.
+
+File: `AGENTS.md`.
+
+---
+
+## 2026-10-13 — Spec: kế hoạch chia bảy phase nhỏ
+
+Chưa sửa code. `specs/implementation-plan.md` viết lại thành project setup, core UI, core backend, nối UI với dữ liệu, validation, chạy local, và demo ngrok. Mỗi phase có ô checklist và một lệnh kiểm. Việc tách cây mã, nginx, `release.ps1`, và Cloudflare Tunnel nằm trong các phase đó. Checklist vẫn chưa tick.
+
+File: `specs/implementation-plan.md`, `README.md`.
+
+---
+
+## 2026-10-13 — Spec: product spec gọn lại sáu mục
+
+Chưa sửa code. `specs/product-spec.md` còn app goal, target users, core user flow, features in scope, features out of scope, và acceptance criteria. Ba bảng tiêu chí cũ gộp thành một bảng AC-1 đến AC-11. Luồng dùng thêm bước người khác mở URL https. Phần public từ máy này nằm trong mục tiêu, luồng, và phạm vi, không còn mục riêng.
+
+File: `specs/product-spec.md`.
+
+Kiểm: chưa chạy pytest. Checklist trong `specs/implementation-plan.md` vẫn chưa tick.
+
+---
+
+## 2026-10-13 — Spec: tách web_backend / ai_backend và public từ máy này
+
+Chưa sửa code app. Đợt trước (hai image, Postgres, Qdrant, khái niệm, ngrok) giữ nguyên và không làm lại.
+
+Đợt này ghi trong spec: tách `src/backend` thành `src/web_backend` và `src/ai_backend`, phần chung chỉ `src/shared`. `src/deploy` theo vai trò của `llm-engineer-demo/deploy` (nginx là cửa public, smoke, rollback) nhưng chạy trên máy này, không gọi `gcloud`. Public bằng Cloudflare Tunnel vì mạng nhà thường không nhận kết nối từ ngoài. ngrok giữ cho demo nhanh.
+
+File: `README.md`, `AGENTS.md`, `specs/product-spec.md`, `specs/implementation-plan.md`, `specs/test-plan.md`.
+
+Kiểm: chưa chạy pytest. Chưa có ô nào được tick.
+
+---
+
+## 2026-10-13 — Phase 7: hop SSE nhận token dần và giữ tên file nguồn
+
+Khi `AI_TRANSPORT=http`, web không gọi `answer_question`. Client ngồi sau một hop TCP (cùng kiểu tunnel không gom câu) đọc `POST /chat`. Token `Một `, `hai `, `ba` tới trước khi hết câu, token sau cách token trước ít nhất 0.04 giây. Response không có `Content-Length`. Câu `RSI là gì` trên cùng hop vẫn có `source_file` là `rsi-va-sma.md` trong `final_answer`. Không sửa mã chạy. Không mở tunnel ngrok thật.
+
+Đối chiếu S5: web chỉ chuyển SSE, và phía trước web vẫn thấy từng token. S7: tên file nguồn không bị hop hay proxy gỡ. Test plan không có dòng ngrok. Product spec không có mã riêng cho tunnel.
+
+File: `tests/integration/test_api.py`.
+
+Kiểm: `pytest tests/integration/test_api.py::test_proxied_sse_hop_streams_tokens_and_keeps_concept_source -q` — 1 passed.
+
+---
+
+## 2026-10-13 — Phase 7: Nginx tắt proxy_buffering trên route stream
+
+`src/frontend/nginx.conf` và `src/deploy/nginx-portfolio-watch.conf` đều có `proxy_buffering off` và `proxy_cache off` trong `location /chat` và `location /api/`. Prefix `/chat` gồm `POST /chat` và `/chat/stream`. Không sửa file Nginx. Test giờ đọc cả hai file.
+
+Đối chiếu S5: web vẫn chuyển SSE. Ô này chỉ khóa Nginx không giữ body stream. Product spec không có mã riêng cho `proxy_buffering`. Test plan không có dòng Nginx cho phase 7. Chưa mở tunnel ngrok để xem token hiện dần.
+
+File: `tests/integration/test_system.py`.
+
+Kiểm: `pytest tests/integration/test_system.py::test_phase10_nginx_sse_buffering_disabled -q` — 1 passed.
+
+---
+
+## 2026-10-13 — Phase 7: README giữ mục demo ngrok cổng 8000 và 3001
+
+Mục "Demo with ngrok" giữ `ngrok http 8000` cho web local và `ngrok http 3001` khi Docker. `docker compose up -d` vẫn là lệnh bật frontend cổng 3001 cùng web cổng 8000. Trang Docker cùng origin vì Nginx chuyển `/chat` về web. Khi khác origin, `BACKEND_BASE_URL` trong `src/frontend/config.js` trỏ URL https của tunnel cổng 8000. Mặc định để trống.
+
+Đối chiếu product spec: người demo ngrok mở cổng 8000 hoặc frontend Docker cổng 3001. Không có mã AC riêng cho mục README này. Test plan không có dòng ngrok. Chưa kiểm Nginx `proxy_buffering` và chưa mở tunnel thật để xem token.
+
+File: `README.md`, `tests/integration/test_system.py`.
+
+Kiểm: `pytest tests/integration/test_system.py::test_readme_docker_product_and_local -q` — 1 passed.
+
+---
+
+## 2026-10-13 — Phase 6: README chỗ đặt DATABASE_URL và cách nạp khái niệm
+
+Mục 7.1 ghi `DATABASE_URL` trong `.env`. Tham số còn lại, gồm host/cổng/tên database và hai tên collection, nằm ở `resources/configs/config.yaml`. Mục 7.6 nạp năm file trong `resources/docs/concepts/` bằng `index_concepts` vào Qdrant `localhost:6333`. Collection lấy từ `storage.concept_collection` (`stock_concepts`), khác `portfolio_watch_memory`. Embed offline. Lệnh đặt `PYTHONPATH=src` vì process thường không thấy package `backend` nếu chưa cài editable.
+
+Đối chiếu AC-7: đạt. App vẫn đọc secret từ `.env` và tham số từ `config.yaml`. S3 và S8 không đổi: Postgres qua `DATABASE_URL`, collection khái niệm khác collection bộ nhớ. Test plan không có pytest riêng cho ô README này. Lệnh nạp trên Qdrant local in `19` và collection có đủ năm file nguồn.
+
+File: `README.md`.
+
+Kiểm: `pytest tests/integration/test_system.py::test_readme_docker_product_and_local tests/unit/test_config.py::test_load_config_yaml_defaults -q` — 2 passed. Lệnh nạp trong README — 19 đoạn.
+
+---
+
+## 2026-10-13 — Phase 6: README cách chạy hai image, Postgres, và Qdrant
+
+Mục 7.2 nói image `portfolio-watch:web` (`src/backend/Dockerfile`, service `backend`, cổng 8000) và `portfolio-watch:ai` (`src/backend/Dockerfile.ai`, service `ai`, cổng 8001). Postgres là service `postgres` cổng 5432. Qdrant là service `qdrant` cổng 6333. Lệnh là `docker compose build` rồi `docker compose up -d postgres qdrant backend ai`. Frontend vẫn là `docker compose up -d frontend` tại http://localhost:3001.
+
+Đối chiếu S2: hai Dockerfile và hai tên image trong README khớp compose. S3 và S8: README gọi đúng service `postgres` và `qdrant`, không nhét database vào image app. Test plan không có lệnh pytest riêng cho ô README này. `test_readme_docker_product_and_local` vẫn thấy `docker compose build`, `docker compose up -d`, và `localhost:3001`.
+
+Lỗ của ô này: compose khai báo `env_file: .env`, mục 7.2 lúc đầu không nói phải có file đó. Đã thêm một dòng sao từ `.env.example`. Chưa ghi `DATABASE_URL` nằm ở `.env` và chưa ghi cách nạp năm file khái niệm.
+
+File: `README.md`.
+
+Kiểm: `pytest tests/integration/test_system.py::test_readme_docker_product_and_local -q` — 1 passed.
+
+---
+
+## 2026-10-13 — Phase 5: client ngắt stream thì pipeline dừng
+
+Đóng generator chat trong process, hoặc đóng iterator swarm của AI, đặt cờ hủy. Worker gọi `check_stream_cancelled`, nhận `StreamCancelledError`, và không chạy bước sau. `POST /chat` vẫn đặt cùng cờ đó khi request báo client đã ngắt. Không đổi chào, guardrail, hay retrieval.
+
+Đối chiếu product spec: không có mã AC riêng cho việc ngắt stream. S5 vẫn là web chuyển token. Test plan dòng Stream vẫn là nhận token qua proxy. Ô kế hoạch này đạt trên hai đường đóng stream. Không có lỗ của ô này cần sửa thêm.
+
+File: `src/backend/api/routers/chat.py`, `tests/unit/test_ai_http_stream.py`.
+
+Kiểm: `pytest tests/unit/test_ai_http_stream.py::test_closing_the_chat_stream_stops_the_pipeline -q` — 1 passed.
+
+---
+
+## 2026-10-13 — Phase 5: chào không gọi giá, injection và ngoài phạm vi vẫn từ chối
+
+Câu chào đi `greeting_node` và dừng, không gọi agent giá. Injection, mã nước ngoài, thời tiết, và câu xin mua bán đi `guardrail_refusal`. Đồ thị không đổi. Khóa thêm `price is None` cho thời tiết và injection, cùng các ca chào và từ chối đã có.
+
+Đối chiếu AC-2 và AC-3: đạt. Không nối việc client ngắt stream.
+
+File: `tests/unit/test_guardrails.py`.
+
+Kiểm: `pytest tests/unit/test_greeting_fastpath.py tests/unit/test_guardrails.py -q` — 35 passed.
+
+---
+
+## 2026-10-13 — Phase 5: thiếu đoạn khái niệm thì không bịa định nghĩa
+
+Câu khái niệm không đủ đoạn khớp, ví dụ `chứng quyền là gì`, đi retrieval rồi trả đúng `Không có trong tài liệu.` Không có tên file nguồn, không có bản soạn của composer, không gọi agent giá. Đoạn không liên quan hoặc collection trống vẫn trả cùng câu đó.
+
+Đối chiếu S9: đạt. Không đổi grader và không nối câu chào hay guardrail.
+
+File: `tests/unit/test_concept_rag.py`.
+
+Kiểm: `pytest tests/unit/test_concept_rag.py::test_thin_concept_match_does_not_invent_a_definition tests/unit/test_concept_rag.py::test_unrelated_question_says_not_in_the_documents tests/unit/test_concept_rag.py::test_missing_collection_says_not_in_the_documents -q` — 3 passed.
+
+---
+
+## 2026-10-13 — Phase 5: web khởi động không import openai hay answer_question
+
+Import `backend.main` không đưa `openai` hay `backend.application.answer_question` vào `sys.modules`. Hai chỗ gọi `answer_question` trong chat và transport vẫn nằm trong hàm, chỉ chạy khi chế độ cùng process nhận câu hỏi. Process AI vẫn import swarm.
+
+Đối chiếu S4: đạt. Không sửa luồng chào, guardrail, hay câu thiếu đoạn khái niệm.
+
+File: `tests/unit/test_config.py`.
+
+Kiểm: `pytest tests/unit/test_config.py::test_web_startup_does_not_import_openai_or_answer_question -q` — 1 passed.
+
+---
+
+## 2026-10-13 — Phase 4: thích và không thích ghi PostgreSQL
+
+Bấm 👍 gửi `reason: thumbs_up`. Bấm 👎 gửi `reason: thumbs_down`. Cả hai đều gọi `POST /hitl/feedback` và ghi bảng `hitl_evaluations` trên PostgreSQL, điểm explicit 1.0 và 0.0. Nút không thích vẫn mở ô góp ý. Bấm thích vẫn ghi kể cả khi ô góp ý đang mở.
+
+Đối chiếu spec bước 5: đạt. Test plan HITL vẫn là `POST /hitl/feedback` vào Postgres. Không thêm nút mới.
+
+File: `src/frontend/app.js`, `src/backend/api/routers/hitl.py`, `tests/unit/test_chat_ui.py`, `tests/unit/test_feedback_signals.py`.
+
+Kiểm: `pytest tests/unit/test_chat_ui.py tests/unit/test_feedback_signals.py -q` — 6 passed.
+
+---
+
+## 2026-10-13 — Phase 4: supervisor tách câu khái niệm và câu chỉ báo
+
+`RSI là gì` đi nhánh retrieval, trả đoạn trong `rsi-va-sma.md` và tên file nguồn. `RSI của HPG` đi agent chỉ báo (`eval`), không gọi retrieval. Mã HPG vẫn được tách khỏi chữ RSI. Câu khái niệm không gọi agent giá. Tên file đi theo SSE, JSON chat, và `/v1/chat`.
+
+Đối chiếu S7: đạt với Qdrant trong bộ nhớ. S9 (câu không đủ đoạn) đã có trong `answer_concept`, không mở rộng ở ô này.
+
+File: `src/backend/agents/supervisor_agent/nodes.py`, `src/backend/graph/chat.py`, `src/backend/graph/state.py`, `src/backend/application/answer_question.py`, `src/backend/infra/retrieval/answer.py`, `src/backend/infra/llm/transport.py`, `src/backend/api/ai_routes.py`, `src/backend/api/routers/chat.py`, `tests/unit/test_concept_rag.py`.
+
+Kiểm: `pytest tests/unit/test_concept_rag.py tests/unit/test_ai_http_stream.py -q` — 19 passed.
+
+---
+
+## 2026-10-13 — Phase 4: câu khái niệm không gửi watchlist và holdings
+
+Câu định nghĩa trong năm file khái niệm không kèm hai danh sách. `RSI là gì`, `NAV là gì`, `NAV của danh mục là gì`, `giá trần là gì`, `ATO là gì`, `lãi lỗ chưa chốt là gì`, và miễn trừ trách nhiệm không gửi. `NAV` không bị coi là mã cổ phiếu. `RSI của HPG`, `Giá FPT`, `Danh mục của tôi`, và `NAV của tôi` vẫn gửi. Scan vẫn luôn gửi. Chưa nối supervisor.
+
+Đối chiếu spec: luồng khái niệm trên HTTP không cần hai danh sách. S7 (retrieval so với agent chỉ báo) thuộc ô sau, không vá ở đây.
+
+File: `src/backend/infra/llm/account_snapshot.py`, `tests/unit/test_ai_http_stream.py`.
+
+Kiểm: `pytest tests/unit/test_ai_http_stream.py -q` — 10 passed.
+
+---
+
+## 2026-10-13 — Phase 4: `/v1/chat` và `/v1/scan` mang watchlist và holdings
+
+Khi `AI_TRANSPORT=http`, web đọc watchlist và holdings của user rồi gửi kèm `POST /v1/chat`, `POST /v1/chat/stream`, và `POST /v1/scan`. Chat chỉ gắn hai danh sách khi câu cần số liệu hoặc danh mục. Scan luôn gắn. AI dùng payload đó: scan lấy ngưỡng từ watchlist trong body, agent danh mục tính NAV từ holdings trong body, không `SELECT` bảng `sessions`. Câu chào không gửi hai danh sách. Chưa tách câu khái niệm, chưa nối supervisor.
+
+File: `src/backend/infra/llm/account_snapshot.py`, `src/backend/infra/llm/transport.py`, `src/backend/api/ai_routes.py`, `src/backend/application/answer_question.py`, `src/backend/infra/llm/chat_stream.py`, `src/backend/graph/chat.py`, `src/backend/agents/portfolio_watch_agent/nodes.py`, `tests/unit/test_ai_http_stream.py`.
+
+Kiểm: `pytest tests/unit/test_ai_http_stream.py -q` — 9 passed.
+
+---
+
+## 2026-10-13 — Phase 4: web chỉ chuyển SSE từ AI
+
+Khi `AI_TRANSPORT=http`, trang chat gọi `POST /chat` với `Accept: text/event-stream`. Web không chạy `answer_question`. Token và `source_file` đi nguyên từ `POST /v1/chat/stream` của AI ra UI. Web chỉ gắn `session_id` và `message_id` lúc câu trả lời xong. Chưa gửi watchlist sang AI, chưa tách "RSI là gì" và "RSI của HPG".
+
+File: `tests/unit/test_ai_http_stream.py`.
+
+Kiểm: `pytest tests/unit/test_ai_http_stream.py -q` — 5 passed.
+
+---
+
+## 2026-10-13 — Phase 3: embed khái niệm ổn định để tìm đúng file
+
+Đối chiếu S9 và câu "NAV là gì". Embed cũ dùng `hash()` của Python, nên thứ hạng top-k đổi mỗi process và câu NAV có lúc rơi ngoài top 4 rồi bị trả lời không có trong tài liệu dù file có đoạn đó. Embed khái niệm giờ dùng SHA-256, cùng một câu luôn ra cùng vector. "NAV là gì" và "ATO là gì" khóa đúng file. Nhánh này không đọc `portfolio_watch_memory`. Chưa nối supervisor.
+
+Kiểm: `pytest tests/unit/test_concept_rag.py -q` — 8 passed, chạy hai lần.
+
+---
+
+## 2026-10-13 — Phase 3: nhánh retrieval khái niệm
+
+AI backend có `answer_concept`: tìm top-k trên `stock_concepts`, chấm đoạn bằng từ nội dung trùng câu hỏi, trả lời bằng đúng đoạn đó và tên file nguồn. Không đủ đoạn thì câu trả lời là "Không có trong tài liệu." Không rerank, không tìm web, không tách subquery. "RSI là gì" ra `rsi-va-sma.md`. Câu thời tiết ra câu không có trong tài liệu. Supervisor chưa gửi câu này vào nhánh, và chưa tách "RSI của HPG" sang agent chỉ báo.
+
+File: `src/backend/infra/retrieval/answer.py`, `tests/unit/test_concept_rag.py`.
+
+Kiểm: `pytest tests/unit/test_concept_rag.py -q` — 6 passed.
+
+---
+
+## 2026-10-13 — Phase 3: nạp lại stock_concepts không để điểm cũ
+
+Đối chiếu S8. Lần ghi thứ hai chỉ upsert, nên đoạn đã xóa khỏi file vẫn nằm trong collection. `index_concepts` giờ xóa rồi tạo lại đúng collection `stock_concepts` trước khi ghi. Collection `portfolio_watch_memory` không bị đụng. Embed mặc định là vector offline 256 chiều, test không gọi OpenAI. Gọi nhầm tên collection bộ nhớ thì hàm từ chối.
+
+Kiểm: `pytest tests/unit/test_concept_rag.py -q` — 3 passed.
+
+---
+
+## 2026-10-13 — Phase 3: cắt đoạn khái niệm và ghi Qdrant
+
+Cắt năm file trong `resources/docs/concepts/` theo đoạn văn, mỗi đoạn giữ heading và tên file nguồn. Embed rồi ghi collection `stock_concepts`. Collection này khác `portfolio_watch_memory`. Chưa tìm top-k và chưa trả lời câu khái niệm.
+
+File: `src/backend/infra/retrieval/concepts.py`, `tests/unit/test_concept_rag.py`.
+
+Kiểm: `pytest tests/unit/test_concept_rag.py -q` — 2 passed. Trên Qdrant local, nạp được 19 điểm của đủ năm file.
+
+---
+
+## 2026-10-13 — Phase 3: tỷ lệ lãi lỗ chưa chốt trong file khái niệm
+
+Đối chiếu công thức danh mục đang chạy. File `nav-va-lai-lo-chua-chot.md` trước đó chia lãi lỗ cho giá vốn mà chưa nhân 100, trong khi app tính phần trăm bằng cách nhân 100. Sửa đúng câu đó. Không thêm nhánh retrieval.
+
+Kiểm: `pytest tests/unit/test_concept_rag.py -q` — 1 passed.
+
+---
+
+## 2026-10-13 — Phase 3: năm file khái niệm
+
+Thêm năm file markdown trong `resources/docs/concepts/`: `gia-tran-san.md`, `lenh-ato-atc-lo.md`, `rsi-va-sma.md`, `nav-va-lai-lo-chua-chot.md`, `mien-tru-trach-nhiem.md`. Tên file khớp mẫu tên nguồn trên khung chat. Chưa cắt đoạn, chưa embed, chưa ghi Qdrant, chưa trả lời "RSI là gì" từ các file này.
+
+File: `resources/docs/concepts/`, `tests/unit/test_concept_rag.py`.
+
+Kiểm: `pytest tests/unit/test_concept_rag.py -q` — 1 passed.
+
+---
+
+## 2026-10-13 — Phase 3: session và danh mục dùng chung một schema
+
+Đối chiếu S3. `get_connection()` khi không có `SQLITE_PATH` đang mở schema `public`, trong khi danh mục mở schema của `sqlite_path`, nên chat không thấy holding vừa thêm. Cả hai nay dùng cùng một khóa schema, vẫn không tạo file `.db`. `deps` không còn tạo thư mục cho file SQLite. Test danh mục và portfolio agent bỏ `sqlite3.connect`. Không thêm file khái niệm và không thêm nhánh retrieval.
+
+Kiểm: `pytest tests/integration/test_database.py tests/unit/test_memory.py tests/unit/test_portfolio_service.py tests/integration/test_portfolio_watch_agent.py -q` — 31 passed.
+
+---
+
+## 2026-10-13 — Phase 3: session, tin nhắn, watchlist, danh mục, HITL, bộ nhớ ngắn trên PostgreSQL
+
+Ô đầu của phase 3. Các bảng này nằm trên PostgreSQL. Đường dẫn `.db` chỉ còn là khóa schema để test không đụng hàng của nhau. App không còn `sqlite3.connect`. Chưa thêm năm file khái niệm, chưa ghi Qdrant, chưa có nhánh retrieval.
+
+File: `src/backend/database/pg.py`, `src/backend/database/connection.py`, `src/backend/infra/storage/sqlite_db.py`, `src/backend/infra/storage/store.py`, `tests/integration/test_database.py`.
+
+Kiểm: `pytest tests/integration/test_database.py tests/unit/test_memory.py -q` — 19 passed. `tests/unit/test_concept_rag.py` chưa có vì thuộc các ô sau của phase 3.
+
+---
+
+## 2026-10-13 — Phase 2: nút đánh giá vẫn cạnh câu trả lời
+
+Ô cuối của phase 2. Không thêm nút và không viết lại HITL. Thanh đánh giá vẫn nằm trong bong bóng trợ lý, sau chữ trả lời và sau dòng nguồn nếu có. Các nút là 👍, 👎, Đã copy, Hỏi lại, Bỏ dở. Khóa bằng `tests/unit/test_chat_ui.py`. Việc ghi thích vào PostgreSQL thuộc phase 4.
+
+Kiểm: `pytest tests/unit/test_chat_ui.py -q` — 3 passed.
+
+---
+
+## 2026-10-13 — Phase 2: tên file nguồn trong khung chat
+
+Câu trả lời có `source_file` dạng `ten-file.md` hiện dòng `Nguồn: ten-file.md` trong bong bóng chat hiện có. Câu không có field này, hoặc tên không phải file markdown, không hiện dòng đó. SSE `final_answer` giữ `source_file` nếu kết quả swarm có field này. Chưa có nhánh retrieval, nên câu "RSI là gì" chưa gắn tên file. S7 thuộc phase 3.
+
+File: `src/frontend/app.js`, `src/frontend/style.css`, `src/backend/infra/llm/chat_stream.py`, `src/backend/api/routers/chat.py`, `tests/unit/test_chat_ui.py`, `tests/unit/test_ai_http_stream.py`.
+
+Kiểm: `pytest tests/unit/test_chat_ui.py tests/unit/test_ai_http_stream.py::test_iter_swarm_events_has_no_session_fields -q`
+
+---
+
+## 2026-10-13 — Phase 2: khóa đúng đường stream của UI
+
+Ô user và stream đạt trên trang đang chạy: một file HTML, bộ chọn User A / User B / Default, `POST /chat` trả `text/event-stream` và có sự kiện `token`. Test trước đó chỉ tìm chuỗi `/chat/stream`, là đường dự phòng khi 404 hoặc 405. Sửa `tests/unit/test_chat_ui.py` để khóa `fetch(apiUrl("/chat"))`, header `Accept: text/event-stream`, và `X-User-ID`. Không thêm màn hình. S5 phần “web chỉ chuyển SSE từ AI” thuộc phase 4.
+
+Kiểm: `pytest tests/unit/test_chat_ui.py -q`
+
+---
+
+## 2026-10-13 — Phase 2: trang chat giữ user và stream
+
+Ô đầu của phase 2. Không thêm màn hình. `index.html` vẫn một trang, có User A, User B, Default. `app.js` vẫn nối `/chat/stream` và gắn từng token vào khung chat. Khóa bằng `tests/unit/test_chat_ui.py`. Chưa hiện tên file nguồn và chưa đụng các nút thích.
+
+Kiểm: `pytest tests/unit/test_chat_ui.py -q`
+
+---
+
+## 2026-10-13 — Phase 1: project setup
+
+Gỡ `src/ai` và `src/web`. Web image `portfolio-watch:web` chạy `backend.main:app` và gọi `AI_BASE_URL`. AI image `portfolio-watch:ai` chạy `backend.ai_app:app`, chỉ `/health`, `/v1/chat`, `/v1/chat/stream`, `/v1/scan`. Compose thêm container `postgres` và đưa `qdrant` ra khỏi profile tùy chọn. Redis và MinIO giữ container riêng. `psycopg` và `qdrant-client` vào `pyproject.toml`. `DATABASE_URL` ở `.env`. Host, cổng, tên database, và collection `stock_concepts` ở `config.yaml`.
+
+File: `src/backend/ai_app.py`, `src/backend/api/ai_routes.py`, `src/backend/Dockerfile`, `src/backend/Dockerfile.ai`, `docker-compose.yml`, `pyproject.toml`, `resources/configs/config.yaml`, `.env.example`, `src/backend/shared/settings.py`, `tests/e2e/test_docker_setup.py`, `tests/unit/test_config.py`.
+
+Kiểm: `pytest tests/e2e/test_docker_setup.py tests/unit/test_config.py -q` — 11 passed. Chưa chuyển dữ liệu SQLite và chưa làm nhánh khái niệm.
+
+---
+
+## 2026-10-13 — Phase 1: khép lỗ kiểm của đúng phase này
+
+Đối chiếu S1, S2, S8. Test chưa khóa dependency, `DATABASE_URL` trong `.env.example`, và bốn route của image AI. Bổ sung các assert đó vào `tests/e2e/test_docker_setup.py`. Chạy lại cùng lệnh — 11 passed. Không thêm feature.
+
+---
+
+## 2026-10-13 — Spec: AGENTS.md ngắn lại
+
+Chưa sửa code. `AGENTS.md` chỉ còn quy tắc đọc spec, làm một ô mỗi lần, không thêm thư viện, không đổi kiến trúc khi spec chưa sửa, rồi ghi `specs/change-log.md` và cách test. Gỡ khối hướng dẫn cài `vnstock` khỏi file này.
+
+---
+
+## 2026-10-13 — Spec: implementation plan thành bảy phase
+
+Chưa sửa code. `specs/implementation-plan.md` gom việc đang mở thành bảy phase: setup, UI, backend, nối UI với dữ liệu, lỗi, chạy local, ngrok. Phase cũ đã tick được ghi một dòng "đã xong", không làm lại. `AGENTS.md`, `README.md`, và `specs/test-plan.md` trỏ vào plan mới.
+
+---
+
+## 2026-10-13 — Spec: product spec gọn lại sáu mục
+
+Chưa sửa code. `specs/product-spec.md` tách mục tiêu app khỏi việc triển khai. Luồng khái niệm không gửi watchlist và holdings. Mỗi tiêu chí nghiệm thu của đợt này có một lệnh kiểm.
+
+---
+
+## 2026-10-13 — Spec: nhánh retrieval khái niệm
+
+Chưa sửa code. Bổ sung mục 10 vào đợt đang mở, sau hai image và PostgreSQL.
+
+- Câu khái niệm đi retrieval trên AI backend, chỉ dùng năm file markdown trong `resources/docs/concepts/`.
+- "RSI là gì" khác "RSI của HPG". Câu sau vẫn đi agent chỉ báo.
+- Qdrant là container riêng, collection `stock_concepts`. Không tìm web, không tách subquery, không rerank.
+- Sửa `README.md`, `AGENTS.md`, `specs/product-spec.md`, `specs/implementation-plan.md`, `specs/test-plan.md`.
+
+---
+
+## 2026-10-13 — Spec: chỉnh product spec cho đủ sáu mục
+
+`specs/product-spec.md` gom một đợt đang làm. Sáu mục là mục tiêu app, người dùng, luồng chính, trong phạm vi, ngoài phạm vi, và tiêu chí nghiệm thu. Đợt LLMOps ghi là đã đạt. Đợt đang mở là hai image và PostgreSQL. Chưa sửa code.
+
+---
+
+## 2026-10-13 — Spec: hai image backend và PostgreSQL
+
+Chưa sửa code. Ghi hướng đợt mới vào spec để làm từng ô ở mục 9.
+
+- Bỏ hướng package `src/ai` và `src/web` trên cùng một image.
+- Web backend và AI backend sẽ là hai image Docker.
+- SQLite của app đổi sang PostgreSQL, một service Compose riêng.
+- Sửa `README.md`, `AGENTS.md`, `specs/product-spec.md`, `specs/implementation-plan.md`, `specs/test-plan.md`.
+
+---
+
+## 2026-10-13 — Process AI cũng trỏ MinIO
+
+Docker Compose chạy swarm ở service `ai`. Service đó vẽ biểu đồ nhưng trước đó không có `MINIO_ENDPOINT`, nên PNG rơi về đĩa trong container. `ai` giờ dùng `minio:9000` và chờ MinIO khỏe. Profile `app` (chạy swarm trong process) cũng nhận cùng endpoint. Upload lỗi thì ghi log rồi mới ghi đĩa.
+
+---
+
+## 2026-10-13 — Ảnh biểu đồ lưu MinIO
+
+`ChartAgent` upload PNG vào bucket `charts`. Câu trả lời vẫn nhúng `/charts/{tên file}`. `GET /charts/{file}` và `GET /static/charts/{file}` đọc object rồi trả `image/png`. Không dùng presigned URL. Test truyền `output_dir` vẫn ghi thư mục đó. MinIO không kết nối được thì ghi `storage.chart_dir`.
+
+- `src/backend/infra/storage/chart_store.py`: `put` / `get`, timeout kết nối ngắn.
+- `src/backend/agents/chart_agent.py`: lưu một lần từ bytes PNG.
+- `resources/configs/config.yaml`: `chart_backend: minio`, endpoint `localhost:9000`.
+- `docker-compose.yml`: service `minio` (`pgsty/minio`, vì `minio/minio` và `quay.io/minio/minio` không còn pull ẩn danh), backend `MINIO_ENDPOINT=minio:9000`.
+- `.env.example`: `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`.
+- `tests/unit/test_chart_store.py`.
+
+---
+
+## 2026-10-13 — Tách process web và process AI
+
+Docker chạy hai process trên cùng image. Web là `web.app:app` / `backend.main:app` cổng 8000. AI là `ai.app:app` cổng 8001. Web đặt `AI_TRANSPORT=http` và `AI_BASE_URL=http://ai:8001`. Process web không import OpenAI và không import `answer_question` lúc khởi động. Route `/v1/chat`, `/v1/chat/stream`, `/v1/scan` nằm ở `src/ai`. Máy local không set biến thì vẫn một process (`AI_TRANSPORT=inprocess` trong `.env.example`).
+
+- `src/ai/app.py`, `src/ai/routes.py`, `src/web/app.py`
+- `src/backend/infra/llm/transport.py`: client HTTP, không import OpenAI
+- `docker-compose.yml`: service `ai`
+- Hai process vẫn dùng chung volume SQLite.
+
+---
+
+## 2026-10-13 — HTTP transport cho stream chat
+
+`AI_TRANSPORT=http` trước đây chỉ đưa JSON `/v1/chat` và `/v1/scan` sang process AI. SSE vẫn gọi `answer_question` trong process web. Giờ process AI phát `POST /v1/chat/stream`. Process web vẫn tạo session, lưu tin nhắn, rồi đọc SSE từ `AI_BASE_URL` và gắn `session_id` cùng `message_id` trước khi trả UI.
+
+Mặc định vẫn `inprocess`. Docker không thêm service AI. Chưa tách package `ai` và `web`.
+
+- `src/backend/infra/llm/chat_stream.py`: sinh event swarm, không ghi SQLite.
+- `src/backend/api/routers/v1.py`: `POST /v1/chat/stream`.
+- `src/backend/infra/llm/client.py`: `iter_remote_chat_events`.
+- `src/backend/api/routers/chat.py`: nhánh proxy khi `AI_TRANSPORT=http`.
+- `.env.example`: ghi chú `AI_BASE_URL` và `AI_HTTP_STREAM_TIMEOUT`.
+- `tests/unit/test_ai_http_stream.py`.
+
+---
+
 ## 2026-10-13 — Phase 7: tunnel ngrok vẫn nhận token dần
 
 Sau async `chat_stream`, SSE của `POST /chat` vẫn ra từng token trước khi hết câu khi đi qua một hop chỉ chuyển byte. Response không có `Content-Length`, có `X-Accel-Buffering: no` và `Cache-Control: no-cache`, nên proxy không phải gom cả câu. Không sửa mã chạy.

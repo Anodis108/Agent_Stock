@@ -1,85 +1,66 @@
 # Implementation Plan — VN Stock Swarm
 
-Làm đúng một ô checklist mỗi lần. Chưa viết code cho đến khi được yêu cầu. Xong một ô thì chạy lệnh kiểm của ô đó, tick ô, và ghi `specs/change-log.md`.
+Làm đúng một ô checklist mỗi lần. Phase trước tick hết rồi mới sang phase sau. Xong một ô thì tick ô đó và ghi `specs/change-log.md`.
 
-App chat, swarm, golden v6, và Module III Bài 1–8 đã chạy. Các phase dưới chỉ khép lỗ trong `specs/product-spec.md`. Không xây lại UI, agent, lint, eval gate, hay cache memory.
-
-Phase tái cấu trúc cũ (config, dọn `resources/`, dọn `scripts/`, chuyển `deploy/`, tách `src/backend/`, test 3 tầng) đã xong và nằm trong `specs/change-log.md`.
-
----
+Đợt này tách `src/backend` thành `src/web_backend` và `src/ai_backend`, rồi public từ máy này. Không viết lại swarm, UI, golden v6, cache, hay HITL. Không tạo lại `src/ai` hay `src/web`. Không thuê cloud.
 
 ## 1. Project setup
 
-- [x] App chạy bằng `uvicorn` cổng 8000 và bằng `docker compose`.
-- [x] `.env` chỉ chứa secret. Tham số nằm trong `resources/configs/config.yaml`.
-- [x] Test nằm ở `tests/unit/`, `tests/integration/`, `tests/e2e/`.
-- [x] Thêm `llm.max_concurrency` vào `config.yaml`. Bỏ chỗ đọc giới hạn từ biến môi trường `LLM_SEMAPHORE`.
-- [x] Thêm `cache.backend` với giá trị `memory` hoặc `redis`. Mặc định `memory`.
-- [x] Thêm cờ bật Secret Manager trong `config.yaml`, mặc định tắt.
+- [x] Tạo `src/shared`: đọc `config.yaml` và model JSON của `/v1/chat`, `/v1/chat/stream`, `/v1/scan`.
+- [x] Tạo `src/web_backend` với entry `web_backend.main:app`.
+- [x] Tạo `src/ai_backend` với entry `ai_backend.app:app`.
+- [x] `pyproject.toml` nhận ba package trên. `src/backend` vẫn còn cho đến phase 3.
 
 Kiểm: `pytest tests/unit/test_config.py -q`
 
 ## 2. Core UI
 
-- [x] Trang chat có chọn User A, User B, Default.
-- [x] Câu trả lời hiện bằng stream.
-- [x] Có nút thích và không thích, gửi `/hitl/feedback`.
-- [x] Thêm ba hành động trên câu trả lời: đã copy, hỏi lại, bỏ dở. Chưa cần gọi API ở phase này.
+- [x] Trang chat vẫn một màn hình, vẫn chọn User A, User B, Default.
+- [x] Câu trả lời vẫn hiện từng token trong khung chat hiện có.
+- [x] Tên file nguồn, nút thích, không thích, đã copy, hỏi lại, và bỏ dở vẫn ở cạnh câu trả lời.
 
-Kiểm: mở `http://localhost:8000`, gửi một câu, thấy ba hành động mới cạnh nút thích.
+Kiểm: mở `http://localhost:8000`, gửi một câu, thấy chữ hiện dần và các nút cũ còn đó.
 
-## 3. Core backend
+## 3. Core backend or data logic
 
-- [x] `chat()` và `chat_parsed()` dùng exact cache, semantic cache, và semaphore thread.
-- [x] SSE dừng khi client ngắt.
-- [x] `prompt_lint.py` và eval gate đã có.
-- [x] Thêm async client: `AsyncOpenAI`, retry bằng `asyncio.sleep`, semaphore asyncio lấy giới hạn từ `config.yaml`.
-- [x] `chat_stream` gọi async client đó.
-- [x] `chat_stream` đọc và ghi exact cache trước khi mở stream. Cùng câu và cùng `prompt_version` thì không gọi model.
-- [x] Tách store `get` / `setex`. Thêm `RedisStore`, import `redis` trong `__init__`. Mặc định vẫn memory.
-- [x] Thêm service `redis` trong `docker-compose.yml`.
-- [x] Thêm script rollback: ghi `production.txt` về version trước, không xoá `vN.yaml`.
-- [x] `should_sample` nhận `cache_hit=True` thì bỏ trace. Lỗi, guardrail, và request chậm vẫn giữ.
-- [x] Khi cờ Secret Manager bật, đọc `OPENAI_API_KEYS`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` lúc chạy.
+- [x] Session, tin nhắn, watchlist, holdings, và HITL nằm trong `web_backend`. Postgres giữ nguyên.
+- [x] Swarm, retrieval, và Qdrant nằm trong `ai_backend`. AI chỉ `/health`, `/v1/chat`, `/v1/chat/stream`, `/v1/scan`.
+- [x] Hai cây không import lẫn nhau. Chỉ dùng `src/shared` cho phần chung.
+- [x] Xóa `src/backend` khi hai entry trên chạy được.
 
-Kiểm từng ô: `pytest tests/unit/test_async_client.py tests/unit/test_redis_store.py tests/unit/test_prompt_rollback.py tests/integration/test_monitoring.py tests/unit/test_secret_manager.py -q`
+Kiểm: `pytest tests/unit/test_concept_rag.py tests/e2e/test_docker_setup.py -q`
 
 ## 4. Connect UI to data
 
-- [x] Nút thích và không thích đã ghi SQLite và có thể thành draft golden.
-- [x] Ba hành động copy, hỏi lại, bỏ dở gọi API feedback.
-- [x] API lưu điểm từ 0 đến 1 và nhãn explicit hoặc implicit. Test không gọi Langfuse.
-- [x] Luồng stream trên UI vẫn hiện chữ từng phần sau khi `chat_stream` đổi sang async client.
+- [x] Compose build hai Dockerfile mới. Web gọi `AI_BASE_URL`. Postgres, Qdrant, Redis, MinIO giữ container riêng.
+- [x] Web chỉ chuyển SSE từ AI ra UI.
+- [x] Câu số liệu hoặc danh mục kèm watchlist và holdings. Câu khái niệm không kèm hai danh sách đó.
+- [x] "RSI là gì" có tên file nguồn. "RSI của HPG" đi agent chỉ báo.
 
-Kiểm: `pytest tests/unit/test_feedback_signals.py tests/integration/test_api.py -q` 
+Kiểm: `pytest tests/unit/test_ai_http_stream.py tests/unit/test_concept_rag.py -q`
 
 ## 5. Validation and error states
 
-- [x] Injection và câu ngoài phạm vi bị từ chối. Câu chào không gọi agent giá.
-- [x] Client ngắt stream thì pipeline dừng.
-- [x] Async client trả slot semaphore khi lời gọi lỗi.
-- [x] Secret Manager lỗi hoặc thiếu project thì giữ giá trị `.env` và không làm app sập.
-- [x] Cache hit trên stream không ghi trace.
+- [x] Import `web_backend.main` không kéo `openai`, `answer_question`, hay `ai_backend`.
+- [x] Câu chào không gọi agent giá. Injection và câu ngoài phạm vi vẫn bị từ chối.
+- [x] Không đủ đoạn khái niệm thì câu trả lời là `Không có trong tài liệu.`
+- [x] Client ngắt stream thì pipeline dừng. Nút thích và không thích vẫn ghi PostgreSQL.
+- [x] `pytest tests/` pass, không gọi internet, không tạo file `.db`.
 
-Kiểm: `pytest tests/unit/test_async_client.py tests/unit/test_secret_manager.py tests/integration/test_monitoring.py tests/unit/test_guardrails.py -q`
+Kiểm: `pytest tests/unit/test_config.py tests/unit/test_greeting_fastpath.py tests/unit/test_guardrails.py tests/unit/test_concept_rag.py -q`
 
 ## 6. Local run instructions
 
-- [x] `README.md` có cài đặt, `uvicorn` cổng 8000, và `docker compose` (UI 3001, API 8000).
-- [x] Sau phase 3, README nói rõ cache mặc định là memory và cách bật Redis.
-- [x] README liệt kê secret trong `.env.example` và nói tham số nằm ở `config.yaml`.
+- [x] `src/deploy/nginx.conf` chỉ `listen 80`, proxy về `127.0.0.1:8000`. Route `/chat` tắt `proxy_buffering`. Không có block 443.
+- [x] `src/deploy/release.ps1` có `up`, `smoke`, `rollback`, `status`. Không gọi `gcloud`. Không dùng systemd.
+- [x] README nói cách chạy hai cây và `release.ps1` trên máy này.
 
-Kiểm: làm theo README trên máy sạch đến khi mở được `http://localhost:8000`.
+Kiểm: `pytest tests/integration/test_system.py -q` và đọc `release.ps1`.
 
 ## 7. ngrok demo setup
 
-- [x] `README.md` có mục "Demo with ngrok" cho cổng 8000, và cổng 3001 khi chạy Docker.
-- [x] Nginx tắt `proxy_buffering` trên route stream.
-- [x] `scripts/start_ngrok_demo.py` có sẵn.
-- [x] Sau khi stream đi qua async client, demo ngrok vẫn nhận token dần, không đợi hết câu.
+- [x] README vẫn có demo ngrok cho cổng 8000, và cổng 3001 khi chạy Docker.
+- [x] `src/deploy/publish.ps1` chạy Cloudflare Tunnel vào nginx cổng 80.
+- [x] URL https in ra trả `GET /health` 200. Một câu khái niệm trên URL đó vẫn có tên file nguồn.
 
-Kiểm: chạy app cổng 8000, chạy `ngrok http 8000`, gửi một câu từ URL ngrok và thấy chữ hiện dần.
-
----
-
-Mọi ô checklist đã tick.
+Kiểm: làm theo README, mở URL https, gửi "RSI là gì".

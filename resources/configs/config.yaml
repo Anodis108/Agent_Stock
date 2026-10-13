@@ -55,7 +55,15 @@ memory:
 storage:
   sqlite_path: "./resources/data/portfolio_watch.db"
   backend_sqlite_path: "./resources/data/backend_store.db"
-  chart_dir: "./resources/data/charts"
+  chart_dir: "./resources/data/charts"   # Fallback khi MinIO không kết nối được
+  chart_backend: "minio"                # minio | local
+  minio_endpoint: "localhost:9000"      # Compose ghi đè MINIO_ENDPOINT=minio:9000
+  minio_bucket: "charts"
+  minio_secure: false
+  postgres_host: "localhost"
+  postgres_port: 5432
+  postgres_db: "portfolio_watch"
+  concept_collection: "stock_concepts"
 
 # 6. Nguồn dữ liệu thị trường & Danh mục theo dõi (Market Data & Watchlist)
 market_data:

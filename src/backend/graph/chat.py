@@ -27,7 +27,7 @@ if _SRC_DIR not in sys.path:
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 
-from backend.application.answer_question import (
+from backend.answer_question import (
     AnswerQuestionResult,
     build_chat_steps,
 )
@@ -75,8 +75,8 @@ from backend.infra.storage.memory_store import (
     apply_sliding_window_with_ttl_eviction,
     filter_conversation_history,
 )
-from backend.shared.logging import get_logger
-from backend.shared.settings import settings
+from backend.logging import get_logger
+from backend.settings import settings
 
 _logger = get_logger(__name__)
 _chat_deps: contextvars.ContextVar[dict[str, Any]] = contextvars.ContextVar(
@@ -686,6 +686,7 @@ def workers_node(state: ChatState, config: RunnableConfig) -> dict[str, Any]:
                 intent=target_intent,
                 price_source=price_source,
                 watchlist_store=pw_store,
+                account_holdings=cfg.get("account_holdings"),
                 turn=turn,
             )
             portfolio_summary = portfolio_watch_result.portfolio_summary
@@ -780,11 +781,46 @@ _node_answer_composer = composer_node
 
 
 def route_from_supervisor(state: ChatState) -> str:
-    """Định tuyến sau Supervisor: Rẽ nhánh sang diagram_agent hoặc workers."""
-    route = getattr(state["routing"].route, "value", state["routing"].route)
-    if str(route) == "diagram" or "diagram" in (state["routing"].agents_to_call or []):
+    """Định tuyến sau Supervisor: khái niệm sang retrieval, sơ đồ sang diagram, còn lại sang workers."""
+    routing = state["routing"]
+    route = str(getattr(routing.route, "value", routing.route))
+    agents = [item.lower() for item in (routing.agents_to_call or [])]
+    if route == "retrieval" or "retrieval" in agents:
+        return "concept_retrieval"
+    if route == "diagram" or "diagram" in agents:
         return "diagram_agent"
     return "workers"
+
+
+def concept_retrieval_node(state: ChatState, config: RunnableConfig) -> dict[str, Any]:
+    """Lấy câu trả lời từ collection khái niệm. Không gọi agent chỉ báo."""
+    t0 = time.perf_counter()
+    emit_agent_event("node_start", {"node": "concept_retrieval", "timestamp": time.time()})
+    cfg = _cfg(config)
+    question = state.get("question") or ""
+    from backend.retrieval.answer import NOT_IN_DOCS, answer_concept
+
+    client = cfg.get("concept_client")
+    if client is None:
+        from backend.qdrant import get_qdrant_client
+
+        client = get_qdrant_client()
+    if client is None:
+        found_answer, source_file = NOT_IN_DOCS, None
+    else:
+        found = answer_concept(question, client=client)
+        found_answer, source_file = found.answer, found.source_file
+    dur = round(time.perf_counter() - t0, 3)
+    emit_agent_event(
+        "node_finish",
+        {
+            "node": "concept_retrieval",
+            "duration_s": dur,
+            "duration_ms": int(dur * 1000),
+            "source_file": source_file,
+        },
+    )
+    return {"answer": found_answer, "source_file": source_file}
 
 
 def build_chat_graph() -> StateGraph:
@@ -795,6 +831,7 @@ def build_chat_graph() -> StateGraph:
     graph.add_node("greeting_node", greeting_node)
     graph.add_node("rewrite_question", rewrite_node)
     graph.add_node("supervisor", supervisor_node)
+    graph.add_node("concept_retrieval", concept_retrieval_node)
     graph.add_node("diagram_agent", diagram_node)
     graph.add_node("workers", workers_node)
     graph.add_node("answer_composer", composer_node)
@@ -815,8 +852,13 @@ def build_chat_graph() -> StateGraph:
     graph.add_conditional_edges(
         "supervisor",
         route_from_supervisor,
-        {"diagram_agent": "diagram_agent", "workers": "workers"},
+        {
+            "concept_retrieval": "concept_retrieval",
+            "diagram_agent": "diagram_agent",
+            "workers": "workers",
+        },
     )
+    graph.add_edge("concept_retrieval", END)
     graph.add_edge("diagram_agent", END)
     graph.add_edge("workers", "answer_composer")
     graph.add_edge("answer_composer", END)
@@ -846,6 +888,8 @@ def run_chat_graph(
     answer_brain: AnswerDraftBrain | None = None,
     diagram_brain: Any | None = None,
     watchlist_store: Any | None = None,
+    account_holdings: list | None = None,
+    concept_client: Any | None = None,
     news_days: int | None = 7,
     limit: int | None = None,
     ttl_minutes: int | float | None = None,
@@ -863,16 +907,16 @@ def run_chat_graph(
         else settings.memory_short_term_ttl_minutes
     )
     effective_user_id = str(user_id or "").strip() if user_id is not None else ""
-    short_term_user_id = user_id if user_id is not None else "default"
-
-    try:
-        conversation = memory_store.list_conversation(
-            short_term_user_id, limit=effective_limit, ttl_minutes=effective_ttl
-        )
-    except TypeError:
-        conversation = memory_store.list_conversation(
-            short_term_user_id, limit=effective_limit
-        )
+    conversation: list[dict[str, Any]] = []
+    if memory_store is not None and hasattr(memory_store, "list_conversation"):
+        try:
+            conversation = memory_store.list_conversation(
+                effective_user_id, limit=effective_limit, ttl_minutes=effective_ttl
+            )
+        except TypeError:
+            conversation = memory_store.list_conversation(
+                effective_user_id, limit=effective_limit
+            )
     conversation = apply_sliding_window_with_ttl_eviction(
         conversation,
         limit=effective_limit,
@@ -931,6 +975,8 @@ def run_chat_graph(
         "answer_brain": answer_brain,
         "diagram_brain": diagram_brain,
         "watchlist_store": watchlist_store,
+        "account_holdings": account_holdings,
+        "concept_client": concept_client,
         "news_days": news_days,
         "event_callback": event_callback,
     }
@@ -965,8 +1011,9 @@ def run_chat_graph(
     compose = final.get("compose")
     answer_text = final.get("answer") or ""
 
-    memory_store.append_conversation(short_term_user_id, "user", q)
-    memory_store.append_conversation(short_term_user_id, "assistant", answer_text)
+    if memory_store is not None and hasattr(memory_store, "append_conversation"):
+        memory_store.append_conversation(effective_user_id, "user", q)
+        memory_store.append_conversation(effective_user_id, "assistant", answer_text)
 
     if (
         effective_user_id
@@ -1026,6 +1073,7 @@ def run_chat_graph(
         error=final.get("error"),
         memories=recalled_memories,
         portfolio_watch_result=final.get("portfolio_watch_result"),
+        source_file=final.get("source_file"),
     )
 
     from backend.graph.steps import build_steps_from_chunks

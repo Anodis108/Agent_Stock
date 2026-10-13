@@ -1,10 +1,13 @@
-"""AI service internal API — /v1/chat, /v1/scan (+ health trên ai_main)."""
+"""Hợp đồng HTTP của image AI. Không import router web."""
 
 from __future__ import annotations
 
+import json
+import threading
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from backend.api.deps import AppDeps, get_app_deps
@@ -13,17 +16,47 @@ from backend.api.helpers.validation import (
     normalize_symbol,
     validate_threshold_pct,
 )
-from backend.api.routers.chat import ChatStep
 from backend.application.answer_question import answer_question
 from backend.application.scan_symbol import scan_symbol
+from backend.domain.entities import WatchlistItem
+from backend.infra.llm.account_snapshot import SnapshotWatchlistStore
 
 router = APIRouter(prefix="/v1", tags=["ai-v1"])
+
+
+class ChatStep(BaseModel):
+    id: str = ""
+    name: str = ""
+    status: str = "done"
+    detail: str | None = None
+    input: Any = None
+    output: Any = None
+    static_info: Any = None
+    system_prompt: Any = None
+    prompt_template: Any = None
+    duration_s: float | None = None
+    duration_ms: int | None = None
+
+
+class WatchlistSnapshot(BaseModel):
+    symbol: str
+    threshold_pct: float = 3.0
+    user_id: str = "default"
+
+
+class HoldingSnapshot(BaseModel):
+    symbol: str
+    quantity: float
+    avg_buy_price: float
+    user_id: str = "default"
 
 
 class V1ChatRequest(BaseModel):
     question: str
     user_id: str = "default"
     request_id: str | None = None
+    watchlist: list[WatchlistSnapshot] | None = None
+    holdings: list[HoldingSnapshot] | None = None
 
 
 class V1ChatResponse(BaseModel):
@@ -34,12 +67,12 @@ class V1ChatResponse(BaseModel):
     route: str = ""
     error: str | None = None
     request_id: str | None = None
-    # extras hữu ích cho Backend proxy
     rewritten: str = ""
     agents_to_call: list[str] = Field(default_factory=list)
     price: dict[str, Any] | None = None
     news_count: int = 0
     severity: dict[str, Any] | None = None
+    source_file: str | None = None
 
 
 class V1ScanRequest(BaseModel):
@@ -47,6 +80,25 @@ class V1ScanRequest(BaseModel):
     user_id: str = "default"
     threshold_pct: float | None = None
     request_id: str | None = None
+    watchlist: list[WatchlistSnapshot] | None = None
+    holdings: list[HoldingSnapshot] | None = None
+
+
+def _lists_from_body(body: V1ChatRequest | V1ScanRequest):
+    """Payload có mặt thì dùng snapshot. Không có thì AI giữ đường cũ."""
+    sent = body.model_fields_set
+    if "watchlist" not in sent and "holdings" not in sent:
+        return None, None
+    items = [
+        WatchlistItem(
+            symbol=row.symbol.strip().upper(),
+            threshold_pct=float(row.threshold_pct),
+            user_id=(row.user_id or body.user_id or "default").strip() or "default",
+        )
+        for row in (body.watchlist or [])
+    ]
+    holdings = [row.model_dump() for row in (body.holdings or [])]
+    return SnapshotWatchlistStore(items), holdings
 
 
 class V1ScanResponse(BaseModel):
@@ -68,7 +120,20 @@ class V1ScanResponse(BaseModel):
     pending_events: list[dict[str, Any]] = Field(default_factory=list)
 
 
+def _dispatch_answer_question(*args: Any, **kwargs: Any) -> Any:
+    import sys
 
+    routes_mod = sys.modules.get("backend.routes")
+    fn = getattr(routes_mod, "answer_question", answer_question) if routes_mod else answer_question
+    return fn(*args, **kwargs)
+
+
+def _dispatch_scan_symbol(*args: Any, **kwargs: Any) -> Any:
+    import sys
+
+    routes_mod = sys.modules.get("backend.routes")
+    fn = getattr(routes_mod, "scan_symbol", scan_symbol) if routes_mod else scan_symbol
+    return fn(*args, **kwargs)
 
 
 @router.post("/chat", response_model=V1ChatResponse)
@@ -79,7 +144,8 @@ def v1_chat(
 ) -> V1ChatResponse:
     question = normalize_question(body.question)
     request_id = (body.request_id or x_request_id or "").strip() or None
-    result = answer_question(
+    watchlist_store, account_holdings = _lists_from_body(body)
+    result = _dispatch_answer_question(
         question,
         price_source=deps.price_source,
         news_source=deps.news_source,
@@ -87,6 +153,8 @@ def v1_chat(
         memory_store=deps.memory_store,
         user_id=body.user_id,
         request_id=request_id,
+        watchlist_store=watchlist_store,
+        account_holdings=account_holdings,
     )
     price_payload = None
     if result.price is not None:
@@ -114,6 +182,51 @@ def v1_chat(
         price=price_payload,
         news_count=len(result.news.items) if result.news else 0,
         severity=severity,
+        source_file=getattr(result, "source_file", None),
+    )
+
+
+@router.post("/chat/stream")
+def v1_chat_stream(
+    body: V1ChatRequest,
+    deps: AppDeps = Depends(get_app_deps),
+    x_request_id: str | None = Header(default=None, alias="X-Request-Id"),
+) -> StreamingResponse:
+    """SSE token và tiến trình agent. Không ghi session — web tự lưu."""
+    question = normalize_question(body.question)
+    request_id = (body.request_id or x_request_id or "").strip() or None
+    watchlist_store, account_holdings = _lists_from_body(body)
+    cancel = threading.Event()
+
+    def _gen():
+        from backend.infra.llm.chat_stream import iter_swarm_events
+
+        events = iter_swarm_events(
+            question,
+            deps,
+            user_id=body.user_id,
+            request_id=request_id,
+            cancel_event=cancel,
+            watchlist_store=watchlist_store,
+            account_holdings=account_holdings,
+        )
+        try:
+            for event, data in events:
+                if request_id and event in ("final_answer", "complete"):
+                    data = {**data, "request_id": request_id}
+                yield f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+        finally:
+            cancel.set()
+            events.close()
+
+    return StreamingResponse(
+        _gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 
@@ -126,14 +239,17 @@ def v1_scan(
     symbol = normalize_symbol(body.symbol)
     thr = validate_threshold_pct(body.threshold_pct)
     request_id = (body.request_id or x_request_id or "").strip() or None
-    result = scan_symbol(
+    watchlist_store, _holdings = _lists_from_body(body)
+    result = _dispatch_scan_symbol(
         symbol,
         price_source=deps.price_source,
         news_source=deps.news_source,
         history_store=deps.history_store,
         memory_store=deps.memory_store,
         notifier=deps.notifier,
-        watchlist_store=deps.watchlist_store,
+        watchlist_store=watchlist_store
+        if watchlist_store is not None
+        else deps.watchlist_store,
         user_id=body.user_id,
         threshold_pct=thr,
         request_id=request_id,

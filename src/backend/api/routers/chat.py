@@ -14,11 +14,22 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from backend.api.deps import AppDeps, get_app_deps
-from backend.api.helpers.validation import normalize_question, title_from_question
-from backend.application.answer_question import answer_question
+from backend.deps import AppDeps, get_app_deps
+from backend.validation import normalize_question, title_from_question
 from backend.database.connection import get_connection
 from backend.database.repositories import MessageRepository, SessionRepository
+from backend.answer_question import answer_question
+import backend.answer_question as answer_mod
+
+_ORIGINAL_ANSWER_FN = answer_question
+
+
+def _get_chat_answer_fn() -> Any:
+    mod_fn = getattr(answer_mod, "answer_question", None)
+    if mod_fn is not None and mod_fn is not _ORIGINAL_ANSWER_FN:
+        return mod_fn
+    return answer_question
+
 
 router = APIRouter(tags=["chat"])
 
@@ -62,6 +73,7 @@ class ChatResponse(BaseModel):
     news_error: str | None = None
     severity: dict[str, Any] | None = None
     chart_path: str | None = None
+    source_file: str | None = None
     session_id: str | None = None
     message_id: str | None = None
 
@@ -115,7 +127,7 @@ def post_chat(
             content=question,
         )
 
-        result = answer_question(
+        result = _get_chat_answer_fn()(
             question,
             price_source=deps.price_source,
             news_source=deps.news_source,
@@ -192,6 +204,7 @@ def post_chat(
             chart_path=chart_path,
             session_id=session_id,
             message_id=assistant_msg.id,
+            source_file=getattr(result, "source_file", None),
         )
     finally:
         conn.close()
@@ -228,6 +241,68 @@ def _prepare_stream_session(body: ChatRequest) -> tuple[str, str]:
     return session_id, question
 
 
+def _save_stream_assistant(session_id: str, data: dict[str, Any]) -> str | None:
+    """Lưu câu trả lời sau khi AI gửi final_answer hoặc complete."""
+    chart_path = data.get("chart_path")
+    trace_data = None
+    if data.get("steps") or data.get("route"):
+        trace_data = json.dumps(
+            {
+                "steps": data.get("steps") or [],
+                "route": data.get("route") or "",
+            },
+            ensure_ascii=False,
+        )
+    conn = get_connection()
+    try:
+        msg = MessageRepository(conn).create(
+            session_id=session_id,
+            role="assistant",
+            content=str(data.get("answer") or ""),
+            chart_path=chart_path if isinstance(chart_path, str) else None,
+            trace_data=trace_data,
+        )
+        return msg.id
+    finally:
+        conn.close()
+
+
+def _proxy_ai_chat_stream(
+    body: ChatRequest,
+    *,
+    is_disconnected: Callable[[], bool] | None = None,
+    cancel_event: threading.Event | None = None,
+):
+    """AI_TRANSPORT=http: web giữ session, AI phát SSE, web gắn session_id và message_id."""
+    from backend.transport import iter_remote_chat_events
+
+    session_id, question = _prepare_stream_session(body)
+    saved = False
+    message_id: str | None = None
+    cancel = cancel_event or threading.Event()
+    try:
+        for event, data in iter_remote_chat_events(
+            question=question,
+            user_id=body.user_id or "default",
+            cancel_event=cancel,
+            is_disconnected=is_disconnected,
+        ):
+            if event in ("final_answer", "complete"):
+                if not saved:
+                    try:
+                        message_id = _save_stream_assistant(session_id, data)
+                    except Exception as exc:
+                        data = {
+                            **data,
+                            "error": data.get("error") or f"lưu hội thoại lỗi: {exc}",
+                        }
+                    saved = True
+                data = {**data, "session_id": session_id, "message_id": message_id}
+            yield f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+    finally:
+        cancel.set()
+
+
 def stream_chat_generator(
     body: ChatRequest,
     deps: AppDeps,
@@ -242,6 +317,16 @@ def stream_chat_generator(
     - complete: Trả lời hoàn chỉnh và toàn bộ metadata
     - error: Khi gặp sự cố ngoài ý muốn
     """
+    from backend.transport import _use_http
+
+    if _use_http():
+        yield from _proxy_ai_chat_stream(
+            body,
+            is_disconnected=is_disconnected,
+            cancel_event=cancel_event,
+        )
+        return
+
     session_id, question = _prepare_stream_session(body)
     t_start = time.perf_counter()
     cancel = cancel_event or threading.Event()
@@ -256,7 +341,7 @@ def stream_chat_generator(
 
         set_stream_cancel_event(cancel)
         try:
-            result = answer_question(
+            result = _get_chat_answer_fn()(
                 question,
                 price_source=deps.price_source,
                 news_source=deps.news_source,
@@ -265,88 +350,36 @@ def stream_chat_generator(
                 user_id=body.user_id,
                 event_callback=_event_cb,
             )
+            from backend.infra.llm.chat_stream import swarm_public_payload
 
-            price_payload: dict[str, Any] | None = None
-            if result.price is not None:
-                p = result.price
-                price_payload = {
-                    "symbol": p.symbol,
-                    "latest_close": p.latest_close,
-                    "prev_close": p.prev_close,
-                    "change_pct": p.change_pct,
-                    "error": p.error,
-                }
-
-            news_items: list[dict[str, Any]] = []
-            news_error: str | None = None
-            if result.news is not None:
-                news_error = result.news.error
-                news_items = [
-                    {
-                        "title": i.title,
-                        "url": i.url,
-                        "published_at": i.published_at,
-                        "snippet": i.snippet,
-                    }
-                    for i in (result.news.items or [])
-                ]
-
-            severity = None
-            if result.eval_result is not None:
-                severity = result.eval_result.severity.model_dump(mode="json")
-
-            chart_path = getattr(result, "chart_path", None)
-            raw_steps = [s.model_dump() if hasattr(s, "model_dump") else s for s in (result.steps or [])]
+            payload = swarm_public_payload(result, started=t_start)
             trace_data = None
             if result.steps or getattr(result, "routing", None):
-                trace_dict = {
-                    "steps": raw_steps,
-                    "route": str(getattr(result.routing.route, "value", result.routing.route)) if getattr(result, "routing", None) else "",
-                }
-                trace_data = json.dumps(trace_dict, ensure_ascii=False)
+                trace_data = json.dumps(
+                    {"steps": payload["steps"], "route": payload["route"]},
+                    ensure_ascii=False,
+                )
+            chart_path = payload.get("chart_path")
 
-            # Lưu tin nhắn trợ lý vào SQLite trong worker thread
             w_conn = get_connection()
             assistant_msg_id = None
             try:
-                w_m_repo = MessageRepository(w_conn)
-                assistant_msg = w_m_repo.create(
+                assistant_msg = MessageRepository(w_conn).create(
                     session_id=session_id,
                     role="assistant",
-                    content=result.answer or "",
-                    chart_path=chart_path,
+                    content=payload["answer"],
+                    chart_path=chart_path if isinstance(chart_path, str) else None,
                     trace_data=trace_data,
                 )
                 assistant_msg_id = assistant_msg.id
             finally:
                 w_conn.close()
 
-            total_duration_s = round(time.perf_counter() - t_start, 3)
-            complete_data = {
-                "question": result.question,
-                "rewritten": result.rewritten.rewritten if hasattr(result, "rewritten") and result.rewritten else "",
-                "symbol": result.rewritten.symbol if hasattr(result, "rewritten") and result.rewritten else None,
-                "intent": result.rewritten.intent if hasattr(result, "rewritten") and result.rewritten else "",
-                "agents_to_call": list(result.routing.agents_to_call or []) if getattr(result, "routing", None) else [],
-                "route": str(getattr(result.routing.route, "value", result.routing.route)) if getattr(result, "routing", None) else "",
-                "reason": result.routing.reason or "" if getattr(result, "routing", None) else "",
-                "answer": result.answer or "",
-                "steps": raw_steps,
-                "hitl_used": result.hitl_used,
-                "pending_approvals_created": result.pending_approvals_created,
-                "error": result.error,
-                "price": price_payload,
-                "news_count": len(news_items),
-                "news": news_items,
-                "news_error": news_error,
-                "severity": severity,
-                "chart_path": chart_path,
-                "session_id": session_id,
-                "message_id": assistant_msg_id,
-                "total_duration_s": total_duration_s,
-            }
-            event_queue.put(("final_answer", complete_data))
-            event_queue.put(("complete", complete_data))
+            payload["session_id"] = session_id
+            payload["message_id"] = assistant_msg_id
+            payload["total_duration_s"] = round(time.perf_counter() - t_start, 3)
+            event_queue.put(("final_answer", payload))
+            event_queue.put(("complete", dict(payload)))
         except StreamCancelledError:
             event_queue.put(("error", {"error": "client disconnected"}))
         except Exception as exc:
@@ -358,20 +391,23 @@ def stream_chat_generator(
     worker_thread = threading.Thread(target=_worker, daemon=True)
     worker_thread.start()
 
-    while True:
-        if is_disconnected and is_disconnected():
-            cancel.set()
-            break
-        try:
-            item = event_queue.get(timeout=0.2)
-        except queue.Empty:
-            if not worker_thread.is_alive():
+    try:
+        while True:
+            if is_disconnected and is_disconnected():
+                cancel.set()
                 break
-            continue
-        if item is None:
-            break
-        event, data = item
-        yield f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+            try:
+                item = event_queue.get(timeout=0.2)
+            except queue.Empty:
+                if not worker_thread.is_alive():
+                    break
+                continue
+            if item is None:
+                break
+            event, data = item
+            yield f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+    finally:
+        cancel.set()
 
 
 async def stream_chat_generator_async(

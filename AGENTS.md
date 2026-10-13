@@ -1,37 +1,27 @@
 # AGENTS.md
 
-Project này tuân theo spec-driven development. Đọc `specs/product-spec.md`, `specs/implementation-plan.md`, và `specs/test-plan.md` trước khi sửa code.
+Đọc `specs/product-spec.md`, `specs/implementation-plan.md`, và `specs/test-plan.md` trước khi sửa code.
 
-## Workflow
+## Quy tắc
 
-Với mỗi task:
+- Làm một ô chưa tick trong `specs/implementation-plan.md`. Phase trước tick hết rồi mới sang phase sau.
+- Giữ app đơn giản. Không thêm feature ngoài spec.
+- Không thêm thư viện ngoài `pyproject.toml`.
+- Không đổi kiến trúc, schema, hay API nếu spec chưa cập nhật.
+- Chưa được yêu cầu code thì chỉ sửa file trong `specs/` và `README.md`.
+- Xong một ô: tick ô đó, ghi file đã đổi vào `specs/change-log.md`, rồi nói cách test.
 
-1. Đọc spec liên quan.
-2. Làm một ô checklist chưa tick trong `specs/implementation-plan.md`.
-3. Giữ giải pháp đơn giản. Không thêm feature ngoài spec.
-4. Dùng thư viện đã có trong `pyproject.toml`. Không thêm thư viện mới trừ khi spec yêu cầu.
-5. Không đổi swarm, schema, hay API trừ khi spec đã được cập nhật.
-6. Tick ô đó và ghi file đã đổi vào `specs/change-log.md`.
-7. Nói cách test: lệnh pytest, bước bấm trên UI, và lỗi còn biết.
+## Đợt này
 
-Khi người dùng chưa yêu cầu code, chỉ sửa file trong `specs/` và `README.md`.
-
-## Ràng buộc của app này
-
-- Tham số mới ghi vào `resources/configs/config.yaml`. `.env` chỉ chứa secret.
-- Prompt giữ YAML trong `resources/prompts/`.
+- Tách `src/backend` thành `src/web_backend` và `src/ai_backend`. Phần chung chỉ `src/shared`. Không tạo `src/ai` hay `src/web`.
+- Web là `web_backend.main:app` cổng 8000. AI là `ai_backend.app:app` cổng 8001, chỉ `/health`, `/v1/chat`, `/v1/chat/stream`, `/v1/scan`.
+- `.env` chỉ chứa secret, gồm `DATABASE_URL`. Tham số nằm ở `resources/configs/config.yaml`.
+- Public từ máy này. Nginx cổng 80 là cửa duy nhất. App nghe `127.0.0.1`. Tunnel dùng Cloudflare. Không gọi `gcloud`. Không viết nginx `listen 443`.
 - Test không gọi internet. `pytest tests/` phải còn pass.
-- Code chạy nằm trong `src/`. Không viết lại Module III Bài 1–8 đã có.
 
-## Testing
+## Khi báo xong
 
-Trước khi báo xong, ghi:
-
-- lệnh chạy app
-- bước test tay
-- lệnh pytest của ô vừa làm
-
-Khối bên dưới là tài liệu cài `vnstock`, không phải task.
+Ghi lệnh chạy app, bước bấm trên UI, và lệnh pytest của ô vừa làm.
 
 <!-- vnai-bootstrap | auto-generated -->
 # Vnstock Vibe Onboarding

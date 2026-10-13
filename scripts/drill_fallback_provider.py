@@ -12,7 +12,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from backend.infra.llm.providers import resolve_backend_chain  # noqa: E402
-from backend.shared.settings import settings  # noqa: E402
+from backend.settings import settings  # noqa: E402
 
 
 def main() -> int:

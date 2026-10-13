@@ -89,6 +89,7 @@ def run_portfolio_watch_agent(
     price_source: PriceSource | None = None,
     watchlist_store: WatchlistStore | None = None,
     turn: str = "",
+    account_holdings: list[dict[str, Any]] | None = None,
 ) -> PortfolioWatchAgentResult:
     """Thực thi tác vụ truy vấn danh mục hoặc watchlist cho người dùng."""
     eff_user_id = (user_id or "default").strip() or "default"
@@ -101,14 +102,43 @@ def run_portfolio_watch_agent(
             # 1. Truy vấn Danh mục đầu tư (Holdings, NAV, P&L)
             if intent in ("portfolio", "all"):
                 try:
-                    conn = get_connection()
-                    try:
-                        h_repo = PortfolioHoldingRepository(conn)
-                        u_repo = UserSettingsRepository(conn)
-                        ps = PortfolioService(h_repo, u_repo, price_source)
+                    if account_holdings is not None:
+                        from backend.database.repositories import PortfolioHoldingRecord
+
+                        class _MemoryHoldingsRepo:
+                            def __init__(self, items: list[dict[str, Any]]):
+                                self.records = [
+                                    PortfolioHoldingRecord(
+                                        id=str(row.get("id") or idx),
+                                        user_id=row.get("user_id", eff_user_id),
+                                        symbol=row["symbol"],
+                                        quantity=int(row["quantity"]),
+                                        avg_buy_price=float(row["avg_buy_price"]),
+                                        purchase_date=row.get("purchase_date"),
+                                        created_at="2026-01-01",
+                                        updated_at="2026-01-01",
+                                    )
+                                    for idx, row in enumerate(items)
+                                ]
+
+                            def list_by_user(self, uid: str):
+                                return [r for r in self.records if r.user_id == uid]
+
+                        class _MemorySettingsRepo:
+                            def get(self, uid: str):
+                                return None
+
+                        ps = PortfolioService(_MemoryHoldingsRepo(account_holdings), _MemorySettingsRepo(), price_source)
                         summary = ps.get_portfolio_summary(eff_user_id)
-                    finally:
-                        conn.close()
+                    else:
+                        conn = get_connection()
+                        try:
+                            h_repo = PortfolioHoldingRepository(conn)
+                            u_repo = UserSettingsRepository(conn)
+                            ps = PortfolioService(h_repo, u_repo, price_source)
+                            summary = ps.get_portfolio_summary(eff_user_id)
+                        finally:
+                            conn.close()
                 except Exception as exc:
                     _logger.warning("Lỗi truy vấn danh mục trong PortfolioWatchAgent: %s", exc)
                     err = f"Lỗi truy vấn danh mục: {exc}"

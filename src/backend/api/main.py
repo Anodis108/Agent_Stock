@@ -109,6 +109,11 @@ app.include_router(direct_hitl_router)
 app.include_router(portfolio_router)
 
 
+@app.get("/health")
+def health() -> dict[str, str]:
+    return {"status": "ok", "service": "backend"}
+
+
 # ==============================================================================
 # Pydantic Schemas
 # ==============================================================================

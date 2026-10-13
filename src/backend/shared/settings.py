@@ -18,7 +18,7 @@ def get_config_yaml_path() -> Path:
     if os.environ.get("CONFIG_YAML_PATH"):
         return Path(os.environ["CONFIG_YAML_PATH"])
 
-    # Thử tìm theo cấu trúc thư mục chuẩn: src/backend/shared/settings.py -> resources/configs/config.yaml
+    # src/shared/settings.py -> resources/configs/config.yaml
     project_root = Path(__file__).resolve().parent.parent.parent.parent
     candidate = project_root / "resources" / "configs" / "config.yaml"
     if candidate.exists():
@@ -92,6 +92,14 @@ def load_config_yaml_data(yaml_path: Path | None = None) -> dict[str, Any]:
         "storage_sqlite_path": "sqlite_path",
         "storage_backend_sqlite_path": "backend_sqlite_path",
         "storage_chart_dir": "chart_dir",
+        "storage_chart_backend": "chart_backend",
+        "storage_minio_endpoint": "minio_endpoint",
+        "storage_minio_bucket": "minio_bucket",
+        "storage_minio_secure": "minio_secure",
+        "storage_postgres_host": "postgres_host",
+        "storage_postgres_port": "postgres_port",
+        "storage_postgres_db": "postgres_db",
+        "storage_concept_collection": "concept_collection",
         "market_data_price_source": "price_source",
         "market_data_news_source": "news_source",
         "market_data_fallback_on_error": "price_fallback_on_error",
@@ -202,6 +210,25 @@ class Settings(BaseSettings):
     sqlite_path: str = "./resources/data/portfolio_watch.db"
     backend_sqlite_path: str = "./resources/data/backend_store.db"
     chart_dir: str = "./resources/data/charts"
+    chart_backend: str = "minio"
+    minio_endpoint: str = "localhost:9000"
+    minio_bucket: str = "charts"
+    minio_secure: bool = False
+    minio_access_key: str = "minioadmin"
+    minio_secret_key: str = "minioadmin"
+    postgres_host: str = "localhost"
+    postgres_port: int = 5432
+    postgres_db: str = "portfolio_watch"
+    database_url: str = ""
+    concept_collection: str = "stock_concepts"
+
+    @field_validator("chart_backend")
+    @classmethod
+    def chart_backend_is_local_or_minio(cls, value: str) -> str:
+        normalized = (value or "").strip().lower()
+        if normalized not in {"local", "minio"}:
+            raise ValueError("storage.chart_backend phải là local hoặc minio")
+        return normalized
 
     # 9. 2-Tier Caching System
     cache_backend: str = "memory"

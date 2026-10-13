@@ -4,28 +4,40 @@ Hệ thống Trợ lý Phân tích Chứng khoán Đa Tác tử (Multi-Agent Swa
 
 ## Đợt cập nhật hiện tại (chưa code)
 
-Port các thay đổi **sau** commit `01bd4505d59d95358732ed074a14fcf52ff66e20` (`cost optimization`) đến `6e5e32e` của `llm-engineer-demo` sang app này. Mốc `01bd450` là baseline đã có (cost tracker, exact cache). Không viết lại swarm, golden set, hay RAG pháp lý.
+Tách `src/backend` thành hai cây: `src/web_backend` và `src/ai_backend`. Phần chung chỉ là `src/shared`. Hành vi chat, swarm, và UI giữ nguyên.
 
-Spec: [specs/product-spec.md](specs/product-spec.md), [specs/implementation-plan.md](specs/implementation-plan.md), [specs/test-plan.md](specs/test-plan.md).
+Public từ chính máy này, chưa thuê cloud. Nginx nghe cổng 80 và chuyển vào web `127.0.0.1:8000`. Cloudflare Tunnel (`cloudflared`) mở HTTPS ra internet mà không cần mở port modem. ngrok vẫn là demo nhanh.
 
-Module III Bài 1–8 đã có trong code (prompt, eval gate, cache, Docker, CI/CD, tracing, HITL). Việc còn lại, từng ô một:
+Chưa triển khai. Spec: [specs/product-spec.md](specs/product-spec.md), [specs/implementation-plan.md](specs/implementation-plan.md), [specs/test-plan.md](specs/test-plan.md).
 
-1. Async client cho `chat_stream` (ngắt SSE đã có).
-2. Cho SSE đi qua exact cache; thêm Redis store, mặc định vẫn memory.
-3. Script rollback alias `production` (lint đã có).
-4. Sampling bỏ cache hit; thêm tín hiệu copied / regenerated / abandoned.
-5. Secret Manager thật, lỗi thì giữ `.env` (`secrets.py` hiện trả `None`).
+Việc còn lại, theo `specs/implementation-plan.md`:
+
+1. Project setup
+2. Core UI
+3. Core backend or data logic
+4. Connect UI to data
+5. Validation and error states
+6. Local run instructions
+7. ngrok demo setup
+
+Đợt port LLMOps sau `01bd450` đã xong. Module III Bài 1–8 đã có trong code. Không viết lại swarm hay golden set. Không làm RAG pháp lý, không tìm web khi thiếu tài liệu.
 
 ## Demo with ngrok
 
-App local phục vụ UI và API trên cổng **8000**.
+Web local phục vụ UI và API cùng origin trên cổng **8000**. Khi chạy local tách hai cây, Web Backend nghe cổng 8000 và AI Backend nghe cổng 8001:
 
 ```bash
-uvicorn backend.main:app --app-dir src --host 127.0.0.1 --port 8000 --reload
+# Cửa sổ 1 — Web Backend cổng 8000 (uvicorn web_backend.main:app hoặc lệnh tương thích uvicorn backend.main:app):
+uvicorn web_backend.main:app --app-dir src --host 127.0.0.1 --port 8000 --reload
+# Cửa sổ 2 — AI Backend cổng 8001:
+uvicorn ai_backend.app:app --app-dir src --host 127.0.0.1 --port 8001 --reload
+# Cửa sổ 3 — Mở ngrok cho cổng 8000:
 ngrok http 8000
 ```
 
-Docker tách frontend **3001** và backend **8000**. Expose backend, rồi trỏ frontend tới URL ngrok của backend nếu UI và API không cùng origin:
+Mở URL `https` mà ngrok in ra để tương tác trực tiếp với Web App.
+
+Docker: frontend cổng **3001**, web cổng **8000**. `docker compose up -d` chạy toàn bộ dịch vụ. Nginx của frontend chuyển `/chat` về web, nên trang và API cùng origin trên cổng 3001.
 
 ```bash
 docker compose up -d
@@ -33,7 +45,21 @@ ngrok http 8000
 ngrok http 3001
 ```
 
+Mở URL `https` của cổng muốn demo. Cổng 3001 là trang Docker. Cổng 8000 là process web. Nếu trang và API không cùng origin, sửa `BACKEND_BASE_URL` trong `src/frontend/config.js` thành URL `https` của tunnel cổng 8000. Mặc định để trống, nghĩa là cùng origin.
+
 `proxy_buffering` của nginx đã tắt cho route stream, để token SSE không bị giữ đến khi model sinh xong.
+
+## Public HTTPS với Cloudflare Tunnel (`publish.ps1`)
+
+Khởi chạy Cloudflare Tunnel để cấp URL HTTPS công khai ra Internet trỏ thẳng vào Nginx cổng 80:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File src/deploy/publish.ps1
+```
+
+Script sẽ kiểm tra Nginx và in ra URL `https://<subdomain>.trycloudflare.com`:
+- **Kiểm tra sức khỏe**: `GET https://<subdomain>.trycloudflare.com/health` trả về HTTP 200 `{"status": "ok", ...}`.
+- **Kiểm tra câu khái niệm**: Mở URL trên trình duyệt và gửi `"RSI là gì"`, câu trả lời hiển thị trích dẫn nguồn `Nguồn: rsi-va-sma.md`.
 
 ---
 
@@ -102,7 +128,7 @@ graph TD
         DB1[(portfolio_watch.db)]
         DB2[(backend_store.db)]
         Cache1[(2-Tier Cache Engine)]
-        ChartStore[resources/data/charts/*.png]
+        ChartStore[MinIO bucket charts]
     end
 
     PWAgent <--> DB1
@@ -133,7 +159,7 @@ Hệ thống sử dụng kiến trúc lưu trữ phân tầng nhằm bảo đả
 | | | `alert_events` | Lịch sử cảnh báo biến động giá cổ phiếu vượt ngưỡng thiết lập. |
 | **Bộ Nhớ Đệm Cache 2 Tầng** | Exact cache mặc định memory. Redis khi `cache.backend` là `redis` | `Exact Cache (Tầng 1)` | Lưu cặp `Hash MD5(Prompt) -> Response`, TTL 24h, trúng cache tức thì (< 1ms). |
 | | | `Semantic Cache (Tầng 2)` | Vector embedding cosine similarity $\ge 0.93$, xử lý câu hỏi gần tương đương (near-duplicates). |
-| **Lưu Trữ Tệp Ảnh Biểu Đồ** | `resources/data/charts/` | Tệp ảnh PNG nến kỹ thuật | Chứa các file ảnh Candlestick chart được sinh tự động bởi `ChartAgent` qua Matplotlib. |
+| **Ảnh biểu đồ** | Bucket MinIO `charts`. Fallback `resources/data/charts/` khi MinIO không chạy | Tệp PNG nến kỹ thuật | `ChartAgent` upload `chart_*.png`. Chat vẫn nhúng `/charts/{tên file}`. App đọc object rồi trả `image/png`. |
 
 ---
 
@@ -167,8 +193,8 @@ vn-stock-swarm/
 ├── resources/                  # Tài nguyên tĩnh tổng hợp (Master Assets)
 │   ├── configs/
 │   │   └── config.yaml         # Master Application Config (LLM, App, Cache, Storage)
-│   ├── data/                   # CSDL SQLite & Tệp ảnh biểu đồ
-│   │   ├── charts/             # Ảnh Candlestick charts sinh tự động
+│   ├── data/                   # CSDL SQLite. Ảnh biểu đồ mặc định ở MinIO
+│   │   ├── charts/             # PNG fallback khi MinIO không chạy
 │   │   ├── portfolio_watch.db  # CSDL AI core
 │   │   └── backend_store.db    # CSDL Product & Watchlist
 │   ├── docs/                   # Sơ đồ kiến trúc & Playbook sự cố Module 3
@@ -181,16 +207,11 @@ vn-stock-swarm/
 │   ├── change-log.md           # Nhật ký thay đổi & mốc phát triển
 │   └── project-summary.md      # Tài liệu tổng hợp bảo vệ đồ án cuối khóa
 ├── src/                        # Toàn bộ mã nguồn thực thi của hệ thống
-│   ├── backend/                # FastAPI & LangGraph Multi-Agent Backend
-│   │   ├── agents/             # 7 Worker Agents + Supervisor + Composer
-│   │   ├── api/                # REST API Routers, Middleware, Schemas & App Entrypoint
-│   │   ├── domain/             # Logic nghiệp vụ (Guardrails, Indicators, Memory)
-│   │   ├── eval/               # Eval Gate, Metrics, Scorers
-│   │   ├── graph/              # Đồ thị LangGraph Chat Orchestrator
-│   │   ├── infra/              # External Adapters (LLM, Cache 2-Tier, Market Data, Storage)
-│   │   └── services/           # Nghiệp vụ Portfolio, Market & Alert
+│   ├── web_backend/            # Web Backend FastAPI (sessions, watchlist, portfolio, HITL, SSE proxy)
+│   ├── ai_backend/             # AI Backend FastAPI (Swarm, RAG concepts, Qdrant, eval)
+│   ├── shared/                 # Module chia sẻ dùng chung (config, models, database, secrets)
 │   ├── frontend/               # Giao diện Web App (HTML5, Vanilla CSS, JS SSE Streaming)
-│   └── deploy/                 # Dockerfile, Docker Compose, Nginx conf & Smoke test
+│   └── deploy/                 # Dockerfile, Docker Compose, Nginx conf, release.ps1 & Smoke test
 ├── tests/                      # Kim tự tháp kiểm thử 3 tầng
 │   ├── unit/                   # Fast isolated unit tests (< 1s/test)
 │   ├── integration/            # API, DB, Graph, 2-Tier Cache integration tests
@@ -209,46 +230,84 @@ vn-stock-swarm/
 
 ### 7.1. Cài Đặt Môi Trường Cục Bộ (Native Python)
 ```bash
-# 1. Kích hoạt môi trường ảo Python >= 3.10
-# Windows:
-& "$HOME\.venv\Scripts\Activate.ps1"
-# Linux / macOS:
-source ~/.venv/bin/activate
+# 1. Kích hoạt môi trường Python (>= 3.10)
+conda activate dong312
 
 # 2. Cài đặt các thư viện cần thiết
 pip install -e .
 
 # 3. Tạo .env và điền secret. Tên biến nằm trong .env.example:
-#    OPENAI_API_KEYS, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, QDRANT_API_KEY
+#    DATABASE_URL, OPENAI_API_KEYS, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, QDRANT_API_KEY
 #    Tham số (model, cache, cổng, bộ nhớ, monitoring) sửa ở resources/configs/config.yaml
 
-# 4. Khởi chạy Web App
-uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
-# Truy cập giao diện tại: http://localhost:8000
+# 4. Khởi chạy hai cây trên hai tiến trình độc lập:
+# Cửa sổ 1 — Web Backend (cổng 8000, giao diện web & API người dùng):
+uvicorn web_backend.main:app --app-dir src --host 127.0.0.1 --port 8000 --reload
+# (Lệnh đơn tiến trình tương thích trước đây: uvicorn backend.main:app --app-dir src --host 127.0.0.1 --port 8000 --reload)
+
+# Cửa sổ 2 — AI Backend (cổng 8001, xử lý Swarm và RAG khái niệm):
+uvicorn ai_backend.app:app --app-dir src --host 127.0.0.1 --port 8001 --reload
+
+# Truy cập giao diện tại: http://localhost:8000 (hoặc http://127.0.0.1:8000)
+# Kiểm tra sức khỏe AI Backend tại: http://127.0.0.1:8001/health
 ```
 
 Secret cần điền trong `.env` (mẫu tên biến ở `.env.example`):
 
+- `DATABASE_URL`: chuỗi nối PostgreSQL. Mẫu `postgresql://portfolio:portfolio@localhost:5432/portfolio_watch`. App đọc biến này, không ghép host từ file yaml.
 - `OPENAI_API_KEYS`: bắt buộc để gọi model. Nhiều key cách nhau bằng dấu phẩy.
 - `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`: tùy chọn, để ghi trace.
 - `QDRANT_API_KEY`: tùy chọn.
 
-Tham số vận hành nằm ở `resources/configs/config.yaml`: model, cache, cổng, bộ nhớ, monitoring, embedding. Sửa tham số ở file đó. Nếu cùng một giá trị có trong cả `.env` và `config.yaml`, `.env` ghi đè.
+Tham số còn lại nằm ở `resources/configs/config.yaml`: model, cache, cổng, bộ nhớ, monitoring, embedding, host/cổng/tên database (`storage.postgres_host`, `storage.postgres_port`, `storage.postgres_db`), collection khái niệm (`storage.concept_collection`), collection bộ nhớ dài hạn (`memory.qdrant_collection`). Sửa tham số ở file đó. Nếu cùng một giá trị có trong cả `.env` và `config.yaml`, `.env` ghi đè. Compose ghi đè `DATABASE_URL` trong container thành host `postgres` cổng 5432.
 
-### 7.2. Khởi Chạy Bằng Docker Compose
+### 7.2. Hai image, Postgres, và Qdrant bằng Docker Compose
+
+`docker compose` chạy hai image app. Mỗi image một Dockerfile. Postgres và Qdrant mỗi cái một container, không nằm trong image web hay AI.
+
+| Image | Dockerfile | Service | Cổng | Process |
+| :--- | :--- | :--- | :--- | :--- |
+| `portfolio-watch:web` | `src/web_backend/Dockerfile` | `backend` | 8000 | `uvicorn web_backend.main:app` |
+| `portfolio-watch:ai` | `src/ai_backend/Dockerfile` | `ai` | 8001 | `uvicorn ai_backend.app:app` |
+
+Postgres là service `postgres`, image `postgres:16-alpine`, cổng host 5432. Qdrant là service `qdrant`, image `qdrant/qdrant`, cổng host 6333 và 6334.
+
+Cần có file `.env` trước khi compose chạy, vì service `backend` và `ai` đọc `env_file: .env`. Chưa có thì sao từ `.env.example`.
+
 ```bash
-# Build Docker image
 docker compose build
-
-# Khởi chạy các container nền
-docker compose up -d
-
-# Truy cập sản phẩm:
-# - Frontend: http://localhost:3001
-# - Backend API & Docs: http://localhost:8000
+docker compose up -d postgres qdrant backend ai
 ```
 
-### 7.3. Thực Thi Bộ Kiểm Thử 3 Tầng
+Service `backend` còn kéo `redis` và `minio` vì compose khai báo phụ thuộc hai service đó. Trong compose, web gọi AI tại `http://ai:8001`. Mở giao diện tại http://localhost:8000. Health của AI: http://localhost:8001/health.
+
+Frontend Docker, cổng 3001, chạy sau khi backend khỏe:
+
+```bash
+docker compose up -d frontend
+```
+
+http://localhost:3001 phục vụ trang tĩnh và trỏ về backend cổng 8000.
+
+### 7.3. Vận Hành Và Phát Hành Bằng `src/deploy/release.ps1` Trên Windows (PowerShell)
+
+Dự án cung cấp script `src/deploy/release.ps1` để quản lý toàn bộ vòng đời phát hành và triển khai cục bộ trên Windows mà không gọi `gcloud` và không dùng `systemd` / `systemctl`:
+
+```powershell
+# 1. Khởi chạy toàn bộ hệ thống (tự tạo .env nếu thiếu, lưu git SHA LKG, chạy containers, kiểm tra trạng thái):
+powershell -ExecutionPolicy Bypass -File src/deploy/release.ps1 up
+
+# 2. Kiểm tra trạng thái containers và endpoint sức khỏe (Web 8000 & AI 8001):
+powershell -ExecutionPolicy Bypass -File src/deploy/release.ps1 status
+
+# 3. Chạy kiểm thử khói tự động (Smoke test qua src/deploy/smoke.py):
+powershell -ExecutionPolicy Bypass -File src/deploy/release.ps1 smoke -Url "http://127.0.0.1:8000" -Stream
+
+# 4. Hoàn nguyên nhanh khi gặp sự cố (rollback prompt alias về LKG, force-recreate containers và chạy lại smoke test):
+powershell -ExecutionPolicy Bypass -File src/deploy/release.ps1 rollback
+```
+
+### 7.4. Thực Thi Bộ Kiểm Thử 3 Tầng
 ```bash
 # Chạy toàn bộ 3 tầng kiểm thử (< 15 giây với offline mock)
 pytest tests/ -v
@@ -257,7 +316,7 @@ pytest tests/ -v
 pytest tests/e2e/test_golden_v6_slices.py -v
 ```
 
-### 7.4. Exact cache: mặc định memory, cách bật Redis
+### 7.5. Exact cache: mặc định memory, cách bật Redis
 
 Exact cache mặc định là **memory**. `resources/configs/config.yaml` có `cache.backend: "memory"`. App dùng bộ nhớ trong tiến trình, không cần Redis và không cần gói `redis`.
 
@@ -274,6 +333,31 @@ Trong `resources/configs/config.yaml`, đổi `cache.backend` thành `redis`, r�
 - Docker Compose: backend đã có `REDIS_URL=redis://redis:6379`. Vẫn phải đổi `cache.backend` thành `redis`. File `resources/` được mount vào container.
 
 Semantic cache không đi qua Redis.
+
+### 7.6. Ảnh biểu đồ trên MinIO
+
+`storage.chart_backend` trong `resources/configs/config.yaml` mặc định là `minio`. Bucket là `charts`. URL trong chat vẫn là `/charts/chart_....png`. App đọc object và trả ảnh. Không dùng presigned URL.
+
+```bash
+docker compose up -d minio
+```
+
+- Máy host: endpoint trong config là `localhost:9000`. Access key và secret key nằm trong `.env` (`MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`). Console: `http://localhost:9001`. Nếu cổng 9000 đã bị chiếm, chạy `MINIO_PORT=9100 MINIO_CONSOLE_PORT=9101 docker compose up -d minio` và sửa `storage.minio_endpoint` thành `localhost:9100`.
+- Docker Compose: backend dùng `MINIO_ENDPOINT=minio:9000`.
+
+Nếu MinIO không kết nối được, PNG ghi vào `storage.chart_dir` (`resources/data/charts/` trên máy host, `/app/data/charts` trong container). Đổi `chart_backend` thành `local` rồi khởi động lại app nếu không dùng MinIO.
+
+### 7.7. Nạp năm file khái niệm vào Qdrant
+
+Năm file nằm trong `resources/docs/concepts/`: `gia-tran-san.md`, `lenh-ato-atc-lo.md`, `rsi-va-sma.md`, `nav-va-lai-lo-chua-chot.md`, `mien-tru-trach-nhiem.md`.
+
+Qdrant phải đang chạy (`docker compose up -d qdrant` ở mục 7.2). Từ thư mục gốc dự án:
+
+```bash
+PYTHONPATH=src python -c "from qdrant_client import QdrantClient; from ai_backend.retrieval.concepts import index_concepts; print(index_concepts(client=QdrantClient(url='http://localhost:6333', timeout=10, check_compatibility=False)))"
+```
+
+Lệnh này cắt từng file theo đoạn văn, embed offline (không gọi OpenAI), xóa collection cũ rồi ghi lại. Tên collection lấy từ `storage.concept_collection` trong `config.yaml`, mặc định `stock_concepts`. Collection đó phải khác `memory.qdrant_collection` (`portfolio_watch_memory`). Số in ra là số đoạn đã ghi.
 
 ---
 

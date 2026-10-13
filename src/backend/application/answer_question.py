@@ -47,6 +47,7 @@ class AnswerQuestionResult:
     steps: list[dict] = field(default_factory=list)
     memories: list[str] = field(default_factory=list)
     portfolio_watch_result: Any | None = None
+    source_file: str | None = None
 
 
 def build_chat_steps(
@@ -265,6 +266,8 @@ def answer_question(
     limit: int | None = None,
     ttl_minutes: int | float | None = None,
     event_callback: Any | None = None,
+    watchlist_store: Any | None = None,
+    account_holdings: list | None = None,
 ) -> AnswerQuestionResult:
     q = (question or "").strip()
     rid = (request_id or "").strip() or None
@@ -273,7 +276,11 @@ def answer_question(
     if rid:
         meta["request_id"] = rid
 
-    alerts_before = len(memory_store.list_alert_events(user_id, limit=1000))
+    alerts_before = (
+        len(memory_store.list_alert_events(user_id, limit=1000))
+        if memory_store is not None and hasattr(memory_store, "list_alert_events")
+        else 0
+    )
 
     with trace_request("chat", q, metadata=meta) as root:
         from backend.graph.chat import run_chat_graph
@@ -296,18 +303,21 @@ def answer_question(
             limit=limit,
             ttl_minutes=ttl_minutes,
             event_callback=event_callback,
+            watchlist_store=watchlist_store,
+            account_holdings=account_holdings,
         )
 
-        events = memory_store.list_alert_events(user_id, limit=1000)
-        new_events = events[alerts_before:]
-        pending = sum(
-            1
-            for e in new_events
-            if e.get("kind") == "pending_approval"
-            or e.get("gate") in ("gate1", "gate2")
-        )
-        result.hitl_used = pending > 0
-        result.pending_approvals_created = pending
+        if memory_store is not None and hasattr(memory_store, "list_alert_events"):
+            events = memory_store.list_alert_events(user_id, limit=1000)
+            new_events = events[alerts_before:]
+            pending = sum(
+                1
+                for e in new_events
+                if e.get("kind") == "pending_approval"
+                or e.get("gate") in ("gate1", "gate2")
+            )
+            result.hitl_used = pending > 0
+            result.pending_approvals_created = pending
 
         root["output"] = result.answer
         if result.error:

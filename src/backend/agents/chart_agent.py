@@ -131,6 +131,16 @@ def _save_and_encode_fig(fig: plt.Figure, chart_id: str, output_dir: Path | None
     base64_uri = f"data:image/png;base64,{b64_str}"
 
     url = f"/charts/{file_name}"
+    if output_dir is None:
+        try:
+            from backend.infra.storage.chart_store import get_chart_store
+
+            store = get_chart_store()
+            if store is not None:
+                store.put(file_name, buf.getvalue())
+                file_path = f"minio://{store.bucket}/{file_name}"
+        except Exception:
+            pass
     return file_path, file_name, url, base64_uri
 
 

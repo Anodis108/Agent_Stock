@@ -23,6 +23,7 @@ def init_schema(conn: sqlite3.Connection) -> None:
             user_id TEXT NOT NULL,
             symbol TEXT NOT NULL,
             threshold_pct REAL NOT NULL CHECK (threshold_pct >= 0),
+            updated_at TEXT,
             PRIMARY KEY (user_id, symbol)
         );
 
@@ -67,4 +68,8 @@ def init_schema(conn: sqlite3.Connection) -> None:
         );
         """
     )
+    try:
+        conn.execute("ALTER TABLE watchlist ADD COLUMN updated_at TEXT")
+    except Exception:
+        pass
     conn.commit()

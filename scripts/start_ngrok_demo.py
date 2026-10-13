@@ -70,7 +70,7 @@ def main() -> None:
     if not check_backend_running(args.port):
         print(f"[!] CẢNH BÁO: Backend chưa khởi động trên cổng {args.port}!")
         print(f"[*] Hãy chạy lệnh sau trên một cửa sổ terminal khác trước khi demo:")
-        print(f"    $env:PYTHONPATH='src'; python -m uvicorn backend.main:app --port {args.port} --host 127.0.0.1")
+        print(f"    $env:PYTHONPATH='src'; python -m uvicorn backend.api.main:app --port {args.port} --host 127.0.0.1")
         if not args.check_only:
             sys.exit(1)
     else:

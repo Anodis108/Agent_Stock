@@ -1029,6 +1029,46 @@ def route_question(
     brain: SupervisorBrain | None = None,
     turn: str = "",
 ) -> RoutingDecision:
+    q_orig = (rewritten.original or "").strip().lower()
+    q_rewr = (rewritten.rewritten or "").strip().lower()
+    has_sym = bool(rewritten.symbol or rewritten.symbols)
+    concept_patterns = [
+        "là gì",
+        "la gi",
+        "khái niệm",
+        "khai niem",
+        "ý nghĩa",
+        "y nghia",
+        "thế nào là",
+        "the nao la",
+        "định nghĩa",
+        "dinh nghia",
+    ]
+    is_concept = not has_sym and any(
+        any(p in t for p in concept_patterns)
+        for t in (q_orig, q_rewr)
+    )
+    if is_concept:
+        return RoutingDecision(
+            route="retrieval",
+            reason="câu hỏi khái niệm (Concept RAG)",
+            agents_to_call=["retrieval"],
+        )
+
+    is_technical = bool(
+        has_sym
+        and any(
+            any(k in t for k in ["rsi", "macd", "sma", "ema", "chỉ báo", "chi bao"])
+            for t in (q_orig, q_rewr)
+        )
+    )
+    if is_technical:
+        return RoutingDecision(
+            route="eval",
+            reason="chỉ báo kỹ thuật theo mã",
+            agents_to_call=["eval"],
+        )
+
     supervisor = brain or _DEFAULT_SUPERVISOR_FACTORY()
     try:
         with agent_step(

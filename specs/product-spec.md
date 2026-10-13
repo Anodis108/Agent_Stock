@@ -2,99 +2,93 @@
 
 ## App goal
 
-VN Stock Swarm là web app trợ lý chứng khoán Việt Nam. Người dùng hỏi giá, tin, chỉ báo, biểu đồ, và danh mục. Hệ thống trả lời bằng nhiều agent, kèm miễn trừ trách nhiệm, và không đặt lệnh mua bán.
+VN Stock Swarm là web app trợ lý chứng khoán Việt Nam. Người dùng hỏi giá, tin, chỉ báo, khái niệm, biểu đồ, và danh mục. Hệ thống trả lời bằng nhiều agent, kèm miễn trừ trách nhiệm, và không đặt lệnh mua bán.
 
-Đợt này vá các lỗ LLMOps còn lại so với `llm-engineer-demo` sau commit `01bd450` đến `6e5e32e`. Module III Bài 1–8 đã có trong code. Mục tiêu là khép những lỗ đó, giữ golden v6 và suite test hiện tại.
+Câu khái niệm, ví dụ "RSI là gì", chỉ trả lời từ tài liệu có sẵn và ghi tên file nguồn. Câu số liệu sống, ví dụ "RSI của HPG", vẫn lấy dữ liệu thị trường.
+
+Đợt này tách mã thành web backend và AI backend, rồi public app từ chính máy này. Nginx trên máy là cửa duy nhất. Cloudflare Tunnel đưa một URL https ra internet. Chat, swarm, UI, và golden v6 giữ nguyên.
 
 ## Target users
 
-- Nhà đầu tư cá nhân tra cứu cổ phiếu Việt Nam và xem lãi lỗ danh mục theo tài khoản đã chọn.
-- Giảng viên chấm phần agent và phần vận hành LLM (prompt, eval, cache, trace, CI).
-- Người chạy demo local hoặc ngrok trên máy mình.
+- Nhà đầu tư cá nhân tra cứu cổ phiếu Việt Nam, hỏi nghĩa một khái niệm, và xem lãi lỗ danh mục theo tài khoản đã chọn.
+- Giảng viên chấm hai service, nhánh tài liệu, và database.
+- Người chạy app trên máy mình và gửi URL https cho người khác mở.
 
 ## Core user flow
 
-1. Mở `http://localhost:8000`, chọn User A, User B, hoặc Default.
-2. Gửi một câu: chào, hỏi giá, tin, chỉ báo, so sánh mã, biểu đồ, danh mục, hoặc xin khuyến nghị.
-3. Guardrail xử lý trước:
-   - Chào hỏi đi thẳng tới câu trả lời, không gọi agent giá.
+1. Mở `http://localhost:8000`, frontend Docker cổng 3001, hoặc URL https của Cloudflare Tunnel. Chọn User A, User B, hoặc Default.
+2. Gửi một câu: chào, hỏi giá, tin, chỉ báo, khái niệm, so sánh mã, biểu đồ, danh mục, hoặc xin khuyến nghị.
+3. Web backend lưu session và kiểm tra câu:
+   - Chào hỏi được trả lời ngay, không gọi agent giá.
    - Injection hoặc câu ngoài chứng khoán Việt Nam bị từ chối.
-   - Câu hợp lệ đi qua supervisor tới agent giá, tin, chỉ báo, biểu đồ, hoặc danh mục.
-4. UI nhận câu trả lời dạng stream. Có thể kèm bảng lãi lỗ hoặc ảnh nến.
-5. User bấm thích hoặc không thích. Bản ghi này có thể thành draft cho bộ golden.
-
-Đợt vá thêm vào đúng luồng trên, không thêm màn hình mới:
-
-- Câu lặp trên luồng stream dùng cache, hết slot thì xếp hàng, client ngắt thì dừng sinh token.
-- Trace bỏ các lượt trúng cache. User có thể gửi thêm tín hiệu đã copy, hỏi lại, hoặc bỏ dở.
-- Máy production đọc API key từ Secret Manager. Lỗi thì dùng `.env`.
+   - Câu hợp lệ gửi sang AI backend bằng HTTP. Câu số liệu hoặc danh mục kèm watchlist và holdings. Câu khái niệm không kèm hai danh sách này.
+4. AI backend trả stream. Web chỉ chuyển token ra UI.
+   - Câu khái niệm dùng đoạn lấy từ Qdrant và ghi tên file nguồn.
+   - Câu số liệu sống đi agent giá, tin, chỉ báo, biểu đồ, hoặc danh mục.
+5. User bấm thích hoặc không thích. Web ghi bản ghi này vào PostgreSQL.
+6. Chủ máy chạy tunnel. Người khác mở URL https đó và làm lại bước 1 đến 5.
 
 ```mermaid
 sequenceDiagram
     actor User
-    participant API
-    participant Guardrail
-    participant Swarm
-    User->>API: Câu hỏi và user_id
-    API->>Guardrail: Kiểm tra
+    participant Web
+    participant AI
+    participant DB as PostgreSQL
+    participant Q as Qdrant
+    User->>Web: Câu hỏi và user_id
+    Web->>DB: Đọc session, watchlist, holdings
     alt Chào hoặc từ chối
-        Guardrail-->>User: Trả lời ngắn
-    else Câu chứng khoán
-        Guardrail->>Swarm: Điều phối agent
-        Swarm-->>User: Stream câu trả lời
+        Web-->>User: Trả lời ngắn
+    else Khái niệm
+        Web->>AI: HTTP
+        AI->>Q: Lấy đoạn markdown
+        AI-->>Web: Stream, kèm tên file nguồn
+    else Số liệu sống
+        Web->>AI: HTTP, kèm watchlist và holdings
+        AI-->>Web: Stream token
     end
+    Web->>DB: Lưu tin nhắn
 ```
 
 ## Features in scope
 
-Đã có, không xây lại:
+Giữ, không xây lại:
 
 - Chào hỏi, chặn injection, từ chối câu ngoài phạm vi, miễn trừ trách nhiệm.
-- Giá, tin, RSI/SMA, so sánh mã, biểu đồ nến, lãi lỗ và watchlist theo `user_id`.
-- Prompt YAML với alias `production`, lint, A/B.
-- Golden v6, eval gate, cache exact và semantic trong memory trên `chat()` và `chat_parsed()`.
-- SSE, dừng khi client ngắt, semaphore thread, Docker, nginx, smoke, ngrok.
-- CI lint, eval gate trên PR, CD build rồi smoke rồi rollback SHA.
-- Sampling lỗi, guardrail, request chậm, che email và số điện thoại, HITL thumbs.
+- Giá, tin, RSI/SMA theo mã, so sánh mã, biểu đồ nến, lãi lỗ và watchlist theo `user_id`.
+- SSE từng token, nút thích và không thích ghi PostgreSQL.
+- AI chỉ có `/health`, `/v1/chat`, `/v1/chat/stream`, `/v1/scan`.
+- Postgres cho dữ liệu app. Qdrant cho năm file khái niệm. Redis và MinIO giữ container riêng.
+- "RSI là gì" đi retrieval. "RSI của HPG" đi agent chỉ báo. Thiếu đoạn thì nói không có trong tài liệu.
 
-Đợt này làm thêm:
+Làm trong đợt này:
 
-- `chat_stream` gọi LLM async, có giới hạn đồng thời, và đi qua exact cache.
-- Redis cho exact cache. Mặc định vẫn memory.
-- Script đổi alias `production` về version trước.
-- Sampling bỏ lượt cache hit. Thêm tín hiệu copied, regenerated, abandoned.
-- Đọc secret lúc chạy, lỗi thì giữ `.env`.
+- `src/web_backend` cổng 8000 và `src/ai_backend` cổng 8001. Hai cây không import lẫn nhau. Phần chung chỉ `src/shared`.
+- Nginx nghe cổng 80, chuyển vào web `127.0.0.1:8000`. Route stream tắt `proxy_buffering`.
+- `release.ps1` có up, smoke, rollback, status.
+- Public HTTPS bằng Cloudflare Tunnel. ngrok giữ cho demo vài phút.
 
 ## Features out of scope
 
 - Đặt lệnh mua bán, dữ liệu tick, đăng nhập đầy đủ, thuế và phí margin, thị trường ngoài Việt Nam.
-- Viết lại swarm, golden set, lint prompt, eval gate, cache memory, HITL thumbs.
-- RAG pháp lý, Tavily, Qdrant cho luật, LangSmith Prompt Hub, đồng bộ golden lên LangSmith.
-- vLLM trên GPU và script tạo máy Compute Engine.
+- Viết lại swarm, UI, golden set, cache, hoặc HITL.
+- RAG pháp lý, tìm web khi thiếu tài liệu, tách một câu thành nhiều subquery, rerank.
+- Package `src/ai`, `src/web`, hoặc giữ `src/backend` song song sau khi tách xong.
+- Sửa 20 ca golden v6.
+- Thuê VM, dùng `gcloud`, mua tên miền, mở port router, hoặc viết sẵn nginx `listen 443`.
 
 ## Acceptance criteria
-
-Sản phẩm hiện tại phải giữ:
 
 | Mã | Đạt khi | Cách kiểm |
 | :--- | :--- | :--- |
 | AC-1 | Golden v6 đủ 20/20 trên 10 lát cắt | `pytest tests/e2e/test_golden_v6_slices.py` |
-| AC-2 | Câu chào không bị chặn và không gọi agent giá | `pytest tests/unit/test_greeting_fastpath.py` |
-| AC-3 | Injection bị chặn, câu ngoài phạm vi bị từ chối | `pytest tests/unit/test_guardrails.py` |
-| AC-4 | Lãi lỗ và watchlist của User A khác User B | `pytest tests/integration/test_database.py` |
-| AC-5 | Biểu đồ PNG tạo được | `pytest tests/integration/test_chart.py` |
-| AC-6 | Câu xin khuyến nghị có "miễn trừ trách nhiệm" | `pytest tests/e2e/test_eval.py` |
-| AC-7 | `.env` chỉ chứa secret, app đọc `config.yaml` | `pytest tests/unit/test_config.py` |
-
-Đợt vá đạt khi:
-
-| Mã | Đạt khi |
-| :--- | :--- |
-| U1 | `chat_stream` dùng async client. Slot được trả sau khi xong hoặc lỗi. Test không gọi mạng. |
-| U2 | Cùng câu và cùng `prompt_version` trên stream thì không gọi model. |
-| U3 | Redis store chỉ cần `get` và `setex`. Test dùng store giả. |
-| U4 | Script rollback đổi `production.txt` và giữ file version. |
-| U5 | Cache hit thì không ghi trace. Lỗi, guardrail, và request chậm vẫn ghi. |
-| U6 | Copied, regenerated, abandoned có điểm từ 0 đến 1 và nhãn nguồn. |
-| U7 | Secret Manager bật: mock trả key thì dùng key đó. Mock lỗi thì giữ `.env`. |
-| U8 | `pytest tests/` vẫn pass, không gọi internet. |
+| AC-2 | Câu chào không gọi agent giá | `pytest tests/unit/test_greeting_fastpath.py` |
+| AC-3 | Injection bị chặn. Câu ngoài phạm vi bị từ chối | `pytest tests/unit/test_guardrails.py` |
+| AC-4 | "RSI là gì" có tên file nguồn. "RSI của HPG" không đi retrieval. Thiếu đoạn thì nói không có trong tài liệu | `pytest tests/unit/test_concept_rag.py` |
+| AC-5 | UI nhận từng token. Web chỉ chuyển SSE từ AI | `pytest tests/unit/test_ai_http_stream.py` |
+| AC-6 | Web là `web_backend`, AI là `ai_backend`. Không còn `src/backend`. Hai cây không import lẫn nhau | `pytest tests/e2e/test_docker_setup.py tests/unit/test_config.py` |
+| AC-7 | Process web không import `openai` hay `answer_question` | `pytest tests/unit/test_config.py` |
+| AC-8 | Nginx là cửa public. App nghe `127.0.0.1`. Route `/chat` tắt `proxy_buffering` | `pytest tests/integration/test_system.py` |
+| AC-9 | `release.ps1` có up, smoke, rollback, status, và không gọi `gcloud` | Đọc `src/deploy/release.ps1` |
+| AC-10 | URL https của tunnel trả `GET /health` 200 | Làm theo README |
+| AC-11 | `pytest tests/` pass, không gọi internet, không tạo file `.db` | `pytest tests/` |

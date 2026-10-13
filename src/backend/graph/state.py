@@ -38,6 +38,7 @@ class ChatState(TypedDict, total=False):
     compose: AnswerComposeResult | None
     answer: str
     error: str | None
+    source_file: str | None
     steps: list[dict[str, Any]]
 
 

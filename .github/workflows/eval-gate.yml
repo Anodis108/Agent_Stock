@@ -30,10 +30,10 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.12
+      - name: Set up Python 3.15
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.15"
           cache: pip
           cache-dependency-path: pyproject.toml
 
@@ -58,7 +58,7 @@ jobs:
             echo '{"status": "skipped", "reason": "OPENAI_API_KEYS secret not configured"}' > specs/eval/pr_report.json
             printf "## Eval Gate Report\n\n> [!WARNING]\n> **Skipped**: \`OPENAI_API_KEYS\` secret chưa được cấu hình trên GitHub Repo Secrets. Vui lòng thêm secret để kích hoạt đánh giá tự động.\n" > specs/eval/pr_report.md
           else
-            python -m backend.eval.run --subset --skip-agent-eval --json specs/eval/pr_report.json --report specs/eval/pr_report.md
+            python -m ai_backend.eval.run --subset --skip-agent-eval --json specs/eval/pr_report.json --report specs/eval/pr_report.md
           fi
 
       - name: Run gate
@@ -66,7 +66,7 @@ jobs:
           if [ -z "${OPENAI_API_KEYS}" ]; then
             echo "Skipping gate check because API key is missing"
           else
-            python -m backend.eval.gate --run specs/eval/pr_report.json
+            python -m ai_backend.eval.gate --run specs/eval/pr_report.json
           fi
 
       - name: Upload artifacts

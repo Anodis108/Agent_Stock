@@ -1182,7 +1182,7 @@
       }
 
       msgs.forEach(function (m) {
-        appendChat(m.role, m.content, null, m.chart_path, m.id, sessionId);
+        appendChat(m.role, m.content, null, m.chart_path, m.id, sessionId, m.source_file);
       });
     } catch (err) {
       if (box) {
@@ -1596,7 +1596,14 @@
     return text;
   }
 
-  function appendChat(role, text, diagram, chartPath, messageId, sessionId) {
+  function conceptSourceName(value) {
+    if (!value || typeof value !== "string") return "";
+    var base = value.split(/[/\\]/).pop().trim();
+    if (!/^[A-Za-z0-9][A-Za-z0-9_.-]{0,80}\.md$/.test(base)) return "";
+    return base;
+  }
+
+  function appendChat(role, text, diagram, chartPath, messageId, sessionId, sourceFile) {
     var box = document.getElementById("chat-messages");
     if (!box) return;
     removeThinking();
@@ -1653,6 +1660,14 @@
         textNode.textContent = cleanText;
       }
       body.appendChild(textNode);
+    }
+
+    var sourceName = role === "assistant" ? conceptSourceName(sourceFile) : "";
+    if (sourceName) {
+      var sourceNode = document.createElement("p");
+      sourceNode.className = "msg-source";
+      sourceNode.textContent = "Nguồn: " + sourceName;
+      body.appendChild(sourceNode);
     }
 
     if (diagramCode && role === "assistant") {
@@ -1841,7 +1856,7 @@
         var messageId = data.message_id || null;
         var sid = data.session_id || currentSessionId;
 
-        appendChat("assistant", finalAnswer, diagram, chartPath, messageId, sid);
+        appendChat("assistant", finalAnswer, diagram, chartPath, messageId, sid, data.source_file);
 
         if (data.session_id) {
           currentSessionId = data.session_id;
@@ -1908,7 +1923,8 @@
         var chartPath = fallbackData.chart_path || (fallbackData.result && fallbackData.result.chart_path);
         var messageId = fallbackData.message_id || (fallbackData.result && fallbackData.result.message_id);
         var sid = fallbackData.session_id || currentSessionId;
-        appendChat("assistant", answer || "(không có câu trả lời cuối từ Backend)", diagram, chartPath, messageId, sid);
+        var sourceFile = fallbackData.source_file || (fallbackData.result && fallbackData.result.source_file);
+        appendChat("assistant", answer || "(không có câu trả lời cuối từ Backend)", diagram, chartPath, messageId, sid, sourceFile);
         if (fallbackData && fallbackData.session_id) currentSessionId = fallbackData.session_id;
         loadSessions(false).catch(function () {});
         await applyTimelineFromBackend(fallbackData);
@@ -2961,15 +2977,13 @@
           stars[j].classList.toggle("active", j < 5);
         }
       }
-      var isFormOpen = form.style.display !== "none";
-      if (!isFormOpen) {
-        sendHitlFeedback({
-          message_id: messageId || "",
-          session_id: sessionId || currentSessionId || "",
-          is_positive: true,
-          rating: currentRating,
-        }, container).catch(function () {});
-      }
+      sendHitlFeedback({
+        message_id: messageId || "",
+        session_id: sessionId || currentSessionId || "",
+        is_positive: true,
+        rating: currentRating,
+        reason: "thumbs_up",
+      }, container).catch(function () {});
     });
 
     btnDown.addEventListener("click", function () {
@@ -2982,6 +2996,13 @@
           stars[j].classList.toggle("active", j < 1);
         }
       }
+      sendHitlFeedback({
+        message_id: messageId || "",
+        session_id: sessionId || currentSessionId || "",
+        is_positive: false,
+        rating: currentRating,
+        reason: "thumbs_down",
+      }, container).catch(function () {});
       if (form.style.display === "none") {
         form.style.display = "flex";
         reasonSelect.focus();

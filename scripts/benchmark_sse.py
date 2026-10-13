@@ -36,7 +36,7 @@ from backend.infra.llm.semaphore import (  # noqa: E402
     llm_semaphore_slot,
     reset_llm_semaphore_for_tests,
 )
-from backend.shared.settings import settings  # noqa: E402
+from backend.settings import settings  # noqa: E402
 
 REPORT_MD = ROOT / "specs" / "eval" / "sse_benchmark.md"
 REPORT_JSON = ROOT / "specs" / "eval" / "sse_benchmark.json"
