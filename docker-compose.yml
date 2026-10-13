@@ -22,7 +22,7 @@ services:
       dockerfile: src/backend/Dockerfile
     image: portfolio-watch:backend
     pull_policy: build
-    container_name: portfolio-watch-backend
+    container_name: portfolio-watch-web-backend
     env_file:
       - .env
     entrypoint: ["sh", "/docker-entrypoint.sh"]
@@ -45,7 +45,72 @@ services:
       API_HOST: "0.0.0.0"
       API_PORT: "8000"
       AI_TRANSPORT: "inprocess"
+      AI_BASE_URL: "http://ai_backend:8001"
       FRONTEND_ORIGIN: "*"
+      SQLITE_PATH: /app/data/portfolio_watch.db
+      BACKEND_SQLITE_PATH: /app/data/backend_store.db
+      CHARTS_DIR: /app/data/charts
+      MONITORING_ENABLED: "${MONITORING_ENABLED:-false}"
+      LANGFUSE_PUBLIC_KEY: "${LANGFUSE_PUBLIC_KEY:-}"
+      LANGFUSE_SECRET_KEY: "${LANGFUSE_SECRET_KEY:-}"
+      LANGFUSE_HOST: "${DOCKER_LANGFUSE_HOST:-http://host.docker.internal:3000}"
+      QDRANT_URL: http://qdrant:6333
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+      ai_backend:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - pw_data:/app/data
+      - ./src:/app/src:ro
+      - ./resources:/app/resources:ro
+      - ./specs:/app/specs:ro
+      - ./src/deploy/docker-entrypoint.sh:/docker-entrypoint.sh:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  ai_backend:
+    build:
+      context: .
+      dockerfile: src/backend/Dockerfile
+    image: portfolio-watch:backend
+    pull_policy: build
+    container_name: portfolio-watch-ai-backend
+    env_file:
+      - .env
+    entrypoint: ["sh", "/docker-entrypoint.sh"]
+    command:
+      [
+        "uvicorn",
+        "backend.ai_main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8001",
+      ]
+    ports:
+      - "${AI_BACKEND_PORT:-8001}:8001"
+    environment:
+      PYTHONPATH: /app/src
+      HOME: /app/data
+      XDG_CONFIG_HOME: /app/data/.config
+      MPLCONFIGDIR: /app/data/.matplotlib
+      API_HOST: "0.0.0.0"
+      API_PORT: "8001"
       SQLITE_PATH: /app/data/portfolio_watch.db
       BACKEND_SQLITE_PATH: /app/data/backend_store.db
       CHARTS_DIR: /app/data/charts
@@ -72,7 +137,7 @@ services:
           "CMD",
           "python",
           "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health')",
         ]
       interval: 15s
       timeout: 5s

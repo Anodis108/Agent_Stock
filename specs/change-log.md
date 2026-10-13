@@ -4,6 +4,24 @@ Nhật ký ghi nhận chi tiết mọi thay đổi, kết quả kiểm thử và
 
 ---
 
+## 2026-10-13 — Tách biệt 2 container web_backend và ai_backend trong docker-compose.yml
+
+- **Tách dịch vụ backend thành 2 container độc lập**:
+  + `backend` (Container `portfolio-watch-web-backend`): Chạy Web Backend (`uvicorn backend.main:app --port 8000`), lắng nghe port `${BACKEND_PORT:-8000}:8000`, thiết lập biến môi trường `AI_BASE_URL: "http://ai_backend:8001"`, `depends_on: { redis: healthy, ai_backend: healthy }`.
+  + `ai_backend` (Container `portfolio-watch-ai-backend`): Chạy AI Swarm Backend (`uvicorn backend.ai_main:app --port 8001`), lắng nghe port `${AI_BACKEND_PORT:-8001}:8001`, healthcheck độc lập trên port 8001 tại `/health`, `depends_on: { redis: healthy }`.
+- **Cập nhật bộ kiểm thử Docker & E2E**:
+  + Bổ sung kiểm tra cấu trúc container `ai_backend` trong `tests/e2e/test_docker_setup.py`: kiểm tra build context, image, entrypoint, command `backend.ai_main:app`, volume mounts, biến môi trường và healthcheck.
+  + Đảm bảo tương thích ngược 100% với các test kiểm tra compose (`tests/integration/test_system.py`, `tests/e2e/test_docker_setup.py`).
+- **Kết quả kiểm thử thực tế**:
+  + `tests/e2e/test_docker_setup.py`: **4/4 passed (100%)**.
+  + `tests/integration/test_system.py`: **27/27 passed (100%)**.
+  + `tests/integration/test_api.py`: **24/24 passed (100%)**.
+  + `tests/e2e/`: **71/71 passed (100%)** (Bao gồm trọn bộ 10 bước walkthrough demo script, Golden v6 slices, audit connection, gate eval).
+
+File: `docker-compose.yml`, `tests/e2e/test_docker_setup.py`, `specs/change-log.md`.
+
+---
+
 ## 2026-10-13 — Phân tách router api thành web/ và ai/, xóa backend/routes trùng lặp, chuyển app code về main.py & ai_main.py
 
 - **Phân tách rõ ràng router thành 2 nhóm microservice trong `src/backend/api/routers/`**:

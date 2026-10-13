@@ -36,6 +36,19 @@ def test_docker_compose_structure():
     assert backend_env.get("XDG_CONFIG_HOME") == "/app/data/.config"
     assert backend_env.get("MPLCONFIGDIR") == "/app/data/.matplotlib"
 
+    # 1b. AI Backend service
+    assert "ai_backend" in services, "ai_backend service must be defined"
+    ai_backend = services["ai_backend"]
+    assert ai_backend["image"] == "portfolio-watch:backend"
+    assert ai_backend["build"]["context"] == "."
+    assert ai_backend["build"]["dockerfile"] == "src/backend/Dockerfile"
+    assert ai_backend["entrypoint"] == ["sh", "/docker-entrypoint.sh"]
+    assert "backend.ai_main:app" in " ".join(ai_backend["command"])
+    assert "pw_data:/app/data" in ai_backend["volumes"]
+    assert "./src:/app/src:ro" in ai_backend["volumes"]
+    assert "healthcheck" in ai_backend, "ai_backend must configure healthcheck"
+    assert "ai_backend" in backend["depends_on"]
+
     # 2. Frontend service
     assert "frontend" in services, "frontend service must be defined"
     frontend = services["frontend"]
