@@ -27,7 +27,7 @@ if _SRC_DIR not in sys.path:
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 
-from backend.answer_question import (
+from backend.application.answer_question import (
     AnswerQuestionResult,
     build_chat_steps,
 )
@@ -75,8 +75,8 @@ from backend.infra.storage.memory_store import (
     apply_sliding_window_with_ttl_eviction,
     filter_conversation_history,
 )
-from backend.logging import get_logger
-from backend.settings import settings
+from backend.shared.logging import get_logger
+from backend.shared.settings import settings
 
 _logger = get_logger(__name__)
 _chat_deps: contextvars.ContextVar[dict[str, Any]] = contextvars.ContextVar(
@@ -802,7 +802,7 @@ def concept_retrieval_node(state: ChatState, config: RunnableConfig) -> dict[str
 
     client = cfg.get("concept_client")
     if client is None:
-        from backend.qdrant import get_qdrant_client
+        from backend.infra.storage.long_term_memory import get_qdrant_client
 
         client = get_qdrant_client()
     if client is None:

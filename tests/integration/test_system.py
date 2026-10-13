@@ -173,7 +173,7 @@ def test_inprocess_ai_transport_default(monkeypatch):
     assert "AI_TRANSPORT=inprocess" in env_ex
     assert "\n  ai:" not in compose
 
-    from backend.ai_client import _use_http
+    from backend.infra.llm.client import _use_http
 
     monkeypatch.delenv("AI_TRANSPORT", raising=False)
     assert _use_http() is False

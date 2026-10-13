@@ -65,7 +65,7 @@ services:
       - ./src:/app/src:ro
       - ./resources:/app/resources:ro
       - ./specs:/app/specs:ro
-      - ./src/backend/docker-entrypoint.sh:/docker-entrypoint.sh:ro
+      - ./src/deploy/docker-entrypoint.sh:/docker-entrypoint.sh:ro
     healthcheck:
       test:
         [
@@ -124,7 +124,7 @@ services:
       - ./resources:/app/resources:ro
       - ./specs:/app/specs:ro
       - ./tests:/app/tests:ro
-      - ./src/backend/docker-entrypoint.sh:/docker-entrypoint.sh:ro
+      - ./src/deploy/docker-entrypoint.sh:/docker-entrypoint.sh:ro
     profiles:
       - tools
       - test

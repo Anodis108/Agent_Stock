@@ -148,7 +148,7 @@ def run_portfolio_watch_agent(
                 try:
                     store = watchlist_store
                     if store is None:
-                        from backend.store import default_db_path
+                        from backend.infra.storage.store import default_db_path
                         db_p = default_db_path()
                         store = SqliteWatchlistStore(db_p)
                         watchlist_items = store.list_items(eff_user_id)

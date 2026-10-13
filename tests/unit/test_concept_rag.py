@@ -36,7 +36,7 @@ def test_index_writes_stock_concepts_not_memory_collection():
     from qdrant_client.models import Distance, VectorParams
 
     from backend.retrieval.concepts import index_concepts
-    from backend.settings import settings
+    from backend.shared.settings import settings
 
     assert settings.concept_collection == "stock_concepts"
     assert settings.concept_collection != settings.qdrant_collection
@@ -362,9 +362,9 @@ def test_ai_stream_says_not_in_the_documents_when_the_passage_is_missing():
 
     from fastapi.testclient import TestClient
 
-    from backend.app import app as ai_app
+    from backend.ai_main import app as ai_app
     from backend.retrieval.answer import NOT_IN_DOCS
-    from backend.deps import get_app_deps
+    from backend.api.deps import get_app_deps
 
     class Boom:
         def fetch_latest_close(self, symbol):
@@ -387,7 +387,7 @@ def test_ai_stream_says_not_in_the_documents_when_the_passage_is_missing():
         memory_store=Memory(),
     )
     try:
-        with patch("backend.qdrant.get_qdrant_client", return_value=_indexed_client()):
+        with patch("backend.infra.storage.long_term_memory.get_qdrant_client", return_value=_indexed_client()):
             response = TestClient(ai_app).post(
                 "/v1/chat/stream",
                 json={"question": "chứng quyền là gì", "user_id": ""},

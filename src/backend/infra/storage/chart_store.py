@@ -5,8 +5,8 @@ import io
 from pathlib import Path
 from typing import Any
 
-import backend.charts
-from backend.settings import settings
+import backend.shared.charts as backend_charts
+from backend.shared.settings import settings
 
 _STORE: ChartObjectStore | None = None
 
@@ -92,7 +92,7 @@ def read_chart_png(name: str) -> bytes | None:
         data = store.get(safe_name)
         if data is not None:
             return data
-    path = backend.charts.get_charts_dir() / safe_name
+    path = backend_charts.get_charts_dir() / safe_name
     if path.is_file():
         return path.read_bytes()
     return None

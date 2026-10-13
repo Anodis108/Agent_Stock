@@ -241,9 +241,9 @@ def test_ai_stream_greeting_skips_price_and_refusals_stay_blocked():
 
     from fastapi.testclient import TestClient
 
-    from backend.app import app as ai_app
+    from backend.ai_main import app as ai_app
     from backend.graph.chat import GREETING_RESPONSE
-    from backend.deps import get_app_deps
+    from backend.api.deps import get_app_deps
 
     class BoomPrice:
         def fetch_latest_close(self, symbol):

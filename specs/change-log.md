@@ -4,6 +4,21 @@ Nhật ký ghi nhận chi tiết mọi thay đổi, kết quả kiểm thử và
 
 ---
 
+## 2026-10-13 — Tối ưu hóa kiến trúc src/backend: Chỉ giữ 2 Entrypoint tại root, dọn dẹp và di dời 15 file phụ trợ
+
+- **Lược bỏ toàn bộ file shim/facade và tiện ích phụ tại root `src/backend/`**:
+  + Chỉ giữ lại duy nhất 2 file entrypoint của 2 tiến trình độc lập tại root:
+    * `src/backend/main.py`: Entrypoint của Web Backend (`backend.main:app` cổng 8000).
+    * `src/backend/ai_main.py`: Entrypoint của AI Swarm Backend (`backend.ai_main:app` cổng 8001).
+  + Di dời module giao tiếp `transport.py` sang vị trí dùng chung chuẩn xác: `src/backend/shared/transport.py`.
+  + Di dời script Docker `docker-entrypoint.sh` sang vị trí cấu hình triển khai hạ tầng: `src/deploy/docker-entrypoint.sh`, cập nhật mount volume trong `docker-compose.yml`.
+  + Xóa bỏ 13 file shim / re-export dư thừa (`validation.py`, `store.py`, `steps.py`, `settings.py`, `scan_symbol.py`, `qdrant.py`, `logging.py`, `deps.py`, `cors_util.py`, `charts.py`, `app.py`, `answer_question.py`, `ai_client.py`) do các module chuẩn đã tồn tại đầy đủ trong `backend.shared`, `backend.infra`, `backend.api`, `backend.application`, `backend.eval`.
+  + Bổ sung cơ chế `_CompatFinder` trong `src/backend/__init__.py` sử dụng Meta Path Finder của Python để đảm bảo tương thích ngược 100% nếu có script hoặc test cũ import động.
+- **Cập nhật import nội bộ**: Cập nhật các import trong `api/routers/chat.py`, `infra/storage/chart_store.py`, `graph/chat.py`, `retrieval/concepts.py`, và toàn bộ test suite sang đúng namespace chính quy.
+- **Kết quả kiểm thử**: Toàn bộ unit tests, integration tests và e2e tests đạt **100% pass (248+ test đã chạy không có lỗi nào)**.
+
+---
+
 ## 2026-10-13 — Rollback cấu trúc thư mục về src/backend và hợp nhất 2 tiến trình độc lập (Web 8000 & AI 8001)
 
 - Hoàn nguyên cấu trúc thư mục: Gộp `src/ai_backend`, `src/web_backend`, và `src/shared` trở lại thành một thư mục duy nhất `src/backend/`, đồng thời duy trì 2 tiến trình độc lập:

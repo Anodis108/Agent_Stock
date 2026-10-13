@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Callable
 
 from backend.infra.cache.exact import normalize_question
-from backend.qdrant import _ensure_collection
+from backend.infra.storage.long_term_memory import _ensure_collection
 from backend.shared.settings import settings
 
 _NAMESPACE = uuid.UUID("6f0c1d2e-3a4b-5c6d-7e8f-90a1b2c3d4e5")

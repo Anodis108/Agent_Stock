@@ -12,7 +12,7 @@ import time
 from collections.abc import Callable, Iterator
 from typing import Any
 
-from backend.answer_question import answer_question
+from backend.application.answer_question import answer_question
 
 
 def swarm_public_payload(result: Any, *, started: float) -> dict[str, Any]:

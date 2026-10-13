@@ -189,10 +189,10 @@ def test_web_entry_forwards_ui_sse(tmp_path, monkeypatch):
 
 def test_web_entry_sends_account_lists_only_for_live_questions(tmp_path, monkeypatch):
     """Số liệu và danh mục kèm hai danh sách của user. Khái niệm không kèm."""
-    from backend.deps import clear_deps_cache, get_app_deps, set_app_deps
+    from backend.api.deps import clear_deps_cache, get_app_deps, set_app_deps
     from backend.main import app as web_app
     from backend.routes import watchlist as watchlist_routes
-    from backend.store import Store, WatchlistItem
+    from backend.infra.storage.store import Store, WatchlistItem
 
     monkeypatch.setenv("AI_BASE_URL", "http://ai.test:8001")
     monkeypatch.setenv("SQLITE_PATH", str(tmp_path / "holdings.db"))
@@ -404,7 +404,7 @@ def test_http_chat_and_scan_carry_lists_only_when_needed(monkeypatch):
         return _Body(b'{"answer": "ok", "symbol": "HPG", "route": "qa"}')
 
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
-    from backend.transport import ai_chat, ai_scan
+    from backend.shared.transport import ai_chat, ai_scan
 
     ai_chat(question="Danh mục của tôi", user_id="user_a")
     ai_scan(symbol="HPG", user_id="user_a")
@@ -463,7 +463,7 @@ def test_concept_questions_omit_watchlist_and_holdings(monkeypatch):
         return _Body(b'{"answer": "ok"}')
 
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
-    from backend.transport import ai_chat
+    from backend.shared.transport import ai_chat
 
     ai_chat(question="NAV là gì", user_id="user_a")
     ai_chat(question="giá trần là gì", user_id="user_a")
@@ -480,7 +480,7 @@ def test_concept_questions_omit_watchlist_and_holdings(monkeypatch):
 def test_v1_scan_uses_watchlist_from_body(monkeypatch):
     from backend.infra.llm.service import app as ai_app
     from backend import routes as ai_routes
-    from backend.deps import get_app_deps
+    from backend.api.deps import get_app_deps
 
     class BoomStore:
         def get(self, *_args, **_kwargs):
@@ -556,7 +556,7 @@ def test_v1_chat_forwards_lists_and_does_not_touch_sessions(monkeypatch):
 
     from backend.infra.llm.service import app as ai_app
     from backend import routes as ai_routes
-    from backend.deps import get_app_deps
+    from backend.api.deps import get_app_deps
 
     seen: dict[str, object] = {}
 
@@ -656,10 +656,10 @@ def test_closing_the_chat_stream_stops_the_pipeline(monkeypatch):
     import time
 
     from backend.api.routers.chat import ChatRequest, stream_chat_generator
-    import backend.answer_question as answer_mod
+    import backend.application.answer_question as answer_mod
     from backend.graph.chat import StreamCancelledError, check_stream_cancelled
     from backend.infra.llm import chat_stream
-    import backend.transport as transport
+    import backend.shared.transport as transport
 
     started = threading.Event()
     halted = threading.Event()

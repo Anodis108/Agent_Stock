@@ -14,12 +14,12 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from backend.deps import AppDeps, get_app_deps
-from backend.validation import normalize_question, title_from_question
+from backend.api.deps import AppDeps, get_app_deps
+from backend.api.helpers.validation import normalize_question, title_from_question
 from backend.database.connection import get_connection
 from backend.database.repositories import MessageRepository, SessionRepository
-from backend.answer_question import answer_question
-import backend.answer_question as answer_mod
+from backend.application.answer_question import answer_question
+import backend.application.answer_question as answer_mod
 
 _ORIGINAL_ANSWER_FN = answer_question
 
@@ -274,7 +274,7 @@ def _proxy_ai_chat_stream(
     cancel_event: threading.Event | None = None,
 ):
     """AI_TRANSPORT=http: web giữ session, AI phát SSE, web gắn session_id và message_id."""
-    from backend.transport import iter_remote_chat_events
+    from backend.shared.transport import iter_remote_chat_events
 
     session_id, question = _prepare_stream_session(body)
     saved = False
@@ -317,7 +317,7 @@ def stream_chat_generator(
     - complete: Trả lời hoàn chỉnh và toàn bộ metadata
     - error: Khi gặp sự cố ngoài ý muốn
     """
-    from backend.transport import _use_http
+    from backend.shared.transport import _use_http
 
     if _use_http():
         yield from _proxy_ai_chat_stream(

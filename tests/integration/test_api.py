@@ -23,7 +23,7 @@ from backend.services.hitl_service import (
     get_hitl_feedback_json_path,
     record_hitl_telemetry,
 )
-from backend.store import ApprovalRecord, WatchlistItem
+from backend.infra.storage.store import ApprovalRecord, WatchlistItem
 
 
 # ==============================================================================

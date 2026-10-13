@@ -78,10 +78,12 @@ def test_backend_dockerfile():
 
 
 def test_docker_entrypoint_script():
-    """Verify src/backend/docker-entrypoint.sh fixes permissions and uses gosu."""
+    """Verify docker-entrypoint.sh fixes permissions and uses gosu."""
     root = get_project_root()
-    entrypoint_path = root / "src" / "backend" / "docker-entrypoint.sh"
-    assert entrypoint_path.exists(), "src/backend/docker-entrypoint.sh must exist"
+    entrypoint_path = root / "src" / "deploy" / "docker-entrypoint.sh"
+    if not entrypoint_path.exists():
+        entrypoint_path = root / "src" / "backend" / "docker-entrypoint.sh"
+    assert entrypoint_path.exists(), "docker-entrypoint.sh must exist"
 
     content = entrypoint_path.read_text(encoding="utf-8")
     assert content.startswith("#!/bin/sh"), "Entrypoint script must have #!/bin/sh shebang"

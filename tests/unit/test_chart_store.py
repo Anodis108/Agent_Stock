@@ -17,7 +17,7 @@ from backend.infra.storage.chart_store import (
     reset_chart_store,
     safe_png_name,
 )
-from backend.settings import settings
+from backend.shared.settings import settings
 
 
 class _Body:
@@ -106,7 +106,7 @@ def test_read_chart_png_uses_disk_when_minio_off(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(settings, "chart_backend", "local")
     reset_chart_store()
     monkeypatch.setattr(
-        "backend.charts.get_charts_dir",
+        "backend.shared.charts.get_charts_dir",
         lambda: tmp_path,
     )
     (tmp_path / "chart_local.png").write_bytes(b"\x89PNG\r\n\x1a\nlocal")

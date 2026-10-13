@@ -170,8 +170,8 @@ def _chat_inprocess(
     user_id: str,
     request_id: str | None,
 ) -> dict[str, Any]:
-    from backend.deps import get_app_deps
-    from backend.answer_question import answer_question
+    from backend.api.deps import get_app_deps
+    from backend.application.answer_question import answer_question
 
     deps = get_app_deps()
     try:
@@ -236,8 +236,8 @@ def _scan_inprocess(
     threshold_pct: float | None,
     request_id: str | None,
 ) -> dict[str, Any]:
-    from backend.deps import get_app_deps
-    from backend.scan_symbol import scan_symbol
+    from backend.api.deps import get_app_deps
+    from backend.application.scan_symbol import scan_symbol
 
     deps = get_app_deps()
     try:

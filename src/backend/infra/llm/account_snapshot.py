@@ -94,7 +94,7 @@ def question_needs_account_lists(question: str) -> bool:
 
 def load_account_snapshot(user_id: str) -> dict[str, list[dict]]:
     """Đọc watchlist trang web và holdings danh mục của đúng user."""
-    from backend.deps import get_app_deps
+    from backend.api.deps import get_app_deps
     from backend.routes.watchlist import store as watchlist_store
 
     uid = (user_id or "default").strip() or "default"
