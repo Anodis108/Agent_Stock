@@ -97,7 +97,7 @@ def iter_swarm_events(
         event_queue.put((event, data))
 
     def _worker() -> None:
-        from backend.graph.chat import StreamCancelledError, set_stream_cancel_event
+        from backend.application.graph.chat import StreamCancelledError, set_stream_cancel_event
 
         set_stream_cancel_event(cancel)
         try:

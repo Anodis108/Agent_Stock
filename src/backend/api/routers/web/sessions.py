@@ -14,8 +14,8 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from backend.database.connection import get_connection
-from backend.database.repositories import (
+from backend.infra.database.connection import get_connection
+from backend.infra.database.repositories import (
     MessageRecord,
     MessageRepository,
     SessionRecord,

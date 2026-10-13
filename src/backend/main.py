@@ -24,7 +24,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from backend.agents.chart_agent import get_charts_dir
+from backend.application.agents.chart_agent import get_charts_dir
 from backend.api.deps import AppDeps, get_app_deps, get_current_user_id
 from backend.api.middleware.cors import resolve_cors_origins
 from backend.api.routers.web.chat import stream_chat_generator_async
@@ -41,9 +41,9 @@ from backend.api.routers.web.market import (
 from backend.api.routers.web.portfolio import router as portfolio_router
 from backend.api.routers.web.sessions import alias_router as alias_sessions_router
 from backend.api.routers.web.sessions import router as sessions_router
-from backend.database.connection import get_connection
-from backend.database.repositories import MessageRepository, SessionRepository
-from backend.eval.steps import ensure_steps_reflect_error, normalize_steps
+from backend.infra.database.connection import get_connection
+from backend.infra.database.repositories import MessageRepository, SessionRepository
+from backend.application.eval.steps import ensure_steps_reflect_error, normalize_steps
 from backend.infra.llm.client import AiClientError, ai_chat, ai_scan
 from backend.infra.storage.store import (
     ApprovalRecord,

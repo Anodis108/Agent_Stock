@@ -16,8 +16,8 @@ from pydantic import BaseModel, Field
 
 from backend.api.deps import AppDeps, get_app_deps
 from backend.api.helpers.validation import normalize_question, title_from_question
-from backend.database.connection import get_connection
-from backend.database.repositories import MessageRepository, SessionRepository
+from backend.infra.database.connection import get_connection
+from backend.infra.database.repositories import MessageRepository, SessionRepository
 from backend.application.answer_question import answer_question
 import backend.application.answer_question as answer_mod
 
@@ -337,7 +337,7 @@ def stream_chat_generator(
         event_queue.put((event, data))
 
     def _worker():
-        from backend.graph.chat import StreamCancelledError, set_stream_cancel_event
+        from backend.application.graph.chat import StreamCancelledError, set_stream_cancel_event
 
         set_stream_cancel_event(cancel)
         try:

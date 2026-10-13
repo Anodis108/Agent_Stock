@@ -4,6 +4,38 @@ Nhật ký ghi nhận chi tiết mọi thay đổi, kết quả kiểm thử và
 
 ---
 
+## 2026-10-13 — Tái cấu trúc chuẩn Clean Architecture theo mẫu AI_Face_checkin/src/model_deployed
+
+- **Tái cấu trúc triệt để thư mục `src/backend/` thành 5 tầng kiến trúc chuẩn Clean Architecture**:
+  + `api/` (Presentation Layer): Chứa `helpers/`, `middleware/`, `models/`, `routers/` (`web/`, `ai/`), `deps.py`.
+  + `application/` (Application Layer): Chứa toàn bộ use case, orchestrator và dịch vụ nghiệp vụ:
+    * `agents/`: Chuyển từ `src/backend/agents/` sang `src/backend/application/agents/` (chứa các agent phân tích cổ phiếu, tin tức, giá, vẽ biểu đồ).
+    * `graph/`: Chuyển từ `src/backend/graph/` sang `src/backend/application/graph/` (LangGraph state graphs cho chat & scan workflows).
+    * `services/`: Chuyển từ `src/backend/services/` sang `src/backend/application/services/` (`market_service`, `portfolio_service`, `hitl_service`, `technical_indicator_service`).
+    * `eval/`: Chuyển từ `src/backend/eval/` sang `src/backend/application/eval/` (đánh giá, benchmark runner, quality gates).
+    * Các use cases độc lập: `answer_question.py`, `scan_symbol.py`, `scan_watchlist.py`, `review_approval.py`.
+  + `domain/` (Enterprise Business Rules): Chứa entities nghiệp vụ lõi (`entities.py`).
+  + `infra/` (Infrastructure & Adapters Layer): Chứa các adapter ngoại vi và hệ thống ngoài:
+    * `database/`: Chuyển từ `src/backend/database/` sang `src/backend/infra/database/` (PostgreSQL, SQLite, repositories).
+    * `retrieval/`: Chuyển từ `src/backend/retrieval/` sang `src/backend/infra/retrieval/` (Qdrant RAG, concept retrieval).
+    * Các adapter hiện có: `cache/`, `cost/`, `llm/`, `market_data/`, `monitoring/`, `notify/`, `scheduler/`, `storage/`.
+  + `shared/` (Cross-cutting Concerns): Chứa các thành phần dùng chung:
+    * Bổ sung `shared/base/` (`base_model.py`, `base_service.py`, `__init__.py`) tương đồng mẫu `model_deployed`.
+    * `logging.py`, `settings.py`, `deps.py`, `charts.py`, `schemas.py`, `secrets.py`, `transport.py`.
+- **Giữ sạch sẽ thư mục gốc `src/backend/`**:
+  + Tại gốc `src/backend/` chỉ còn duy nhất 5 thư mục tầng kiến trúc: `api`, `application`, `domain`, `infra`, `shared`, cùng 2 entrypoint độc lập `main.py` (cổng 8000), `ai_main.py` (cổng 8001), `Dockerfile`, `README.md`, `__init__.py`.
+  + Không còn các thư mục rời rạc gây ô nhiễm root (`agents/`, `database/`, `services/`, `graph/`, `eval/`, `retrieval/`).
+- **Tương thích ngược 100% qua Meta Path Finder**:
+  + Nâng cấp `_CompatFinder` trong `src/backend/__init__.py` hỗ trợ ánh xạ tiền tố tự động (`_COMPAT_PREFIX_MAP`) cho `backend.database.*`, `backend.services.*`, `backend.graph.*`, `backend.agents.*`, `backend.retrieval.*`, `backend.eval.*` mà không làm vỡ các import cũ ở các script ngoài hoặc bài kiểm thử.
+- **Kết quả kiểm thử**:
+  + Unit tests (`tests/unit/`): **125/125 passed**.
+  + Integration tests (`tests/integration/`): **51/51 passed (100%)**.
+  + Docker setup tests (`tests/e2e/test_docker_setup.py`): **4/4 passed (100%)**.
+
+File: `src/backend/`, `specs/change-log.md`.
+
+---
+
 ## 2026-10-13 — Tách biệt 2 container web_backend và ai_backend trong docker-compose.yml
 
 - **Tách dịch vụ backend thành 2 container độc lập**:

@@ -18,9 +18,9 @@ from uuid import uuid4
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from backend.database.connection import get_connection
-from backend.database.repositories import HITLEvaluationRepository, SessionRepository
-from backend.services.hitl_service import record_hitl_telemetry
+from backend.infra.database.connection import get_connection
+from backend.infra.database.repositories import HITLEvaluationRepository, SessionRepository
+from backend.application.services.hitl_service import record_hitl_telemetry
 
 router = APIRouter(prefix="/api/v1/hitl", tags=["hitl"])
 alias_router = APIRouter(prefix="/api/hitl", tags=["hitl-alias"])
@@ -102,7 +102,7 @@ def _create_feedback_record(body: FeedbackCreateRequest) -> FeedbackOut:
         if not sess_repo.get(sid):
             sess_repo.create(title="Cuộc trò chuyện", session_id=sid)
 
-        from backend.database.repositories import MessageRepository
+        from backend.infra.database.repositories import MessageRepository
         m_repo = MessageRepository(conn)
         
         question = body.question

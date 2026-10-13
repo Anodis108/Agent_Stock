@@ -21,8 +21,8 @@ from backend.application.portfolio_service import (
     PortfolioService,
     PortfolioSummary,
 )
-from backend.database.connection import get_connection
-from backend.database.repositories import (
+from backend.infra.database.connection import get_connection
+from backend.infra.database.repositories import (
     PortfolioHoldingRepository,
     UserSettingsRepository,
 )

@@ -6,14 +6,14 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
-from backend.agents.answer_composer import (
+from backend.application.agents.answer_composer import (
     AnswerComposeResult,
     AnswerDraftBrain,
 )
-from backend.agents.eval_agent import EvalAgentBrain, EvalAgentResult
-from backend.agents.news_agent import NewsAgentBrain, NewsAgentResult
-from backend.agents.price_agent import PriceAgentResult
-from backend.agents.supervisor_agent import (
+from backend.application.agents.eval_agent import EvalAgentBrain, EvalAgentResult
+from backend.application.agents.news_agent import NewsAgentBrain, NewsAgentResult
+from backend.application.agents.price_agent import PriceAgentResult
+from backend.application.agents.supervisor_agent import (
     RewriteBrain,
     RewrittenQuestion,
     SupervisorBrain,
@@ -283,7 +283,7 @@ def answer_question(
     )
 
     with trace_request("chat", q, metadata=meta) as root:
-        from backend.graph.chat import run_chat_graph
+        from backend.application.graph.chat import run_chat_graph
 
         result = run_chat_graph(
             question=q,

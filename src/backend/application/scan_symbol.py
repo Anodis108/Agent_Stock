@@ -6,11 +6,11 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
-from backend.agents.event_classifier import EventClassifierBrain
-from backend.agents.eval_agent import EvalAgentBrain
-from backend.agents.news_agent import NewsAgentBrain, NewsAgentResult
-from backend.agents.price_agent import PriceAgentResult
-from backend.agents.synthesis_agent import AlertComposer
+from backend.application.agents.event_classifier import EventClassifierBrain
+from backend.application.agents.eval_agent import EvalAgentBrain
+from backend.application.agents.news_agent import NewsAgentBrain, NewsAgentResult
+from backend.application.agents.price_agent import PriceAgentResult
+from backend.application.agents.synthesis_agent import AlertComposer
 from backend.domain.entities import (
     AlertStatus,
     EventRoute,
@@ -138,7 +138,7 @@ def scan_symbol(
         meta["request_id"] = rid
 
     with trace_request("scan", sym, metadata=meta) as root:
-        from backend.graph.scan import run_scan_graph
+        from backend.application.graph.scan import run_scan_graph
 
         result = run_scan_graph(
             symbol=sym,

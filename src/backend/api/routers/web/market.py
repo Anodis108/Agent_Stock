@@ -15,8 +15,8 @@ from typing import Any
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
-from backend.database.connection import get_connection
-from backend.services.market_service import DEFAULT_MARKET_SYMBOLS, get_market_service
+from backend.infra.database.connection import get_connection
+from backend.application.services.market_service import DEFAULT_MARKET_SYMBOLS, get_market_service
 
 router = APIRouter(prefix="/api/v1/market", tags=["market"])
 alias_router = APIRouter(prefix="/api/market", tags=["market-alias"])

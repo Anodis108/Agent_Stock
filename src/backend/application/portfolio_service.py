@@ -12,7 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from backend.database.repositories import (
+from backend.infra.database.repositories import (
     PortfolioHoldingRecord,
     PortfolioHoldingRepository,
     UserSettingsRecord,

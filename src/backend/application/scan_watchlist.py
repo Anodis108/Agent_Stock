@@ -9,10 +9,10 @@ from backend.application.scan_symbol import (
     ScanSymbolResult,
     scan_symbol,
 )
-from backend.agents.event_classifier import EventClassifierBrain
-from backend.agents.eval_agent import EvalAgentBrain
-from backend.agents.news_agent import NewsAgentBrain
-from backend.agents.synthesis_agent import AlertComposer
+from backend.application.agents.event_classifier import EventClassifierBrain
+from backend.application.agents.eval_agent import EvalAgentBrain
+from backend.application.agents.news_agent import NewsAgentBrain
+from backend.application.agents.synthesis_agent import AlertComposer
 from backend.domain.ports import (
     MemoryStore,
     NewsSource,

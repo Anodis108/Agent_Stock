@@ -22,7 +22,7 @@ from backend.application.scan_symbol import (
     _is_abnormal,
     should_auto_send,
 )
-from backend.agents.price_agent import PriceAgentResult
+from backend.application.agents.price_agent import PriceAgentResult
 from backend.domain.entities import RoutingDecision, Severity
 
 # Tên node = bước thật trong code (agent_span / luồng application).

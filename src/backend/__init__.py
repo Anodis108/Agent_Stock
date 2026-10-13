@@ -44,17 +44,42 @@ _COMPAT_MODULE_MAP = {
 }
 
 
+_COMPAT_PREFIX_MAP = {
+    "backend.database": "backend.infra.database",
+    "backend.retrieval": "backend.infra.retrieval",
+    "backend.services": "backend.application.services",
+    "backend.agents": "backend.application.agents",
+    "backend.graph": "backend.application.graph",
+    "backend.eval": "backend.application.eval",
+}
+
+
 class _CompatFinder:
-    """Meta path finder redirect các import module cũ sang vị trí kiến trúc mới."""
+    """Meta path finder redirect các import module cũ sang vị trí kiến trúc mới theo chuẩn Clean Architecture."""
 
     @classmethod
     def find_spec(cls, fullname: str, path: Any = None, target: Any = None) -> Any:
         target_name = _COMPAT_MODULE_MAP.get(fullname)
+        if not target_name:
+            for old_p, new_p in _COMPAT_PREFIX_MAP.items():
+                if fullname == old_p or fullname.startswith(old_p + "."):
+                    target_name = new_p + fullname[len(old_p):]
+                    break
+
         if target_name:
-            target_mod = importlib.import_module(target_name)
-            sys.modules[fullname] = target_mod
-            return target_mod.__spec__
+            try:
+                target_mod = importlib.import_module(target_name)
+                sys.modules[fullname] = target_mod
+                parts = fullname.split(".")
+                if len(parts) > 1:
+                    parent = ".".join(parts[:-1])
+                    if parent in sys.modules:
+                        setattr(sys.modules[parent], parts[-1], target_mod)
+                return target_mod.__spec__
+            except Exception:
+                return None
         return None
+
 
 
 if not any(
@@ -63,3 +88,5 @@ if not any(
     for f in sys.meta_path
 ):
     sys.meta_path.insert(0, _CompatFinder)
+
+

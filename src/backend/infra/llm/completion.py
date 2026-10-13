@@ -78,7 +78,7 @@ def _record_cache_hit_cost(*, model: str) -> None:
 def _emit_llm_cache_hit(model: str) -> None:
     """Thông báo SSE live graph khi LLM exact/semantic cache hit."""
     try:
-        from backend.graph.chat import emit_agent_event
+        from backend.application.graph.chat import emit_agent_event
         from backend.infra.cache.exact import get_llm_cache_context
 
         ctx = get_llm_cache_context()
