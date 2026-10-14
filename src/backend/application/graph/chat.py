@@ -11,6 +11,7 @@ START ➔ guardrail_node ➔ (nếu vi phạm) ➔ guardrail_refusal_node ➔ EN
 from __future__ import annotations
 
 import contextvars
+
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -20,9 +21,11 @@ from typing import Any, Callable
 import sys
 from pathlib import Path
 
-_SRC_DIR = str(Path(__file__).resolve().parents[2])
+_ROOT_DIR = next((p for p in Path(__file__).resolve().parents if (p / "pyproject.toml").is_file()), Path(__file__).resolve().parents[4])
+_SRC_DIR = str(_ROOT_DIR / "src")
 if _SRC_DIR not in sys.path:
     sys.path.insert(0, _SRC_DIR)
+
 
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
@@ -1116,7 +1119,8 @@ if __name__ == "__main__":
 
     out_path = Path(args.out)
     if not out_path.is_absolute():
-        out_path = Path(__file__).resolve().parents[3] / args.out
+        out_path = _ROOT_DIR / args.out
+
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     try:

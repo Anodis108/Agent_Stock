@@ -22,8 +22,15 @@ def get_hitl_feedback_json_path() -> Path:
     if raw:
         path = Path(raw)
     else:
-        # Default path relative to project root
-        root = Path(__file__).resolve().parents[3]
+        root = None
+        p = Path(__file__).resolve().parent
+        for _ in range(6):
+            if (p / "pyproject.toml").is_file():
+                root = p
+                break
+            p = p.parent
+        if root is None:
+            root = Path(__file__).resolve().parents[4]
         path = root / "resources" / "data" / "hitl_feedback.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     return path

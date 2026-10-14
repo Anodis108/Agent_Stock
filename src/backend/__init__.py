@@ -10,8 +10,51 @@ Cung cấp 2 entrypoint độc lập:
 from __future__ import annotations
 
 import importlib
+import importlib.util
 import sys
+import types
 from typing import Any
+
+
+class _AliasModule(types.ModuleType):
+    """Proxy module chuyển tiếp thuộc tính sang target_mod mà không làm hỏng metadata của target."""
+
+    def __init__(self, name: str, target: Any) -> None:
+        super().__init__(name)
+        object.__setattr__(self, "_target_module", target)
+
+    def __getattr__(self, name: str) -> Any:
+        target = object.__getattribute__(self, "_target_module")
+        return getattr(target, name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name in (
+            "_target_module",
+            "__name__",
+            "__doc__",
+            "__package__",
+            "__loader__",
+            "__spec__",
+            "__path__",
+            "__file__",
+        ):
+            super().__setattr__(name, value)
+        else:
+            setattr(object.__getattribute__(self, "_target_module"), name, value)
+
+
+class _AliasLoader:
+    """Loader trả về proxy _AliasModule bao bọc target_mod thay vì nạp lại module mới."""
+
+    def __init__(self, target_mod: Any) -> None:
+        self.target_mod = target_mod
+
+    def create_module(self, spec: Any) -> Any:
+        return _AliasModule(spec.name, self.target_mod)
+
+    def exec_module(self, module: Any) -> None:
+        module.__dict__.update(self.target_mod.__dict__)
+
 
 _COMPAT_MODULE_MAP = {
     "backend.transport": "backend.shared.transport",
@@ -68,14 +111,24 @@ class _CompatFinder:
 
         if target_name:
             try:
-                target_mod = importlib.import_module(target_name)
+                if target_name in sys.modules:
+                    target_mod = sys.modules[target_name]
+                else:
+                    target_mod = importlib.import_module(target_name)
+
                 sys.modules[fullname] = target_mod
                 parts = fullname.split(".")
                 if len(parts) > 1:
                     parent = ".".join(parts[:-1])
                     if parent in sys.modules:
                         setattr(sys.modules[parent], parts[-1], target_mod)
-                return target_mod.__spec__
+                is_pkg = hasattr(target_mod, "__path__")
+                return importlib.util.spec_from_loader(
+                    fullname,
+                    _AliasLoader(target_mod),
+                    is_package=is_pkg,
+                )
+
             except Exception:
                 return None
         return None

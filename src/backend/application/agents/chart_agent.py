@@ -46,7 +46,15 @@ def get_charts_dir() -> Path:
         p.mkdir(parents=True, exist_ok=True)
         return p
 
-    root = Path(__file__).resolve().parents[3]
+    root = None
+    p = Path(__file__).resolve().parent
+    for _ in range(6):
+        if (p / "pyproject.toml").is_file():
+            root = p
+            break
+        p = p.parent
+    if root is None:
+        root = Path(__file__).resolve().parents[4]
     candidates: list[Path] = []
     # 1. Nếu đang trong container Docker (/app/data volume tồn tại), ưu tiên /app/data/charts
     if Path("/app/data").is_dir():

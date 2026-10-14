@@ -27,7 +27,15 @@ def get_charts_dir() -> Path:
         path.mkdir(parents=True, exist_ok=True)
         return path
 
-    root = Path(__file__).resolve().parents[2]
+    root = None
+    p = Path(__file__).resolve().parent
+    for _ in range(6):
+        if (p / "pyproject.toml").is_file():
+            root = p
+            break
+        p = p.parent
+    if root is None:
+        root = Path(__file__).resolve().parents[3]
     candidates: list[Path] = []
     if Path("/app/data").is_dir():
         candidates.append(Path("/app/data/charts"))

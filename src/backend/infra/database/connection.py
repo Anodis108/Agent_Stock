@@ -307,7 +307,15 @@ def get_db_path() -> Path:
     configured = (settings.sqlite_path or "").strip()
     if configured:
         return Path(configured)
-    root = Path(__file__).resolve().parents[3]
+    root = None
+    p = Path(__file__).resolve().parent
+    for _ in range(6):
+        if (p / "pyproject.toml").is_file():
+            root = p
+            break
+        p = p.parent
+    if root is None:
+        root = Path(__file__).resolve().parents[4]
     path = root / "resources" / "data" / "portfolio_watch.db"
     path.parent.mkdir(parents=True, exist_ok=True)
     return path
@@ -327,11 +335,15 @@ def _is_sqlite_file(path: Path) -> bool:
 def get_connection(db_path: str | Path | None = None) -> Any:
     """Mở PostgreSQL nếu có và kết nối được; ngược lại dùng SQLite."""
     target = Path(db_path) if db_path is not None else get_db_path()
-    if db_path is not None and (
-        str(db_path).endswith(".db")
-        or str(db_path).endswith(".sqlite")
-        or str(db_path) == ":memory:"
-    ):
+    use_sqlite_explicit = (
+        db_path is not None
+        and (
+            str(db_path).endswith(".db")
+            or str(db_path).endswith(".sqlite")
+            or str(db_path) == ":memory:"
+        )
+    ) or bool(os.environ.get("SQLITE_PATH", "").strip())
+    if use_sqlite_explicit:
         target.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(str(target), check_same_thread=False, timeout=30.0)
         conn.row_factory = sqlite3.Row

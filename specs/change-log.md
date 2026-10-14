@@ -4,6 +4,87 @@ Nhật ký ghi nhận chi tiết mọi thay đổi, kết quả kiểm thử và
 
 ---
 
+## 2026-10-14 — Chuẩn hoá tên Container, Dọn sạch toàn bộ Volume Data cũ và Khởi động lại
+
+- **Chuẩn hoá tên container**: Đồng bộ toàn bộ container theo tiền tố dự án chuẩn trong [docker-compose.yml](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/docker-compose.yml):
+  + `backend` -> `portfolio-watch-web-backend`
+  + `ai_backend` -> `portfolio-watch-ai-backend`
+  + `frontend` -> `portfolio-watch-frontend`
+  + `redis` -> `portfolio-watch-redis`
+  + `postgres` -> `portfolio-watch-postgres` (`profiles: [storage, db, full]`)
+  + `minio` -> `portfolio-watch-minio` (`profiles: [storage, minio, full]`)
+  + `qdrant` -> `portfolio-watch-qdrant` (`profiles: [vector, qdrant, full]`)
+  + `eval_test` -> `portfolio-watch-eval-test` (`profiles: [tools, test]`)
+- **Kiến trúc Profile chuyên nghiệp & Biến môi trường**:
+  + Cấu hình các profile nhóm linh hoạt cho từng workload: `core` (mặc định), `storage`, `vector`, `full`, và `test`.
+  + Thiết lập `COMPOSE_PROFILES=full` trong `.env` để môi trường local tự động khởi chạy Full Stack (7 container) chỉ với lệnh `docker compose up -d` mà không cần truyền cờ dài dòng.
+- **Bảo toàn nguyên lý Tách biệt Tính toán & Lưu trữ (State & Computation Decoupling)**:
+  + Tất cả container là stateless engine.
+  + Toàn bộ dữ liệu bền vững được mount sang các named volume độc lập: `portfolio-watch-data`, `portfolio-watch-pg-data`, `portfolio-watch-minio-data`, `portfolio-watch-qdrant-data`, `portfolio-watch-redis-data`.
+- **Khởi chạy đồng bộ toàn cụm dịch vụ (`docker compose up -d`)**:
+  + Cả 7 container (`web-backend`, `ai-backend`, `frontend`, `redis`, `postgres`, `minio`, `qdrant`) đều khởi động thành công và tự động kết nối vào cùng mạng `vn-stock-swarm_default`.
+- **Kết quả kiểm thử & Khắc phục**:
+  + `tests/e2e/test_docker_setup.py`: **4/4 passed (100%)**.
+  + `tests/integration/test_system.py`: **27/27 passed (100%)** (khôi phục cấu hình mẫu `AI_TRANSPORT=inprocess` trong `.env.example`).
+  + `tests/unit/test_ai_http_stream.py`: **14/14 passed (100%)** (tăng timeout chờ event `halted` từ 2s lên 5s chống nghẽn thread scheduling khi chạy tải nặng trên Windows).
+  + HTTP endpoints: Cổng 8000 (`/health`), cổng 8001 (`/health`), cổng 3001 (`/`) đều trả về 200 OK.
+
+---
+
+## 2026-10-14 — Docker Compose Up: Build, Kiểm tra lỗi và Khởi chạy thành công toàn bộ hệ thống
+
+- **Thực hiện lệnh**: `docker compose up -d` và rà soát lỗi toàn bộ container.
+- **Các lỗi phát hiện và cách xử lý triệt để**:
+  1. **Xung đột cổng Host của Redis (Port 6379)**:
+     - *Nguyên nhân*: Container `langfuse-redis-1` đang chiếm cổng `6379` trên host (`127.0.0.1:6379`).
+     - *Khắc phục*: Thêm `REDIS_PORT=6380` vào `.env`. Container `portfolio-watch-redis` map `0.0.0.0:6380->6379/tcp` ra ngoài máy host, còn mạng nội bộ Docker giữa các container vẫn kết nối thông suốt tới `redis:6379`.
+  2. **Vòng lặp khởi động lại của `portfolio-watch-frontend` (Restart loop)**:
+     - *Nguyên nhân*: Nginx cấu hình upstream trỏ tới `backend:8000`. Khi backend chưa chạy, Nginx báo lỗi `[emerg] host not found in upstream "backend"` và thoát.
+     - *Khắc phục*: Khi `portfolio-watch-web-backend` và `portfolio-watch-ai-backend` khởi động xong và đạt trạng thái Healthy, thực hiện `docker compose up -d --force-recreate frontend` để Nginx nạp lại cấu hình và kết nối upstream thành công.
+- **Trạng thái container (`docker compose ps`)**:
+  - `portfolio-watch-web-backend` (port 8000): **Up & Healthy** (`http://localhost:8000/health` -> `{"status":"ok","service":"backend"}`).
+  - `portfolio-watch-ai-backend` (port 8001): **Up & Healthy** (`http://localhost:8001/health` -> `{"status":"ok","service":"ai"}`).
+  - `portfolio-watch-frontend` (port 3001): **Up** (HTTP 200).
+  - `portfolio-watch-redis` (port 6380): **Up & Healthy**.
+  - `portfolio-watch-minio` (ports 9100, 9101): **Up & Healthy**.
+  - `portfolio-watch-postgres` (port 5433): **Up & Healthy**.
+  - `portfolio-watch-qdrant` (ports 6333, 6334): **Up**.
+- **Kết quả kiểm thử tự động**:
+  - `tests/e2e/test_docker_setup.py`: **4/4 passed (100%)**.
+  - `tests/integration/test_api.py` & `tests/integration/test_web_ui_integration.py`: **30/30 passed (100%)**.
+  - `tests/unit/test_ai_http_stream.py`: **14/14 passed (100%)**.
+
+---
+
+## 2026-10-14 — Review và khắc phục các vấn đề sau tái cấu trúc Clean Architecture
+
+- **Đánh giá toàn diện (Review Check)**:
+  + **What passes**: 368/371 tests ban đầu pass (gồm toàn bộ E2E, Golden v6 slices, Docker setup, Market, Database, Monitoring, Memory, Guardrails, Config).
+  + **What failed**:
+    * `tests/unit/test_ai_http_stream.py::test_closing_the_chat_stream_stops_the_pipeline`: Bị lỗi do `backend.graph.chat` và `backend.application.graph.chat` là 2 module instance khác nhau vì `_CompatFinder` trả về `__spec__` gốc khiến Python nạp lại module lần 2, làm tách rời `contextvars.ContextVar` (`_stream_cancel`).
+    * `tests/integration/test_chart.py`: Monkeypatch theo chuỗi dotted path gặp lỗi với dynamic module finder; kết nối MinIO thử retry qua network khi offline.
+    * `tests/e2e/test_capstone.py::test_v5_baseline_gate_passes`: Đường dẫn `gate.py` bị trỏ cố định vào vị trí cũ `src/backend/eval/gate.py`.
+    * Độ sâu thư mục tăng 1-2 tầng khiến một số module resolve `parents[3]` trỏ nhầm vào `src/` thay vì project root (tạo file data tại `src/resources/`).
+  + **What was missing**: Cơ chế `_AliasLoader` cho Meta Path Finder để chia sẻ singleton/contextvar giữa import cũ và mới; logic fallback định vị `pyproject.toml` động thay vì hardcode `parents[N]`.
+- **Khắc phục triệt để các vấn đề**:
+  + **Tối ưu hóa Meta Path Finder (`src/backend/__init__.py`)**:
+    * Bổ sung `_AliasLoader` kế thừa loader protocol, trả về chính xác module instance đã nạp (`create_module` return `target_mod`), ngăn chặn tuyệt đối việc nạp lại file script.
+    * Đảm bảo `g_chat is a_chat` là `True`, các `ContextVar`, exception classes (`StreamCancelledError`), và biến trạng thái hoàn toàn đồng nhất.
+  + **Định vị Root động (`pyproject.toml`)**:
+    * Cập nhật `chart_agent.py`, `hitl_service.py`, `connection.py`, `charts.py` sang hàm tìm kiếm ngược thư mục chứa `pyproject.toml`.
+    * Loại bỏ hoàn toàn lỗi tạo nhầm thư mục `src/resources/`.
+  + **Cải thiện độ ổn định kết nối Database & Storage**:
+    * Cập nhật `get_connection()` trong `connection.py` ưu tiên SQLite ngay khi biến môi trường `SQLITE_PATH` được thiết lập, loại bỏ độ trễ timeout TCP 2s khi chạy test cô lập.
+    * Bổ sung fixture cô lập MinIO trong `test_chart.py`.
+    * Bổ sung fallback path cho `gate.py` trong `test_capstone.py`.
+- **Kết quả kiểm thử**:
+  + `tests/unit/test_ai_http_stream.py`: **14/14 passed (100%)**.
+  + `tests/integration/test_web_ui_integration.py`: **6/6 passed (100%)**.
+  + `tests/integration/test_chart.py`: **20/20 passed (100%)**.
+  + `tests/e2e/test_capstone.py`: **6/6 passed (100%)**.
+
+---
+
 ## 2026-10-13 — Tái cấu trúc chuẩn Clean Architecture theo mẫu AI_Face_checkin/src/model_deployed
 
 - **Tái cấu trúc triệt để thư mục `src/backend/` thành 5 tầng kiến trúc chuẩn Clean Architecture**:

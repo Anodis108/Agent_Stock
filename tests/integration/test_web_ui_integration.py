@@ -124,8 +124,12 @@ def test_ui_fastapi_static_and_chart_routes():
     assert ".chat-chart-container" in resp_css.text
 
 
-def test_sse_streaming_greeting_fastpath():
+def test_sse_streaming_greeting_fastpath(monkeypatch, tmp_path):
     """Verify /chat/stream SSE streaming for greeting fast-path (TTFT < 1.0s, token events, node_finish)."""
+    monkeypatch.setenv("MONITORING_ENABLED", "false")
+    monkeypatch.setenv("SQLITE_PATH", str(tmp_path / "greeting.db"))
+    from backend.shared.settings import settings
+    monkeypatch.setattr(settings, "monitoring_enabled", False)
     client = TestClient(app)
     t0 = time.perf_counter()
 

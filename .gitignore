@@ -52,7 +52,5 @@ training/output/
 
 # Portfolio Watch — CI artifacts & local caches
 .eval_cache/
-specs/eval/runs/
-specs/eval/pr_report.json
-specs/eval/pr_report.md
+specs/eval/
 deploy/lkg/

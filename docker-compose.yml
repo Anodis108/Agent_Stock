@@ -163,12 +163,12 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  app:
+  eval_test:
     image: portfolio-watch:backend
     build:
       context: .
       dockerfile: src/backend/Dockerfile
-    container_name: portfolio-watch-app
+    container_name: portfolio-watch-eval-test
     env_file:
       - .env
     entrypoint: ["sh", "/docker-entrypoint.sh"]
@@ -213,13 +213,54 @@ services:
     image: qdrant/qdrant:latest
     container_name: portfolio-watch-qdrant
     profiles:
+      - vector
       - qdrant
-      - optional
+      - full
     ports:
       - "6333:6333"
       - "6334:6334"
     volumes:
       - qdrant_data:/qdrant/storage
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: portfolio-watch-postgres
+    profiles:
+      - storage
+      - db
+      - full
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-portfolio}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-portfolio}
+      POSTGRES_DB: ${POSTGRES_DB:-portfolio_watch}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U portfolio -d portfolio_watch"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  minio:
+    image: pgsty/minio:latest
+    container_name: portfolio-watch-minio
+    profiles:
+      - storage
+      - minio
+      - full
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    command: ["server", "/data", "--console-address", ":9001"]
+    ports:
+      - "${MINIO_API_PORT:-9100}:9000"
+      - "${MINIO_CONSOLE_PORT:-9101}:9001"
+    volumes:
+      - minio_data:/data
     restart: unless-stopped
 
 volumes:
@@ -229,3 +270,7 @@ volumes:
     name: portfolio-watch-qdrant-data
   redis_data:
     name: portfolio-watch-redis-data
+  pg_data:
+    name: portfolio-watch-pg-data
+  minio_data:
+    name: portfolio-watch-minio-data

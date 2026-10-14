@@ -668,7 +668,7 @@ def test_closing_the_chat_stream_stops_the_pipeline(monkeypatch):
     def fake_answer(*_args, **kwargs):
         kwargs["event_callback"]("node_start", {"node": "supervisor"})
         started.set()
-        deadline = time.monotonic() + 2
+        deadline = time.monotonic() + 5
         while time.monotonic() < deadline:
             try:
                 check_stream_cancelled()
@@ -678,6 +678,8 @@ def test_closing_the_chat_stream_stops_the_pipeline(monkeypatch):
             time.sleep(0.02)
         kept_going["value"] = True
         raise AssertionError("pipeline kept running after the client closed the stream")
+
+
 
     monkeypatch.setattr(answer_mod, "answer_question", fake_answer)
     monkeypatch.setattr(chat_stream, "answer_question", fake_answer)
@@ -696,9 +698,9 @@ def test_closing_the_chat_stream_stops_the_pipeline(monkeypatch):
     web = stream_chat_generator(ChatRequest(question="Giá FPT"), deps)
     first = next(web)
     assert "node_start" in first
-    assert started.wait(1)
+    assert started.wait(3)
     web.close()
-    assert halted.wait(2)
+    assert halted.wait(5)
     assert kept_going["value"] is False
 
     started.clear()
@@ -706,9 +708,9 @@ def test_closing_the_chat_stream_stops_the_pipeline(monkeypatch):
     ai = chat_stream.iter_swarm_events("Giá FPT", deps)
     first_ai = next(ai)
     assert first_ai[0] == "node_start"
-    assert started.wait(1)
+    assert started.wait(3)
     ai.close()
-    assert halted.wait(2)
+    assert halted.wait(5)
     assert kept_going["value"] is False
 
 

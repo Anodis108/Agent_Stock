@@ -29,6 +29,17 @@ from backend.agents.chart_agent import (
 from backend.domain.ports import PriceBar
 
 
+@pytest.fixture(autouse=True)
+def _isolate_test_charts(monkeypatch):
+    from backend.shared.settings import settings
+    from backend.infra.storage.chart_store import reset_chart_store
+    monkeypatch.setattr(settings, "chart_backend", "local")
+    monkeypatch.setenv("STORAGE_CHART_BACKEND", "local")
+    reset_chart_store()
+    yield
+    reset_chart_store()
+
+
 def _make_sample_bars(symbol: str, count: int = 15, base_price: float = 100000.0) -> list[PriceBar]:
     """Tạo chuỗi dữ liệu giá mẫu OHLCV."""
     import math
@@ -354,17 +365,26 @@ def test_chat_api_endpoint_persists_chart_path(real_deps, monkeypatch):
         HeuristicSupervisorBrain,
     )
 
+    from backend.application.agents.answer_composer import nodes as answer_nodes
+    from backend.application.agents.supervisor_agent import nodes as supervisor_nodes
+
+    from backend.shared.settings import settings
+    monkeypatch.setattr(settings, "chart_backend", "local")
+
     # Đảm bảo dùng heuristic để không cần external LLM API
     monkeypatch.setattr(
-        "backend.agents.supervisor_agent.nodes._DEFAULT_REWRITE_FACTORY",
+        supervisor_nodes,
+        "_DEFAULT_REWRITE_FACTORY",
         lambda: HeuristicRewriteBrain(),
     )
     monkeypatch.setattr(
-        "backend.agents.supervisor_agent.nodes._DEFAULT_SUPERVISOR_FACTORY",
+        supervisor_nodes,
+        "_DEFAULT_SUPERVISOR_FACTORY",
         lambda: HeuristicSupervisorBrain(),
     )
     monkeypatch.setattr(
-        "backend.agents.answer_composer.nodes._DEFAULT_ANSWER_BRAIN_FACTORY",
+        answer_nodes,
+        "_DEFAULT_ANSWER_BRAIN_FACTORY",
         lambda: HeuristicAnswerDraftBrain(),
     )
 
