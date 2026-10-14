@@ -12,8 +12,8 @@ Captures for each case:
 - Latency (seconds)
 
 Outputs results to:
-- specs/eval/eval_results_golden_v4.md (Markdown table & summary)
-- specs/eval/eval_results_golden_v4.json (Full machine-readable JSON)
+- resources/eval/eval_results_golden_v4.md (Markdown table & summary)
+- resources/eval/eval_results_golden_v4.json (Full machine-readable JSON)
 """
 
 from __future__ import annotations
@@ -338,8 +338,8 @@ def run_detailed_evaluation(
         )
     )
     v_num = "6" if "v6" in p.name else ("5" if "v5" in p.name else "4")
-    out_md = output_md_path or (ROOT / "specs" / "eval" / f"eval_observations_v{v_num}.md")
-    out_json = output_json_path or (ROOT / "specs" / "eval" / f"eval_observations_v{v_num}.json")
+    out_md = output_md_path or (ROOT / "resources" / "eval" / f"eval_observations_v{v_num}.md")
+    out_json = output_json_path or (ROOT / "resources" / "eval" / f"eval_observations_v{v_num}.json")
 
     print(f"\n========================================================")
     print(f"  BẮT ĐẦU ĐÁNH GIÁ DATASET: {p.name}")
@@ -604,7 +604,6 @@ def run_detailed_evaluation(
         }
         target_baselines = [
             ROOT / "resources" / "eval" / f"v{v_num}_baseline.json",
-            ROOT / "specs" / "eval" / f"v{v_num}_baseline.json",
         ]
         for b_path in target_baselines:
             b_path.parent.mkdir(parents=True, exist_ok=True)
@@ -775,13 +774,13 @@ def main(argv: list[str] | None = None) -> int:
         "--output-md",
         type=Path,
         default=None,
-        help="Đường dẫn file Markdown báo cáo (mặc định specs/eval/eval_observations_v6.md)",
+        help="Đường dẫn file Markdown báo cáo (mặc định resources/eval/eval_observations_v6.md)",
     )
     parser.add_argument(
         "--output-json",
         type=Path,
         default=None,
-        help="Đường dẫn file JSON chi tiết (mặc định specs/eval/eval_observations_v6.json)",
+        help="Đường dẫn file JSON chi tiết (mặc định resources/eval/eval_observations_v6.json)",
     )
     parser.add_argument(
         "--slice",

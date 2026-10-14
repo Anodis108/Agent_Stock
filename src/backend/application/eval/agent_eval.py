@@ -31,11 +31,7 @@ def _find_project_root() -> Path:
 
 
 ROOT = _find_project_root()
-GOLDEN_DATASET_PATH = (
-    ROOT / "resources" / "eval" / "golden_v5.yaml"
-    if (ROOT / "resources" / "eval" / "golden_v5.yaml").is_file()
-    else ROOT / "specs" / "eval" / "golden_v5.yaml"
-)
+GOLDEN_DATASET_PATH = ROOT / "resources" / "eval" / "golden_v5.yaml"
 
 
 # ==============================================================================
@@ -412,7 +408,7 @@ def export_eval_report(
 ) -> tuple[Path, Path]:
     """Xuất báo cáo kết quả đánh giá Agent sang file JSON và Markdown."""
     if output_dir is None:
-        output_dir = ROOT / "specs" / "eval"
+        output_dir = ROOT / "resources" / "eval"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     json_path = output_dir / "agent_eval_report.json"

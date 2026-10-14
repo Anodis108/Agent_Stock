@@ -653,8 +653,6 @@ def test_gate_accepts_v5_baseline_format():
 
     baseline_path = ROOT / "resources" / "eval" / "v5_baseline.json"
     if not baseline_path.is_file():
-        baseline_path = ROOT / "specs" / "eval" / "v5_baseline.json"
-    if not baseline_path.is_file():
         pytest.skip("v5_baseline.json not found")
     report = load_gate_report(baseline_path)
     result = check_gates(report)

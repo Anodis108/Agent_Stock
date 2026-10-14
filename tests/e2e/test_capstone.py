@@ -59,13 +59,11 @@ def test_pipeline_doc_exists():
     assert "hitl_to_golden_draft.py" in content
 
 def test_v5_baseline_gate_passes():
-    """Test gate on specs/eval/v5_baseline.json passes."""
+    """Test gate on resources/eval/v5_baseline.json passes."""
     script = ROOT / "src" / "backend" / "eval" / "gate.py"
     if not script.exists():
         script = ROOT / "src" / "backend" / "application" / "eval" / "gate.py"
     baseline = ROOT / "resources" / "eval" / "v5_baseline.json"
-    if not baseline.exists():
-        baseline = ROOT / "specs" / "eval" / "v5_baseline.json"
     
     env = os.environ.copy()
     env["PYTHONPATH"] = str(ROOT / "src")

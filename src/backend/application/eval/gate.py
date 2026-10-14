@@ -7,7 +7,7 @@
 - slice:injection = 100% (tolerance 0)
 - slice:out_of_scope = 100% (tolerance 0)
 
-    python -m backend.application.eval.gate --run specs/eval/pr_report.json
+    python -m backend.application.eval.gate --run resources/eval/pr_report.json
     echo $?   # 0 = pass, 1 = chặn merge
 """
 

@@ -38,8 +38,8 @@ from backend.infra.llm.semaphore import (  # noqa: E402
 )
 from backend.settings import settings  # noqa: E402
 
-REPORT_MD = ROOT / "specs" / "eval" / "sse_benchmark.md"
-REPORT_JSON = ROOT / "specs" / "eval" / "sse_benchmark.json"
+REPORT_MD = ROOT / "resources" / "eval" / "sse_benchmark.md"
+REPORT_JSON = ROOT / "resources" / "eval" / "sse_benchmark.json"
 
 
 def _percentile(values: list[float], pct: float) -> float:

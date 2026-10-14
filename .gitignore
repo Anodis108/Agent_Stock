@@ -53,4 +53,6 @@ training/output/
 # Portfolio Watch — CI artifacts & local caches
 .eval_cache/
 specs/eval/
+resources/eval/history/
+resources/eval/drill_*.json
 deploy/lkg/

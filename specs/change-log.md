@@ -4,6 +4,30 @@ Nhật ký ghi nhận chi tiết mọi thay đổi, kết quả kiểm thử và
 
 ---
 
+## 2026-10-14 — Chuyển toàn bộ Output của Test & Eval sang resources/eval/ (Xoá bỏ hoàn toàn specs/eval/)
+
+- **Mục tiêu**: Đảm bảo toàn bộ các bài test, script và runner đánh giá (eval) không tự động sinh file/thư mục trong `specs/eval`, mà tập trung toàn bộ dữ liệu máy đọc, lịch sử và báo cáo vào `resources/eval/`.
+- **Cập nhật mã nguồn & Scripts**:
+  - `src/backend/application/eval/history.py`: Cập nhật `resolve_history_dir` trỏ về `resources/eval/history/`.
+  - `src/backend/application/eval/agent_eval.py`: Cập nhật `output_dir` mặc định sang `resources/eval/`, cập nhật `GOLDEN_DATASET_PATH` trỏ về `resources/eval/golden_v5.yaml`.
+  - `src/backend/application/eval/run_detailed.py`: Chuyển mặc định `out_md` và `out_json` sang `resources/eval/`, gỡ bỏ `specs/eval` khỏi `target_baselines`.
+  - `src/backend/application/eval/run.py`: Đồng bộ toàn bộ đường dẫn mặc định và fallback (`GOLDEN_*`, `BASELINE_PATH`, `BLOCKED_PATH`, `--save-baseline`, `--save-history`, `--report`, `--json`) sang `resources/eval/`.
+  - `src/backend/application/eval/regression.py`: Cập nhật `OUT_JSON`, `OUT_REPORT`, `OUT_LOG`, `GOLDEN`, `BASELINE` sang `resources/eval/`.
+  - `src/backend/application/eval/gate.py`: Cập nhật tài liệu hướng dẫn lệnh sang `resources/eval/pr_report.json`.
+  - `scripts/eval_gate_drill.py`: Cập nhật `out_dir` trỏ sang `resources/eval/`.
+  - `scripts/benchmark_sse.py`: Cập nhật `REPORT_MD` và `REPORT_JSON` trỏ sang `resources/eval/`.
+  - `tests/e2e/test_capstone.py` & `tests/e2e/test_eval.py`: Loại bỏ fallback thừa trỏ vào `specs/eval`.
+  - `.gitignore`: Bổ sung `resources/eval/history/` và `resources/eval/drill_*.json` để tránh làm bẩn git working tree.
+- **Dọn dẹp thư mục**:
+  - Di chuyển toàn bộ dữ liệu lịch sử hợp lệ từ `specs/eval/history` sang `resources/eval/history`.
+  - Xoá bỏ vĩnh viễn thư mục `specs/eval/`.
+- **Kiểm thử xác thực**:
+  - `pytest tests/e2e/test_capstone.py tests/e2e/test_eval.py`: **40/40 passed (100%)**.
+  - Chạy `scripts/eval_gate_drill.py`: **PASS 100%**.
+  - Kiểm tra `Test-Path 'specs/eval'`: Kết quả trả về `False` (không bị tái tạo sau khi test).
+
+---
+
 ## 2026-10-14 — Chuẩn hoá tên Container, Dọn sạch toàn bộ Volume Data cũ và Khởi động lại
 
 - **Chuẩn hoá tên container**: Đồng bộ toàn bộ container theo tiền tố dự án chuẩn trong [docker-compose.yml](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/docker-compose.yml):

@@ -1,7 +1,7 @@
 """Eval history — M3-B2 Phase 6: lưu lịch sử chạy eval + đo noise (σ).
 
 Mỗi lần chạy (khi `--save-history`) lưu JSON vào:
-    specs/eval/history/<timestamp>_<git_sha>.json
+    resources/eval/history/<timestamp>_<git_sha>.json
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from backend.application.eval.run import _find_project_root
 
 def resolve_history_dir(root: Path | None = None) -> Path:
     base = root or _find_project_root()
-    return base / "specs" / "eval" / "history"
+    return base / "resources" / "eval" / "history"
 
 
 def get_git_sha() -> str:

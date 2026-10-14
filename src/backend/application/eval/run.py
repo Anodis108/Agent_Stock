@@ -48,36 +48,12 @@ def _find_project_root() -> Path:
 
 
 ROOT = _find_project_root()
-GOLDEN_PATH = (
-    ROOT / "resources" / "eval" / "golden_dataset.yaml"
-    if (ROOT / "resources" / "eval" / "golden_dataset.yaml").is_file()
-    else ROOT / "specs" / "eval" / "golden_dataset.yaml"
-)
-GOLDEN_V3_PATH = (
-    ROOT / "resources" / "eval" / "golden_v3.yaml"
-    if (ROOT / "resources" / "eval" / "golden_v3.yaml").is_file()
-    else ROOT / "specs" / "eval" / "golden_v3.yaml"
-)
-GOLDEN_V4_PATH = (
-    ROOT / "resources" / "eval" / "golden_v4.yaml"
-    if (ROOT / "resources" / "eval" / "golden_v4.yaml").is_file()
-    else ROOT / "specs" / "eval" / "golden_v4.yaml"
-)
-GOLDEN_V5_PATH = (
-    ROOT / "resources" / "eval" / "golden_v5.yaml"
-    if (ROOT / "resources" / "eval" / "golden_v5.yaml").is_file()
-    else ROOT / "specs" / "eval" / "golden_v5.yaml"
-)
-GOLDEN_V6_PATH = (
-    ROOT / "resources" / "eval" / "golden_v6_comprehensive.yaml"
-    if (ROOT / "resources" / "eval" / "golden_v6_comprehensive.yaml").is_file()
-    else ROOT / "specs" / "eval" / "golden_v6_comprehensive.yaml"
-)
-GOLDEN_PR_SUBSET_PATH = (
-    ROOT / "resources" / "eval" / "golden_pr_subset.yaml"
-    if (ROOT / "resources" / "eval" / "golden_pr_subset.yaml").is_file()
-    else ROOT / "specs" / "eval" / "golden_pr_subset.yaml"
-)
+GOLDEN_PATH = ROOT / "resources" / "eval" / "golden_dataset.yaml"
+GOLDEN_V3_PATH = ROOT / "resources" / "eval" / "golden_v3.yaml"
+GOLDEN_V4_PATH = ROOT / "resources" / "eval" / "golden_v4.yaml"
+GOLDEN_V5_PATH = ROOT / "resources" / "eval" / "golden_v5.yaml"
+GOLDEN_V6_PATH = ROOT / "resources" / "eval" / "golden_v6_comprehensive.yaml"
+GOLDEN_PR_SUBSET_PATH = ROOT / "resources" / "eval" / "golden_pr_subset.yaml"
 BASELINE_PATH = (
     ROOT / "resources" / "eval" / "v6_baseline.json"
     if (ROOT / "resources" / "eval" / "v6_baseline.json").is_file()
@@ -88,18 +64,14 @@ BASELINE_PATH = (
             ROOT / "resources" / "eval" / "v4_baseline.json"
             if (ROOT / "resources" / "eval" / "v4_baseline.json").is_file()
             else (
-                ROOT / "specs" / "eval" / "v3_baseline.json"
-                if (ROOT / "specs" / "eval" / "v3_baseline.json").is_file()
-                else ROOT / "specs" / "eval" / "baseline.json"
+                ROOT / "resources" / "eval" / "v3_baseline.json"
+                if (ROOT / "resources" / "eval" / "v3_baseline.json").is_file()
+                else ROOT / "resources" / "eval" / "baseline.json"
             )
         )
     )
 )
-BLOCKED_PATH = (
-    ROOT / "resources" / "eval" / "blocked_cases.yaml"
-    if (ROOT / "resources" / "eval" / "blocked_cases.yaml").is_file()
-    else ROOT / "specs" / "eval" / "blocked_cases.yaml"
-)
+BLOCKED_PATH = ROOT / "resources" / "eval" / "blocked_cases.yaml"
 # Điểm tổng (rate) giảm quá mức này so với baseline → regression fail (test-plan).
 REGRESSION_TOLERANCE = 0.05
 # Trần: CLI --tolerance không được nới lỏng hơn mức đã chốt.
@@ -400,7 +372,7 @@ class BlockedCase:
 
 
 def load_blocked_cases(path: Path | None = None) -> list[BlockedCase]:
-    """Đọc specs/eval/blocked_cases.yaml — case fail đã ghi nhận + task 3c."""
+    """Đọc resources/eval/blocked_cases.yaml — case fail đã ghi nhận + task 3c."""
     p = path or BLOCKED_PATH
     if not p.is_file():
         return []
@@ -464,7 +436,7 @@ def format_fail_policy_guidance(
     lines = [
         "=== Eval policy (không nới scorer) ===",
         "Case fail → (1) sửa multi-agent/prompt/tool, hoặc",
-        "(2) ghi specs/eval/blocked_cases.yaml + task Phase 3c.",
+        "(2) ghi resources/eval/blocked_cases.yaml + task Phase 3c.",
         "Cấm: hạ JUDGE_PASS_THRESHOLD, nới REGRESSION_TOLERANCE, "
         "xoá must_include chỉ để pass.",
     ]
@@ -1559,13 +1531,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--save-baseline",
         action="store_true",
-        help="Sau --run: lưu điểm tổng làm baseline (specs/eval/baseline.json)",
+        help="Sau --run: lưu điểm tổng làm baseline (resources/eval/baseline.json)",
     )
     parser.add_argument(
         "--baseline",
         type=Path,
         default=None,
-        help="Đường dẫn baseline JSON (mặc định specs/eval/baseline.json)",
+        help="Đường dẫn baseline JSON (mặc định resources/eval/baseline.json)",
     )
     parser.add_argument(
         "--tolerance",
@@ -1589,7 +1561,7 @@ def main(argv: list[str] | None = None) -> int:
         "--dataset",
         type=Path,
         default=None,
-        help="Đường dẫn dataset YAML (mặc định specs/eval/golden_dataset.yaml)",
+        help="Đường dẫn dataset YAML (mặc định resources/eval/golden_dataset.yaml)",
     )
     parser.add_argument(
         "--subset",
@@ -1600,18 +1572,18 @@ def main(argv: list[str] | None = None) -> int:
         "--report",
         type=Path,
         default=None,
-        help="Ghi report markdown ra file (vd specs/eval/pr_subset_report.md)",
+        help="Ghi report markdown ra file (vd resources/eval/pr_subset_report.md)",
     )
     parser.add_argument(
         "--json",
         type=Path,
         default=None,
-        help="Ghi report JSON cho gate (vd specs/eval/pr_report.json)",
+        help="Ghi report JSON cho gate (vd resources/eval/pr_report.json)",
     )
     parser.add_argument(
         "--save-history",
         action="store_true",
-        help="Lưu report JSON vào specs/eval/history/<timestamp>_<sha>.json",
+        help="Lưu report JSON vào resources/eval/history/<timestamp>_<sha>.json",
     )
     args = parser.parse_args(argv)
     if args.self_check:

@@ -67,7 +67,7 @@ def _bad_injection_report() -> dict:
 
 
 def run_drill(*, save_history: bool = True) -> int:
-    out_dir = ROOT / "specs" / "eval"
+    out_dir = ROOT / "resources" / "eval"
     out_dir.mkdir(parents=True, exist_ok=True)
     bad_path = out_dir / "drill_bad_injection.json"
     good_path = out_dir / "drill_good_revert.json"

@@ -25,18 +25,18 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[3]
 GOLDEN = (
-    ROOT / "specs" / "eval" / "golden_v3.yaml"
-    if (ROOT / "specs" / "eval" / "golden_v3.yaml").is_file()
-    else ROOT / "specs" / "eval" / "golden_dataset.yaml"
+    ROOT / "resources" / "eval" / "golden_v3.yaml"
+    if (ROOT / "resources" / "eval" / "golden_v3.yaml").is_file()
+    else ROOT / "resources" / "eval" / "golden_dataset.yaml"
 )
 BASELINE = (
-    ROOT / "specs" / "eval" / "v3_baseline.json"
-    if (ROOT / "specs" / "eval" / "v3_baseline.json").is_file()
-    else ROOT / "specs" / "eval" / "baseline_debug.json"
+    ROOT / "resources" / "eval" / "v3_baseline.json"
+    if (ROOT / "resources" / "eval" / "v3_baseline.json").is_file()
+    else ROOT / "resources" / "eval" / "baseline_debug.json"
 )
-OUT_JSON = ROOT / "specs" / "eval" / "baseline_phase5.json"
-OUT_REPORT = ROOT / "specs" / "eval" / "phase5_regression_report.md"
-OUT_LOG = ROOT / "specs" / "eval" / "phase5_regression_run.log"
+OUT_JSON = ROOT / "resources" / "eval" / "baseline_phase5.json"
+OUT_REPORT = ROOT / "resources" / "eval" / "phase5_regression_report.md"
+OUT_LOG = ROOT / "resources" / "eval" / "phase5_regression_run.log"
 REGRESSION_TOLERANCE = 0.05
 
 
