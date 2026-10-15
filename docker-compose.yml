@@ -1,0 +1,276 @@
+# Portfolio Watch V5 — Microservices Deployment (Frontend + Backend)
+#
+# Images: runtime + thư viện only. Code/config/command/healthcheck → compose.
+#
+# Lần đầu (hoặc khi đổi pyproject.toml):
+#   cp .env.example .env
+#   docker compose build
+#   docker compose up -d
+#
+# Sửa code / port / .env — không cần build:
+#   docker compose up -d --force-recreate
+#
+# Truy cập:
+#   Frontend : http://localhost:3001
+#   Backend  : http://localhost:8000
+#   Langfuse : http://localhost:3000 (compose riêng ../langfuse)
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: src/web_backend/Dockerfile
+    image: portfolio-watch:backend
+    pull_policy: build
+    container_name: portfolio-watch-web-backend
+    env_file:
+      - .env
+    entrypoint: ["sh", "/docker-entrypoint.sh"]
+    command:
+      [
+        "uvicorn",
+        "web_backend.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+      ]
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    environment:
+      PYTHONPATH: /app/src
+      HOME: /app/data
+      XDG_CONFIG_HOME: /app/data/.config
+      MPLCONFIGDIR: /app/data/.matplotlib
+      API_HOST: "0.0.0.0"
+      API_PORT: "8000"
+      AI_TRANSPORT: "http"
+      AI_BASE_URL: "http://ai_backend:8001"
+      FRONTEND_ORIGIN: "*"
+      SQLITE_PATH: /app/data/portfolio_watch.db
+      BACKEND_SQLITE_PATH: /app/data/backend_store.db
+      CHARTS_DIR: /app/data/charts
+      MONITORING_ENABLED: "${MONITORING_ENABLED:-false}"
+      LANGFUSE_PUBLIC_KEY: "${LANGFUSE_PUBLIC_KEY:-}"
+      LANGFUSE_SECRET_KEY: "${LANGFUSE_SECRET_KEY:-}"
+      LANGFUSE_HOST: "${DOCKER_LANGFUSE_HOST:-http://host.docker.internal:3000}"
+      QDRANT_URL: http://qdrant:6333
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+      ai_backend:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - pw_data:/app/data
+      - ./src:/app/src:ro
+      - ./resources:/app/resources:ro
+      - ./specs:/app/specs:ro
+      - ./src/deploy/docker-entrypoint.sh:/docker-entrypoint.sh:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  ai_backend:
+    build:
+      context: .
+      dockerfile: src/ai_backend/Dockerfile
+    image: portfolio-watch:backend
+    pull_policy: build
+    container_name: portfolio-watch-ai-backend
+    env_file:
+      - .env
+    entrypoint: ["sh", "/docker-entrypoint.sh"]
+    command:
+      [
+        "uvicorn",
+        "ai_backend.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8001",
+      ]
+    ports:
+      - "${AI_BACKEND_PORT:-8001}:8001"
+    environment:
+      PYTHONPATH: /app/src
+      HOME: /app/data
+      XDG_CONFIG_HOME: /app/data/.config
+      MPLCONFIGDIR: /app/data/.matplotlib
+      API_HOST: "0.0.0.0"
+      API_PORT: "8001"
+      SQLITE_PATH: /app/data/portfolio_watch.db
+      BACKEND_SQLITE_PATH: /app/data/backend_store.db
+      CHARTS_DIR: /app/data/charts
+      MONITORING_ENABLED: "${MONITORING_ENABLED:-false}"
+      LANGFUSE_PUBLIC_KEY: "${LANGFUSE_PUBLIC_KEY:-}"
+      LANGFUSE_SECRET_KEY: "${LANGFUSE_SECRET_KEY:-}"
+      LANGFUSE_HOST: "${DOCKER_LANGFUSE_HOST:-http://host.docker.internal:3000}"
+      QDRANT_URL: http://qdrant:6333
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - pw_data:/app/data
+      - ./src:/app/src:ro
+      - ./resources:/app/resources:ro
+      - ./specs:/app/specs:ro
+      - ./src/deploy/docker-entrypoint.sh:/docker-entrypoint.sh:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health')",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./src/frontend
+      dockerfile: Dockerfile
+    image: portfolio-watch:frontend
+    pull_policy: build
+    container_name: portfolio-watch-frontend
+    command: ["nginx", "-g", "daemon off;"]
+    ports:
+      - "${FRONTEND_PORT:-3001}:80"
+    volumes:
+      - ./src/frontend:/usr/share/nginx/html:ro
+      - ./src/frontend/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  eval_test:
+    image: portfolio-watch:backend
+    build:
+      context: .
+      dockerfile: src/web_backend/Dockerfile
+    container_name: portfolio-watch-eval-test
+    env_file:
+      - .env
+    entrypoint: ["sh", "/docker-entrypoint.sh"]
+    environment:
+      PYTHONPATH: /app/src
+      HOME: /app/data
+      XDG_CONFIG_HOME: /app/data/.config
+      MPLCONFIGDIR: /app/data/.matplotlib
+      API_HOST: "0.0.0.0"
+      API_PORT: "8000"
+      AI_TRANSPORT: "inprocess"
+      SQLITE_PATH: /app/data/portfolio_watch.db
+      BACKEND_SQLITE_PATH: /app/data/backend_store.db
+      CHARTS_DIR: /app/data/charts
+    volumes:
+      - pw_data:/app/data
+      - ./src:/app/src:ro
+      - ./resources:/app/resources:ro
+      - ./specs:/app/specs:ro
+      - ./tests:/app/tests:ro
+      - ./src/deploy/docker-entrypoint.sh:/docker-entrypoint.sh:ro
+    profiles:
+      - tools
+      - test
+
+  redis:
+    image: redis:7-alpine
+    container_name: portfolio-watch-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: portfolio-watch-qdrant
+    profiles:
+      - vector
+      - qdrant
+      - full
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: portfolio-watch-postgres
+    profiles:
+      - storage
+      - db
+      - full
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-portfolio}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-portfolio}
+      POSTGRES_DB: ${POSTGRES_DB:-portfolio_watch}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U portfolio -d portfolio_watch"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  minio:
+    image: pgsty/minio:latest
+    container_name: portfolio-watch-minio
+    profiles:
+      - storage
+      - minio
+      - full
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    command: ["server", "/data", "--console-address", ":9001"]
+    ports:
+      - "${MINIO_API_PORT:-9100}:9000"
+      - "${MINIO_CONSOLE_PORT:-9101}:9001"
+    volumes:
+      - minio_data:/data
+    restart: unless-stopped
+
+volumes:
+  pw_data:
+    name: portfolio-watch-data
+  qdrant_data:
+    name: portfolio-watch-qdrant-data
+  redis_data:
+    name: portfolio-watch-redis-data
+  pg_data:
+    name: portfolio-watch-pg-data
+  minio_data:
+    name: portfolio-watch-minio-data

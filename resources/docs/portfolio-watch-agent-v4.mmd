@@ -1,0 +1,144 @@
+flowchart TD
+
+subgraph SCHED["Ba lối vào — dùng chung một bộ worker agent"]
+  CRON["Cron Trigger định kỳ<br/>(vận hành thật, tự động)"]
+  MANUAL["API / nút &quot;Quét ngay&quot;<br/>(demo, chọn mã cụ thể)"]
+  CHAT["Chat/Ask API<br/>(câu hỏi tự do của người dùng)"]
+end
+
+subgraph STORE["Kho dữ liệu bền vững"]
+  WATCHLIST[("Watchlist Store<br/>mã + ngưỡng cảnh báo theo user")]
+  PRICEDB[("Price History DB")]
+  MEMORY[("Memory Store<br/>preferences, alert history, hội thoại")]
+end
+
+LOAD["Orchestrator giám sát:<br/>đọc watchlist, lặp song song theo mã"]
+
+RW["LLM: Rewrite Question<br/>(chuẩn hoá câu hỏi, dùng lịch sử hội thoại)"]
+SUPLLM("LLM: Supervisor RoutingDecision —<br/>câu hỏi này cần agent nào?")
+QCOLLECT["Gọi song song các worker được chọn"]
+QMERGE["Gộp kết quả các worker"]
+QANSWER("LLM: soạn câu trả lời trực tiếp<br/>(model routing + prompt A/B)")
+QGUARD[["Guardrail Output:<br/>chặn lời khuyên chắc chắn, đối chiếu evidence"]]
+REPLY["Trả lời người dùng ngay<br/>(không qua HITL — chỉ cung cấp thông tin)"]
+
+subgraph PRICE["PriceAgent — hàm thuần, KHÔNG cần LLM"]
+  PTOOL["Tool: fetch_latest_close(symbol)"]
+  PCALC["Tính % thay đổi so với phiên trước"]
+end
+
+subgraph NEWS["NewsAgent — ReAct, có LLM"]
+  NSEED["Seed: symbol + khung thời gian"]
+  NLLM("LLM: chọn từ khóa tìm / còn cần tìm thêm không")
+  NTOOL["Tool: fetch_cafef_news(symbol)"]
+  NPACK["Pack: lọc tin thực sự liên quan"]
+end
+
+subgraph CLS["Event Classifier — chỉ dùng cho nhánh giám sát"]
+  CLSLLM("LLM: RoutingDecision —<br/>đây có phải sự kiện đáng chú ý?")
+end
+
+SKIP["Kết thúc nhánh: chỉ ghi log,<br/>không tốn thêm lời gọi LLM"]
+
+subgraph EVAL["EvalAgent — LLM thật, ReAct<br/>(dùng chung cho cả 2 nhánh)"]
+  ESEED["Seed: dữ liệu giá + tin cần đánh giá"]
+  ELLM("LLM: đánh giá / giải thích mức độ nghiêm trọng")
+  ETOOL["Tool: read_price_history(symbol)"]
+  EOUT["Output: Severity{level, confidence,<br/>reasoning, evidence}"]
+end
+
+subgraph SYN["SynthesisAgent — LLM thật (nhánh giám sát)"]
+  SMEMR["Tool: read_user_memory(user_id)"]
+  SROUTE["Model routing theo độ phức tạp sự kiện"]
+  SLLM("LLM: soạn nội dung cảnh báo (prompt A/B)")
+  SOUT["Output: FinalAlert draft"]
+end
+
+GUARD[["Guardrail Output:<br/>chặn lời khuyên mua/bán chắc chắn,<br/>đối chiếu evidence với dữ liệu thật"]]
+
+CONF{"Độ tin cậy cao<br/>và khớp đúng ngưỡng đã đặt?"}
+
+subgraph HITL1["HITL Gate 1 — chỉ khi tin cậy thấp / mơ hồ"]
+  H1{"Người dùng duyệt gửi cảnh báo?"}
+end
+
+SEND{{"External: gửi email / push notification"}}
+LOGSENT["Ghi lịch sử đã gửi"]
+REJECTLOG["Ghi lý do từ chối<br/>(dữ liệu học lại ngưỡng)"]
+
+CONFIGPROP["Đề xuất đổi ngưỡng / thêm mã liên quan<br/>vào watchlist"]
+subgraph HITL2["HITL Gate 2 — luôn cần duyệt, bất kể tin cậy"]
+  H2{"Người dùng duyệt thay đổi watchlist?"}
+end
+UPDATEWL["Tool: update_watchlist(...)"]
+REJECTLOG2["Ghi lý do, giữ nguyên cấu hình"]
+
+%% Nhánh giám sát
+CRON --> LOAD
+MANUAL --> LOAD
+WATCHLIST --> LOAD
+LOAD --> PTOOL
+LOAD --> NSEED
+
+PTOOL --> PCALC --> CLSLLM
+NSEED --> NLLM
+NLLM -->|cần tìm thêm| NTOOL --> NLLM
+NLLM -->|đủ tin| NPACK --> CLSLLM
+
+CLSLLM -->|bình thường| SKIP
+CLSLLM -->|bất thường| ESEED
+
+PRICEDB -.đọc lịch sử.-> ETOOL
+ESEED --> ELLM
+ELLM -->|cần thêm dữ liệu| ETOOL --> ELLM
+ELLM -->|đủ căn cứ| EOUT
+
+EOUT --> SMEMR
+MEMORY -.đọc preferences.-> SMEMR
+SMEMR --> SROUTE --> SLLM --> SOUT --> GUARD
+GUARD -->|đạt| CONF
+GUARD -->|vi phạm, viết lại| SLLM
+
+CONF -->|có — tự động| SEND
+CONF -->|không rõ / mâu thuẫn| H1
+
+H1 -->|approve| SEND
+H1 -->|reject| REJECTLOG --> MEMORY
+SEND --> LOGSENT --> MEMORY
+
+EOUT -->|nếu có đề xuất| CONFIGPROP --> H2
+H2 -->|approve| UPDATEWL --> WATCHLIST
+H2 -->|reject| REJECTLOG2 --> MEMORY
+
+%% Nhánh hỏi-đáp — dùng chung PriceAgent/NewsAgent/EvalAgent
+CHAT --> RW --> SUPLLM --> QCOLLECT
+QCOLLECT -.gọi lại.-> PTOOL
+QCOLLECT -.gọi lại.-> NSEED
+PCALC -.-> QMERGE
+NPACK -.-> QMERGE
+QMERGE -->|cần giải thích / so sánh| ESEED
+QMERGE -->|chỉ cần tra cứu| QANSWER
+EOUT -.-> QANSWER
+MEMORY -.đọc hội thoại cũ.-> QANSWER
+QANSWER --> QGUARD --> REPLY
+REPLY --> MEMORY
+
+classDef llm fill:#e0d4f7,stroke:#7c4dff,color:#1a1a1a
+classDef tool fill:#d0e8ff,stroke:#1976d2,color:#1a1a1a
+classDef store fill:#fff3cd,stroke:#e6a800,color:#1a1a1a
+classDef external fill:#d4f7d4,stroke:#2e7d32,color:#1a1a1a
+classDef hitl fill:#ffd4d4,stroke:#c62828,color:#1a1a1a
+classDef guardrail fill:#f0f0f0,stroke:#616161,color:#1a1a1a
+classDef trigger fill:#ffe0b2,stroke:#e65100,color:#1a1a1a
+classDef reply fill:#c8f7dc,stroke:#00897b,color:#1a1a1a
+classDef conf fill:#fff9c4,stroke:#f9a825,color:#1a1a1a
+
+class CLSLLM,NLLM,ELLM,SLLM,RW,SUPLLM,QANSWER llm
+class PTOOL,NTOOL,ETOOL,SMEMR,UPDATEWL tool
+class WATCHLIST,PRICEDB,MEMORY store
+class SEND external
+class H1,H2 hitl
+class GUARD,QGUARD guardrail
+class CRON,MANUAL,CHAT trigger
+class REPLY reply
+class CONF conf

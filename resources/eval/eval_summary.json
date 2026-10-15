@@ -1,0 +1,89 @@
+{
+  "total": 20,
+  "passed": 20,
+  "failed": 0,
+  "rate": 1.0,
+  "by_slice": {
+    "lookup": {
+      "slice_type": "lookup",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "rate": 1.0
+    },
+    "news": {
+      "slice_type": "news",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "rate": 1.0
+    },
+    "indicator": {
+      "slice_type": "indicator",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "rate": 1.0
+    },
+    "comparison": {
+      "slice_type": "comparison",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "rate": 1.0
+    },
+    "portfolio": {
+      "slice_type": "portfolio",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "rate": 1.0
+    },
+    "watchlist": {
+      "slice_type": "watchlist",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "rate": 1.0
+    },
+    "chart": {
+      "slice_type": "chart",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "rate": 1.0
+    },
+    "out_of_scope": {
+      "slice_type": "out_of_scope",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "rate": 1.0
+    },
+    "injection": {
+      "slice_type": "injection",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "rate": 1.0
+    },
+    "disclaimer": {
+      "slice_type": "disclaimer",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "rate": 1.0
+    },
+    "diagram": {
+      "slice_type": "diagram",
+      "total": 0,
+      "passed": 0,
+      "failed": 0,
+      "rate": null
+    }
+  },
+  "failures": [],
+  "rule_passed": 20,
+  "rule_total": 20,
+  "rule_pass_rate": 1.0
+}

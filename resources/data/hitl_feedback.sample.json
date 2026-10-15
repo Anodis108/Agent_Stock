@@ -1,0 +1,24 @@
+[
+  {
+    "id": "sample_1",
+    "timestamp": "2026-09-28T10:00:00Z",
+    "session_id": "sess_001",
+    "question": "FPT hôm nay thế nào?",
+    "answer": "Không rõ.",
+    "rating": 2,
+    "is_positive": false,
+    "reason": "Thiếu ý",
+    "user_feedback": "Cần thêm thông tin giá hiện tại."
+  },
+  {
+    "id": "sample_2",
+    "timestamp": "2026-09-28T10:05:00Z",
+    "session_id": "sess_002",
+    "question": "Giá HPG?",
+    "answer": "Giá HPG là 26000",
+    "rating": 5,
+    "is_positive": true,
+    "reason": null,
+    "user_feedback": "Tốt"
+  }
+]
