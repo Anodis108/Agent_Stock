@@ -9,8 +9,8 @@ from pathlib import Path
 root_dir = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(root_dir / "src"))
 
-from backend.database.connection import get_connection
-from backend.database.repositories import HITLEvaluationRepository
+from web_backend.infra.database.connection import get_connection
+from web_backend.infra.database.repositories import HITLEvaluationRepository
 
 
 def get_default_output_dir() -> Path:

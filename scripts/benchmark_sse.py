@@ -30,13 +30,13 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from backend.eval.history import get_git_sha  # noqa: E402
-from backend.infra.llm.semaphore import (  # noqa: E402
+from ai_backend.application.eval.history import get_git_sha  # noqa: E402
+from ai_backend.infra.llm.semaphore import (  # noqa: E402
     get_llm_semaphore_limit,
     llm_semaphore_slot,
     reset_llm_semaphore_for_tests,
 )
-from backend.settings import settings  # noqa: E402
+from common.settings.config import settings  # noqa: E402
 
 REPORT_MD = ROOT / "resources" / "eval" / "sse_benchmark.md"
 REPORT_JSON = ROOT / "resources" / "eval" / "sse_benchmark.json"

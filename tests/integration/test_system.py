@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.main import app as product_app
+from web_backend.main import app as product_app
 
 ROOT = Path(__file__).resolve().parents[2] if Path(__file__).resolve().parent.name in ("unit", "integration", "e2e") else Path(__file__).resolve().parents[1]
 FE = ROOT / "src" / "frontend"
@@ -1292,4 +1292,51 @@ def test_phase4_end_to_end_integration_chat_and_portfolio_pnl():
     assert "switchView" in js_text
 
 
+# ==============================================================================
+# Phase 6.2: Nginx, Release & Publish Deployment Tests (AC-12)
+# ==============================================================================
 
+def test_nginx_deploy_configuration():
+    """AC-12: Kiểm tra src/deploy/nginx.conf nghe port 80, proxy về 127.0.0.1:8000, tắt buffering cho stream."""
+    nginx_conf = ROOT / "src" / "deploy" / "nginx.conf"
+    assert nginx_conf.is_file(), f"src/deploy/nginx.conf không tồn tại tại {nginx_conf}"
+
+    content = nginx_conf.read_text(encoding="utf-8")
+    assert "listen 80;" in content, "Nginx phải nghe trên cổng 80"
+    assert "proxy_pass http://127.0.0.1:8000;" in content, "Nginx phải proxy về cổng 8000 của Web Backend"
+
+    # Kiểm tra tắt buffering cho các route stream /chat và /api/
+    assert "location /chat" in content
+    assert "location /api/" in content
+    for location in ("location /chat", "location /api/"):
+        idx = content.find(location)
+        block = content[idx : idx + 600]
+        assert "proxy_buffering off;" in block, f"{location} phải có proxy_buffering off"
+        assert "proxy_cache off;" in block, f"{location} phải có proxy_cache off"
+
+
+def test_release_script_automation():
+    """AC-12: Kiểm tra src/deploy/release.ps1 hỗ trợ đầy đủ 4 actions (up, smoke, rollback, status)."""
+    release_ps1 = ROOT / "src" / "deploy" / "release.ps1"
+    assert release_ps1.is_file(), f"src/deploy/release.ps1 không tồn tại tại {release_ps1}"
+
+    content = release_ps1.read_text(encoding="utf-8")
+    assert 'ValidateSet("up", "smoke", "rollback", "status")' in content, "release.ps1 phải hỗ trợ 4 action chuẩn"
+    assert "Invoke-Up" in content, "release.ps1 phải định nghĩa hàm Invoke-Up"
+    assert "Invoke-Smoke" in content, "release.ps1 phải định nghĩa hàm Invoke-Smoke"
+    assert "Invoke-Rollback" in content, "release.ps1 phải định nghĩa hàm Invoke-Rollback"
+    assert "Invoke-Status" in content, "release.ps1 phải định nghĩa hàm Invoke-Status"
+
+    # Không gọi các công cụ cloud đắt đỏ ngoài phạm vi spec (gcloud)
+    assert "gcloud" not in content.lower(), "release.ps1 không được gọi gcloud"
+
+
+def test_publish_script_cloudflare_tunnel():
+    """AC-12: Kiểm tra src/deploy/publish.ps1 hỗ trợ Cloudflare Tunnel trỏ vào port 80."""
+    publish_ps1 = ROOT / "src" / "deploy" / "publish.ps1"
+    assert publish_ps1.is_file(), f"src/deploy/publish.ps1 không tồn tại tại {publish_ps1}"
+
+    content = publish_ps1.read_text(encoding="utf-8")
+    assert "cloudflared" in content.lower(), "publish.ps1 phải hỗ trợ cloudflared tunnel"
+    assert "127.0.0.1:80" in content or "TargetUrl" in content, "publish.ps1 phải trỏ vào Nginx cổng 80"
+    assert "$CheckOnly" in content, "publish.ps1 phải hỗ trợ tham số -CheckOnly để kiểm tra cấu hình"

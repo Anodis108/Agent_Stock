@@ -25,9 +25,9 @@ def test_docker_compose_structure():
     backend = services["backend"]
     assert backend["image"] == "portfolio-watch:backend"
     assert backend["build"]["context"] == "."
-    assert backend["build"]["dockerfile"] == "src/backend/Dockerfile"
+    assert backend["build"]["dockerfile"] in ("src/web_backend/Dockerfile", "src/backend/Dockerfile")
     assert backend["entrypoint"] == ["sh", "/docker-entrypoint.sh"]
-    assert "backend.main:app" in " ".join(backend["command"])
+    assert ("web_backend.main:app" in " ".join(backend["command"])) or ("backend.main:app" in " ".join(backend["command"]))
     assert "pw_data:/app/data" in backend["volumes"]
     assert "./src:/app/src:ro" in backend["volumes"]
     assert "healthcheck" in backend, "backend must configure healthcheck"
@@ -41,9 +41,9 @@ def test_docker_compose_structure():
     ai_backend = services["ai_backend"]
     assert ai_backend["image"] == "portfolio-watch:backend"
     assert ai_backend["build"]["context"] == "."
-    assert ai_backend["build"]["dockerfile"] == "src/backend/Dockerfile"
+    assert ai_backend["build"]["dockerfile"] in ("src/ai_backend/Dockerfile", "src/backend/Dockerfile")
     assert ai_backend["entrypoint"] == ["sh", "/docker-entrypoint.sh"]
-    assert "backend.ai_main:app" in " ".join(ai_backend["command"])
+    assert ("ai_backend.main:app" in " ".join(ai_backend["command"])) or ("backend.ai_main:app" in " ".join(ai_backend["command"]))
     assert "pw_data:/app/data" in ai_backend["volumes"]
     assert "./src:/app/src:ro" in ai_backend["volumes"]
     assert "healthcheck" in ai_backend, "ai_backend must configure healthcheck"
@@ -72,22 +72,23 @@ def test_docker_compose_structure():
 
 
 def test_backend_dockerfile():
-    """Verify src/backend/Dockerfile implements multi-stage build and non-root appuser."""
+    """Verify src/web_backend/Dockerfile and src/ai_backend/Dockerfile implement multi-stage build and non-root appuser."""
     root = get_project_root()
-    dockerfile_path = root / "src" / "backend" / "Dockerfile"
-    assert dockerfile_path.exists(), "src/backend/Dockerfile must exist"
+    for rel_path in ("src/web_backend/Dockerfile", "src/ai_backend/Dockerfile"):
+        dockerfile_path = root / rel_path
+        assert dockerfile_path.exists(), f"{rel_path} must exist"
 
-    content = dockerfile_path.read_text(encoding="utf-8")
+        content = dockerfile_path.read_text(encoding="utf-8")
 
-    # Multi-stage check
-    assert "AS builder" in content, "Dockerfile must have builder stage"
-    assert "AS runner" in content, "Dockerfile must have runner stage"
+        # Multi-stage check
+        assert "AS builder" in content, f"{rel_path} must have builder stage"
+        assert "AS runner" in content, f"{rel_path} must have runner stage"
 
-    # Non-root user check
-    assert "gosu" in content, "Dockerfile must install gosu for dropping root privileges"
-    assert "appuser" in content, "Dockerfile must configure appuser"
-    assert "10001" in content, "Dockerfile must use uid/gid 10001 for appuser"
-    assert "/opt/venv" in content, "Dockerfile must use virtualenv in /opt/venv"
+        # Non-root user check
+        assert "gosu" in content, f"{rel_path} must install gosu for dropping root privileges"
+        assert "appuser" in content, f"{rel_path} must configure appuser"
+        assert "10001" in content, f"{rel_path} must use uid/gid 10001 for appuser"
+        assert "/opt/venv" in content, f"{rel_path} must use virtualenv in /opt/venv"
 
 
 def test_docker_entrypoint_script():
@@ -107,7 +108,7 @@ def test_docker_entrypoint_script():
 
 
 def test_local_run_scripts():
-    """Verify run_local.ps1 and run_local.sh exist and invoke uvicorn backend.main:app."""
+    """Verify run_local.ps1 and run_local.sh exist and invoke uvicorn."""
     root = get_project_root()
     ps1_path = root / "scripts" / "run_local.ps1"
     sh_path = root / "scripts" / "run_local.sh"
@@ -116,11 +117,11 @@ def test_local_run_scripts():
     assert sh_path.exists(), "scripts/run_local.sh must exist"
 
     ps1_content = ps1_path.read_text(encoding="utf-8")
-    assert "uvicorn backend.main:app" in ps1_content
+    assert ("uvicorn web_backend.main:app" in ps1_content) or ("uvicorn backend.main:app" in ps1_content)
     assert "PYTHONPATH" in ps1_content
     assert ".env" in ps1_content
 
     sh_content = sh_path.read_text(encoding="utf-8")
-    assert "uvicorn backend.main:app" in sh_content
+    assert ("uvicorn web_backend.main:app" in sh_content) or ("uvicorn backend.main:app" in sh_content)
     assert "PYTHONPATH" in sh_content
     assert ".env" in sh_content

@@ -14,7 +14,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from backend.infra.llm.prompt_registry import resolve_prompts_dir  # noqa: E402
+from ai_backend.infra.llm.prompt_registry import resolve_prompts_dir  # noqa: E402
 
 
 def list_versions(prompt_dir: Path) -> list[int]:

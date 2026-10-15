@@ -1,27 +1,43 @@
 # AGENTS.md
 
-Đọc `specs/product-spec.md`, `specs/implementation-plan.md`, và `specs/test-plan.md` trước khi sửa code.
+Dự án phát triển theo phương pháp **Spec-Driven Development (SDD)**. Luôn đọc `specs/product-spec.md`, `specs/implementation-plan.md`, và `specs/test-plan.md` trước khi sửa code.
 
-## Quy tắc
+## 1. Nguyên Tắc Cốt Lõi (Core Rules)
+- **Always read the specs before coding**: Đọc kỹ spec liên quan trong `specs/` trước khi viết bất kỳ dòng mã nào.
+- **Implement only one phase or task at a time**: Chỉ làm một ô chưa tick `[ ]` trong `specs/implementation-plan.md`. Phase trước hoàn thành 100% mới chuyển sang phase sau.
+- **Keep the app simple**: Giữ mã nguồn đơn giản, dễ đọc, tập trung vào MVP. Không over-engineer, không thêm feature ngoài spec.
+- **Do not add unnecessary libraries**: Chỉ sử dụng các thư viện đã khai báo trong `pyproject.toml`.
+- **Do not change architecture unless the spec is updated**: Không tự ý đổi kiến trúc, schema database, hay API nếu spec chưa cập nhật.
+- **After each implementation, update specs/change-log.md**: Ghi rõ mục tiêu, file đã đổi, kết quả test và mốc thời gian.
+- **After each implementation, explain how to test the change**: Luôn cung cấp lệnh chạy app, các bước test thủ công và lệnh pytest của ô vừa làm.
 
-- Làm một ô chưa tick trong `specs/implementation-plan.md`. Phase trước tick hết rồi mới sang phase sau.
-- Giữ app đơn giản. Không thêm feature ngoài spec.
-- Không thêm thư viện ngoài `pyproject.toml`.
-- Không đổi kiến trúc, schema, hay API nếu spec chưa cập nhật.
-- Chưa được yêu cầu code thì chỉ sửa file trong `specs/` và `README.md`.
-- Xong một ô: tick ô đó, ghi file đã đổi vào `specs/change-log.md`, rồi nói cách test.
+## 2. Kiến Trúc 3 Khối Clean Architecture (Kế thừa từ AI_Face_checkin)
+- **`src/common/` (Shared Kernel)**: Base models (`CustomBaseModel`), Base services (`BaseService`, `AsyncBaseService`), Domain entities & indicators thuần túy, Ports trừu tượng, Logging (Correlation ID), Settings/Secrets, Transport schemas & client.
+- **`src/web_backend/` (Web Microservice - Cổng 8000)**: Entry `web_backend.main:app`. Xử lý Presentation (Routers, Middleware), Application (Use Cases), Domain (Session & Portfolio logic), Infra (PostgreSQL/SQLite, Repositories, Remote AI client).
+- **`src/ai_backend/` (AI Microservice - Cổng 8001)**: Entry `ai_backend.main:app`. Chỉ mở các endpoint `/health`, `/v1/chat/stream`, `/v1/scan`. Chứa 10 Worker Agents, LangGraph Swarm StateGraph, Concept RAG với Qdrant, Guardrails, Cache 2 tầng, Cost/Token Tracker, Eval Gate.
+- **Ranh giới nghiêm ngặt**:
+  - `web_backend` và `ai_backend` tuyệt đối không import trực tiếp lẫn nhau.
+  - `web_backend` không import `openai`, `langchain`, hay `langgraph`.
+  - Không tạo hoặc duy trì `src/backend`, `src/ai`, hay `src/web`.
+- **Chuẩn hóa BaseService**: Mọi service nghiệp vụ trong `application/` đều kế thừa `BaseService` hoặc `AsyncBaseService` từ `src/common/base/base_service.py` với phương thức chuẩn `process(input: InputModel) -> OutputModel`.
 
-## Đợt này
+## 3. Quy Chuẩn Kiểm Thử & CI
+- **Kiểm thử 4 tầng**: `src/common/tests/`, `src/web_backend/tests/`, `src/ai_backend/tests/`, và `tests/e2e/`.
+- **Không gọi internet khi test**: Toàn bộ test suite phải pass offline (`PRICE_FALLBACK_ON_ERROR=true`, mock Qdrant/Embeddings).
+- **Golden Dataset v6**: 20/20 test cases thuộc 10 lát cắt chuẩn trong `tests/e2e/test_golden_v6_slices.py` phải luôn đạt 100% PASS.
 
-- Tách `src/backend` thành `src/web_backend` và `src/ai_backend`. Phần chung chỉ `src/shared`. Không tạo `src/ai` hay `src/web`.
-- Web là `web_backend.main:app` cổng 8000. AI là `ai_backend.app:app` cổng 8001, chỉ `/health`, `/v1/chat`, `/v1/chat/stream`, `/v1/scan`.
-- `.env` chỉ chứa secret, gồm `DATABASE_URL`. Tham số nằm ở `resources/configs/config.yaml`.
-- Public từ máy này. Nginx cổng 80 là cửa duy nhất. App nghe `127.0.0.1`. Tunnel dùng Cloudflare. Không gọi `gcloud`. Không viết nginx `listen 443`.
-- Test không gọi internet. `pytest tests/` phải còn pass.
+## 4. Vận Hành & Triển Khai
+- `.env` chỉ chứa secrets (`DATABASE_URL`, API Keys). Toàn bộ tham số cấu hình nằm tại `resources/configs/config.yaml`.
+- Nginx cổng 80 là cửa ngõ duy nhất proxy về `127.0.0.1:8000`, tắt buffering (`proxy_buffering off`) cho route stream `/chat`.
+- Vận hành phát hành bằng `src/deploy/release.ps1` (`up`, `smoke`, `rollback`, `status`), không gọi `gcloud`.
+- Public ra internet bằng Cloudflare Tunnel (`src/deploy/publish.ps1`) hoặc ngrok.
 
-## Khi báo xong
-
-Ghi lệnh chạy app, bước bấm trên UI, và lệnh pytest của ô vừa làm.
+## 5. Báo Cáo Khi Hoàn Thành Mỗi Task
+Mỗi khi tick xong một ô trong `specs/implementation-plan.md`, báo cáo theo mẫu:
+1. Tóm tắt những gì đã xây dựng và danh sách file đã tạo/sửa.
+2. Lệnh kiểm thử tự động (pytest) và kết quả chạy.
+3. Lệnh chạy app và các bước bấm kiểm tra trên UI.
+4. Xác nhận đã cập nhật `specs/change-log.md`.
 
 <!-- vnai-bootstrap | auto-generated -->
 # Vnstock Vibe Onboarding

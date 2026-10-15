@@ -16,10 +16,10 @@ from __future__ import annotations
 from typing import Any
 import pytest
 
-from backend.domain.guardrails.input_guardrail import check_input_guardrail
-from backend.domain.entities import WatchlistItem
-from backend.domain.ports import PriceBar, PriceQuote, NewsItem
-from backend.graph.chat import run_chat_graph
+from ai_backend.domain.guardrails.input_guardrail import check_input_guardrail
+from common.domain.entities import WatchlistItem
+from common.domain.ports import PriceBar, PriceQuote, NewsItem
+from ai_backend.infra.graph.chat import run_chat_graph
 
 
 class MockPriceSource:
@@ -294,8 +294,8 @@ def test_golden_v6_dataset_coverage_all_20_cases():
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[2] if Path(__file__).resolve().parent.name in ("unit", "integration", "e2e") else Path(__file__).resolve().parents[1]
-    dataset_path = root / "resources" / "eval" / "golden_v6_comprehensive.yaml"
-    assert dataset_path.is_file(), f"Tệp Golden v6 không tồn tại: {dataset_path}"
+    dataset_path = root / "resources" / "eval" / "golden_dataset.yaml"
+    assert dataset_path.is_file(), f"Tệp Golden dataset không tồn tại: {dataset_path}"
 
     payload = yaml.safe_load(dataset_path.read_text(encoding="utf-8"))
     assert payload.get("dataset") == "portfolio_watch"

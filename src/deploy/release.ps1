@@ -64,8 +64,8 @@ function Invoke-Up {
     }
 
     # 3. Khởi chạy các service với docker compose
-    Write-Host "[INFO] Khởi chạy containers: postgres, qdrant, backend, ai..." -ForegroundColor Cyan
-    docker compose up -d postgres qdrant backend ai
+    Write-Host "[INFO] Khởi chạy containers: postgres, qdrant, backend, ai_backend..." -ForegroundColor Cyan
+    docker compose up -d postgres qdrant backend ai_backend
 
     # 4. Hiển thị trạng thái sau khi up
     Write-Host "[OK] Dịch vụ đã khởi chạy. Kiểm tra trạng thái..." -ForegroundColor Green
@@ -104,7 +104,7 @@ function Invoke-Rollback {
 
     # 2. Rollback docker container về trạng thái ổn định
     Write-Host "[INFO] Tái khởi động lại container về trạng thái ổn định..." -ForegroundColor Cyan
-    docker compose up -d --force-recreate postgres qdrant backend ai
+    docker compose up -d --force-recreate postgres qdrant backend ai_backend
 
     # 3. Chạy lại smoke test để xác nhận sau rollback
     Write-Host "[INFO] Chạy smoke test xác nhận sau khi rollback..." -ForegroundColor Cyan

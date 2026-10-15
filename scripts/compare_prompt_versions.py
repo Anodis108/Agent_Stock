@@ -23,7 +23,7 @@ if str(SRC) not in sys.path:
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from backend.infra.llm.prompt_registry import registry  # noqa: E402
+from ai_backend.infra.llm.prompt_registry import registry  # noqa: E402
 
 SEP = "-" * 72
 

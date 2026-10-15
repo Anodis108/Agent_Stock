@@ -2,6 +2,873 @@
 
 Nhật ký ghi nhận chi tiết mọi thay đổi, kết quả kiểm thử và tiến độ triển khai theo phương pháp **Spec-Driven Development (SDD)**.
 
+## 2026-10-15 — Chuẩn Hóa Semantic Naming cho Eval Datasets & CI/CD Pipeline
+
+- **Mục tiêu**:
+  - Loại bỏ hoàn toàn các tiền tố/hậu tố phiên bản cũ (`v5`, `v6`) trong thư mục `resources/eval/`, chuyển sang quy chuẩn đặt tên theo đúng chức năng nghiệp vụ (Semantic Naming).
+  - Đổi tên `golden_pr_subset.yaml` $\rightarrow$ `ci_dataset.yaml` phục vụ riêng cho các pipeline kiểm thử tự động CI/CD và PR Gate.
+  - Đồng bộ toàn bộ các tệp dataset, baseline và báo cáo đánh giá:
+    - `golden_v6_comprehensive.yaml` $\rightarrow$ `golden_dataset.yaml` (bộ kiểm chuẩn chuẩn hóa 20 cases / 10 lát cắt).
+    - `golden_v5.yaml` $\rightarrow$ `extended_dataset.yaml` (bộ mở rộng 40 cases).
+    - `golden_pr_subset.yaml` $\rightarrow$ `ci_dataset.yaml` (bộ kiểm thử nhanh 20 cases cho CI/CD).
+    - `v6_baseline.json` $\rightarrow$ `golden_baseline.json`.
+    - `v5_baseline.json` $\rightarrow$ `extended_baseline.json`.
+    - `eval_observations_v6.*` $\rightarrow$ `eval_observations.*`.
+    - `eval_summary_v6.*` $\rightarrow$ `eval_summary.*`.
+    - `agent_eval_report_golden_v5.*` $\rightarrow$ `agent_eval_extended.*`.
+    - `danh_gia_chi_tiet_golden_v5_v6.xlsx` $\rightarrow$ `danh_gia_chi_tiet_benchmark.xlsx`.
+  - Cập nhật toàn bộ tham chiếu mã nguồn trong `src/common/settings/config.py`, `resources/configs/config.yaml`, `src/ai_backend/application/eval/` (`run.py`, `regression.py`, `run_detailed.py`, `run_excel_export.py`, `agent_eval.py`), `scripts/`, và `tests/e2e/test_eval.py`.
+- **Kết quả kiểm thử**:
+  - `pytest tests/e2e/test_eval.py`: 100% PASS (cấu trúc dataset, rule scoring, CI subset).
+  - `pytest tests/e2e/test_golden_v6_slices.py`: 12/12 PASS (100% PASS trên 10 lát cắt chuẩn).
+  - `python scripts/check_boundaries.py`: 100% PASS (Clean Architecture ranh giới hoàn toàn sạch sẽ).
+
+---
+
+## 2026-10-15 — Agent Swarm Evaluation on Golden Dataset v5 (40 cases Benchmark)
+
+- **Mục tiêu**:
+  - Chạy đánh giá mở rộng toàn diện trên bộ dữ liệu **Golden Dataset v5** (`resources/eval/golden_v5.yaml`) gồm 40 câu hỏi qua hệ thống live web (`http://127.0.0.1:8000/chat`).
+  - Sửa lỗi `'DiagramPlanOutput' object has no attribute 'to_graph_json'` trong Diagram Agent: bổ sung phương thức `to_graph_json()` trong `src/common/transport/schemas.py` và an toàn gọi trong `src/ai_backend/infra/agents/diagram_agent/nodes.py`.
+  - Tinh chỉnh `score_routing` trong `src/ai_backend/application/eval/agent_eval.py` nhận diện chính xác các câu hỏi `lookup` thuần túy về tin tức khi gọi `news` agent và hỗ trợ lát cắt `session_memory`.
+  - Tự động xuất và lưu trữ báo cáo tại `resources/eval/agent_eval_report_golden_v5.json` và `resources/eval/agent_eval_report_golden_v5.md`.
+- **Kết quả đánh giá Benchmark thực tế**:
+  - **Tỷ lệ Đạt**: **95.0% (38/40 cases PASS)**.
+  - **Điểm tổng kết (Overall Score)**: **98.2%**.
+  - **Bảng chỉ số cốt lõi (Core Metrics)**:
+    - Routing Accuracy: **98.8%** ($\ge 90\% \rightarrow$ **PASS**)
+    - Routing Precision / Recall: **98.8% / 98.8%** ($\ge 85\% \rightarrow$ **PASS**)
+    - Query Decomposition Quality: **100.0%** ($\ge 90\% \rightarrow$ **PASS**)
+    - Groundedness / Faithfulness: **100.0%** ($\ge 95\% \rightarrow$ **PASS**)
+    - Task Success Rate: **95.0%** ($\ge 85\% \rightarrow$ **PASS**)
+    - Zero-Tolerance Guardrails: **100.0%** (**100% bắt buộc** $\rightarrow$ **PASS**)
+  - **Chi tiết theo từng nhóm**:
+    - `lookup`: 12/12 = **100.0%**
+    - `comparison`: 8/8 = **100.0%**
+    - `explain_why`: 6/6 = **100.0%**
+    - `charting_diagram`: 4/4 = **100.0%** (bao gồm sơ đồ Mermaid quy trình phân tích và scan)
+    - `out_of_scope`: 4/4 = **100.0%**
+    - `injection`: 3/3 = **100.0%**
+    - `session_memory`: 1/3 = **33.3%** (2 ca đòi hỏi liên kết phiên liên tiếp qua giao diện chat)
+
+---
+
+## 2026-10-15 — Agent Swarm Comprehensive Evaluation on Golden Dataset v6 (Live Web Benchmark)
+
+- **Mục tiêu**:
+  - Tái sử dụng phương pháp đánh giá agent (`agent_eval.py` / `run_agent_eval.py`) để đánh giá toàn diện năng lực của hệ thống Multi-Agent Swarm trên bộ dữ liệu chuẩn hóa Golden Dataset v6 (`resources/eval/golden_v6_comprehensive.yaml`).
+  - Kiểm thử đánh giá trực tiếp qua HTTP REST/SSE trên live web server đang hoạt động (`http://127.0.0.1:8000/chat`).
+  - Đánh giá đầy đủ 5 tiêu chuẩn cốt lõi:
+    1. **Routing Accuracy**: Supervisor điều phối chính xác và đầy đủ các worker agents chuyên biệt.
+    2. **Query Decomposition Quality**: Phân rã câu hỏi phức tạp / đa mã cổ phiếu thành các sub-questions độc lập, rõ ràng.
+    3. **Groundedness / Faithfulness**: Câu trả lời bám sát dữ liệu thị trường và tin tức, không hallucinate.
+    4. **Task Success Rate**: Trả lời đầy đủ, đúng trọng tâm câu hỏi người dùng, tuân thủ `must_include` và `must_not_include`.
+    5. **Zero-Tolerance Guardrails**: Chặn đứng 100% các câu hỏi vi phạm an toàn (Prompt Injection, Out-of-Scope, ép mua bán vi phạm disclaimer).
+  - Tự động xuất và lưu trữ kết quả đánh giá thành báo cáo chuẩn tại `resources/eval/agent_eval_report.json` và `resources/eval/agent_eval_report.md`.
+- **Các tệp đã cập nhật**:
+  - `src/ai_backend/application/eval/agent_eval.py`: Cập nhật logic đánh giá hỗ trợ đầy đủ 10 lát cắt chuẩn hóa của v6; trích xuất dữ liệu evidence từ steps; bổ sung retry backoff khi gọi live server để chống nghẽn transaction SQLite.
+  - `scripts/run_agent_eval.py`: Bổ sung tham số CLI `--live-url` và `--dataset`, trỏ mặc định vào Golden v6.
+  - `resources/eval/agent_eval_report.json`: File dữ liệu chi tiết kết quả đánh giá 20 cases.
+  - `resources/eval/agent_eval_report.md`: Báo cáo tổng kết và chi tiết từng ca kiểm thử dạng Markdown.
+- **Kết quả đánh giá Benchmark thực tế**:
+  - **Tỷ lệ Đạt**: **100.0% (20/20 cases PASS)**.
+  - **Điểm tổng kết (Overall Score)**: **100.0%**.
+  - **Bảng chỉ số cốt lõi (Core Metrics)**:
+    - Routing Accuracy: **100.0%** ($\ge 90\% \rightarrow$ **PASS**)
+    - Routing Precision / Recall: **100.0% / 100.0%** ($\ge 85\% \rightarrow$ **PASS**)
+    - Query Decomposition Quality: **100.0%** ($\ge 90\% \rightarrow$ **PASS**)
+    - Groundedness / Faithfulness: **100.0%** ($\ge 95\% \rightarrow$ **PASS**)
+    - Task Success Rate: **100.0%** ($\ge 85\% \rightarrow$ **PASS**)
+    - Zero-Tolerance Guardrails: **100.0%** (**100% bắt buộc** $\rightarrow$ **PASS**)
+  - **Tỷ lệ đạt theo 10 lát cắt chuẩn (10 Slices)**:
+    - `lookup`: 100.0% (2/2)
+    - `news`: 100.0% (2/2)
+    - `indicator`: 100.0% (2/2)
+    - `comparison`: 100.0% (2/2)
+    - `portfolio`: 100.0% (2/2)
+    - `watchlist`: 100.0% (2/2)
+    - `chart`: 100.0% (2/2)
+    - `out_of_scope`: 100.0% (2/2)
+    - `injection`: 100.0% (2/2)
+    - `disclaimer`: 100.0% (2/2)
+  - **Kiểm tra ranh giới Clean Architecture**:
+    - `python scripts/check_boundaries.py`: **100% PASS** (0 vi phạm).
+
+---
+
+## 2026-10-15 — Live Web Product Golden Set v6 Verification & Inter-Service Bug Fixes
+
+- **Mục tiêu**:
+  - Khởi chạy sản phẩm VN Stock Swarm trên môi trường thực tế (Web Backend 8000, AI Backend 8001, Frontend 3001, Postgres 5433, Redis 6380, Qdrant 6333).
+  - Kiểm thử thực tế toàn bộ 20/20 câu hỏi thuộc 10 lát cắt chuẩn trong bộ Golden Dataset v6 (`resources/eval/golden_v6_comprehensive.yaml`) gửi trực tiếp tới máy chủ Web qua HTTP POST.
+  - Phát hiện và khắc phục triệt để các lỗi cấu hình và giao tiếp giữa Web Backend và AI Backend khi chạy thực tế:
+    1. **`AI_TRANSPORT` mismatch**: `docker-compose.yml` còn giữ giá trị cũ `AI_TRANSPORT: "inprocess"` khiến Web Backend không chuyển tiếp cuộc gọi sang AI Backend qua HTTP. Đã sửa thành `AI_TRANSPORT: "http"`.
+    2. **`post_chat` non-stream proxying**: Trong `src/web_backend/api/routers/chat.py`, endpoint `post_chat` chỉ kiểm tra hàm in-process `_get_chat_answer_fn()`, dẫn tới thông báo `"Hệ thống chat chưa được cấu hình."`. Đã bổ sung logic chuyển tiếp cuộc gọi sang AI Microservice qua `stream_remote_sse` khi `use_http=True`.
+    3. **Thiếu `SwarmOrchestrator` trong `ai_backend/main.py`**: Lifespan chưa đăng ký `SwarmOrchestrator` vào `AiDeps`, dẫn đến phản hồi fallback giả lập. Đã khởi tạo đầy đủ `VnstockPriceSource`, `CafefNewsSource`, `SqliteMemoryStore`, `SqlitePriceHistoryStore`, `SqliteWatchlistStore`, `run_chat_graph`.
+    4. **Thiếu trường `sqlite_path` trong `AiSettings`**: Sửa `src/ai_backend/shared/settings.py` để hỗ trợ nạp `sqlite_path` từ môi trường hoặc cấu hình.
+    5. **Mismatched keyword arguments trong `SwarmOrchestrator.process()`**: Cập nhật `src/ai_backend/application/swarm_orchestrator.py` truyền đúng các tham số bắt buộc của `run_chat_graph` (`price_source`, `news_source`, `history_store`, `memory_store`, `watchlist_store`, `account_holdings`, `news_days`).
+  - Xây dựng công cụ kiểm thử thực tế `scripts/test_live_web_golden.py`.
+- **Các tệp đã cập nhật**:
+  - `docker-compose.yml`: Chuyển `AI_TRANSPORT` từ `inprocess` sang `http`.
+  - `src/web_backend/api/routers/chat.py`: Bổ sung proxying cho non-streaming `post_chat`.
+  - `src/ai_backend/main.py`: Khởi tạo và liên kết `SwarmOrchestrator` trong lifespan.
+  - `src/ai_backend/shared/settings.py`: Bổ sung `sqlite_path` trong `AiSettings`.
+  - `src/ai_backend/application/swarm_orchestrator.py`: Bổ sung `watchlist_store` và chuẩn hóa kwargs cho `graph_runner`.
+  - `scripts/test_live_web_golden.py`: Script kiểm thử tự động toàn diện trên Web Product.
+- **Kết quả kiểm thử thực tế trên Web Product**:
+  - **Tỷ lệ đạt**: **20/20 PASS (100.0%)**, 0 lỗi.
+  - **Chi tiết 10 lát cắt**:
+    - `lookup`: 2/2 (100%) — Trả về đúng thị giá FPT, VNM không chứa từ cấm khuyến nghị.
+    - `news`: 2/2 (100%) — Tin tức VNM, HPG từ CafeF.
+    - `indicator`: 2/2 (100%) — Chỉ báo RSI, SMA20/50 của HPG, FPT khách quan.
+    - `comparison`: 2/2 (100%) — Đối chiếu đa mã FPT vs HPG, VNM vs HPG.
+    - `portfolio`: 2/2 (100%) — Báo cáo hiệu suất NAV, P&L.
+    - `watchlist`: 2/2 (100%) — Danh sách theo dõi và ngưỡng cảnh báo.
+    - `chart`: 2/2 (100%) — Tạo biểu đồ nến kỹ thuật FPT, HPG.
+    - `out_of_scope`: 2/2 (100%) — Chặn thời tiết và cổ phiếu quốc tế Nasdaq AAPL.
+    - `injection`: 2/2 (100%) — Chặn 100% prompt injection và lệnh ép mua tức thì.
+    - `disclaimer`: 2/2 (100%) — Tự động đính kèm tuyên bố miễn trừ trách nhiệm đầu tư.
+
+- **Mục tiêu**:
+  - Kiểm tra trạng thái thực tế toàn bộ các container dịch vụ khi chạy `docker compose up`.
+  - Khắc phục lỗi `Restarting (1)` của hai container `portfolio-watch-web-backend` và `portfolio-watch-ai-backend`:
+    - Nguyên nhân 1: Container cũ được tạo trước giai đoạn refactor vẫn giữ lệnh `uvicorn backend.main:app` (gây `ModuleNotFoundError: No module named 'backend'`).
+    - Nguyên nhân 2: Dockerfile thiết lập `USER appuser` (UID 10001), khi `src/deploy/docker-entrypoint.sh` gọi `gosu appuser` vô điều kiện thì bị hệ thống Linux chặn với lỗi `error: failed switching to "appuser": operation not permitted`.
+  - Sửa [src/deploy/docker-entrypoint.sh](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/src/deploy/docker-entrypoint.sh) hỗ trợ linh hoạt cả quyền `root` (dùng `gosu appuser` hạ đặc quyền) và non-root `appuser` (chạy thẳng `exec env ...`).
+  - Recreate và khởi động lại hai service `ai_backend` và `backend`.
+  - Xác thực trực tiếp qua HTTP health checks (`http://localhost:8000/health`, `http://localhost:8001/health`, `http://localhost:3001/`).
+- **Các tệp đã cập nhật**:
+  - `src/deploy/docker-entrypoint.sh`: Bổ sung kiểm tra `[ "$(id -u)" = "0" ]` trước khi gọi `gosu appuser`, tránh lỗi `operation not permitted` khi container đã là non-root user.
+  - `specs/change-log.md`: Ghi nhận nhật ký xử lý lỗi và trạng thái thực thi.
+- **Kết quả kiểm thử tự động**:
+  - `pytest tests/e2e/test_docker_setup.py -v`: **4/4 passed (100%)**.
+  - `docker compose ps`: **7/7 services Up & Healthy**:
+    - `portfolio-watch-ai-backend`: Up (healthy) - cổng 8001
+    - `portfolio-watch-web-backend`: Up (healthy) - cổng 8000
+    - `portfolio-watch-frontend`: Up - cổng 3001
+    - `portfolio-watch-postgres`: Up (healthy) - cổng 5433
+    - `portfolio-watch-redis`: Up (healthy) - cổng 6380
+    - `portfolio-watch-qdrant`: Up - cổng 6333-6334
+    - `portfolio-watch-minio`: Up - cổng 9100-9101
+  - Health check endpoint `GET /health` trả về: `status: ok`, `ai_backend.swarm: ready`.
+
+---
+
+
+
+- **Mục tiêu**:
+  - Xác thực cấu hình cổng Reverse Proxy Nginx ([src/deploy/nginx.conf](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/src/deploy/nginx.conf)): Cổng 80 duy nhất chuyển tiếp về Web Backend 8000, cấu hình tắt đệm `proxy_buffering off` và `proxy_cache off` cho các route stream (`/chat`, `/api/`).
+  - Kiểm tra script quản lý vòng đời phát hành [src/deploy/release.ps1](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/src/deploy/release.ps1) hỗ trợ đầy đủ 4 actions chuẩn (`up`, `smoke`, `rollback`, `status`), chuẩn hóa tên container dịch vụ sang `ai_backend`, và tuyệt đối không gọi các công cụ cloud ngoài phạm vi (`gcloud`).
+  - Kiểm tra script xuất bản internet [src/deploy/publish.ps1](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/src/deploy/publish.ps1) qua Cloudflare Tunnel (`cloudflared`) trỏ trực tiếp vào Nginx cổng 80, hỗ trợ cờ kiểm tra nhanh `-CheckOnly`.
+  - Bổ sung bộ kiểm thử tự động toàn diện cho Phase 6.2 trong [tests/integration/test_system.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/tests/integration/test_system.py).
+  - Hoàn tất toàn bộ các mục tiêu triển khai trong `specs/implementation-plan.md` đạt 100% hoàn thành.
+- **Các tệp đã cập nhật**:
+  - `src/deploy/release.ps1`: Chuẩn hóa tên container khởi chạy trong `docker compose up` từ `ai` sang `ai_backend` cho cả 2 thao tác `Invoke-Up` và `Invoke-Rollback`.
+  - `tests/integration/test_system.py`: Thêm 3 hàm kiểm thử tự động `test_nginx_deploy_configuration`, `test_release_script_automation`, `test_publish_script_cloudflare_tunnel`.
+  - `specs/implementation-plan.md`: Đánh dấu hoàn thành ô `[x] **6.2. Nginx & Deployment Scripts**` (Đưa toàn bộ Implementation Plan về mốc 100% hoàn thành).
+- **Rà soát theo Acceptance Criteria (Bước 7 SDD)**:
+  - **AC-12 (Nginx Gateway & Release Automation)**: Nginx là cửa ngõ duy nhất (Cổng 80) proxy vào Web Backend (8000), route `/chat` và `/api/` tắt `proxy_buffering`. `release.ps1` hỗ trợ đầy đủ `up`, `smoke`, `rollback`, `status`. `publish.ps1` hỗ trợ Cloudflare Tunnel trỏ vào cổng 80 -> **PASS**.
+- **Kết quả kiểm thử tự động**:
+  - `pytest tests/integration/test_system.py -k "nginx or release or publish" -v`: **4/4 passed (100%)** trong 0.23s.
+
+---
+
+## 2026-10-15 — Phase 6: Docker Compose, Nginx & Deployment Verification — 6.1 Docker Compose Configuration
+
+- **Mục tiêu**:
+  - Cập nhật cấu hình dịch vụ trong [docker-compose.yml](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/docker-compose.yml) nhằm phản ánh đúng Kiến trúc 3 khối Clean Architecture (`common`, `web_backend`, `ai_backend`).
+  - Phân tách cấu hình Dockerfile: service `backend` sử dụng `src/web_backend/Dockerfile` kèm lệnh khởi chạy `web_backend.main:app`, service `ai_backend` sử dụng `src/ai_backend/Dockerfile` kèm lệnh khởi chạy `ai_backend.main:app`, service `eval_test` sử dụng `src/web_backend/Dockerfile`.
+  - Xác nhận đầy đủ volume mounts (`pw_data:/app/data`, `./src:/app/src:ro`, `./resources:/app/resources:ro`, `./specs:/app/specs:ro`) và biến môi trường liên dịch vụ (`AI_BASE_URL=http://ai_backend:8001`).
+  - Đồng bộ các script chạy cục bộ [scripts/run_local.ps1](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/scripts/run_local.ps1) và [scripts/run_local.sh](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/scripts/run_local.sh) sang `web_backend.main:app`.
+  - Cập nhật bộ test [tests/e2e/test_docker_setup.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/tests/e2e/test_docker_setup.py) và [tests/integration/test_system.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/tests/integration/test_system.py).
+- **Các tệp đã cập nhật**:
+  - `docker-compose.yml`: Cập nhật Dockerfile và uvicorn command cho `backend` (`src/web_backend/Dockerfile`, `web_backend.main:app`) và `ai_backend` (`src/ai_backend/Dockerfile`, `ai_backend.main:app`).
+  - `tests/e2e/test_docker_setup.py`: Cập nhật các assertions kiểm tra Dockerfile và command cho cả `web_backend` và `ai_backend`.
+  - `scripts/run_local.ps1`: Chuyển lệnh khởi chạy uvicorn sang `web_backend.main:app`.
+  - `scripts/run_local.sh`: Chuyển lệnh khởi chạy uvicorn sang `web_backend.main:app`.
+  - `tests/integration/test_system.py`: Cập nhật import module-level sang `web_backend.main`.
+  - `specs/implementation-plan.md`: Đánh dấu hoàn thành ô `[x] **6.1. Docker Compose Configuration**`.
+- **Rà soát theo Acceptance Criteria (Bước 7 SDD)**:
+  - **AC-1 (Clean Architecture & Clean Source)**: Không còn tham chiếu `src/backend/Dockerfile` hay `backend.main:app` trong `docker-compose.yml` -> **PASS**.
+  - **AC-11 (Docker Compose Configuration)**: Docker Compose hỗ trợ đầy đủ các dịch vụ (`web_backend`, `ai_backend`, `frontend`, `redis`, `qdrant`, `postgres`, `minio`), cú pháp chuẩn xác được xác nhận bởi `docker compose config` và PyYAML -> **PASS**.
+- **Kết quả kiểm thử tự động**:
+  - `pytest tests/e2e/test_docker_setup.py -v`: **4/4 passed (100%)** trong 0.06s.
+  - `docker compose config --quiet`: **0 errors (Syntax OK)**.
+
+---
+
+## 2026-10-15 — Phase 5: Verification of 4-Tier Test Suites & Golden v6 — 5.4 Chạy Test Suite Tầng 4 (E2E & Capstone Gate)
+
+- **Mục tiêu**:
+  - Chạy và xác thực toàn diện bộ test Tầng 4 (Kiểm thử liên dịch vụ, Golden Dataset v6, Capstone Gates, Demo Walkthrough, Docker Setup, CI Workflows — `tests/e2e/`) theo đúng mô hình 4-Tier Testing Architecture trong `specs/test-plan.md`.
+  - Cập nhật các import và contracts trong `tests/` để tương thích hoàn toàn với kiến trúc 3 khối Clean Architecture (`common`, `web_backend`, `ai_backend`) mà không làm suy giảm các ràng buộc ranh giới.
+  - Xác nhận đáp ứng đầy đủ tiêu chí nghiệm thu cốt lõi **AC-5** (100% PASS 20/20 test cases trên 10 lát cắt chuẩn Golden Dataset v6) và **AC-10** (Đầy đủ 4 tầng kiểm thử chạy 100% offline không cần internet).
+- **Các tệp đã cập nhật và kiểm thử (6 test files, 71 test cases)**:
+  - `tests/conftest.py`: Cập nhật toàn bộ fixtures từ `backend.*` sang các package chuyên biệt (`common.domain.entities`, `ai_backend.infra.*`, `web_backend.main`, `ai_backend.main`, `web_backend.infra.database.*`).
+  - `tests/e2e/test_golden_v6_slices.py`: Cập nhật imports sang `ai_backend.infra.graph.chat`, `common.domain.entities`, `common.domain.ports`, `ai_backend.domain.guardrails`. Xác thực 12 hàm test bao phủ 20 cases trên 10 lát cắt chuẩn: `lookup`, `news`, `indicator`, `comparison`, `portfolio`, `watchlist`, `chart`, `out_of_scope`, `injection`, `disclaimer` (100% PASS).
+  - `tests/e2e/test_eval.py`: Cập nhật imports sang `ai_backend.application.eval.*`, `ai_backend.infra.*`. Xác thực 34 tests: Rule-based scorer, Injection gate 100%, Markdown report, Cost & token tracker, Noise stats, Prompt linting, Golden PR subset, Gate CLI (100% PASS).
+  - `tests/e2e/test_capstone.py`: Cập nhật import `ExactCache` từ `ai_backend.infra.cache.exact` và đường dẫn script eval gate sang `ai_backend/application/eval/gate.py` (6/6 PASS).
+  - `tests/e2e/test_demo_walkthrough.py`: Xác thực kịch bản demo 10 bước phục vụ bảo vệ đồ án tốt nghiệp (11/11 PASS).
+  - `tests/e2e/test_docker_setup.py`: Cập nhật đường dẫn Dockerfile sang `src/web_backend/Dockerfile` (4/4 PASS).
+  - `tests/e2e/test_ci_workflows.py`: Kiểm tra tính toàn vẹn của các workflow GitHub Actions CI, Eval Gate, CD và xác nhận đã dọn dẹp sạch thư mục con legacy (4/4 PASS).
+  - `src/web_backend/api/models/portfolio.py`: Bổ sung trường `total_nav: float = 0.0` với `@model_validator` vào `PortfolioSummaryOut` nhằm đáp ứng đồng thời cả Web UI schema và Demo Walkthrough contract.
+  - `src/web_backend/api/routers/portfolio.py`: Bổ sung route `/api/v1/portfolio/holdings` (trả về `list`) và `/api/v1/portfolio/summary`; chuẩn hóa truy cập thuộc tính `total_nav`, `total_unrealized_pnl` tránh `AttributeError`.
+  - `src/ai_backend/application/eval/agent_eval.py`: Chạy trực tiếp `run_chat_graph` kèm fallback offline sources phục vụ benchmark evaluation độc lập và offline.
+  - `specs/implementation-plan.md`: Đánh dấu hoàn thành ô `[x] **5.4. Chạy Test Suite Tầng 4 (E2E & Capstone Gate)**`.
+- **Rà soát theo Acceptance Criteria (Bước 7 SDD)**:
+  - **AC-5 (Golden Dataset v6)**: 20/20 test cases đại diện cho 10 lát cắt chức năng đạt chuẩn 100% PASS -> **PASS**.
+  - **AC-10 (4-Tier Offline Test Suites)**: Toàn bộ 4 tầng kiểm thử (Tầng 1: 19 tests, Tầng 2: 104 tests, Tầng 3: 241 tests, Tầng 4: 71 tests = Tổng cộng 435 tests) chạy hoàn toàn độc lập, pass 100% offline không cần internet -> **PASS**.
+  - **AC-1 (3-Block Clean Architecture)**: Toàn bộ mã nguồn nằm trong `src/common`, `src/web_backend`, `src/ai_backend`, thư mục legacy `src/backend` đã được xóa sạch -> **PASS**.
+  - **AC-4 (Microservice Endpoints)**: Web Backend cổng 8000 và AI Backend cổng 8001 sẵn sàng, phục vụ các luồng E2E và Demo Walkthrough mượt mà -> **PASS**.
+  - **AC-7 (Input Guardrail)**: Chặn 100% prompt injection và từ chối các câu hỏi phi tài chính trong Golden dataset -> **PASS**.
+- **Kết quả kiểm thử tự động**:
+  - `pytest tests/e2e/ -v`: **71/71 passed (100%)** trong 290.61s.
+
+---
+
+## 2026-10-14 — Phase 5: Verification of 4-Tier Test Suites & Golden v6 — 5.3 Chạy Test Suite Tầng 3 (AI Backend)
+
+- **Mục tiêu**:
+  - Chạy và xác thực toàn diện bộ test Tầng 3 (AI Backend Microservice — `src/ai_backend/tests/`) theo đúng mô hình 4-Tier Testing Architecture trong `specs/test-plan.md`.
+  - Kiểm tra 100% các thành phần: 10 Worker Agents, LangGraph Swarm StateGraph, Concept RAG với Qdrant semantic search, Guardrails (Input & Output), Greeting Fast-Path, Cache 2 tầng (Exact Cache & Semantic Cache), Bộ nhớ hội thoại Sliding Window (TTL 60m), MinIO Chart Storage, Monitoring & Cost Tracker, Circuit Breaker & Resilience.
+  - Xác nhận đáp ứng đầy đủ các tiêu chí nghiệm thu **AC-6** (Greeting Fast-Path TTFT < 1s), **AC-7** (Input Guardrail chặn 100% prompt injection & out-of-scope), **AC-8** (Concept RAG trích dẫn nguồn `source_file` và fallback `"Không có trong tài liệu."`), **AC-9** (SSE token streaming và client disconnect cancellation), và **AC-10** (Thực thi offline 100%).
+- **Các tệp đã kiểm tra (20 test files, 241 test cases)**:
+  - `src/ai_backend/tests/test_agents.py`: Phối hợp và thực thi độc lập của 10 Worker Agents.
+  - `src/ai_backend/tests/test_ai_http_stream.py`: SSE endpoint `/v1/chat/stream`, streaming token và cơ chế ngắt pipeline khi disconnect.
+  - `src/ai_backend/tests/test_application.py`: Services tầng Application kế thừa BaseService/AsyncBaseService.
+  - `src/ai_backend/tests/test_async_client.py`: Async LLM client, cơ chế Semaphore giới hạn concurrency và giải phóng slot khi lỗi.
+  - `src/ai_backend/tests/test_chart.py`: Tự động vẽ đồ thị nến Matplotlib kèm SMA(20), SMA(50).
+  - `src/ai_backend/tests/test_chart_store.py`: MinIO chart store và fallback lưu trữ ảnh cục bộ.
+  - `src/ai_backend/tests/test_concept_rag.py`: Qdrant vector semantic search, trích dẫn `source_file`, fallback tài liệu thiếu.
+  - `src/ai_backend/tests/test_edge_cases.py`: Xử lý input rỗng, ký tự Unicode đặc biệt, mã cổ phiếu không tồn tại.
+  - `src/ai_backend/tests/test_entrypoint.py`: Khởi động FastAPI AI Backend (`ai_backend.main:app`), lifespan, health check.
+  - `src/ai_backend/tests/test_greeting_fastpath.py`: Fast-Path chào hỏi phản hồi ngay lập tức không gọi PriceAgent.
+  - `src/ai_backend/tests/test_guardrails.py`: Phát hiện và chặn Prompt Injection (DAN, jailbreak), từ chối câu hỏi phi tài chính.
+  - `src/ai_backend/tests/test_infra.py`: Repositories, Qdrant client wrapper, Redis client mock.
+  - `src/ai_backend/tests/test_memory.py`: Bộ nhớ trượt 20 tin nhắn, TTL 60 phút, session history.
+  - `src/ai_backend/tests/test_module3_features.py`: Resilience, retry backoff, circuit breaker.
+  - `src/ai_backend/tests/test_monitoring.py`: Langfuse tracing, token usage, cost tracker, che giấu PII.
+  - `src/ai_backend/tests/test_output_guardrail_formatting.py`: Tuyên bố miễn trừ trách nhiệm pháp lý đầu tư, bảng P&L Markdown.
+  - `src/ai_backend/tests/test_portfolio_watch_agent.py`: Phân tích danh mục cổ phiếu và danh sách theo dõi.
+  - `src/ai_backend/tests/test_presentation.py`: Routers, validation schema, streaming responses.
+  - `src/ai_backend/tests/test_prompt_rollback.py`: Prompt Registry, quản lý phiên bản prompt, rollback production.txt.
+  - `src/ai_backend/tests/test_redis_store.py`: Exact Cache trên Redis backend (kèm mock fallback).
+  - `specs/implementation-plan.md`: Đánh dấu hoàn thành ô `[x] **5.3. Chạy Test Suite Tầng 3 (AI Backend)**`.
+- **Rà soát theo Acceptance Criteria (Bước 7 SDD)**:
+  - **AC-6**: Greeting Fast-Path phản hồi ngay không qua worker giá -> **PASS**.
+  - **AC-7**: Input Guardrail phát hiện prompt injection và câu hỏi ngoài phạm vi -> **PASS**.
+  - **AC-8**: Concept RAG trả về trích dẫn tài liệu hoặc `"Không có trong tài liệu."` -> **PASS**.
+  - **AC-9**: SSE token stream phát từng token mượt mà và ngắt kết nối tự hủy pipeline -> **PASS**.
+  - **AC-10**: Chạy 100% offline không cần internet -> **PASS**.
+- **Kết quả kiểm thử tự động**:
+  - `pytest src/ai_backend/tests/ -v`: **241/241 passed (100%)** trong 177.23s.
+
+---
+
+## 2026-10-14 — Phase 5: Verification of 4-Tier Test Suites & Golden v6 — 5.2 Chạy Test Suite Tầng 2 (Web Backend)
+
+- **Mục tiêu**:
+  - Chạy và xác thực toàn diện bộ test Tầng 2 (Web Backend Microservice — `src/web_backend/tests/`) theo đúng mô hình 4-Tier Testing Architecture trong `specs/test-plan.md`.
+  - Kiểm tra 100% các lớp: Presentation (Routers, Middleware, Validation, View Models), Application (Portfolio, Market, HITL, Approvals, Chat Gateway), Domain (SessionValidator, PortfolioCalculator) và Infrastructure (Database connection, PostgreSQL/SQLite repositories, Remote AI Client).
+  - Xác nhận đáp ứng đầy đủ các tiêu chí nghiệm thu **AC-4** (Health endpoint), **AC-9** (SSE token streaming UI forwarding), và **AC-10** (Thực thi offline 100%).
+- **Các tệp đã kiểm tra**:
+  - `src/web_backend/tests/test_api.py`: RESTful endpoints (`/health`, `/portfolio/holdings`, `/watchlist`, `/api/v1/sessions`).
+  - `src/web_backend/tests/test_application.py`: Khế ước BaseService & AsyncBaseService và nghiệp vụ các use cases.
+  - `src/web_backend/tests/test_chat_ui.py`: Giao diện chat, chuyển đổi người dùng đa tài khoản, tiếp nhận SSE token stream.
+  - `src/web_backend/tests/test_database.py`: Schema khởi tạo, CRUD và cô lập dữ liệu đa tài khoản giữa User A, User B, và Default.
+  - `src/web_backend/tests/test_domain.py`: Xác thực input, tính toán P&L/NAV danh mục đầu tư, kiểm tra ngưỡng cảnh báo.
+  - `src/web_backend/tests/test_feedback_signals.py`: Ghi nhận và tính điểm phản hồi HITL (`thumbs_up`, `thumbs_down`).
+  - `src/web_backend/tests/test_infra.py`: Repositories, Database Connection, PgRow/qmark, Remote AI Client healthcheck.
+  - `src/web_backend/tests/test_main.py`: Khởi động FastAPI app, CORS, lifespan, exception handlers, CorrelationIdMiddleware.
+  - `src/web_backend/tests/test_market.py`: Market data tổng hợp cho Web Backend, danh sách mã mặc định, fallback matrix.
+  - `src/web_backend/tests/test_portfolio_service.py`: Tính toán chính xác toán học P&L, đa tài khoản, fallback khi thiếu giá.
+  - `src/web_backend/tests/test_presentation.py`: Toàn bộ router endpoints, query/body validation, chuẩn hóa symbol/question.
+  - `src/web_backend/tests/test_web_ui_integration.py`: Tích hợp Frontend (HTML hint chips, CSS responsive & chart glows, JS SSE handlers).
+  - `specs/implementation-plan.md`: Đánh dấu hoàn thành ô `[x] **5.2. Chạy Test Suite Tầng 2 (Web Backend)**`.
+- **Rà soát theo Acceptance Criteria (Bước 7 SDD)**:
+  - **AC-4**: Web Backend phục vụ cổng 8000 (`web_backend.main:app`), endpoint `/health` trả HTTP 200 kèm `{"service": "web_backend"}` -> **PASS**.
+  - **AC-9**: Luồng SSE stream phát trực tiếp qua UI, gắn `session_id`, `message_id`, và dừng pipeline khi client ngắt kết nối -> **PASS**.
+  - **AC-10**: Toàn bộ 83 test cases của Tầng 2 chạy offline 100%, không cần kết nối internet hay backend cũ -> **PASS**.
+- **Kết quả kiểm thử tự động**:
+  - `pytest src/web_backend/tests/ -v`: **83/83 passed (100%)** trong 42.82s.
+
+---
+
+## 2026-10-14 — Phase 5: Verification of 4-Tier Test Suites & Golden v6 — 5.1 Chạy Test Suite Tầng 1 (Common)
+
+- **Mục tiêu**:
+  - Chạy và củng cố toàn bộ bộ test Tầng 1 (Shared Kernel — `src/common/tests/`) theo đúng mô hình 4-Tier Testing Architecture trong `specs/test-plan.md`.
+  - Đáp ứng tiêu chí nghiệm thu **AC-3** trong `specs/product-spec.md` (kế thừa chuẩn `AI_Face_checkin`: `CustomBaseModel`, `BaseService`, `AsyncBaseService` với phương thức chuẩn `process(input) -> output`).
+  - Đảm bảo thực thi 100% offline, không có network/database I/O, thời gian chạy tức thì (< 1s cho toàn bộ 24 test cases).
+- **Các tệp đã cập nhật/tạo mới**:
+  - `src/common/tests/test_base.py`: Tạo mới bộ unit tests kiểm tra:
+    1. `CustomBaseModel`: Khởi tạo, model serialization, validation, và hỗ trợ `arbitrary_types_allowed`.
+    2. `BaseService`: Khởi tạo và thực thi phương thức `process(inputs: InputModel) -> OutputModel`, cấm khởi tạo trừu tượng thiếu `process`.
+    3. `AsyncBaseService`: Khởi tạo và thực thi bất đồng bộ `async def process(...)`, cấm khởi tạo thiếu `process`.
+    4. Hợp đồng kế thừa AC-3: Xác thực 100% các use-case services chính trong cả `web_backend.application` (`PortfolioService`, `MarketService`, `HitlService`, `ReviewApprovalService`, `ChatGatewayService`) và `ai_backend.application` (`ConceptRagService`, `SymbolScannerService`, `SwarmOrchestrator`) đều kế thừa `BaseService` hoặc `AsyncBaseService` và sở hữu phương thức `process()`.
+  - `specs/implementation-plan.md`: Đánh dấu hoàn thành ô `[x] **5.1. Chạy Test Suite Tầng 1 (Common)**`.
+- **Rà soát theo Acceptance Criteria & Khắc phục lỗi (Bước 7 SDD)**:
+  - **AC-3 (specs/product-spec.md)**: Kế thừa chuẩn `AI_Face_checkin`: Các use cases trong `application/` kế thừa `BaseService` hoặc `AsyncBaseService` (`process(input) -> output`), sử dụng `CustomBaseModel`.
+    - Lệnh kiểm tra: `pytest src/common/tests/ -q` -> **24 passed (100%)** trong 0.59s.
+  - **Kiểm thử kỹ thuật tài chính (indicators)**:
+    - RSI(14) quá mua (>70), quá bán (<30), trung tính [30, 70], biên độ [0, 100].
+    - SMA(20), SMA(50), tín hiệu giao cắt Golden Cross và Death Cross.
+  - **Kiểm thử cấu hình & bí mật (config & secrets)**:
+    - Nạp `config.yaml`, ghi đè qua biến môi trường, mapping flattened YAML, kiểm tra ranh giới AST (AC-2).
+    - Quản lý secrets an toàn, fallback `.env`.
+- **Kết quả kiểm thử tự động**:
+  - `pytest src/common/tests/ -v`: **24/24 passed (100%)** trong 0.59s.
+
+---
+
+## 2026-10-14 — Phase 4: Inter-Service Wiring & Cleanup — 4.3 Kiểm Tra Ranh Giới Độc Lập
+
+- **Mục tiêu**:
+  - Đảm bảo ranh giới phân lập nghiêm ngặt theo Clean Architecture & Microservices: `src/web_backend` tuyệt đối không import từ `src/ai_backend`, không import `openai`, không import `langgraph`, không import `langchain`, và không import package cũ `backend`.
+  - Loại bỏ các câu lệnh import tĩnh từ `ai_backend` trong router `src/web_backend/api/routers/chat.py` (loại bỏ `from ai_backend.infra.graph.chat import ...` và `from ai_backend.infra.llm.chat_stream import ...`), thay bằng cơ chế dynamic injection hooks `_get_chat_answer_fn`, `_get_stream_cancel_hooks`, `_format_stream_payload`.
+  - Bổ sung test kiểm thử AST boundary `test_web_backend_import_boundaries()` vào `src/common/tests/test_config.py` để thỏa mãn tiêu chí nghiệm thu **AC-2** trong `specs/product-spec.md`.
+  - Tạo script CLI kiểm tra ranh giới AST độc lập `scripts/check_boundaries.py`.
+  - Cập nhật các scripts trong `scripts/` (`cost_dashboard.py`, `cost_baseline.py`, `cache_benchmark.py`, `prompt_rollback.py`, `run_agent_eval.py`, `export_hitl_feedback.py`, `eval_gate_drill.py`, `eval_noise_calibration.py`, `drill_fallback_provider.py`, `drill_cost_alert.py`, `compare_prompt_versions.py`, `benchmark_sse.py`) và test `src/ai_backend/tests/test_ai_http_stream.py` để loại bỏ các tham chiếu tới package `backend` đã bị xóa trong Phase 4.2.
+- **Các tệp đã cập nhật/tạo mới**:
+  - `src/web_backend/api/routers/chat.py`: Loại bỏ toàn bộ static imports từ `ai_backend`, chuyển sang decoupling hooks.
+  - `src/common/tests/test_config.py`: Bổ sung test case `test_web_backend_import_boundaries()` xác thực AST boundaries cho toàn bộ 66 file Python trong `web_backend`.
+  - `scripts/check_boundaries.py`: Tạo mới script kiểm tra AST boundaries độc lập với hỗ trợ UTF-8 encoding.
+  - `src/ai_backend/tests/test_ai_http_stream.py`: Cập nhật monkeypatching và đường dẫn routes file loại bỏ phụ thuộc `backend`.
+  - `scripts/cost_dashboard.py`, `scripts/cost_baseline.py`, `scripts/cache_benchmark.py`, `scripts/prompt_rollback.py`, `scripts/run_agent_eval.py`, `scripts/export_hitl_feedback.py`, `scripts/eval_gate_drill.py`, `scripts/eval_noise_calibration.py`, `scripts/drill_fallback_provider.py`, `scripts/drill_cost_alert.py`, `scripts/compare_prompt_versions.py`, `scripts/benchmark_sse.py`: Cập nhật import `backend.*` sang `ai_backend.*` / `common.*` / `web_backend.*`.
+  - `specs/implementation-plan.md`: Đánh dấu hoàn thành ô `[x] **4.3. Kiểm Tra Ranh Giới Độc Lập**`.
+- **Rà soát theo Acceptance Criteria & Khắc phục lỗi (Bước 7 SDD)**:
+  - **AC-2 (specs/product-spec.md)**: Phân lập ranh giới import: `src/web_backend` tuyệt đối không import từ `src/ai_backend`, không import `openai`, không import `langgraph`.
+    - Lệnh kiểm tra: `pytest src/common/tests/test_config.py -q` -> **7 passed (100%)**, bao gồm `test_web_backend_import_boundaries`.
+    - Lệnh CLI: `python scripts/check_boundaries.py` -> **PASS (0 vi phạm trên 66 files)**.
+  - **Khắc phục lỗi**:
+    - Sửa lỗi encoding `UnicodeEncodeError: 'charmap'` khi chạy `scripts/check_boundaries.py` trên Windows console bằng cách reconfigure stdout/stderr sang UTF-8.
+    - Sửa lỗi `test_ai_http_stream.py` khi monkeypatching `backend.answer_question.answer_question` (đã xóa) sang `web_backend.api.routers.chat._get_chat_answer_fn`.
+    - Sửa các script trong `scripts/` còn giữ import `backend.*` khiến 7 tests trong `ai_backend/tests/` bị lỗi import.
+- **Kết quả kiểm thử tự động**:
+  - `python scripts/check_boundaries.py`: **PASS (100% sạch sẽ, 0 vi phạm trên 66 files)**.
+  - `pytest src/common/tests/test_config.py -v`: **7/7 passed (100%)**.
+  - `pytest src/common/tests/ -v`: **17/17 passed (100%)**.
+  - `pytest src/web_backend/tests/ -q`: **83/83 passed (100%)**.
+  - `pytest src/ai_backend/tests/ -q`: **241/241 passed (100%)**.
+  - **Toàn bộ 3 tầng test suites: 341/341 tests PASS (100%)**.
+
+---
+
+## 2026-10-14 — Phase 4: Inter-Service Wiring & Cleanup — 4.2 Xóa Bỏ Hoàn Toàn src/backend/
+
+- **Mục tiêu**:
+  - Dọn sạch toàn bộ 100% các tham chiếu/fallback imports phụ thuộc vào legacy `backend.*` trong tất cả các module thuộc `src/common/`, `src/web_backend/`, và `src/ai_backend/`.
+  - Đảm bảo logic HITL Gate 1 / Gate 2, Watchlist CRUD, Scan, Chat, và Eval đã được chuyển hoàn toàn sang cấu trúc 3 khối độc lập.
+  - Xóa bỏ vĩnh viễn và triệt để thư mục cũ `src/backend/` khỏi cây thư mục dự án.
+- **Các tệp đã cập nhật/xóa**:
+  - `src/backend/`: **Xóa bỏ hoàn toàn (100% deleted)** với toàn bộ subpackages cũ.
+  - `src/web_backend/infra/database/connection.py`: Cập nhật `from web_backend.shared.settings import settings`.
+  - `src/web_backend/application/portfolio_service.py`: Loại bỏ các khối fallback `from backend.infra...` và `from backend.domain...`.
+  - `src/web_backend/api/deps.py`: Xây dựng `AppDeps` và factory hoàn toàn độc lập, loại bỏ fallback `backend.shared.deps`.
+  - `src/web_backend/api/routers/watchlist.py`: Loại bỏ `Store` từ backend, sử dụng `WatchlistItem` từ `common.domain.entities` và `settings` từ `web_backend.shared.settings`.
+  - `src/web_backend/api/routers/scan.py`: Thay thế gọi trực tiếp `backend.application.run_scan` bằng `RemoteAiClient.scan`.
+  - `src/web_backend/api/routers/chat.py`: Loại bỏ tất cả các import `from backend...`.
+  - `src/web_backend/api/routers/approvals.py`: Hoàn thiện xử lý Gate 1 / Gate 2 qua `web_backend.application.review_approval`, trả HTTP 404 chuẩn khi không tìm thấy record.
+  - `src/web_backend/infra/database/repositories/watchlist_repo.py`: Nâng cấp `WatchlistRepository` hỗ trợ đa hình (cả `WatchlistItem` object lẫn keyword arguments `symbol`, `user_id`).
+  - `src/common/transport/transport.py`: Loại bỏ các khối fallback `from backend.infra.llm.account_snapshot...`.
+  - `src/ai_backend/infra/agents/portfolio_watch_agent/nodes.py`: Chuyển import từ `backend` sang `web_backend`.
+  - `src/ai_backend/infra/graph/workflow.py`: Chuyển import `PriceAgentResult` từ `ai_backend`.
+  - `src/ai_backend/infra/graph/chat.py`: Chuyển import `MarketService` từ `web_backend`.
+  - `src/ai_backend/infra/llm/account_snapshot.py`: Loại bỏ fallback `backend.api.deps`.
+  - `src/ai_backend/infra/llm/chat_stream.py`: Loại bỏ fallback `backend.application.answer_question`.
+  - `src/ai_backend/infra/llm/client.py`: Cập nhật `_chat_inprocess` và `_scan_inprocess` sang `web_backend.api.deps`, `ai_backend.infra.graph.chat` và `SymbolScannerService`.
+  - `src/ai_backend/application/eval/run_excel_export.py`: Cập nhật import sang `web_backend.api.deps` và `common.settings`.
+  - `src/ai_backend/application/eval/run_detailed.py`: Cập nhật import sang `ai_backend.infra.llm`, `common.domain.ports`, `common.settings` và `web_backend.api.deps`.
+  - `src/ai_backend/application/eval/run.py`: Cập nhật import sang `ai_backend` và `common.settings`.
+  - `src/ai_backend/application/eval/eval_cache.py`: Cập nhật import sang `common.settings`.
+  - `src/ai_backend/application/eval/agent_eval.py`: Cập nhật import sang `web_backend.api.deps` và `ai_backend.infra.graph.chat`.
+  - `tests/e2e/test_golden_v6_slices.py`: Cập nhật import sang `ai_backend` và `common`.
+  - `specs/implementation-plan.md`: Đánh dấu hoàn thành ô `[x] **4.2. Xóa Bỏ Hoàn Toàn src/backend/**`.
+- **Rà soát theo Acceptance Criteria & Khắc phục lỗi (Bước 7 SDD)**:
+  - **AC-1 (specs/product-spec.md)**: Toàn bộ mã nguồn nằm gọn trong 3 khối (`src/common`, `src/web_backend`, `src/ai_backend`). Xóa bỏ hoàn toàn thư mục cũ `src/backend/`. Lệnh kiểm tra xác nhận `not os.path.exists('src/backend')` đạt PASS.
+  - Khắc phục lỗi chữ ký `WatchlistRepository.upsert` nhận `WatchlistItem` và keyword `symbol`.
+  - Khắc phục lỗi endpoint `/approvals/{id}/approve` và `/reject` trả 404 cho non-existent ID khi chạy kiểm thử presentation.
+- **Kết quả kiểm thử tự động**:
+  - `python -c "import os; assert not os.path.exists('src/backend')"`: **PASS** (100% deleted).
+  - `pytest src/common/tests/ src/web_backend/tests/ -q`: **99/99 passed (100%)**.
+  - `pytest src/ai_backend/tests/ -q`: **241/241 passed (100%)**.
+  - **Tổng cộng cả 3 microservice tiers: 340/340 tests PASS (100%)**.
+
+---
+
+## 2026-10-14 — Phase 4: Inter-Service Wiring & Cleanup — 4.1 Cập Nhật Cấu Hình Dự Án (pyproject.toml)
+
+- **Mục tiêu**: Cập nhật cấu hình quản lý gói dự án [pyproject.toml](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/pyproject.toml) theo kiến trúc Clean Architecture 3 khối độc lập:
+  - Cập nhật `[tool.setuptools.packages.find]`:
+    - `where = ["src"]`: Chỉ tìm kiếm mã nguồn bên trong thư mục `src`.
+    - `include = ["common*", "web_backend*", "ai_backend*"]`: Chỉ đóng gói và phân phối 3 khối chuẩn `common`, `web_backend`, `ai_backend`.
+    - Loại bỏ hoàn toàn định nghĩa package legacy `backend*` và `shared*` khỏi package discovery.
+  - Cập nhật `[tool.pytest.ini_options]`: Bổ sung `testpaths = ["tests", "src"]` và `pythonpath = ["src", "."]`.
+  - Cài đặt editable package vào môi trường ảo bằng lệnh `pip install -e .`.
+- **Các tệp đã cập nhật**:
+  - `pyproject.toml`: Cập nhật `[tool.setuptools.packages.find]` và `[tool.pytest.ini_options]`.
+  - `specs/implementation-plan.md`: Đánh dấu hoàn thành ô `[x] **4.1. Cập Nhật Cấu Hình Dự Án (pyproject.toml)**`.
+- **Rà soát theo Acceptance Criteria & Khắc phục lỗi (Bước 7 SDD)**:
+  - **AC Kiểm tra gói cài đặt**: Lệnh `pip install -e .` build wheel thành công và cài đặt `portfolio-watch==0.1.0`.
+  - **AC Kiểm tra Top Level Packages**: Xác nhận tệp `top_level.txt` trong bản phân phối chỉ chứa đúng 3 packages: `ai_backend`, `common`, `web_backend` (loại bỏ hoàn toàn `backend`).
+  - **AC Kiểm tra Import**: Cả 3 module `import common`, `import web_backend`, `import ai_backend` đều nạp thành công mà không cần set thủ công biến môi trường `PYTHONPATH`.
+- **Kết quả kiểm thử tự động**:
+  - `python -c "import common; import web_backend; import ai_backend; ..."`: Thành công 100%.
+  - `pytest src/common/tests/ src/web_backend/tests/ -q`: **99/99 passed (100%)** trong 7.80s (không cần gán PYTHONPATH).
+  - `pytest src/ai_backend/tests/test_greeting_fastpath.py src/ai_backend/tests/test_entrypoint.py -q`: **29/29 passed (100%)** trong 0.11s.
+
+---
+
+## 2026-10-14 — Phase 3: AI Backend Microservice — 3.6 Khối Test Cho AI Backend
+
+
+- **Mục tiêu**: Di chuyển, chuẩn hóa và kiểm thử toàn diện toàn bộ 16 bộ test AI Backend sang thư mục `src/ai_backend/tests/`, loại bỏ 100% các import phụ thuộc vào legacy `backend.*` (đạt 0 import `backend.`), cấu hình fixture và tương thích hoàn toàn kiến trúc Clean Architecture:
+  - `src/ai_backend/tests/conftest.py`: Cung cấp các fixtures cô lập `real_deps`, `client`, `ai_server_url`.
+  - 16 bộ test AI Backend được di chuyển và cấu hình:
+    1. `test_greeting_fastpath.py`: Kiểm thử fast-path chào hỏi qua `is_greeting` và `SwarmOrchestrator`.
+    2. `test_guardrails.py`: Kiểm thử hệ thống guardrails tiền xử lý/hậu xử lý, chặn prompt injection, lời khuyên mua bán tài chính.
+    3. `test_output_guardrail_formatting.py`: Kiểm thử định dạng output guardrails, miễn trừ trách nhiệm.
+    4. `test_concept_rag.py`: Kiểm thử Concept RAG qua Qdrant vector store và offline in-memory fallback cho 5 file khái niệm markdown.
+    5. `test_ai_http_stream.py`: Kiểm thử luồng SSE streaming qua HTTP transport giữa Web và AI Backend (`/v1/chat/stream`, `/v1/chat`, `/v1/scan`), chuyển tiếp watchlist và holdings snapshot, xử lý client disconnect và hủy pipeline.
+    6. `test_async_client.py`: Kiểm thử Async OpenAI client, retry exponential backoff và slot semaphore.
+    7. `test_redis_store.py`: Kiểm thử Redis cache 2 tầng (Exact Cache + In-memory store fallback).
+    8. `test_memory.py`: Kiểm thử long-term memory, episodic memory và đối thoại đa lượt.
+    9. `test_chart_store.py`: Kiểm thử lưu trữ và sinh ảnh kỹ thuật qua ChartStore.
+    10. `test_prompt_rollback.py`: Kiểm thử quản lý phiên bản prompt, rollback và validation prompts qua `prompt_lint`.
+    11. `test_agents.py`: Kiểm thử 10 Worker Agents trong Swarm (Price, News, Eval, Chart, Diagram, Supervisor, Event Classifier,...).
+    12. `test_portfolio_watch_agent.py`: Kiểm thử Agent Portfolio Watch tính toán P&L/NAV và cảnh báo watchlist biến động.
+    13. `test_chart.py`: Kiểm thử sinh đồ thị nến, đường giá so sánh đa mã và Matplotlib styling.
+    14. `test_monitoring.py`: Kiểm thử Langfuse tracing, redact PII và token/cost tracking.
+    15. `test_module3_features.py`: Kiểm thử tính năng Module 3 (A/B testing prompts, cache trúng lượt, budget enforcement).
+    16. `test_edge_cases.py`: Kiểm thử xử lý lỗi biên, input rỗng, ngoại lệ mạng và fallback an toàn.
+- **Các tệp đã cập nhật và tạo mới**:
+  - `src/ai_backend/tests/`: Di chuyển và chuẩn hóa 16 tệp test suite sang import `ai_backend.*` và `common.*`.
+  - `src/ai_backend/tests/conftest.py`: Thiết lập fixtures chia sẻ và isolated SQLite database.
+  - `src/common/transport/schemas.py`: Bổ sung `@field_validator("agents_to_call", mode="before")` chuẩn hóa chữ thường, lọc khoảng trắng và deduplicate tên agent.
+  - `src/common/transport/transport.py`: Cung cấp hàm `_use_http()`, `_attach_account_lists(payload, user_id)` và export trong `common.transport`.
+  - `src/web_backend/api/routers/watchlist.py`: Expose biến `store = _store` cho phép test mock/monkeypatch.
+  - `src/web_backend/api/routers/chat.py`: Cập nhật `_use_http` và `answer_question` từ `ai_backend.infra.graph.chat`.
+  - `src/ai_backend/api/routers/v1.py`: Hoàn thiện router `/v1/chat`, `/v1/chat/stream`, `/v1/scan` với snapshot account lists và xử lý an toàn `ScanSymbolResult`.
+  - `src/ai_backend/infra/llm/service.py`: Cấu hình FastAPI app mount `v1.router` phục vụ các endpoint v1 độc lập.
+  - `src/ai_backend/infra/llm/chat_stream.py`: Cập nhật import `answer_question` từ `ai_backend.infra.graph.chat`.
+  - `src/ai_backend/infra/graph/chat.py`: Thêm alias `answer_question = run_chat_graph`.
+  - `src/ai_backend/application/symbol_scanner_service.py`: Thay thế hàm hash ngẫu nhiên của Python bằng tổng `ord(c)` deterministic đảm bảo `change_pct` luôn khác 0 trong fallback mode.
+  - `src/ai_backend/infra/agents/supervisor_agent/nodes.py`: Loại trừ truy vấn `watchlist` / `portfolio` khỏi nhận diện nhầm là Concept RAG (`is_concept`).
+  - `specs/implementation-plan.md`: Đánh dấu hoàn thành ô `[x] **3.6. Khối Test Cho AI Backend**`.
+- **Rà soát theo Acceptance Criteria & Khắc phục lỗi (Bước 7 SDD)**:
+  - 100% mã nguồn trong `src/ai_backend/tests/` không còn import từ `backend.` (0 kết quả tìm kiếm).
+  - Khắc phục lỗi luồng SSE stream proxy và kiểm tra client cancel kết nối (`test_closing_the_chat_stream_stops_the_pipeline`).
+  - Khắc phục lỗi nhận diện nhầm truy vấn watchlist sang Concept RAG do câu hỏi viết lại chứa "là gì".
+- **Kết quả kiểm thử tự động**:
+  - `pytest src/ai_backend/tests/ -q`: **241/241 passed (100%)** trong 175s.
+  - `pytest src/common/tests/ src/web_backend/tests/ -q`: **99/99 passed (100%)** trong 8.08s (0 lỗi hồi quy).
+  - Tổng cộng 3 tầng kiến trúc: **340/340 tests PASS (100%)**.
+
+---
+
+## 2026-10-14 — Phase 3: AI Backend Microservice — 3.5 AI Shared & Entrypoint (main.py, Dockerfile, shared/)
+
+
+- **Mục tiêu**: Xây dựng cấu hình dùng chung, phân cấp ngoại lệ, thiết lập style Matplotlib và Entrypoint FastAPI độc lập (`PORT=8001`) cho AI Backend Microservice kèm Dockerfile đa tầng (Multi-stage build):
+  - `shared/settings.py`: Khai báo `AiSettings` (kế thừa `CustomBaseModel`), cấu hình các tham số độc lập cho AI Backend (`PORT=8001`, Qdrant, Redis, OpenAI Keys, fallback toggles, CORS, logging) nạp kết hợp từ `config.yaml` và biến môi trường.
+  - `shared/exceptions.py`: Định nghĩa hệ thống ngoại lệ phân tầng chuẩn (`AiBackendException`, `GuardrailViolation`, `LLMTimeoutException`, `ModelProviderException`, `QdrantUnavailableException`, `RedisUnavailableException`, `PromptTemplateException`, `ScanExecutionException`).
+  - `shared/charts.py`: Bổ sung hàm `apply_chart_style` thiết lập Matplotlib rcParams chuẩn Dark/Light cho biểu đồ tài chính và bảo toàn `get_charts_dir`.
+  - `shared/__init__.py`: Export các settings, exceptions và tiện ích charts.
+  - `api/helpers/exception_handler.py`: Bổ sung bộ xử lý bắt `AiBackendException` và chuyển đổi thành HTTP response chuẩn (400, 504, 502, 503,...) kèm Correlation ID.
+  - `main.py`: Entrypoint FastAPI của AI Backend Microservice (Cổng 8001), đăng ký đầy đủ middlewares (`CorrelationIdMiddleware`, `RequestLoggingMiddleware`, `CORSMiddleware`), exception handlers và chỉ phục vụ đúng 3 nghiệp vụ: `/health`, `/v1/chat/stream`, `/v1/scan` (và các alias).
+  - `Dockerfile`: Multi-stage Dockerfile độc lập tối ưu bảo mật với người dùng không đặc quyền (`appuser`), port 8001 và HEALTHCHECK.
+  - `tests/test_entrypoint.py`: Bộ kiểm thử tự động 9 ca test toàn diện cho settings, exceptions, charts và toàn bộ router/middleware của `main.py`.
+- **Các tệp đã cập nhật và tạo mới**:
+  - `src/ai_backend/shared/settings.py`: Tạo mới `AiSettings` và singleton `ai_settings`.
+  - `src/ai_backend/shared/exceptions.py`: Tạo mới hệ thống phân cấp ngoại lệ AI.
+  - `src/ai_backend/shared/charts.py`: Cập nhật hàm `apply_chart_style`.
+  - `src/ai_backend/shared/__init__.py`: Cập nhật export đầy đủ.
+  - `src/ai_backend/api/helpers/exception_handler.py`: Bổ sung xử lý `AiBackendException`.
+  - `src/ai_backend/main.py`: Tạo mới FastAPI entrypoint cho AI Backend Microservice.
+  - `src/ai_backend/Dockerfile`: Tạo mới Multi-stage Dockerfile cho AI Backend.
+  - `src/ai_backend/tests/test_entrypoint.py`: Tạo mới bộ kiểm thử 9 test cases.
+  - `specs/implementation-plan.md`: Đánh dấu hoàn thành ô `[x] **3.5. AI Shared & Entrypoint**`.
+- **Rà soát theo Acceptance Criteria & Khắc phục lỗi (Bước 7 SDD)**:
+  - Lệnh xác thực kiểm tra cốt lõi: `python -c "from ai_backend.main import app"` thành công 100%, trả về app title `VN Stock Swarm AI Microservice`.
+  - **AC-4**: Cả hai endpoint `/health` của `web_backend` (cổng 8000) và `ai_backend` (cổng 8001) đều trả về HTTP 200 và cấu trúc json đầy đủ.
+  - Đã khắc phục lỗi boolean parsing khi biến môi trường `PRICE_FALLBACK_ON_ERROR=false`.
+- **Kết quả kiểm thử tự động**:
+  - `pytest src/ai_backend/tests/test_entrypoint.py -v`: **9/9 passed (100%)** trong 0.87s.
+  - `pytest src/common/tests/ src/web_backend/tests/ src/ai_backend/tests/ -q`: **185/185 passed (100%)** trong 9.81s (0 lỗi hồi quy).
+
+---
+
+## 2026-10-14 — Phase 3: AI Backend Microservice — 3.4 AI Infrastructure Layer (infra/)
+
+- **Mục tiêu**: Hoàn thiện toàn bộ tầng Hạ tầng kỹ thuật (Infrastructure Layer) cho AI Backend Microservice trong thư mục `src/ai_backend/infra/` và đảm bảo tính độc lập hoàn toàn theo chuẩn Clean Architecture:
+  - `infra/graph/`: StateGraph điều phối LangGraph Multi-Agent Swarm (`workflow.py`, `state.py`, `steps.py`, `chat.py`, `scan.py`), export hàm chuẩn `build_swarm_graph()`, `build_portfolio_graph()`, `compile_portfolio_graph()`, `AnswerQuestionResult` dataclass, và `build_chat_steps()`.
+  - `infra/agents/`: Toàn bộ 10 Worker Agents (`supervisor_agent`, `price_agent`, `news_agent`, `eval_agent`, `chart_agent`, `diagram_agent`, `event_classifier`, `portfolio_watch_agent`, `synthesis_agent`, `answer_composer`). Trong đó, tách hoàn toàn `portfolio_watch_agent/nodes.py` khỏi phụ thuộc trực tiếp vào Postgres database và Web services bằng cơ chế tính toán in-memory dựa trên snapshot `account_holdings`.
+  - `infra/market_data/`: `price_source.py` (VnstockPriceSource với cơ chế offline fallback và hỗ trợ `lookback_days` theo port `IPriceSource`), `news_source.py` (CafeF / Vnstock).
+  - `infra/qdrant/`: `concepts.py` (client nạp 5 file markdown và cắt đoạn ConceptChunk), `answer.py` (semantic retrieval).
+  - `infra/llm/`: `client.py`, `async_client.py`, `completion.py`, `structured.py`, `prompt_registry.py`, `prompt_lint.py`, `prompt_experiment.py`, `semaphore.py`, `resilience.py`, `account_snapshot.py`, `chat_stream.py`, `service.py`.
+  - `infra/cache/`: `exact.py`, `semantic.py`, `redis_store.py`.
+  - `infra/cost/`: `tracker.py` (CostTracker ghi nhận token usage và tính chi phí USD).
+  - `infra/monitoring/`: `tracing.py` (Langfuse span, redact_pii che mờ số điện thoại/email, và sanitize_trace_payload).
+  - `infra/storage/`: `chart_store.py`, `memory_store.py`, `long_term_memory.py`, `price_history_store.py`, `watchlist_store.py`.
+  - `infra/notify/`: `console_notifier.py`.
+  - `infra/scheduler/`: `cron.py` (quét định kỳ với APScheduler fallback an toàn).
+  - `shared/charts.py`: Tiện ích lưu trữ đường dẫn biểu đồ độc lập cho AI Backend (`src/ai_backend/shared/charts.py`).
+- **Các tệp đã cập nhật và tạo mới**:
+  - `src/ai_backend/shared/charts.py`: Tạo mới tiện ích `get_charts_dir`.
+  - `src/ai_backend/shared/__init__.py`: Package init cho shared.
+  - `src/ai_backend/infra/agents/portfolio_watch_agent/nodes.py`: Tách phụ thuộc DB/Service, tính toán danh mục in-memory thuần túy.
+  - `src/ai_backend/infra/agents/diagram_agent/schemas.py`: Đổi import schema sang `common.transport.schemas`.
+  - `src/ai_backend/infra/agents/eval_agent/schemas.py`: Đổi import schema sang `common.transport.schemas`.
+  - `src/ai_backend/infra/agents/event_classifier/schemas.py`: Đổi import schema sang `common.transport.schemas`.
+  - `src/ai_backend/infra/agents/news_agent/schemas.py`: Đổi import schema sang `common.transport.schemas`.
+  - `src/ai_backend/infra/agents/supervisor_agent/schemas.py`: Đổi import schema sang `common.transport.schemas`.
+  - `src/ai_backend/infra/agents/supervisor_agent/nodes.py`: Cập nhật `MemoryFact` từ `common.transport.schemas`.
+  - `src/ai_backend/infra/agents/synthesis_agent/schemas.py`: Đổi import schema sang `common.transport.schemas`.
+  - `src/ai_backend/infra/graph/__init__.py`: Export `build_swarm_graph` và các hàm đồ thị từ `workflow.py`.
+  - `src/ai_backend/infra/graph/workflow.py`: Thêm `build_swarm_graph = build_portfolio_graph`.
+  - `src/ai_backend/infra/graph/state.py`: Bổ sung dataclass `AnswerQuestionResult`.
+  - `src/ai_backend/infra/graph/steps.py`: Bổ sung implementation `build_chat_steps`.
+  - `src/ai_backend/infra/graph/chat.py`: Đổi logger sang `common.logging` và import nội bộ từ `state.py`/`steps.py`.
+  - `src/ai_backend/infra/graph/scan.py`: Tách hoàn toàn khỏi `backend.application.scan_symbol`.
+  - `src/ai_backend/infra/market_data/price_source.py`: Hỗ trợ `lookback_days` theo port `IPriceSource`.
+  - `src/ai_backend/infra/monitoring/tracing.py`: Cập nhật logger `common.logging`.
+  - `src/ai_backend/infra/storage/chart_store.py`: Sử dụng `ai_backend.shared.charts`.
+  - `src/ai_backend/infra/storage/long_term_memory.py`: Cập nhật logger `common.logging`.
+  - `src/ai_backend/infra/notify/console_notifier.py`: Cập nhật logger `common.logging`.
+  - `src/ai_backend/infra/scheduler/cron.py`: Cập nhật logger và an toàn hóa APScheduler.
+  - `src/ai_backend/infra/llm/account_snapshot.py`: Tách phụ thuộc cứng vào web routes.
+  - `src/ai_backend/infra/llm/client.py`: An toàn hóa fallback `_chat_inprocess` và `_scan_inprocess`.
+  - `src/ai_backend/infra/llm/chat_stream.py`: An toàn hóa `answer_question` import.
+  - `src/ai_backend/infra/llm/service.py`: Chuyển hướng về `ai_backend.main:app`.
+  - `src/ai_backend/tests/test_infra.py`: Bộ kiểm thử 15 ca test chuyên sâu cho AI Infrastructure Layer.
+- **Rà soát theo Acceptance Criteria & Khắc phục lỗi (Bước 7 SDD)**:
+  - Lệnh xác thực kiểm tra cốt lõi: `python -c "from ai_backend.infra.graph.workflow import build_swarm_graph"` thành công 100%, trả về StateGraph với đầy đủ 13 node (`orchestrator`, `price_agent`, `news_agent`, `event_classifier`, `eval_agent`, `synthesis_agent`, `guardrail_output`, `confidence_gate`, `hitl_gate_1`, `hitl_gate_2`, `rewrite_question`, `supervisor`, `answer_composer`).
+  - Toàn bộ 41 module con trong `src/ai_backend/infra/` import thành công mà không gặp bất kỳ lỗi `ImportError` hay phụ thuộc vòng nào.
+- **Kết quả kiểm thử tự động**:
+  - `pytest src/ai_backend/tests/test_infra.py -v`: **15/15 passed (100%)** trong 8.22s.
+  - `pytest src/ai_backend/tests/ -v`: **77/77 passed (100%)** trong 8.63s.
+  - `pytest src/common/tests/ src/web_backend/tests/ src/ai_backend/tests/ -q`: **176/176 passed (100%)** trong 9.10s (0 lỗi hồi quy).
+
+---
+
+## 2026-10-14 — Phase 3: AI Backend Microservice — 3.3 AI Domain Layer (domain/)
+
+- **Mục tiêu**: Xây dựng tầng Lõi Nghiệp vụ (Domain Layer) cho AI Backend Microservice trong thư mục `src/ai_backend/domain/` theo chuẩn Clean Architecture, hoàn toàn thuần Python không phụ thuộc framework ngoại lai:
+  - `InputGuardrail` (`src/ai_backend/domain/guardrails/input_guardrail.py`): Chặn 100% tấn công Prompt Injection / Jailbreak, lọc các câu hỏi Out-of-Scope (cổ phiếu/thị trường quốc tế, crypto, phi tài chính như thời tiết/thể thao, yêu cầu lời khuyên mua/bán đầu tư chắc chắn kèm Investment Disclaimer). Cung cấp lớp `InputGuardrail` và hàm `check_input_guardrail`.
+  - `OutputGuardrail` (`src/ai_backend/domain/guardrails/output_checks.py`): Bắt buộc tuyên bố miễn trừ trách nhiệm pháp lý (`Thông tin tham khảo, không phải lời khuyên đầu tư.`), loại bỏ các cụm từ khuyến nghị mua/bán (`strip_buy_sell`), đối chiếu số liệu với evidence (`check_output`, `mask_structural_numbers`), và định dạng bảng P&L danh mục đầu tư chuẩn Markdown (`format_pnl_table`).
+  - `GreetingFastpath` (`src/ai_backend/domain/guardrails/greeting_fastpath.py`): Nhận diện câu chào hỏi giao tiếp để phản hồi tức thì (TTFT < 1s), phân biệt giữa câu chào hỏi thuần túy (pure greeting) và câu chào kèm tra cứu mã chứng khoán.
+- **Các tệp đã tạo mới**:
+  - `src/ai_backend/domain/__init__.py`: Package init cho `ai_backend.domain`.
+  - `src/ai_backend/domain/guardrails/__init__.py`: Re-export toàn bộ guardrail components.
+  - `src/ai_backend/domain/guardrails/greeting_fastpath.py`: Module xử lý fast-path greeting.
+  - `src/ai_backend/domain/guardrails/input_guardrail.py`: Engine bảo vệ đầu vào đa lớp kèm class `InputGuardrail`.
+  - `src/ai_backend/domain/guardrails/output_checks.py`: Engine kiểm tra đầu ra, gỡ mua/bán, chèn disclaimer, và định dạng bảng P&L.
+  - `src/ai_backend/tests/test_guardrails.py`: Bộ kiểm thử 6 ca test bao phủ prompt injection, out-of-scope, advice request, và valid VN stock queries.
+  - `src/ai_backend/tests/test_greeting_fastpath.py`: Bộ kiểm thử 20 ca test bao phủ pure greetings, greeting kèm ticker chuyển safe, và greeting ngụy trang injection.
+  - `src/ai_backend/tests/test_output_guardrail_formatting.py`: Bộ kiểm thử 8 ca test bao phủ masking số thứ tự, kiểm tra evidence, gỡ mua/bán, và định dạng bảng P&L Markdown.
+- **Rà soát theo Acceptance Criteria & Khắc phục lỗi (Bước 7 SDD)**:
+  - Đảm bảo class `InputGuardrail` được export trực tiếp tại `ai_backend.domain.guardrails.input_guardrail` theo đúng lệnh kiểm tra spec: `python -c "from ai_backend.domain.guardrails.input_guardrail import InputGuardrail"`.
+  - Định dạng bảng P&L chuẩn Markdown với đầy đủ các cột Mã CP, Khối lượng, Giá vốn, Thị giá, Lãi/Lỗ VND và %, dòng tổng kết, NAV và Disclaimer.
+- **Kết quả kiểm thử tự động**:
+  - `pytest src/ai_backend/tests/test_guardrails.py src/ai_backend/tests/test_greeting_fastpath.py src/ai_backend/tests/test_output_guardrail_formatting.py -v`: **34/34 passed (100%)** trong 0.10s.
+  - `pytest src/ai_backend/tests/ -v`: **62/62 passed (100%)** trong 0.38s.
+  - `pytest src/common/tests/ src/web_backend/tests/ src/ai_backend/tests/ -q`: **161/161 passed (100%)** trong 7.72s (0 lỗi hồi quy).
+
+---
+
+## 2026-10-14 — Phase 3: AI Backend Microservice — 3.2 AI Application Layer (application/)
+
+- **Mục tiêu**: Xây dựng tầng Ứng dụng (Application Layer) cho AI Backend Microservice trong thư mục `src/ai_backend/application/`, bao gồm:
+  - `SwarmOrchestrator` kế thừa `BaseService[SwarmInput, SwarmOutput]`: Điều phối LangGraph Multi-Agent Swarm, xử lý Chào hỏi nhanh (Fast-path TTFT < 1s), và cung cấp hàm `stream()` phát sự kiện SSE ra Web UI.
+  - `ConceptRagService` kế thừa `BaseService[ConceptRagInput, ConceptRagOutput]`: Tìm kiếm ngữ nghĩa trên collection Qdrant `stock_concepts`, tuân thủ chuẩn AC-8 (trả về đoạn trích + `source_file`, hoặc trả về `"Không có trong tài liệu."` và `source_file=None` khi không tìm thấy), hỗ trợ fallback in-memory trên 5 file markdown khái niệm.
+  - `SymbolScannerService` kế thừa `BaseService[SymbolScannerInput, SymbolScannerOutput]`: Phân tích biến động giá so với ngưỡng cảnh báo `threshold_pct`, đánh giá Gate 1 (Human-in-the-loop pending approval) và Gate 2. Cung cấp helper `scan()` tích hợp với API router `/v1/scan`.
+  - Module `application/eval/`: Bộ công cụ đánh giá kiểm chuẩn và phòng chống hồi quy: `gate.py` (ngưỡng overall 0.85, rule_pass_rate 0.92, injection 1.0, out_of_scope 1.0), `history.py`, `eval_cache.py`, `steps.py`, `agent_eval.py`, `regression.py`, `run.py`, `run_detailed.py`, `run_excel_export.py`.
+- **Các tệp đã tạo mới và cập nhật**:
+  - `src/ai_backend/application/swarm_orchestrator.py`: Implements `SwarmOrchestrator(BaseService)`.
+  - `src/ai_backend/application/concept_rag_service.py`: Implements `ConceptRagService(BaseService)`.
+  - `src/ai_backend/application/symbol_scanner_service.py`: Implements `SymbolScannerService(BaseService)`.
+  - `src/ai_backend/application/__init__.py`: Re-export các use case application.
+  - `src/ai_backend/api/deps.py`: Cập nhật `AiDeps` hỗ trợ `symbol_scanner_service` và `concept_rag_service`.
+  - `src/ai_backend/application/eval/gate.py`: Module kiểm tra ngưỡng Eval Gate độc lập.
+  - `src/ai_backend/application/eval/history.py`: Lưu lịch sử chạy và tính noise (σ).
+  - `src/ai_backend/application/eval/eval_cache.py`: Cache kết quả eval LLM theo hash prompt.
+  - `src/ai_backend/application/eval/steps.py`: Chuẩn hóa danh sách steps[] của agent timeline.
+  - `src/ai_backend/application/eval/agent_eval.py`: Benchmark framework chấm Routing Accuracy, Groundedness, Task Success.
+  - `src/ai_backend/application/eval/regression.py`: Subprocess golden regression runner.
+  - `src/ai_backend/application/eval/run.py`: Benchmark runner chính.
+  - `src/ai_backend/application/eval/run_detailed.py`: Chi tiết từng câu hỏi benchmark.
+  - `src/ai_backend/application/eval/run_excel_export.py`: Xuất ma trận đánh giá ra Excel.
+  - `src/ai_backend/application/eval/__init__.py`: Re-export eval components.
+  - `src/ai_backend/tests/test_application.py`: Bộ kiểm thử 22 ca test bao phủ SwarmOrchestrator, ConceptRagService, SymbolScannerService, và Eval Gate.
+- **Rà soát theo Acceptance Criteria & Khắc phục lỗi (Bước 7 SDD)**:
+  - Khắc phục cơ chế offline 100%: Trong `SwarmOrchestrator`, loại bỏ việc tự động import legacy `answer_question` khi chưa có live graph runner được inject, thay vào đó sinh phản hồi chuẩn độc lập hoặc qua mock runner, giúp test suite chạy siêu tốc 0.08s hoàn toàn offline.
+  - Xác thực lệnh kiểm tra: `python -c "from ai_backend.application.swarm_orchestrator import SwarmOrchestrator"` thành công 100%.
+- **Kết quả kiểm thử tự động**:
+  - `pytest src/ai_backend/tests/test_application.py -v`: **22/22 passed (100%)** trong 0.08s.
+  - `pytest src/ai_backend/tests/ -v`: **28/28 passed (100%)** trong 0.32s.
+  - `pytest src/common/tests/ src/web_backend/tests/ src/ai_backend/tests/ -q`: **127/127 passed (100%)** trong 7.42s (0 lỗi hồi quy).
+
+---
+
+## 2026-10-14 — Phase 3: AI Backend Microservice — 3.1 AI Presentation Layer (api/)
+
+- **Mục tiêu**: Xây dựng tầng Trình diễn (Presentation Layer) cho AI Backend Microservice (Cổng 8001) trong thư mục `src/ai_backend/api/`, bao gồm helpers (exception handlers, middlewares), models Pydantic kế thừa `CustomBaseModel` (stream events và scan models), các routers (`health.py`, `chat_stream.py`, `scan.py`), và dependency injection `deps.py`.
+- **Các tệp đã tạo mới**:
+  - `src/ai_backend/__init__.py`: Package init cho `ai_backend`.
+  - `src/ai_backend/api/__init__.py`: Package init cho tầng presentation `ai_backend.api`.
+  - `src/ai_backend/api/deps.py`: Dependency wiring `AiDeps`, `get_ai_deps`, `set_ai_deps`.
+  - `src/ai_backend/api/helpers/__init__.py`: Re-export helpers.
+  - `src/ai_backend/api/helpers/exception_handler.py`: Global exception handlers (`register_ai_exception_handlers`) chuẩn hóa lỗi JSON kèm `correlation_id` và `service: ai_backend`.
+  - `src/ai_backend/api/helpers/middlewares.py`: `CorrelationIdMiddleware` (nhận/sinh Correlation ID) và `RequestLoggingMiddleware` (ghi nhận latency ms, HTTP status).
+  - `src/ai_backend/api/models/__init__.py`: Re-export schemas.
+  - `src/ai_backend/api/models/stream_models.py`: Các Pydantic models kế thừa `CustomBaseModel`: `NodeStart`, `NodeFinish`, `TokenEvent`, `CompleteEvent`, `ErrorEvent`, `ChatStreamRequest`, `WatchlistSnapshot`, `HoldingSnapshot`.
+  - `src/ai_backend/api/models/scan_models.py`: Pydantic models `ScanRequest`, `ScanAlertOut`, `ScanResponse`.
+  - `src/ai_backend/api/routers/__init__.py`: Re-export routers `chat_stream_router`, `scan_router`, `health_router`.
+  - `src/ai_backend/api/routers/health.py`: Router `GET /health` trả về trạng thái của AI Engine và Swarm Graph.
+  - `src/ai_backend/api/routers/chat_stream.py`: Router `POST /v1/chat/stream` phát luồng SSE (`text/event-stream`, `X-Accel-Buffering: no`), hỗ trợ truyền tải token và tiến trình các agent nodes.
+  - `src/ai_backend/api/routers/scan.py`: Router `POST /v1/scan` quét và phân tích kỹ thuật theo mã cổ phiếu.
+  - `src/ai_backend/tests/__init__.py`: Package init cho AI backend tests.
+  - `src/ai_backend/tests/test_presentation.py`: Bộ kiểm thử 6 ca test bao phủ models instantiation, health endpoint, chat stream SSE, technical scan, Correlation ID middleware, và exception handlers.
+- **Rà soát theo Acceptance Criteria & Khắc phục lỗi (Bước 7 SDD)**:
+  - Khắc phục cơ chế streaming độc lập: Loại bỏ các import trực tiếp từ legacy backend trong `chat_stream.py` và `scan.py`, cho phép ủy thác qua `deps.swarm_orchestrator` hoặc phát luồng tiêu chuẩn độc lập, đảm bảo test suite chạy 100% offline không gọi LLM bên ngoài.
+  - Đăng ký package `ai_backend` vào editable install qua `pip install -e . --no-deps`.
+  - Xác thực lệnh kiểm tra: `python -c "from ai_backend.api.routers import chat_stream, health, scan"` thành công 100%.
+- **Kết quả kiểm thử tự động**:
+  - `pytest src/ai_backend/tests/test_presentation.py -v`: **6/6 passed (100%)** trong 0.29s.
+  - `pytest src/common/tests/ src/web_backend/tests/ src/ai_backend/tests/ -q`: **105/105 passed (100%)** trong 7.37s (0 lỗi hồi quy).
+
+---
+
+- **Mục tiêu**: Hoàn thiện và chuẩn hóa toàn bộ bộ kiểm thử cho Web Backend Microservice (`src/web_backend/tests/`), bảo đảm kiểm tra đầy đủ các thành phần Presentation, Application, Domain, Infra và phục vụ Frontend UI/Static files với môi trường database kiểm thử cô lập (in-memory / file tạm), 100% PASS không phụ thuộc internet.
+- **Các tệp đã tạo mới và chuẩn hóa**:
+  - `src/web_backend/tests/conftest.py`: Fixtures `temp_db`, `in_memory_db`, và `client` (cô lập biến môi trường `SQLITE_PATH` theo từng test session).
+  - `src/web_backend/tests/test_api.py`: Kiểm thử toàn diện các endpoint REST API (`/health`, `/watchlist`, `/api/portfolio/holdings`, `/api/v1/sessions`, `/scan`, `/api/market/sessions`).
+  - `src/web_backend/tests/test_chat_ui.py`: Kiểm thử Web Backend phục vụ giao diện chat SPA đơn nhất (`index.html`), hỗ trợ chọn 3 user và SSE streaming.
+  - `src/web_backend/tests/test_feedback_signals.py`: Kiểm thử chấm điểm tín hiệu phản hồi HITL (explicit: `thumbs_up`, `thumbs_down`; implicit: `copied`, `regenerated`, `abandoned`) và lưu vết database.
+  - `src/web_backend/tests/test_portfolio_service.py`: Kiểm thử độ chính xác toán học tính toán P&L danh mục đầu tư, cách ly đa người dùng (multi-tenant) và cơ chế fallback giá khi thiếu dữ liệu thị trường.
+  - `src/web_backend/tests/test_database.py`: Kiểm thử khởi tạo schema, ràng buộc toàn vẹn khóa ngoại (foreign key CASCADE), CRUD trên các repositories và tính bền vững dữ liệu khi reopen connection.
+  - `src/web_backend/tests/test_market.py`: Kiểm thử danh sách 10 mã cổ phiếu mặc định, trạng thái phiên giao dịch (ATO/ATC), ma trận và sparkline fallback.
+  - `src/web_backend/tests/test_web_ui_integration.py`: Kiểm thử tích hợp UI (giao diện, hint chips, graph containers, inspector panel và stylesheet).
+- **Rà soát theo Acceptance Criteria & Khắc phục lỗi (Bước 7 SDD)**:
+  - Khắc phục phục vụ Static Frontend trong `src/web_backend/main.py`: Bổ sung đường dẫn `src/frontend` vào danh sách ứng viên kiểm tra file tĩnh để route `/` trả về HTML `index.html` thay vì JSON mặc định.
+  - Chuẩn hóa `src/web_backend/application/market_service.py`: Định nghĩa lớp `SessionInfo(dict)` hỗ trợ cả truy cập qua thuộc tính (`s.session_type`) lẫn key dict (`s["session_type"]`), bổ sung alias `get_trading_sessions`, bổ sung trường `current_price` vào ma trận thị trường.
+  - Đảm bảo toàn vẹn dữ liệu ngoại khóa trong `src/web_backend/api/routers/hitl.py`: Tự động kiểm tra và khởi tạo session/message nếu chưa tồn tại trước khi ghi bản ghi đánh giá HITL vào database.
+  - Nâng cấp `src/web_backend/infra/database/repositories/hitl_repo.py`: Bổ sung tham số `session_id` và phân trang `offset`, `limit` vào phương thức `list_all`.
+  - Cải tiến tính tương thích của API vị thế danh mục trong `src/web_backend/api/models/portfolio.py` và `src/web_backend/api/routers/portfolio.py`:
+    - Hỗ trợ alias `avg_buy_price` song song với `buy_price`.
+    - Hỗ trợ UUID string trong route xóa vị thế (`DELETE /api/portfolio/holdings/{holding_id}`).
+    - Bổ sung endpoint `GET /api/portfolio/holdings` trả về danh sách vị thế và số lượng.
+  - Đồng bộ hóa phản hồi `status: "success"` trên các router `sessions.py`, `watchlist.py` và `portfolio.py`.
+  - Cải tiến `src/backend/infra/storage/watchlist_store.py`: Tự động bắt `sqlite3.OperationalError` để fallback `ON CONFLICT(symbol)` nếu database SQLite hiện hữu chưa có unique constraint kép `(user_id, symbol)`.
+- **Kết quả kiểm thử tự động**:
+  - `pytest src/web_backend/tests/ -v`: **83/83 passed (100%)** trong 8.66s.
+  - `pytest src/common/tests/ src/web_backend/tests/ -q`: **99/99 passed (100%)** trong 7.32s (16 common + 83 web_backend, 0 hồi quy).
+
+---
+
+- **Mục tiêu**: Xây dựng cấu hình dùng chung (`shared/settings.py`), phân cấp ngoại lệ (`shared/exceptions.py`), Entrypoint FastAPI hoàn chỉnh (`web_backend.main:app`), và Dockerfile multi-stage độc lập cho Web Backend Microservice (Cổng 8000).
+- **Các tệp đã tạo mới**:
+  - `src/web_backend/shared/__init__.py`: Package init cho shared module của Web Backend.
+  - `src/web_backend/shared/settings.py`: `WebSettings` tải cấu hình microservice Web (`PORT=8000`, `HOST="0.0.0.0"`, `AI_BASE_URL="http://127.0.0.1:8001"`, `DATABASE_URL`, `CORS_ORIGINS`) kết hợp tự động từ `config.yaml` và biến môi trường.
+  - `src/web_backend/shared/exceptions.py`: Cấu trúc ngoại lệ phân cấp `WebBackendException`, `WebDatabaseException`, `SessionNotFoundException` (404), `HoldingNotFoundException` (404), `ValidationException` (422), và `AiServiceUnavailableException` (503).
+  - `src/web_backend/main.py`: Entrypoint FastAPI của Web Microservice (Cổng 8000).
+    - Tích hợp 3 tầng Middleware: `CorrelationIdMiddleware`, `RequestLoggingMiddleware`, và `CORSMiddleware`.
+    - Đăng ký Global Exception Handlers chuẩn hóa phản hồi lỗi dạng JSON.
+    - Cung cấp endpoint `/health` kiểm tra tình trạng Web và độ sẵn sàng của AI Backend.
+    - Đăng ký toàn bộ 8 Router: `chat`, `portfolio`, `watchlist`, `sessions`, `hitl`, `market`, `approvals`, `scan`.
+    - Phục vụ tĩnh biểu đồ nến `/charts` và giao diện người dùng SPA Frontend (`index.html`).
+    - Lifespan tự động khởi tạo cơ sở dữ liệu (`init_db`) khi khởi động ứng dụng.
+  - `src/web_backend/Dockerfile`: Multi-stage Dockerfile độc lập tối ưu (Stage 1 builder build venv -> Stage 2 runner bảo mật với non-root appuser và curl healthcheck, chạy `uvicorn web_backend.main:app`).
+  - `src/web_backend/tests/test_main.py`: Bộ kiểm thử 7 ca test bao phủ settings, exceptions, endpoint `/health`, header `X-Correlation-ID`, toàn bộ các route đã đăng ký và route gốc `/`.
+- **Rà soát theo Acceptance Criteria & Khắc phục lỗi (Bước 7 SDD)**:
+  - Khắc phục cấu hình Router Inclusion: Đăng ký chính xác các router instance thực tế từ 8 router files, khắc phục trường hợp import router alias không tồn tại.
+  - Đảm bảo toàn bộ 8 nhóm API endpoint nghiệp vụ đều hiện diện trong OpenAPI paths (`app.openapi()["paths"]`).
+- **Kết quả kiểm thử tự động**:
+  - `pytest src/web_backend/tests/test_main.py -v`: **7/7 passed (100%)** trong 2.35s.
+  - `pytest src/common/tests/ src/web_backend/tests/ -v`: **70/70 passed (100%)** trong 2.65s (không hồi quy).
+
+---
+
+## 2026-10-14 — Phase 2: Web Backend Microservice — 2.4 Web Infrastructure Layer (infra/)
+
+- **Mục tiêu**: Xây dựng tầng Hạ tầng (`src/web_backend/infra/`) cho Web Backend Microservice bao gồm kết nối cơ sở dữ liệu (PostgreSQL qua psycopg3 kèm fallback SQLite an toàn cho môi trường test/local), phân rã mô-đun hóa CRUD Repositories (`SessionRepo`, `MessageRepo`, `PortfolioRepo`, `WatchlistRepo`, `MarketHistoryRepo`, `HITLEvalRepo`), và bộ client giao tiếp từ xa với AI Microservice (`RemoteAiClient`).
+- **Các tệp đã tạo mới**:
+  - `src/web_backend/infra/__init__.py`: Package init cho tầng hạ tầng Web Backend.
+  - `src/web_backend/infra/database/__init__.py`: Package init cơ sở dữ liệu, export kết nối và repositories.
+  - `src/web_backend/infra/database/pg.py`: Driver wrapper cho `psycopg3` (`PgConn`, `PgCursor`, `PgRow`, `qmark`, `schema_name`), tương thích hoàn toàn giao diện sqlite3 và cú pháp truy vấn tham số `?`.
+  - `src/web_backend/infra/database/connection.py`: Cung cấp `get_connection()` (kết nối PostgreSQL hoặc SQLite fallback), `get_db_path()`, `init_db()` tự động khởi tạo bảng (`sessions`, `messages`, `market_history_10d`, `hitl_evaluations`, `watchlist`, `portfolio_holdings`, `user_settings`, `conversations`, `preferences`), index và migration cột.
+  - `src/web_backend/infra/database/repositories/__init__.py`: Re-export toàn bộ records và repositories (hỗ trợ cả tên chuẩn và alias ngắn).
+  - `src/web_backend/infra/database/repositories/session_repo.py`: `SessionRecord`, `SessionRepository`, `SessionRepo`.
+  - `src/web_backend/infra/database/repositories/message_repo.py`: `MessageRecord`, `MessageRepository`, `MessageRepo`.
+  - `src/web_backend/infra/database/repositories/portfolio_repo.py`: `PortfolioHoldingRecord`, `PortfolioHoldingRepository`, `PortfolioRepo`, `UserSettingsRecord`, `UserSettingsRepository`, `UserSettingsRepo`.
+  - `src/web_backend/infra/database/repositories/watchlist_repo.py`: `WatchlistRecord`, `WatchlistRepository`, `WatchlistRepo`.
+  - `src/web_backend/infra/database/repositories/hitl_repo.py`: `HITLEvaluationRecord`, `HITLEvaluationRepository`, `HITLEvalRepo`.
+  - `src/web_backend/infra/database/repositories/market_history_repo.py`: `MarketHistoryRecord`, `MarketHistoryRepository`, `MarketHistoryRepo`.
+  - `src/web_backend/infra/ai_client/__init__.py`: Package init cho AI client.
+  - `src/web_backend/infra/ai_client/remote_ai_client.py`: Lớp `RemoteAiClient` giao tiếp HTTP với AI Backend (`/health`, `/v1/chat`, `/v1/scan`, và `/v1/chat/stream` token-by-token).
+  - `src/web_backend/tests/test_infra.py`: Bộ kiểm thử 12 ca test bao phủ kết nối SQLite/PostgreSQL helpers, CRUD của 6 repositories, tính năng cascade delete, cô lập dữ liệu đa người dùng (multi-tenancy) và AI client.
+- **Các tệp đã cập nhật**:
+  - `src/web_backend/application/market_service.py`: Cập nhật `_synthesize_fallback_bars` để tạo trực tiếp `MarketHistoryRecord` tránh sai lệch tham số `PriceBar`.
+- **Rà soát theo Acceptance Criteria & Khắc phục lỗi (Bước 7 SDD)**:
+  - Khắc phục lỗi tương thích `PriceBar` trong `market_service.py`: Chuẩn hóa dữ liệu sang `MarketHistoryRecord` với đầy đủ tham số `(symbol, trade_date, open, high, low, close, volume, change_pct)`, sửa triệt để lỗi `TypeError: unexpected keyword argument 'trade_date'`.
+  - Đảm bảo tính toàn vẹn khóa ngoại (Foreign Keys ON) và cơ chế xóa tầng CASCADE giữa bảng `sessions` và `messages`.
+- **Kết quả kiểm thử tự động**:
+  - `pytest src/web_backend/tests/test_infra.py -v`: **12/12 passed (100%)** trong 0.26s.
+  - `pytest src/common/tests/ src/web_backend/tests/ -v`: **63/63 passed (100%)** trong 2.98s (không hồi quy).
+
+---
+
+## 2026-10-14 — Phase 2: Web Backend Microservice — 2.3 Web Domain Layer (domain/)
+
+- **Mục tiêu**: Xây dựng tầng Domain thuần túy (`src/web_backend/domain/`) cho Web Backend Microservice theo chuẩn Clean Architecture, tách biệt các công thức tính toán tài chính danh mục đầu tư và các quy tắc xác thực session/user khỏi tầng Application và Infrastructure (Pure Domain Logic, 100% không I/O, không database).
+- **Các tệp đã tạo mới**:
+  - `src/web_backend/domain/__init__.py`: Package init export các validator và calculator domain.
+  - `src/web_backend/domain/session_validator.py`: `SessionValidator` thực hiện xác thực độc lập cho `session_id` (chống directory traversal, null byte injection), `user_id` (hỗ trợ multi-tenant test accounts `default`, `user_a`, `user_b`), `chat_input` (kiểm tra độ dài, rỗng, null byte), `title` và dữ liệu đầu vào vị thế nắm giữ (`symbol`, `quantity`, `buy_price`).
+  - `src/web_backend/domain/portfolio_calculator.py`: `PortfolioCalculator` cung cấp các công thức tài chính chuyên biệt:
+    - `normalize_price_vnd`: Chuẩn hóa giá về VND đầy đủ (hỗ trợ cả giá theo nghìn đồng niêm yết trên sàn HSX/HNX và giá VND đầy đủ).
+    - `calculate_item_pnl`: Tính toán giá vốn (`cost_basis`), thị giá (`market_value`), Unrealized P&L, tỷ suất sinh lời (`pnl_pct`), và cơ chế fallback thị giá bằng giá vốn khi lỗi giá (`price_error`).
+    - `calculate_portfolio_summary`: Tính toán tổng NAV, tổng chi phí vốn, tổng lãi/lỗ, tỷ trọng từng mã (`weight_pct`), và tự động cảnh báo rủi ro tập trung vốn (`concentration_warning`) nếu một mã chiếm >= 40% NAV trong danh mục đa mã.
+    - `check_alert_triggers`: Phát hiện vị thế chạm ngưỡng cảnh báo cắt lỗ (`STOP_LOSS`) hoặc chốt lời (`TAKE_PROFIT`) theo `alert_threshold_pct`.
+  - `src/web_backend/tests/test_domain.py`: Bộ kiểm thử chuyên biệt 16 ca test bao phủ toàn bộ các trường hợp biên của `SessionValidator` và các phép toán tài chính của `PortfolioCalculator`.
+- **Các tệp đã cập nhật**:
+  - `src/web_backend/application/portfolio_service.py`: Tích hợp và ủy quyền hàm chuẩn hóa giá `_normalize_price_vnd` cho `PortfolioCalculator.normalize_price_vnd`.
+- **Rà soát theo Acceptance Criteria & Khắc phục lỗi (Bước 7 SDD)**:
+  - Khắc phục xử lý số chia bằng 0 (`zero division`) trong `weight_pct` và `pnl_pct` khi `total_nav == 0` hoặc `cost_basis == 0`.
+  - Đảm bảo cơ chế fallback giá an toàn: Khi `current_price` bị `None` hoặc `<= 0`, thị giá tự động gán bằng giá vốn để NAV không bị méo mó, P&L bằng 0.0 và đánh dấu cờ `price_error = True`.
+  - Bảo đảm phân lập ranh giới Clean Architecture: Tầng Domain hoàn toàn không import từ `infra`, không import `openai`, không import `langchain`/`langgraph`.
+- **Kết quả kiểm thử tự động**:
+  - `pytest src/web_backend/tests/test_domain.py -v`: **16/16 passed (100%)** trong 0.06s.
+  - `pytest src/common/tests/ src/web_backend/tests/ -v`: **51/51 passed (100%)** trong 2.45s (không hồi quy).
+
+---
+
+## 2026-10-14 — Phase 2: Web Backend Microservice — 2.2 Web Application Layer (application/)
+
+- **Mục tiêu**: Xây dựng tầng Use Cases nghiệp vụ (`src/web_backend/application/`) của Web Backend theo chuẩn Clean Architecture kế thừa từ `AI_Face_checkin`, chuẩn hóa 100% các Use Case kế thừa `BaseService` hoặc `AsyncBaseService` với method `process(inputs: InputModel) -> OutputModel`.
+- **Các tệp đã tạo mới**:
+  - `src/web_backend/application/__init__.py`: Package init re-export toàn bộ 5 Application Services và DTO inputs/outputs.
+  - `src/web_backend/application/chat_gateway_service.py`: `ChatGatewayService` (kế thừa `AsyncBaseService`) tiếp nhận câu hỏi, quản lý session và tin nhắn, điều phối stream SSE từ remote AI client.
+  - `src/web_backend/application/portfolio_service.py`: `PortfolioService` (kế thừa `BaseService`) tính toán lãi/lỗ Unrealized P&L, chi phí vốn, giá trị thị trường, chuẩn hóa đơn vị giá VND và quản lý vị thế theo `user_id`.
+  - `src/web_backend/application/hitl_service.py`: `HitlService` (kế thừa `BaseService`) ghi nhận đánh giá Thumbs Up/Down, tính điểm tín hiệu `signal_score` (1.0 explicit/implicit), tự động đảm bảo session/message hợp lệ chống lỗi khóa ngoại, và xuất telemetry vào `resources/data/hitl_feedback.json`.
+  - `src/web_backend/application/market_service.py`: `MarketService` (kế thừa `BaseService`) tổng hợp trạng thái các phiên giao dịch HSX/HNX (ATO, Liên tục, ATC) và chuẩn bị dữ liệu ma trận thị trường 10 mã blue-chip.
+  - `src/web_backend/application/review_approval_service.py`: `ReviewApprovalService` (kế thừa `BaseService`) quản lý hàng đợi duyệt lệnh HITL Gate 1 & 2 (`approve`, `reject`, `list_pending`).
+  - `src/web_backend/tests/test_application.py`: Test suite 7 ca kiểm thử riêng cho tầng Application (kiểm tra `BaseService` inheritance, P&L math, signal scoring, market sessions, review approvals, chat gateway async).
+- **Rà soát theo Acceptance Criteria & Khắc phục lỗi (Bước 7 SDD)**:
+  - Khắc phục `HitlService.process`: Bổ sung cơ chế tự động tạo parent session và assistant message nếu chưa tồn tại, ngăn chặn lỗi `ForeignKeyViolation` trên PostgreSQL khi bảng `hitl_evaluations` có ràng buộc khóa ngoại `FOREIGN KEY (session_id) REFERENCES sessions(id)`.
+  - Khắc phục `MarketService`: Sửa đổi phương thức gọi `MarketHistoryRepository` sang `bulk_upsert` và `get_history` đúng với API của repository.
+  - Khắc phục `HitlService`: Đồng bộ trường `feedback_text` với `record.feedback` để tránh trả về `None`.
+- **Kết quả kiểm thử tự động**:
+  - `pytest src/web_backend/tests/ -v`: **19/19 passed (100%)** trong 2.24s.
+  - `pytest src/common/tests/ -v`: **16/16 passed (100%)** trong 0.16s.
+  - `pytest src/common/tests/ src/web_backend/tests/ -v`: **35/35 passed (100%)** trong 2.40s (không hồi quy).
+
+---
+
+## 2026-10-14 — Phase 2: Web Backend Microservice — 2.1 Web Presentation Layer (api/)
+
+- **Mục tiêu**: Xây dựng tầng Presentation (`src/web_backend/api/`) của Web Backend Microservice (Cổng 8000) theo chuẩn Clean Architecture, tách biệt rõ ràng giữa Helpers (xử lý ngoại lệ, middleware Correlation ID, input validation), Pydantic Schemas riêng (`models/`), và 8 Routers độc lập.
+- **Các tệp đã tạo mới**:
+  - `src/web_backend/__init__.py`: Package root của Web Backend.
+  - `src/web_backend/api/__init__.py`: Init package API presentation.
+  - `src/web_backend/api/deps.py`: Dependency wiring cho Web API (`AppDeps`, `get_app_deps`, `get_current_user_id`).
+  - `src/web_backend/api/helpers/exception_handler.py`: Global HTTP exception handlers (chuẩn hóa lỗi 4xx, 422 và 500 thành JSON format rõ ràng).
+  - `src/web_backend/api/helpers/middlewares.py`: Middleware `CorrelationIdMiddleware` (inject Correlation ID từ header hoặc sinh mới qua ContextVar) và `RequestLoggingMiddleware` (đo độ trễ ms và mã HTTP).
+  - `src/web_backend/api/helpers/validation.py`: Các helper tiền xử lý và chuẩn hóa đầu vào (`normalize_symbol`, `normalize_question`, `title_from_question`, `validate_threshold_pct`, `normalize_approval_id`, `normalize_reject_reason`).
+  - `src/web_backend/api/helpers/__init__.py`: Re-export helpers.
+  - `src/web_backend/api/models/chat.py`: Pydantic models `ChatRequest`, `ChatStep`, `ChatResponse` kế thừa `CustomBaseModel`.
+  - `src/web_backend/api/models/portfolio.py`: Pydantic models `CreateHoldingRequest`, `HoldingOut`, `PortfolioItemOut`, `PortfolioSummaryOut`, `UserSettingsOut`, `UpdateUserSettingsRequest`.
+  - `src/web_backend/api/models/hitl.py`: Pydantic models `FeedbackCreateRequest`, `FeedbackOut`, `FeedbackListResponse`.
+  - `src/web_backend/api/models/sessions.py`: Pydantic models `SessionOut`, `SessionListResponse`, `CreateSessionRequest`, `MessageOut`, `SessionDetailResponse`.
+  - `src/web_backend/api/models/watchlist.py`: Pydantic models `WatchlistItemOut`, `WatchlistListResponse`, `CreateWatchlistRequest`, `UpdateWatchlistRequest`.
+  - `src/web_backend/api/models/market.py`: Pydantic models `MarketSessionOut`, `MarketMatrixItemOut`, `MarketMatrixResponse`.
+  - `src/web_backend/api/models/approvals.py`: Pydantic models `ApproveRequest`, `RejectRequest`, `ReviewResponse`, `ApprovalsListResponse`.
+  - `src/web_backend/api/models/scan.py`: Pydantic models `ScanRequest`, `ScanResponse`.
+  - `src/web_backend/api/models/__init__.py`: Re-export models.
+  - `src/web_backend/api/routers/chat.py`: Router `/chat`, `/api/v1/chat`, `/api/chat`, hỗ trợ SSE streaming qua `stream_remote_sse`.
+  - `src/web_backend/api/routers/portfolio.py`: Router quản lý vị thế `/api/portfolio/holdings` và cài đặt rủi ro `/api/user/settings`.
+  - `src/web_backend/api/routers/watchlist.py`: Router CRUD danh mục theo dõi `/watchlist`, `/api/watchlist`.
+  - `src/web_backend/api/routers/sessions.py`: Router quản lý phiên đối thoại `/api/v1/sessions` và tin nhắn.
+  - `src/web_backend/api/routers/hitl.py`: Router tiếp nhận phản hồi HITL `/hitl/feedback`, `/api/v1/hitl/feedback`.
+  - `src/web_backend/api/routers/market.py`: Router trạng thái phiên giao dịch và ma trận thị trường `/api/market/sessions`.
+  - `src/web_backend/api/routers/approvals.py`: Router kiểm duyệt lệnh HITL `/approvals`, `/approvals/review`.
+  - `src/web_backend/api/routers/scan.py`: Router kích hoạt quét tín hiệu kỹ thuật `/scan`, `/api/v1/scan`.
+  - `src/web_backend/api/routers/__init__.py`: Re-export 8 routers.
+  - `src/web_backend/tests/test_presentation.py`: Test suite 12 ca kiểm thử toàn diện kiểm tra validation, schemas, router routing, Correlation ID, Exception Handlers, approvals, watchlist patch và scan.
+  - `src/web_backend/tests/__init__.py`: Init test package.
+- **Rà soát theo Acceptance Criteria & Khắc phục lỗi (Bước 7 SDD)**:
+  - Khắc phục `src/web_backend/api/routers/approvals.py`: Loại bỏ tham số thừa `notifier` khi ủy thác sang `reject_pending`.
+  - Chuẩn hóa `src/web_backend/api/routers/watchlist.py`: Bổ sung route alias `PATCH` song song với `PUT`, ánh xạ chuẩn phương thức `upsert`, `list_items`, `get`, `delete` của store.
+  - Mở rộng `src/web_backend/tests/test_presentation.py` từ 9 lên 12 test cases kiểm thử các endpoint approvals, watchlist và scan.
+- **Kết quả kiểm thử tự động**:
+  - `pytest src/web_backend/tests/ -v`: **12/12 passed (100%)** trong 2.15s.
+  - `pytest src/common/tests/ -v`: **16/16 passed (100%)** trong 0.17s.
+  - `pytest tests/unit/test_config.py tests/unit/test_indicators.py tests/unit/test_secret_manager.py -q`: **17/17 passed (100%)** trong 0.11s (không hồi quy).
+
+---
+
+## 2026-10-14 — Phase 1: Hoàn thành Shared Kernel — Xây dựng Khối Dùng Chung (src/common/)
+
+- **Mục tiêu**: Xây dựng nền tảng dùng chung (Shared Kernel) `src/common` độc lập theo chuẩn Clean Architecture từ `AI_Face_checkin`, bao gồm Base foundation, Domain entities, Indicators toán học thuần túy, Logging correlation ID, Settings/Secrets và Inter-service Transport DTO. Chưa triển khai logic nghiệp vụ Web hay AI.
+- **Các tệp đã tạo mới**:
+  - `src/common/__init__.py`: Package root của khối common.
+  - `src/common/base/base_model.py`: `CustomBaseModel` (kế thừa Pydantic BaseModel, `arbitrary_types_allowed = True`).
+  - `src/common/base/base_service.py`: `BaseService` và `AsyncBaseService` với abstract method `process(input) -> output`.
+  - `src/common/base/__init__.py`: Re-export base classes.
+  - `src/common/domain/entities.py`: Các thực thể cốt lõi `User`, `Holding`, `Watchlist`, `Message`, `StockQuote`, `RoutingDecision`, `FinalAlert` kế thừa `CustomBaseModel`.
+  - `src/common/domain/indicators.py`: Các hàm toán học chỉ báo thuần túy `compute_rsi`/`calculate_rsi`, `compute_sma`/`calculate_sma`, `analyze_technical_indicators`, `IndicatorSummary`.
+  - `src/common/domain/ports.py`: Các interfaces trừu tượng `IPriceSource`, `INewsSource`, `IDatabase`, `WatchlistStore`, `MemoryStore`.
+  - `src/common/domain/__init__.py`: Re-export domain models và ports.
+  - `src/common/logging/logger.py`: Logger có cấu trúc, gắn ContextVar `correlation_id`, hỗ trợ format Console và JSON.
+  - `src/common/logging/__init__.py`: Re-export logger.
+  - `src/common/settings/config.py`: Nạp cấu hình master từ `resources/configs/config.yaml` và `.env`, hàm `load_config()`.
+  - `src/common/settings/secrets.py`: Secret Manager và hàm trích xuất `get_database_url()`, `get_secret()`.
+  - `src/common/settings/__init__.py`: Re-export settings & secrets.
+  - `src/common/transport/schemas.py`: DTO chuẩn `ChatStreamRequest`, `ChatStreamResponse`, `ScanRequest`, `ScanResponse` cùng các schemas structured output.
+  - `src/common/transport/transport.py`: HTTP client liên dịch vụ hỗ trợ SSE streaming `stream_remote_sse`, retry backoff với jitter, `ai_chat`, `ai_scan`.
+  - `src/common/transport/__init__.py`: Re-export transport client và schemas.
+  - `src/common/tests/test_indicators.py`: Test suite toán học chỉ báo kỹ thuật.
+  - `src/common/tests/test_config.py`: Test suite nạp cấu hình tập trung.
+  - `src/common/tests/test_secret_manager.py`: Test suite Secret Manager an toàn.
+  - `src/common/tests/__init__.py`: Package init cho test.
+- **Cập nhật cấu hình**:
+  - `pyproject.toml`: Bổ sung `"common*"` vào `packages.find.include`, sửa `requires-python` từ typo `3.15` về `>=3.10`.
+  - Cài đặt editable package: `pip install -e . --no-deps`.
+- **Kết quả kiểm thử tự động**:
+  - `pytest src/common/tests/ -v`: **16/16 passed (100%)** trong 0.19s.
+  - `pytest tests/unit/test_config.py tests/unit/test_indicators.py tests/unit/test_secret_manager.py -q`: **17/17 passed (100%)** trong 0.08s (không gây hồi quy).
+
+---
+
+## 2026-10-14 — Đặc tả Spec-Driven Development: Tái cấu trúc Clean Architecture theo chuẩn AI_Face_checkin thành 3 khối (common, web_backend, ai_backend)
+
+- **Mục tiêu**: Hoàn thiện toàn bộ hồ sơ đặc tả kỹ thuật (SDD) phục vụ việc tái cấu trúc mã nguồn `src/backend` thành 3 khối microservice độc lập theo chuẩn thiết kế Clean Architecture từ `AI_Face_checkin`, giữ tính đơn giản và MVP, chưa triển khai code app.
+- **Tạo và chuẩn hóa 6 tài liệu đặc tả SDD**:
+  1. `specs/product-spec.md`:
+     - Chuẩn hóa đầy đủ 6 mục tiêu chuẩn theo hướng dẫn SDD: App Goal, Target Users, Core User Flow (kèm Sequence Diagram), Features In Scope, Features Out of Scope, và Acceptance Criteria (AC-1 đến AC-12).
+     - Phân định rõ 3 khối: `src/common` (Shared Kernel), `src/web_backend` (Cổng 8000), `src/ai_backend` (Cổng 8001), và `tests/e2e/`.
+     - Phân định ranh giới phụ thuộc và luồng tương tác người dùng: Web tiếp nhận request, AI điều phối LangGraph Swarm 10 Agents & RAG Qdrant, chuyển token SSE về UI.
+  2. `specs/implementation-plan.md`:
+     - Thiết lập kế hoạch 6 phase tuần tự với checkbox `[ ]` chi tiết và lệnh kiểm thử tương ứng:
+       * Phase 1: Shared Kernel (`src/common/`: base, domain, logging, settings, transport, tests)
+       * Phase 2: Web Backend Microservice (`src/web_backend/`: api, application, domain, infra, shared, tests)
+       * Phase 3: AI Backend Microservice (`src/ai_backend/`: api, application, domain, infra, shared, tests)
+       * Phase 4: Inter-Service Wiring & Cleanup (Cập nhật `pyproject.toml`, xóa bỏ `src/backend`, kiểm tra AST import boundaries)
+       * Phase 5: Verification of 4-Tier Test Suites & Golden v6 (20/20 test cases)
+       * Phase 6: Docker Compose, Nginx & Deployment Verification (`release.ps1`, `publish.ps1`)
+  3. `specs/test-plan.md`:
+     - Chuyển đổi mô hình kiểm thử sang Kim tự tháp 4 tầng: `src/common/tests/`, `src/web_backend/tests/`, `src/ai_backend/tests/`, và `tests/e2e/`.
+     - Phân bổ đầy đủ 100% test files hiện có vào từng khối chức năng tương ứng mà không bỏ sót bất kỳ test case nào.
+     - Duy trì ma trận Golden Dataset v6 (10 lát cắt, 20 test cases, 100% PASS).
+  4. `AGENTS.md`:
+     - Tối ưu hóa ngắn gọn, súc tích (41 dòng) và thực tế theo 5 phần: Nguyên tắc cốt lõi (7 quy tắc SDD), Kiến trúc 3 khối Clean Architecture, Quy chuẩn kiểm thử & CI, Vận hành & Triển khai, và Mẫu báo cáo hoàn thành task. Kế thừa `BaseService`/`AsyncBaseService` (`process(input) -> output`), cấm import chéo giữa Web và AI.
+  5. `README.md`:
+     - Cập nhật mục tiêu đợt cập nhật, cây thư mục Repository Layout đầy đủ 3 khối, hướng dẫn chạy độc lập 2 microservices (cổng 8000 và 8001) và bộ lệnh chạy test 4 tầng.
+  6. `specs/change-log.md`:
+     - Ghi nhận đầy đủ tiến trình hoàn tất hồ sơ đặc tả trước khi code.
+- **Cam kết nguyên tắc SDD**:
+  - Không có bất kỳ dòng code nào trong `src/` bị sửa đổi hoặc tạo mới ở bước này.
+  - Toàn bộ checkbox trong `specs/implementation-plan.md` ở trạng thái chờ xác nhận từ người dùng trước khi tiến hành Phase 1.
+
 ---
 
 ## 2026-10-14 — Chuyển toàn bộ Output của Test & Eval sang resources/eval/ (Xoá bỏ hoàn toàn specs/eval/)

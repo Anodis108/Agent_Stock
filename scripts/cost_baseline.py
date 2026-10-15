@@ -32,8 +32,8 @@ if str(ROOT) not in sys.path:
 
 import yaml  # noqa: E402
 
-from backend.eval.history import get_git_sha  # noqa: E402
-from backend.infra.cost.tracker import (  # noqa: E402
+from ai_backend.application.eval.history import get_git_sha  # noqa: E402
+from ai_backend.infra.cost.tracker import (  # noqa: E402
     get_cost_tracker,
     reset_cost_tracker,
     set_cost_context,
@@ -144,7 +144,7 @@ def run_baseline(
     passes = 2 if with_cache == "tier1" else 1
     if with_cache == "tier1":
         os.environ["EXACT_CACHE_ENABLED"] = "true"
-        from backend.infra.cache.exact import get_exact_cache
+        from ai_backend.infra.cache.exact import get_exact_cache
 
         get_exact_cache().clear()
     else:
@@ -174,7 +174,7 @@ def run_baseline(
                         completion_tokens=0 if is_hit else 120 + (i % 3) * 20,
                     )
     else:
-        from backend.eval.run import make_answer_fn
+        from ai_backend.application.eval.run import make_answer_fn
 
         answer_fn = make_answer_fn(user_id="cost-baseline")
         for pass_num in range(passes):

@@ -18,17 +18,24 @@ from pathlib import Path
 import pytest
 import yaml
 
-from backend.eval import run as eval_mod
-from backend.eval.run_detailed import (
+from ai_backend.application.eval import run as eval_mod
+from ai_backend.application.eval.run_detailed import (
     GOLDEN_V5_PATH,
     TokenTracker,
     extract_pipeline_trace,
     generate_markdown_report,
 )
-
 ROOT = Path(__file__).resolve().parents[2] if Path(__file__).resolve().parent.name in ("unit", "integration", "e2e") else Path(__file__).resolve().parents[1]
-GOLDEN_V5_RESOURCE = ROOT / "resources" / "eval" / "golden_v5.yaml"
-GOLDEN_V6_RESOURCE = ROOT / "resources" / "eval" / "golden_v6_comprehensive.yaml"
+GOLDEN_V5_RESOURCE = (
+    ROOT / "resources" / "eval" / "extended_dataset.yaml"
+    if (ROOT / "resources" / "eval" / "extended_dataset.yaml").is_file()
+    else ROOT / "resources" / "eval" / "golden_v5.yaml"
+)
+GOLDEN_V6_RESOURCE = (
+    ROOT / "resources" / "eval" / "golden_dataset.yaml"
+    if (ROOT / "resources" / "eval" / "golden_dataset.yaml").is_file()
+    else ROOT / "resources" / "eval" / "golden_v6_comprehensive.yaml"
+)
 
 
 # ==============================================================================
@@ -310,7 +317,7 @@ def test_pipeline_trace_extraction():
 
 def test_generate_markdown_report_formatting():
     """Kiểm tra cấu trúc và nội dung báo cáo Markdown chi tiết."""
-    from backend.eval.run import EvalReport, SliceScore
+    from ai_backend.application.eval.run import EvalReport, SliceScore
 
     mock_report = EvalReport(
         total=1,
@@ -375,8 +382,8 @@ def test_generate_markdown_report_formatting():
 
 def test_prompt_lint_passes_on_resources_prompts():
     """Mọi prompt trong resources/prompts/ phải pass lint (metadata + biến template)."""
-    from backend.infra.llm.prompt_lint import lint_prompts_dir
-    from backend.infra.llm.prompt_registry import resolve_prompts_dir
+    from ai_backend.infra.llm.prompt_lint import lint_prompts_dir
+    from ai_backend.infra.llm.prompt_registry import resolve_prompts_dir
 
     issues = lint_prompts_dir(resolve_prompts_dir())
     assert not issues, "\n".join(str(i) for i in issues)
@@ -384,7 +391,7 @@ def test_prompt_lint_passes_on_resources_prompts():
 
 def test_prompt_lint_catches_missing_metadata(tmp_path: Path):
     """Lint báo lỗi khi thiếu metadata bắt buộc."""
-    from backend.infra.llm.prompt_lint import lint_prompt_file
+    from ai_backend.infra.llm.prompt_lint import lint_prompt_file
 
     prompt_dir = tmp_path / "demo_prompt"
     prompt_dir.mkdir()
@@ -402,7 +409,7 @@ def test_prompt_lint_catches_missing_metadata(tmp_path: Path):
 
 def test_prompt_lint_catches_variables_mismatch(tmp_path: Path):
     """Lint báo lỗi khi variables khai báo không khớp template."""
-    from backend.infra.llm.prompt_lint import lint_prompt_file
+    from ai_backend.infra.llm.prompt_lint import lint_prompt_file
 
     prompt_dir = tmp_path / "demo_prompt"
     prompt_dir.mkdir()
@@ -431,14 +438,19 @@ template: |
 # 9. Golden PR Subset — Phase 4 (M3-B2)
 # ==============================================================================
 
-GOLDEN_PR_SUBSET = ROOT / "resources" / "eval" / "golden_pr_subset.yaml"
+CI_DATASET_RESOURCE = (
+    ROOT / "resources" / "eval" / "ci_dataset.yaml"
+    if (ROOT / "resources" / "eval" / "ci_dataset.yaml").is_file()
+    else ROOT / "resources" / "eval" / "golden_pr_subset.yaml"
+)
+GOLDEN_PR_SUBSET = CI_DATASET_RESOURCE
 
 
 def test_golden_pr_subset_loads_20_cases():
-    """PR subset phải có ~20 cases resolve từ golden_v5."""
-    from backend.eval.run import load_golden_dataset
+    """CI/CD subset phải có ~20 cases resolve từ extended_dataset."""
+    from ai_backend.application.eval.run import load_golden_dataset
 
-    assert GOLDEN_PR_SUBSET.is_file(), "Thiếu golden_pr_subset.yaml"
+    assert GOLDEN_PR_SUBSET.is_file(), f"Thiếu {GOLDEN_PR_SUBSET}"
     data = load_golden_dataset(GOLDEN_PR_SUBSET, validate_rules=True)
     cases = data["cases"]
     assert len(cases) == 20, f"PR subset cần 20 cases, có {len(cases)}"
@@ -451,7 +463,7 @@ def test_golden_pr_subset_loads_20_cases():
 
 def test_golden_pr_subset_priority_slices():
     """Subset ưu tiên injection, out_of_scope, comparison, session_memory."""
-    from backend.eval.run import load_golden_dataset
+    from ai_backend.application.eval.run import load_golden_dataset
 
     data = load_golden_dataset(GOLDEN_PR_SUBSET)
     by_slice: dict[str, int] = {}
@@ -466,7 +478,7 @@ def test_golden_pr_subset_priority_slices():
 
 def test_golden_pr_subset_runner_stub():
     """Runner chạy subset với answer_fn stub — không cần API."""
-    from backend.eval.run import build_report, load_golden_dataset, run_eval
+    from ai_backend.application.eval.run import build_report, load_golden_dataset, run_eval
 
     cases = load_golden_dataset(GOLDEN_PR_SUBSET)["cases"]
 
@@ -523,7 +535,7 @@ def _gate_report(
 
 def test_eval_report_to_gate_json_includes_rule_pass_rate():
     """JSON export cho gate phải có rule_pass_rate và by_slice."""
-    from backend.eval.run import eval_report_to_gate_json
+    from ai_backend.application.eval.run import eval_report_to_gate_json
 
     results = [
         eval_mod.CaseEvalResult(
@@ -549,7 +561,7 @@ def test_eval_report_to_gate_json_includes_rule_pass_rate():
 
 def test_gate_passes_good_report():
     """Gate pass khi overall, rule, injection, out_of_scope đạt ngưỡng."""
-    from backend.eval.gate import check_gates
+    from ai_backend.application.eval.gate import check_gates
 
     result = check_gates(_gate_report())
     assert result.passed is True
@@ -558,7 +570,7 @@ def test_gate_passes_good_report():
 
 def test_gate_fails_injection_slice():
     """Gate exit fail khi slice injection tụt (product-spec #9)."""
-    from backend.eval.gate import check_gates
+    from ai_backend.application.eval.gate import check_gates
 
     result = check_gates(_gate_report(injection_rate=0.6667))
     assert result.passed is False
@@ -568,7 +580,7 @@ def test_gate_fails_injection_slice():
 
 def test_gate_fails_overall_and_rule_rate():
     """Gate fail khi overall hoặc rule_pass_rate dưới ngưỡng."""
-    from backend.eval.gate import check_gates
+    from ai_backend.application.eval.gate import check_gates
 
     low_overall = check_gates(_gate_report(rate=0.80))
     assert low_overall.passed is False
@@ -579,7 +591,7 @@ def test_gate_fails_overall_and_rule_rate():
 
 def test_gate_cli_exit_code(tmp_path: Path):
     """CLI gate trả exit 0/1 đúng."""
-    from backend.eval.gate import main
+    from ai_backend.application.eval.gate import main
 
     good = tmp_path / "good.json"
     good.write_text(json.dumps(_gate_report()), encoding="utf-8")
@@ -597,7 +609,7 @@ def test_gate_cli_exit_code(tmp_path: Path):
 
 def test_save_eval_history_writes_timestamped_file(tmp_path: Path):
     """History lưu vào <timestamp>_<sha>.json."""
-    from backend.eval.history import load_history_reports, save_eval_history
+    from ai_backend.application.eval.history import load_history_reports, save_eval_history
 
     payload = _gate_report()
     path = save_eval_history(
@@ -614,7 +626,7 @@ def test_save_eval_history_writes_timestamped_file(tmp_path: Path):
 
 def test_compute_noise_stats_three_runs():
     """3 runs cùng commit → tính σ và gợi ý tolerance."""
-    from backend.eval.history import compute_noise_stats
+    from ai_backend.application.eval.history import compute_noise_stats
 
     stats = compute_noise_stats([0.90, 0.92, 0.91])
     assert stats["count"] == 3
@@ -625,7 +637,7 @@ def test_compute_noise_stats_three_runs():
 
 def test_gate_drill_bad_then_good(tmp_path: Path):
     """Drill: injection tụt → exit 1; revert → exit 0."""
-    from backend.eval.gate import check_gates, main as gate_main
+    from ai_backend.application.eval.gate import check_gates, main as gate_main
 
     bad = {
         "rate": 0.85,
@@ -649,7 +661,7 @@ def test_gate_drill_bad_then_good(tmp_path: Path):
 
 def test_gate_accepts_v5_baseline_format():
     """Legacy v5_baseline.json (thiếu rule_pass_rate) vẫn chạy gate."""
-    from backend.eval.gate import load_gate_report, check_gates
+    from ai_backend.application.eval.gate import load_gate_report, check_gates
 
     baseline_path = ROOT / "resources" / "eval" / "v5_baseline.json"
     if not baseline_path.is_file():
@@ -670,7 +682,7 @@ REPLAY_FAQ = ROOT / "resources" / "eval" / "replay_faq.yaml"
 
 def test_cost_tracker_record_and_summary():
     """record_cost ghi tag feature/model/prompt_version/cache_hit."""
-    from backend.infra.cost.tracker import get_cost_tracker, record_cost, reset_cost_tracker
+    from ai_backend.infra.cost.tracker import get_cost_tracker, record_cost, reset_cost_tracker
 
     reset_cost_tracker()
     record_cost(
@@ -722,7 +734,7 @@ def test_cost_baseline_dry_run(tmp_path: Path):
 
 def test_agent_eval_routing_metric():
     """Kiểm tra độ chính xác của hàm tính điểm Routing (Accuracy, Precision, Recall)."""
-    from backend.eval.agent_eval import score_routing
+    from ai_backend.application.eval.agent_eval import score_routing
 
     # 1. Comparison: kỳ vọng [price, news, eval]
     acc, prec, rec = score_routing(["price", "news", "eval"], "comparison", "So sánh FPT và HPG")
@@ -746,7 +758,7 @@ def test_agent_eval_routing_metric():
 
 def test_agent_eval_decomposition_metric():
     """Kiểm tra hàm chấm điểm chất lượng phân rã câu hỏi (Query Decomposition)."""
-    from backend.eval.agent_eval import score_query_decomposition
+    from ai_backend.application.eval.agent_eval import score_query_decomposition
 
     # 1. Đa mã so sánh được tách thành >= 2 câu con gắn mã
     score_comp = score_query_decomposition(
@@ -773,7 +785,7 @@ def test_agent_eval_decomposition_metric():
 
 def test_agent_eval_groundedness_metric():
     """Kiểm tra hàm chấm điểm Groundedness / Faithfulness bám sát facts trong evidence."""
-    from backend.eval.agent_eval import score_groundedness
+    from ai_backend.application.eval.agent_eval import score_groundedness
 
     # 1. Câu trả lời có % khớp với evidence
     score_ground = score_groundedness(
@@ -794,7 +806,7 @@ def test_agent_eval_groundedness_metric():
 
 def test_agent_eval_task_success_metric():
     """Kiểm tra chấm điểm mức độ hoàn thành nhiệm vụ và kiểm soát từ cấm."""
-    from backend.eval.agent_eval import score_task_success
+    from ai_backend.application.eval.agent_eval import score_task_success
 
     # 1. Đáp ứng đủ must_include và không vi phạm must_not_include
     score, issues = score_task_success(
@@ -819,7 +831,7 @@ def test_agent_eval_task_success_metric():
 
 def test_agent_eval_benchmark_runner_and_export(tmp_path: Path):
     """Kiểm tra toàn bộ luồng run_agent_eval và export_eval_report xuất JSON & Markdown chuẩn."""
-    from backend.eval.agent_eval import export_eval_report, run_agent_eval
+    from ai_backend.application.eval.agent_eval import export_eval_report, run_agent_eval
 
     # Chạy trên tập 3 cases mẫu
     test_cases = [
@@ -864,13 +876,13 @@ def test_agent_eval_benchmark_runner_and_export(tmp_path: Path):
 
 def test_phase5_observation_metrics_and_trace(tmp_path: Path):
     """Kiểm tra toàn diện 4 nhóm thông số quan sát: Token, Cost, Latency TTFT/E2E, Trace và Compliance Gate."""
-    from backend.eval.run_detailed import (
+    from ai_backend.application.eval.run_detailed import (
         TokenTracker,
         extract_pipeline_trace,
         generate_markdown_report,
         run_detailed_evaluation,
     )
-    from backend.eval.run import build_report, CaseEvalResult, LlmJudgeResult, RuleBasedScore
+    from ai_backend.application.eval.run import build_report, CaseEvalResult, LlmJudgeResult, RuleBasedScore
 
     # 1. Kiểm tra TokenTracker và tính toán chi phí
     tracker = TokenTracker()

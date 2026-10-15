@@ -1,6 +1,6 @@
 # ==============================================================================
 # VN Stock Swarm — Script Khởi Chạy Backend & Web UI Cục Bộ (PowerShell)
-# Lệnh chuẩn: uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
+# Lệnh chuẩn: uvicorn web_backend.main:app --host 127.0.0.1 --port 8000 --reload
 # ==============================================================================
 
 [CmdletBinding()]
@@ -79,4 +79,4 @@ Write-Host "[INFO] Đang khởi động máy chủ Uvicorn... (Nhấn Ctrl+C đ�
 $ReloadFlag = if ($NoReload) { @() } else { @("--reload") }
 
 # 5. Khởi chạy Uvicorn Server
-& $PythonExe -m uvicorn backend.main:app --host $HostAddress --port $Port @ReloadFlag
+& $PythonExe -m uvicorn web_backend.main:app --host $HostAddress --port $Port @ReloadFlag

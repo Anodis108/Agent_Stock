@@ -2,7 +2,7 @@
 name = "portfolio-watch"
 version = "0.1.0"
 description = "Portfolio Watch & Chat Agent — multi-agent giám sát cổ phiếu VN"
-requires-python = ">=3.15"
+requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.111.0",
     "uvicorn[standard]>=0.30.0",
@@ -34,10 +34,11 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-where = ["src", "."]
-include = ["web_backend*", "ai_backend*", "shared*"]
+where = ["src"]
+include = ["common*", "web_backend*", "ai_backend*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["tests"]
-pythonpath = [".", "src"]
+testpaths = ["tests", "src"]
+pythonpath = ["src", "."]
+

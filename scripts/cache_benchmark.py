@@ -31,8 +31,8 @@ if str(ROOT) not in sys.path:
 
 import yaml  # noqa: E402
 
-from backend.eval.history import get_git_sha  # noqa: E402
-from backend.infra.cost.tracker import (  # noqa: E402
+from ai_backend.application.eval.history import get_git_sha  # noqa: E402
+from ai_backend.infra.cost.tracker import (  # noqa: E402
     get_cost_tracker,
     reset_cost_tracker,
     set_cost_context,
@@ -53,8 +53,8 @@ def load_replay_faq(path: Path | None = None) -> list[dict]:
 
 
 def _configure_cache(mode: str) -> None:
-    from backend.infra.cache.exact import get_exact_cache
-    from backend.infra.cache.semantic import get_semantic_cache
+    from ai_backend.infra.cache.exact import get_exact_cache
+    from ai_backend.infra.cache.semantic import get_semantic_cache
 
     get_exact_cache().clear()
     get_semantic_cache().clear()
@@ -117,7 +117,7 @@ def _simulate_mode(
 
 def _live_mode(mode: str, questions: list[dict]) -> dict:
     """Live replay qua answer_fn."""
-    from backend.eval.run import make_answer_fn
+    from ai_backend.application.eval.run import make_answer_fn
 
     _configure_cache(mode)
     reset_cost_tracker()
@@ -174,7 +174,7 @@ def run_benchmark(
     elapsed = time.perf_counter() - t0
     git_sha = get_git_sha()
 
-    from backend.infra.cache.semantic import get_semantic_cache
+    from ai_backend.infra.cache.semantic import get_semantic_cache
 
     audit = [a.as_dict() for a in get_semantic_cache().audit_log[:10]]
     if dry_run and not audit:

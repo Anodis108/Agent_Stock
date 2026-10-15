@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # VN Stock Swarm — Script Khởi Chạy Backend & Web UI Cục Bộ (Bash / macOS / Linux)
-# Lệnh chuẩn: uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
+# Lệnh chuẩn: uvicorn web_backend.main:app --host 127.0.0.1 --port 8000 --reload
 # ==============================================================================
 
 set -e
@@ -77,4 +77,4 @@ echo ""
 echo "[INFO] Đang khởi động máy chủ Uvicorn... (Nhấn Ctrl+C để dừng)"
 
 # 5. Khởi chạy Uvicorn Server
-exec "${PYTHON_BIN}" -m uvicorn backend.main:app --host "${HOST}" --port "${PORT}" --reload
+exec "${PYTHON_BIN}" -m uvicorn web_backend.main:app --host "${HOST}" --port "${PORT}" --reload

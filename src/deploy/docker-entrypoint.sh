@@ -10,4 +10,9 @@ fi
 APP_HOME="${HOME:-/app/data}"
 APP_XDG="${XDG_CONFIG_HOME:-/app/data/.config}"
 APP_MPL="${MPLCONFIGDIR:-/app/data/.matplotlib}"
-exec gosu appuser env HOME="$APP_HOME" XDG_CONFIG_HOME="$APP_XDG" MPLCONFIGDIR="$APP_MPL" "$@"
+if [ "$(id -u)" = "0" ]; then
+  exec gosu appuser env HOME="$APP_HOME" XDG_CONFIG_HOME="$APP_XDG" MPLCONFIGDIR="$APP_MPL" "$@"
+else
+  exec env HOME="$APP_HOME" XDG_CONFIG_HOME="$APP_XDG" MPLCONFIGDIR="$APP_MPL" "$@"
+fi
+

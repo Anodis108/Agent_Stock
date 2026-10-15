@@ -4,33 +4,33 @@ Hệ thống Trợ lý Phân tích Chứng khoán Đa Tác tử (Multi-Agent Swa
 
 ## Đợt cập nhật hiện tại (chưa code)
 
-Tách `src/backend` thành hai cây: `src/web_backend` và `src/ai_backend`. Phần chung chỉ là `src/shared`. Hành vi chat, swarm, và UI giữ nguyên.
+Tái cấu trúc Clean Architecture theo chuẩn `AI_Face_checkin` phân rã thành 3 khối chuyên biệt:
+- **`src/common/`**: Shared Kernel dùng chung (`base/` với `CustomBaseModel` và `BaseService`/`AsyncBaseService`, `domain/` với thực thể và indicators thuần túy, `logging/`, `settings/`, `transport/`, và `tests/`).
+- **`src/web_backend/`**: Microservice Web Gateway cổng 8000 (`api/`, `application/`, `domain/`, `infra/`, `shared/`, và `tests/`).
+- **`src/ai_backend/`**: Microservice AI Swarm Engine cổng 8001 (`api/`, `application/`, `domain/`, `infra/`, `shared/`, và `tests/`).
+- **`tests/e2e/`**: Kiểm thử liên dịch vụ, Golden Dataset v6 20/20 cases, Docker setup, Capstone Gate.
 
 Public từ chính máy này, chưa thuê cloud. Nginx nghe cổng 80 và chuyển vào web `127.0.0.1:8000`. Cloudflare Tunnel (`cloudflared`) mở HTTPS ra internet mà không cần mở port modem. ngrok vẫn là demo nhanh.
 
 Chưa triển khai. Spec: [specs/product-spec.md](specs/product-spec.md), [specs/implementation-plan.md](specs/implementation-plan.md), [specs/test-plan.md](specs/test-plan.md).
 
-Việc còn lại, theo `specs/implementation-plan.md`:
-
-1. Project setup
-2. Core UI
-3. Core backend or data logic
-4. Connect UI to data
-5. Validation and error states
-6. Local run instructions
-7. ngrok demo setup
-
-Đợt port LLMOps sau `01bd450` đã xong. Module III Bài 1–8 đã có trong code. Không viết lại swarm hay golden set. Không làm RAG pháp lý, không tìm web khi thiếu tài liệu.
+Kế hoạch 6 phase theo `specs/implementation-plan.md`:
+1. Shared Kernel (`src/common/`)
+2. Web Backend Microservice (`src/web_backend/`)
+3. AI Backend Microservice (`src/ai_backend/`)
+4. Inter-Service Wiring & Cleanup
+5. Verification of 4-Tier Test Suites & Golden v6
+6. Docker Compose, Nginx & Deployment Verification
 
 ## Demo with ngrok
 
-Web local phục vụ UI và API cùng origin trên cổng **8000**. Khi chạy local tách hai cây, Web Backend nghe cổng 8000 và AI Backend nghe cổng 8001:
+Web local phục vụ UI và API cùng origin trên cổng **8000**. Khi chạy local tách hai service, Web Backend nghe cổng 8000 và AI Backend nghe cổng 8001:
 
 ```bash
-# Cửa sổ 1 — Web Backend cổng 8000 (uvicorn web_backend.main:app hoặc lệnh tương thích uvicorn backend.main:app):
+# Cửa sổ 1 — Web Backend cổng 8000:
 uvicorn web_backend.main:app --app-dir src --host 127.0.0.1 --port 8000 --reload
 # Cửa sổ 2 — AI Backend cổng 8001:
-uvicorn ai_backend.app:app --app-dir src --host 127.0.0.1 --port 8001 --reload
+uvicorn ai_backend.main:app --app-dir src --host 127.0.0.1 --port 8001 --reload
 # Cửa sổ 3 — Mở ngrok cho cổng 8000:
 ngrok http 8000
 ```
@@ -189,39 +189,82 @@ Hệ thống sử dụng kiến trúc lưu trữ phân tầng nhằm bảo đả
 
 ```
 vn-stock-swarm/
-├── .github/workflows/          # CI/CD Workflows (ci.yml, eval-gate.yml, cd.yml)
 ├── resources/                  # Tài nguyên tĩnh tổng hợp (Master Assets)
 │   ├── configs/
 │   │   └── config.yaml         # Master Application Config (LLM, App, Cache, Storage)
-│   ├── data/                   # CSDL SQLite. Ảnh biểu đồ mặc định ở MinIO
-│   │   ├── charts/             # PNG fallback khi MinIO không chạy
-│   │   ├── portfolio_watch.db  # CSDL AI core
-│   │   └── backend_store.db    # CSDL Product & Watchlist
-│   ├── docs/                   # Sơ đồ kiến trúc & Playbook sự cố Module 3
-│   ├── eval/                   # Dữ liệu đánh giá Golden v6, Replay FAQ 200 câu & Báo cáo Excel
+│   ├── data/                   # CSDL SQLite & PNG charts
+│   ├── docs/                   # Sơ đồ kiến trúc & Concepts markdown
+│   ├── eval/                   # Dữ liệu đánh giá Golden v6 & Báo cáo Excel
 │   └── prompts/                # Prompt Registry tập trung (alias production)
 ├── specs/                      # Toàn bộ hồ sơ Spec-Driven Development (SDD)
 │   ├── product-spec.md         # Đặc tả yêu cầu sản phẩm & kiến trúc
 │   ├── implementation-plan.md  # Kế hoạch triển khai 6 Phase chi tiết
-│   ├── test-plan.md            # Kế hoạch kiểm thử kim tự tháp 3 tầng
+│   ├── test-plan.md            # Kế hoạch kiểm thử kim tự tháp 4 tầng
 │   ├── change-log.md           # Nhật ký thay đổi & mốc phát triển
 │   └── project-summary.md      # Tài liệu tổng hợp bảo vệ đồ án cuối khóa
-├── src/                        # Toàn bộ mã nguồn thực thi của hệ thống
-│   ├── web_backend/            # Web Backend FastAPI (sessions, watchlist, portfolio, HITL, SSE proxy)
-│   ├── ai_backend/             # AI Backend FastAPI (Swarm, RAG concepts, Qdrant, eval)
-│   ├── shared/                 # Module chia sẻ dùng chung (config, models, database, secrets)
-│   ├── frontend/               # Giao diện Web App (HTML5, Vanilla CSS, JS SSE Streaming)
-│   └── deploy/                 # Dockerfile, Docker Compose, Nginx conf, release.ps1 & Smoke test
-├── tests/                      # Kim tự tháp kiểm thử 3 tầng
-│   ├── unit/                   # Fast isolated unit tests (< 1s/test)
-│   ├── integration/            # API, DB, Graph, 2-Tier Cache integration tests
-│   ├── e2e/                    # Golden Dataset v6, Demo Walkthrough, Docker tests
-│   └── conftest.py             # Fixtures & Offline Mock config
-├── scripts/                    # Scripts vận hành chính thức (Benchmark, Cost, Eval)
-├── .env                        # Chứa duy nhất các Secrets (API Keys)
-├── .env.example                # Mẫu biến môi trường tối giản
-├── pyproject.toml              # Quản lý dependencies & metadata
-└── README.md                   # Tài liệu hướng dẫn sản phẩm
+├── src/
+│   ├── common/                                      # [KHỐI 1: SHARED KERNEL - DÙNG CHUNG]
+│   │   ├── base/                                    # Kế thừa chuẩn từ AI_Face_checkin
+│   │   │   ├── base_model.py                        # CustomBaseModel (arbitrary_types_allowed = True)
+│   │   │   └── base_service.py                      # BaseService, AsyncBaseService (process(input) -> output)
+│   │   ├── domain/                                  # Nghiệp vụ toán học & thực thể cốt lõi
+│   │   │   ├── entities.py                          # User, Holding, Watchlist, Message, StockQuote
+│   │   │   ├── indicators.py                        # Toán học thuần túy: RSI(14), SMA(20, 50), Cross
+│   │   │   └── ports.py                             # Giao diện trừu tượng IPriceSource, INewsSource, IDatabase
+│   │   ├── logging/                                 # Hệ thống log & Correlation ID
+│   │   │   └── logger.py                            # Structured logger (Console / JSON)
+│   │   ├── settings/
+│   │   │   ├── config.py                            # Nạp resources/configs/config.yaml & Environment
+│   │   │   └── secrets.py                           # Secret Manager (DATABASE_URL, API Keys)
+│   │   ├── transport/                               # HTTP client liên dịch vụ
+│   │   │   ├── transport.py                         # Remote SSE streamer, retry backoff
+│   │   │   └── schemas.py                           # DTO chuẩn trao đổi qua mạng (/v1/chat, /v1/scan)
+│   │   └── tests/                                   # [TEST CỦA KHỐI COMMON]
+│   │       ├── test_indicators.py                   # Test chỉ báo kỹ thuật RSI/SMA
+│   │       ├── test_config.py                       # Test nạp config tập trung
+│   │       └── test_secret_manager.py               # Test trích xuất secret an toàn
+│   │
+│   ├── web_backend/                                 # [KHỐI 2: MICROSERVICE WEB - CỔNG 8000]
+│   │   ├── Dockerfile                               # Build container riêng
+│   │   ├── main.py                                  # Entrypoint: CORS, Middleware, Include routers
+│   │   ├── api/
+│   │   │   ├── helpers/                             # Exception handler, middlewares, validation
+│   │   │   ├── models/                              # Pydantic schemas cho API Web
+│   │   │   └── routers/                             # chat, portfolio, watchlist, sessions, hitl...
+│   │   ├── application/                             # Use Cases kế thừa BaseService
+│   │   │   ├── chat_gateway_service.py              # SSE Gateway sang AI Backend
+│   │   │   ├── portfolio_service.py                 # Tính toán P&L, NAV, lãi lỗ
+│   │   │   ├── hitl_service.py                      # Ghi nhận đánh giá người dùng
+│   │   │   ├── market_service.py                    # Dữ liệu thị trường cho Web
+│   │   │   └── review_approval_service.py           # Quản lý hàng đợi duyệt lệnh HITL
+│   │   ├── domain/                                  # session_validator, portfolio_calculator
+│   │   ├── infra/                                   # database (PostgreSQL/SQLite), repositories, remote_ai_client
+│   │   ├── shared/                                  # settings, exceptions
+│   │   └── tests/                                   # [TEST CỦA MICROSERVICE WEB]
+│   │       ├── test_chat_ui.py, test_feedback_signals.py, test_portfolio_service.py
+│   │       └── test_database.py, test_api.py, test_market.py, test_web_ui_integration.py
+│   │
+│   ├── ai_backend/                                  # [KHỐI 3: MICROSERVICE AI - CỔNG 8001]
+│   │   ├── Dockerfile                               # Build container riêng cho AI engine
+│   │   ├── main.py                                  # Entrypoint: Chỉ nghe /health, /v1/chat/stream, /v1/scan
+│   │   ├── api/                                     # helpers, models (stream, scan), routers (chat_stream, scan, health)
+│   │   ├── application/                             # swarm_orchestrator, concept_rag_service, scanner, eval/
+│   │   ├── domain/                                  # guardrails (input, output, greeting_fastpath)
+│   │   ├── infra/                                   # graph (LangGraph Swarm), agents (10 nodes), market_data, qdrant, llm, cache, storage, cost, monitoring
+│   │   ├── shared/                                  # settings, charts styling, exceptions
+│   │   └── tests/                                   # [TEST CỦA MICROSERVICE AI]
+│   │       ├── test_greeting_fastpath.py, test_guardrails.py, test_concept_rag.py, test_ai_http_stream.py...
+│   │       └── test_agents.py, test_portfolio_watch_agent.py, test_chart.py, test_monitoring.py...
+│   │
+│   ├── frontend/                                    # Giao diện Web App (HTML5, Vanilla CSS, SSE JS)
+│   └── deploy/                                      # Dockerfile, Docker Compose, Nginx conf, release.ps1, publish.ps1
+├── tests/                                           # [KIỂM THỬ LIÊN DỊCH VỤ (E2E) & DOCKER]
+│   ├── conftest.py                                  # Fixtures dùng chung toàn hệ thống
+│   └── e2e/                                         # test_golden_v6_slices.py, test_eval.py, test_system.py, test_capstone.py...
+├── scripts/                                         # Scripts vận hành chính thức (Benchmark, Cost, Eval)
+├── .env                                             # Chứa duy nhất các Secrets (API Keys)
+├── pyproject.toml                                   # Quản lý dependencies & metadata
+└── README.md                                        # Tài liệu hướng dẫn sản phẩm
 ```
 
 ---
@@ -240,13 +283,12 @@ pip install -e .
 #    DATABASE_URL, OPENAI_API_KEYS, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, QDRANT_API_KEY
 #    Tham số (model, cache, cổng, bộ nhớ, monitoring) sửa ở resources/configs/config.yaml
 
-# 4. Khởi chạy hai cây trên hai tiến trình độc lập:
+# 4. Khởi chạy hai microservices trên hai tiến trình độc lập:
 # Cửa sổ 1 — Web Backend (cổng 8000, giao diện web & API người dùng):
 uvicorn web_backend.main:app --app-dir src --host 127.0.0.1 --port 8000 --reload
-# (Lệnh đơn tiến trình tương thích trước đây: uvicorn backend.main:app --app-dir src --host 127.0.0.1 --port 8000 --reload)
 
 # Cửa sổ 2 — AI Backend (cổng 8001, xử lý Swarm và RAG khái niệm):
-uvicorn ai_backend.app:app --app-dir src --host 127.0.0.1 --port 8001 --reload
+uvicorn ai_backend.main:app --app-dir src --host 127.0.0.1 --port 8001 --reload
 
 # Truy cập giao diện tại: http://localhost:8000 (hoặc http://127.0.0.1:8000)
 # Kiểm tra sức khỏe AI Backend tại: http://127.0.0.1:8001/health
@@ -307,12 +349,21 @@ powershell -ExecutionPolicy Bypass -File src/deploy/release.ps1 smoke -Url "http
 powershell -ExecutionPolicy Bypass -File src/deploy/release.ps1 rollback
 ```
 
-### 7.4. Thực Thi Bộ Kiểm Thử 3 Tầng
+### 7.4. Thực Thi Bộ Kiểm Thử 4 Tầng
 ```bash
-# Chạy toàn bộ 3 tầng kiểm thử (< 15 giây với offline mock)
-pytest tests/ -v
+# 1. Chạy toàn bộ 4 tầng kiểm thử của hệ thống
+pytest src/ tests/ -v
 
-# Chạy riêng kiểm thử Golden Dataset v6 (20/20 test cases)
+# 2. Chạy nhanh tầng Common Kernel (< 1s)
+pytest src/common/tests/ -v
+
+# 3. Chạy tầng Web Backend Microservice
+pytest src/web_backend/tests/ -v
+
+# 4. Chạy tầng AI Backend Microservice
+pytest src/ai_backend/tests/ -v
+
+# 5. Chạy tầng E2E & Golden Dataset v6 (20/20 test cases)
 pytest tests/e2e/test_golden_v6_slices.py -v
 ```
 

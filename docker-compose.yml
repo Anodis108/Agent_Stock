@@ -19,7 +19,7 @@ services:
   backend:
     build:
       context: .
-      dockerfile: src/backend/Dockerfile
+      dockerfile: src/web_backend/Dockerfile
     image: portfolio-watch:backend
     pull_policy: build
     container_name: portfolio-watch-web-backend
@@ -29,7 +29,7 @@ services:
     command:
       [
         "uvicorn",
-        "backend.main:app",
+        "web_backend.main:app",
         "--host",
         "0.0.0.0",
         "--port",
@@ -44,7 +44,7 @@ services:
       MPLCONFIGDIR: /app/data/.matplotlib
       API_HOST: "0.0.0.0"
       API_PORT: "8000"
-      AI_TRANSPORT: "inprocess"
+      AI_TRANSPORT: "http"
       AI_BASE_URL: "http://ai_backend:8001"
       FRONTEND_ORIGIN: "*"
       SQLITE_PATH: /app/data/portfolio_watch.db
@@ -86,7 +86,7 @@ services:
   ai_backend:
     build:
       context: .
-      dockerfile: src/backend/Dockerfile
+      dockerfile: src/ai_backend/Dockerfile
     image: portfolio-watch:backend
     pull_policy: build
     container_name: portfolio-watch-ai-backend
@@ -96,7 +96,7 @@ services:
     command:
       [
         "uvicorn",
-        "backend.ai_main:app",
+        "ai_backend.main:app",
         "--host",
         "0.0.0.0",
         "--port",
@@ -167,7 +167,7 @@ services:
     image: portfolio-watch:backend
     build:
       context: .
-      dockerfile: src/backend/Dockerfile
+      dockerfile: src/web_backend/Dockerfile
     container_name: portfolio-watch-eval-test
     env_file:
       - .env

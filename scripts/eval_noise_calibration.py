@@ -22,7 +22,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from backend.eval.history import (  # noqa: E402
+from ai_backend.application.eval.history import (  # noqa: E402
     calibrate_tolerance_from_history,
     compute_noise_stats,
     load_history_reports,

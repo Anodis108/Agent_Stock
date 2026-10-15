@@ -11,8 +11,8 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from backend.infra.llm.providers import resolve_backend_chain  # noqa: E402
-from backend.settings import settings  # noqa: E402
+from ai_backend.infra.llm.providers import resolve_backend_chain  # noqa: E402
+from common.settings.config import settings  # noqa: E402
 
 
 def main() -> int:

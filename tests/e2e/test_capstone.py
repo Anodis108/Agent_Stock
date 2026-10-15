@@ -7,7 +7,7 @@ import pytest
 import yaml
 
 from scripts.hitl_to_golden_draft import process_feedback
-from backend.infra.cache.exact import ExactCache
+from ai_backend.infra.cache.exact import ExactCache
 
 ROOT = Path(__file__).resolve().parents[2] if Path(__file__).resolve().parent.name in ("unit", "integration", "e2e") else Path(__file__).resolve().parents[1]
 
@@ -60,7 +60,9 @@ def test_pipeline_doc_exists():
 
 def test_v5_baseline_gate_passes():
     """Test gate on resources/eval/v5_baseline.json passes."""
-    script = ROOT / "src" / "backend" / "eval" / "gate.py"
+    script = ROOT / "src" / "ai_backend" / "application" / "eval" / "gate.py"
+    if not script.exists():
+        script = ROOT / "src" / "backend" / "eval" / "gate.py"
     if not script.exists():
         script = ROOT / "src" / "backend" / "application" / "eval" / "gate.py"
     baseline = ROOT / "resources" / "eval" / "v5_baseline.json"

@@ -13,11 +13,11 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from backend.infra.cost.tracker import (  # noqa: E402
+from ai_backend.infra.cost.tracker import (  # noqa: E402
     get_cost_tracker,
     is_over_alert_threshold,
 )
-from backend.settings import settings  # noqa: E402
+from common.settings.config import settings  # noqa: E402
 
 
 def main() -> int:

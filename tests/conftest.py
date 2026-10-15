@@ -17,24 +17,24 @@ import pytest
 import uvicorn
 from fastapi.testclient import TestClient
 
-from backend.ai_main import app as ai_app
-from backend.api.deps import AppDeps, clear_deps_cache, set_app_deps
-from backend.domain.entities import WatchlistItem
-from backend.infra.market_data import CafefNewsSource, VnstockPriceSource
-from backend.infra.notify import ConsoleNotifier
-from backend.infra.storage import (
+from ai_backend.main import app as ai_app
+from web_backend.api.deps import AppDeps, clear_deps_cache, set_app_deps
+from common.domain.entities import WatchlistItem
+from ai_backend.infra.market_data import CafefNewsSource, VnstockPriceSource
+from ai_backend.infra.notify import ConsoleNotifier
+from ai_backend.infra.storage import (
     SqliteMemoryStore,
     SqlitePriceHistoryStore,
     SqliteWatchlistStore,
 )
-from backend.main import app as main_app
+from web_backend.main import app as main_app
 
 
 def build_real_deps(db_path: str) -> AppDeps:
     """Khởi tạo AppDeps chuẩn production phục vụ kiểm thử."""
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-    from backend.database.connection import get_connection
-    from backend.database.repositories import (
+    from web_backend.infra.database.connection import get_connection
+    from web_backend.infra.database.repositories import (
         PortfolioHoldingRepository,
         UserSettingsRepository,
     )

@@ -76,7 +76,7 @@ market_data:
 
 # 7. Đánh giá & Giám sát chi phí (Evaluation & Token Economics)
 eval:
-  golden_dataset_path: "./resources/eval/golden_v6_comprehensive.yaml"
+  golden_dataset_path: "./resources/eval/golden_dataset.yaml"
   replay_faq_path: "./resources/eval/replay_faq.yaml"
   eval_cache_enabled: true
   eval_cache_dir: ".eval_cache"
