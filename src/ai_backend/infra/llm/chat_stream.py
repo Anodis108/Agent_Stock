@@ -1,4 +1,4 @@
-"""SSE của swarm chat — không ghi session SQLite.
+"""SSE của swarm chat — không ghi session vào database.
 
 Process AI phát các event này qua POST /v1/chat/stream.
 Process web, khi AI_TRANSPORT=http, chỉ proxy và tự lưu hội thoại.
@@ -92,7 +92,7 @@ def iter_swarm_events(
     watchlist_store: Any | None = None,
     account_holdings: list | None = None,
 ) -> Iterator[tuple[str, dict[str, Any]]]:
-    """Chạy answer_question và yield (event, data). Không mở SQLite session."""
+    """Chạy answer_question và yield (event, data). Không mở session database."""
     started = time.perf_counter()
     cancel = cancel_event or threading.Event()
     event_queue: queue.Queue[tuple[str, dict[str, Any]] | None] = queue.Queue()

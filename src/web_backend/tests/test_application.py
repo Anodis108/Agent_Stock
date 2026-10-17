@@ -1,7 +1,6 @@
 """Tests for Web Backend Application Layer (Use Cases)."""
 
 import pytest
-import sqlite3
 from unittest.mock import MagicMock
 
 from common.base.base_service import AsyncBaseService, BaseService

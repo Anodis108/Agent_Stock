@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-import sqlite3
-
+from datetime import datetime, timezone
+from typing import Any
 from common.domain.entities import WatchlistItem
-from ai_backend.infra.storage.sqlite_db import connect
+from ai_backend.infra.storage.pg_db import connect
 
 
-class SqliteWatchlistStore:
-    def __init__(self, db_path: str):
-        self._db_path = db_path
+class PgWatchlistStore:
+    def __init__(self, schema: str = "public"):
+        self._schema = schema
 
-    def _conn(self) -> sqlite3.Connection:
-        return connect(self._db_path)
+    def _conn(self) -> Any:
+        return connect(self._schema)
 
     def list_items(self, user_id: str = "default") -> list[WatchlistItem]:
         with self._conn() as conn:
@@ -19,6 +19,21 @@ class SqliteWatchlistStore:
                 "SELECT user_id, symbol, threshold_pct FROM watchlist "
                 "WHERE user_id = ? ORDER BY symbol",
                 (user_id,),
+            ).fetchall()
+        return [
+            WatchlistItem(
+                user_id=r["user_id"],
+                symbol=r["symbol"],
+                threshold_pct=float(r["threshold_pct"]),
+            )
+            for r in rows
+        ]
+
+    def list_all(self) -> list[WatchlistItem]:
+        """Mọi mã của mọi user — dùng cho job quét định kỳ."""
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT user_id, symbol, threshold_pct FROM watchlist ORDER BY user_id, symbol"
             ).fetchall()
         return [
             WatchlistItem(
@@ -46,7 +61,6 @@ class SqliteWatchlistStore:
         )
 
     def upsert(self, item: WatchlistItem) -> WatchlistItem:
-        from datetime import datetime, timezone
         sym = item.symbol.strip().upper()
         now = datetime.now(timezone.utc).isoformat()
         saved = WatchlistItem(
@@ -55,18 +69,11 @@ class SqliteWatchlistStore:
             threshold_pct=item.threshold_pct,
         )
         with self._conn() as conn:
-            try:
-                conn.execute(
-                    "INSERT INTO watchlist (user_id, symbol, threshold_pct, updated_at) VALUES (?, ?, ?, ?) "
-                    "ON CONFLICT(user_id, symbol) DO UPDATE SET threshold_pct = excluded.threshold_pct, updated_at = excluded.updated_at",
-                    (saved.user_id, saved.symbol, saved.threshold_pct, now),
-                )
-            except sqlite3.OperationalError:
-                conn.execute(
-                    "INSERT INTO watchlist (user_id, symbol, threshold_pct, updated_at) VALUES (?, ?, ?, ?) "
-                    "ON CONFLICT(symbol) DO UPDATE SET threshold_pct = excluded.threshold_pct, updated_at = excluded.updated_at, user_id = excluded.user_id",
-                    (saved.user_id, saved.symbol, saved.threshold_pct, now),
-                )
+            conn.execute(
+                "INSERT INTO watchlist (user_id, symbol, threshold_pct, updated_at) VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(user_id, symbol) DO UPDATE SET threshold_pct = excluded.threshold_pct, updated_at = excluded.updated_at",
+                (saved.user_id, saved.symbol, saved.threshold_pct, now),
+            )
             conn.commit()
         return saved
 

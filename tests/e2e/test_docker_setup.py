@@ -28,7 +28,7 @@ def test_docker_compose_structure():
     assert backend["build"]["dockerfile"] in ("src/web_backend/Dockerfile", "src/backend/Dockerfile")
     assert backend["entrypoint"] == ["sh", "/docker-entrypoint.sh"]
     assert ("web_backend.main:app" in " ".join(backend["command"])) or ("backend.main:app" in " ".join(backend["command"]))
-    assert "pw_data:/app/data" in backend["volumes"]
+    assert any(v in backend["volumes"] for v in ("pw_data:/app/data", "./resources/data:/app/data"))
     assert "./src:/app/src:ro" in backend["volumes"]
     assert "healthcheck" in backend, "backend must configure healthcheck"
     backend_env = backend.get("environment") or {}
@@ -44,7 +44,7 @@ def test_docker_compose_structure():
     assert ai_backend["build"]["dockerfile"] in ("src/ai_backend/Dockerfile", "src/backend/Dockerfile")
     assert ai_backend["entrypoint"] == ["sh", "/docker-entrypoint.sh"]
     assert ("ai_backend.main:app" in " ".join(ai_backend["command"])) or ("backend.ai_main:app" in " ".join(ai_backend["command"]))
-    assert "pw_data:/app/data" in ai_backend["volumes"]
+    assert any(v in ai_backend["volumes"] for v in ("pw_data:/app/data", "./resources/data:/app/data"))
     assert "./src:/app/src:ro" in ai_backend["volumes"]
     assert "healthcheck" in ai_backend, "ai_backend must configure healthcheck"
     assert "ai_backend" in backend["depends_on"]

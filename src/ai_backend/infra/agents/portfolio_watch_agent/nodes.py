@@ -9,8 +9,7 @@ from ai_backend.infra.agents.portfolio_watch_agent.schemas import PortfolioWatch
 from common.domain.entities import WatchlistItem
 from common.domain.ports import PriceSource, WatchlistStore
 from ai_backend.infra.monitoring.tracing import agent_step
-from ai_backend.infra.storage.watchlist_store import SqliteWatchlistStore
-from common.settings import settings
+from ai_backend.infra.storage.watchlist_store import PgWatchlistStore
 
 try:
     from web_backend.infra.database.connection import get_connection
@@ -203,17 +202,8 @@ def run_portfolio_watch_agent(
             # 2. Truy vấn Danh sách theo dõi (Watchlist)
             if intent in ("watchlist", "all"):
                 try:
-                    store = watchlist_store
-                    if store is None:
-                        from ai_backend.infra.storage.store import default_db_path
-                        db_p = default_db_path()
-                        store = SqliteWatchlistStore(db_p)
-                        watchlist_items = store.list_items(eff_user_id)
-                        if not watchlist_items and settings.sqlite_path != db_p:
-                            fallback_store = SqliteWatchlistStore(settings.sqlite_path)
-                            watchlist_items = fallback_store.list_items(eff_user_id)
-                    else:
-                        watchlist_items = store.list_items(eff_user_id)
+                    store = watchlist_store or PgWatchlistStore()
+                    watchlist_items = store.list_items(eff_user_id)
                 except Exception as exc:
                     _logger.warning("Lỗi truy vấn watchlist trong PortfolioWatchAgent: %s", exc)
                     if not err:

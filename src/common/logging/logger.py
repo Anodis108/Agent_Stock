@@ -47,6 +47,12 @@ class JsonLogFormatter(logging.Formatter):
 
 
 def setup_logging(log_level: str = "INFO", json_format: bool = False) -> None:
+    '''Cấu hình logging cho ứng dụng.
+
+    Args:
+        log_level (str): Mức độ log ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL").
+        json_format (bool): True để sử dụng JSON format cho Production/Cloud.
+    '''
     root = logging.getLogger()
     level = getattr(logging, log_level.upper(), logging.INFO)
     root.setLevel(level)

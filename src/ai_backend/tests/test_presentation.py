@@ -23,19 +23,32 @@ from ai_backend.api.models.stream_models import (
     TokenEvent,
     WatchlistSnapshot,
 )
-from ai_backend.api.routers.chat_stream import (
-    alias_router as chat_stream_alias_router,
-    router as chat_stream_router,
-)
+from ai_backend.api.routers.chat_stream import router as chat_stream_router
 from ai_backend.api.routers.health import router as health_router
-from ai_backend.api.routers.scan import (
-    alias_router as scan_alias_router,
-    router as scan_router,
-)
+from ai_backend.api.routers.scan import router as scan_router
+from ai_backend.application.symbol_scanner_service import SymbolScannerService
+
+
+class _MockSwarmOrchestrator:
+    """Orchestrator giả cho test presentation — phát SSE tối thiểu."""
+
+    def stream(self, question, user_id="default", request_id=None, watchlist=None, holdings=None):
+        yield ("node_start", {"node": "supervisor", "input_data": {"question": question, "user_id": user_id}})
+        yield ("token", {"token": "ok", "node": "answer_composer", "index": 0})
+        yield ("node_finish", {"node": "answer_composer", "duration_ms": 1})
+        yield (
+            "complete",
+            {
+                "answer": "ok",
+                "route": "market",
+                "request_id": request_id,
+                "steps": [{"id": "step_1", "name": "supervisor", "status": "done"}],
+            },
+        )
 
 
 @pytest.fixture
-def ai_test_app() -> FastAPI:
+def ai_test_app():
     """Khởi tạo FastAPI test app đăng ký đầy đủ router và middleware của AI Backend."""
     app = FastAPI(title="AI Backend Test App")
     app.add_middleware(CorrelationIdMiddleware)
@@ -44,15 +57,15 @@ def ai_test_app() -> FastAPI:
 
     app.include_router(health_router)
     app.include_router(chat_stream_router)
-    app.include_router(chat_stream_alias_router)
     app.include_router(scan_router)
-    app.include_router(scan_alias_router)
 
     @app.get("/test-error")
     def trigger_error():
         raise HTTPException(status_code=400, detail="Lỗi thử nghiệm AI")
 
-    return app
+    app.state.orchestrator = _MockSwarmOrchestrator()
+    app.state.symbol_scanner_service = SymbolScannerService()  # không price_source -> giá giả offline
+    yield app
 
 
 @pytest.fixture

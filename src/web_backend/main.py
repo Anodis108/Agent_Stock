@@ -15,9 +15,9 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from common.logging.logger import get_logger
@@ -95,6 +95,11 @@ def health_check() -> dict[str, Any]:
         "service": "web_backend",
         "port": web_settings.port,
         "version": web_settings.version,
+        "database": "postgresql" if web_settings.database_url else "not_configured",
+        "storage": {
+            "backend": web_settings.chart_backend,
+            "minio_endpoint": web_settings.minio_endpoint if web_settings.chart_backend == "minio" else None,
+        },
         "ai_backend": ai_health,
     }
 
@@ -113,7 +118,7 @@ app.include_router(approvals_router)
 app.include_router(scan_router)
 
 
-# 5. Phục vụ biểu đồ kỹ thuật tĩnh (/charts)
+# 5. Phục vụ biểu đồ kỹ thuật (Đĩa cục bộ & MinIO Object Storage)
 charts_path = Path(web_settings.charts_dir)
 if not charts_path.is_dir():
     # Tìm fallback thư mục charts
@@ -128,6 +133,34 @@ if not charts_path.is_dir():
             break
 
 charts_path.mkdir(parents=True, exist_ok=True)
+
+
+@app.get("/charts/{file_name}", tags=["charts"])
+@app.get("/static/charts/{file_name}", tags=["charts"])
+def get_chart_image(file_name: str):
+    """Phục vụ ảnh biểu đồ nến kỹ thuật từ đĩa cục bộ hoặc MinIO Object Storage."""
+    from fastapi.responses import FileResponse, Response
+    from common.storage import get_chart_store, safe_png_name
+
+    clean = safe_png_name(file_name)
+    if not clean:
+        raise HTTPException(status_code=400, detail="Tên tệp không hợp lệ")
+
+    # 1. Ưu tiên kiểm tra trên đĩa cục bộ
+    local_file = charts_path / clean
+    if local_file.is_file():
+        return FileResponse(str(local_file), media_type="image/png")
+
+    # 2. Đọc trực tiếp từ MinIO Object Storage
+    store = get_chart_store()
+    if store is not None:
+        data = store.get(clean)
+        if data:
+            return Response(content=data, media_type="image/png")
+
+    raise HTTPException(status_code=404, detail="Không tìm thấy biểu đồ")
+
+
 app.mount("/charts", StaticFiles(directory=str(charts_path)), name="charts")
 
 

@@ -47,8 +47,7 @@ services:
       AI_TRANSPORT: "http"
       AI_BASE_URL: "http://ai_backend:8001"
       FRONTEND_ORIGIN: "*"
-      SQLITE_PATH: /app/data/portfolio_watch.db
-      BACKEND_SQLITE_PATH: /app/data/backend_store.db
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-portfolio}:${POSTGRES_PASSWORD:-portfolio}@postgres:5432/${POSTGRES_DB:-portfolio_watch}"
       CHARTS_DIR: /app/data/charts
       MONITORING_ENABLED: "${MONITORING_ENABLED:-false}"
       LANGFUSE_PUBLIC_KEY: "${LANGFUSE_PUBLIC_KEY:-}"
@@ -61,10 +60,13 @@ services:
         condition: service_healthy
       ai_backend:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
+        required: false
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - pw_data:/app/data
+      - ./resources/data:/app/data
       - ./src:/app/src:ro
       - ./resources:/app/resources:ro
       - ./specs:/app/specs:ro
@@ -111,8 +113,7 @@ services:
       MPLCONFIGDIR: /app/data/.matplotlib
       API_HOST: "0.0.0.0"
       API_PORT: "8001"
-      SQLITE_PATH: /app/data/portfolio_watch.db
-      BACKEND_SQLITE_PATH: /app/data/backend_store.db
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-portfolio}:${POSTGRES_PASSWORD:-portfolio}@postgres:5432/${POSTGRES_DB:-portfolio_watch}"
       CHARTS_DIR: /app/data/charts
       MONITORING_ENABLED: "${MONITORING_ENABLED:-false}"
       LANGFUSE_PUBLIC_KEY: "${LANGFUSE_PUBLIC_KEY:-}"
@@ -123,10 +124,13 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
+        required: false
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - pw_data:/app/data
+      - ./resources/data:/app/data
       - ./src:/app/src:ro
       - ./resources:/app/resources:ro
       - ./specs:/app/specs:ro
@@ -180,11 +184,14 @@ services:
       API_HOST: "0.0.0.0"
       API_PORT: "8000"
       AI_TRANSPORT: "inprocess"
-      SQLITE_PATH: /app/data/portfolio_watch.db
-      BACKEND_SQLITE_PATH: /app/data/backend_store.db
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-portfolio}:${POSTGRES_PASSWORD:-portfolio}@postgres:5432/${POSTGRES_DB:-portfolio_watch}"
       CHARTS_DIR: /app/data/charts
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
     volumes:
-      - pw_data:/app/data
+      - ./resources/data:/app/data
       - ./src:/app/src:ro
       - ./resources:/app/resources:ro
       - ./specs:/app/specs:ro

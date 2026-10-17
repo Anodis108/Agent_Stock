@@ -1,18 +1,18 @@
 from __future__ import annotations
 
-import sqlite3
 from datetime import date, timedelta
+from typing import Any
 
 from common.domain.ports import PriceBar
-from ai_backend.infra.storage.sqlite_db import connect
+from ai_backend.infra.storage.pg_db import connect
 
 
-class SqlitePriceHistoryStore:
-    def __init__(self, db_path: str):
-        self._db_path = db_path
+class PgPriceHistoryStore:
+    def __init__(self, schema: str = "public"):
+        self._schema = schema
 
-    def _conn(self) -> sqlite3.Connection:
-        return connect(self._db_path)
+    def _conn(self) -> Any:
+        return connect(self._schema)
 
     def read_history(self, symbol: str, days: int = 30) -> list[PriceBar]:
         sym = symbol.strip().upper()

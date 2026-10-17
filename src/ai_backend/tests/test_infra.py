@@ -6,7 +6,7 @@ Tests:
 - Qdrant/Concept loading: load_concept_chunks from resources/concepts
 - Cache layer: normalize_question, ExactCache context
 - Cost tracker: record_completion_usage, get_cost_context
-- Storage layer: ChartObjectStore, safe_png_name, SqliteMemoryStore, SqliteWatchlistStore
+- Storage layer: ChartObjectStore, safe_png_name, PgMemoryStore, PgWatchlistStore
 - Monitoring: trace_request, agent_span, PII masking
 - Worker Agents: all 10 worker agents offline execution
 - PortfolioWatchAgent: in-memory calculation with account_holdings snapshot
@@ -33,8 +33,8 @@ from ai_backend.infra.cost.tracker import (
     record_completion_usage,
 )
 from ai_backend.infra.storage.chart_store import safe_png_name
-from ai_backend.infra.storage.memory_store import SqliteMemoryStore
-from ai_backend.infra.storage.watchlist_store import SqliteWatchlistStore
+from ai_backend.infra.storage.memory_store import PgMemoryStore
+from ai_backend.infra.storage.watchlist_store import PgWatchlistStore
 from ai_backend.infra.monitoring.tracing import redact_pii, sanitize_trace_payload
 from ai_backend.infra.agents.price_agent import run_price_agent, PriceAgentResult
 from ai_backend.infra.agents.eval_agent import run_eval_agent, EvalAgentBrain
@@ -138,16 +138,15 @@ class TestStorageInfrastructure:
         assert safe_png_name("invalid.exe") is None
         assert safe_png_name("") is None
 
-    def test_sqlite_watchlist_and_memory(self, tmp_path):
-        db_file = tmp_path / "test_store.db"
-        wl_store = SqliteWatchlistStore(str(db_file))
+    def test_pg_watchlist_and_memory(self, pg_schema):
+        wl_store = PgWatchlistStore(pg_schema)
         wl_store.upsert(WatchlistItem(user_id="user_test", symbol="SSI", threshold_pct=4.5))
         items = wl_store.list_items("user_test")
         assert len(items) == 1
         assert items[0].symbol == "SSI"
         assert items[0].threshold_pct == 4.5
 
-        mem_store = SqliteMemoryStore(str(db_file))
+        mem_store = PgMemoryStore(pg_schema)
         mem_store.append_conversation("user_test", "user", "Xin chào")
         mem_store.append_conversation("user_test", "assistant", "Chào bạn!")
         conv = mem_store.list_conversation("user_test")

@@ -34,6 +34,7 @@ Kế hoạch kiểm thử toàn diện được thiết kế theo phương pháp
      - Tín hiệu giao cắt: Golden Cross (SMA20 cắt lên SMA50) và Death Cross (SMA20 cắt xuống SMA50).
   2. `test_config.py`: Kiểm tra cơ chế nạp cấu hình tập trung từ `resources/configs/config.yaml`, cơ chế ghi đè biến môi trường, và xác thực cấu trúc cấu hình chuẩn.
   3. `test_secret_manager.py`: Kiểm tra cơ chế trích xuất bí mật (`DATABASE_URL`, API Keys) từ `.env` với cơ chế che giấu và fallback an toàn.
+  4. `test_database.py`: Kiểm tra Shared Database Kernel (`common.database`), chuyển đổi cú pháp SQL (`qmark`), tính toán tên schema và khởi tạo bảng dùng chung.
 - **Lệnh thực thi**:
   ```bash
   pytest src/common/tests/ -v

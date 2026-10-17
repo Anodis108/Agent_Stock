@@ -56,9 +56,9 @@ def test_compose_two_services_backend_and_frontend_and_volume():
     assert "\n  frontend:" in text
     assert "qdrant" in text
     assert "profiles:" in text
-    assert "pw_data:/app/data" in text
-    assert "SQLITE_PATH: /app/data/portfolio_watch.db" in text
-    assert "BACKEND_SQLITE_PATH: /app/data/backend_store.db" in text
+    assert ("pw_data:/app/data" in text) or ("./resources/data:/app/data" in text)
+    assert "@postgres:5432/" in text
+    assert "SQLITE_PATH" not in text
     assert ("backend.main" in text) or ("backend.backend.main" in text)
     assert "healthcheck:" in text
     assert "AI_TRANSPORT" in text

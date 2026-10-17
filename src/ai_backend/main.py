@@ -2,29 +2,39 @@
 
 Chỉ phục vụ:
 - /health: Trạng thái hoạt động của AI Engine, Swarm StateGraph, tài nguyên phụ trợ.
-- /v1/chat/stream (và alias /chat/stream): Luồng phản hồi Server-Sent Events (SSE).
-- /v1/scan (và alias /scan): Quét phân tích kỹ thuật và cảnh báo mã cổ phiếu.
+- /v1/chat, /v1/chat/stream-sse: Hỏi-đáp Agent Swarm (JSON / Server-Sent Events).
+- /v1/scan: Quét phân tích kỹ thuật và cảnh báo mã cổ phiếu.
+
+Job nền: quét toàn bộ watchlist mỗi `market_data.scan_interval_minutes` phút (config.yaml).
 """
 
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from typing import Any
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from ai_backend.api.helpers.exception_handler import register_ai_exception_handlers
 from ai_backend.api.helpers.middlewares import CorrelationIdMiddleware, RequestLoggingMiddleware
 from ai_backend.api.routers import (
-    chat_stream_alias_router,
     chat_stream_router,
     health_router,
-    scan_alias_router,
     scan_router,
 )
 from ai_backend.shared.settings import ai_settings
 from common.logging.logger import get_logger, setup_logging
+from ai_backend.infra.market_data import VnstockPriceSource, CafefNewsSource    
+from ai_backend.infra.storage import (
+    PgMemoryStore,
+    PgPriceHistoryStore,
+    PgWatchlistStore,
+)
+from ai_backend.infra.storage.pg_db import connect
+from ai_backend.infra.graph.chat import run_chat_graph
+from ai_backend.application.swarm_orchestrator import SwarmOrchestrator
+from ai_backend.application.symbol_scanner_service import SymbolScannerService
+from ai_backend.infra.scheduler import start_scan_scheduler, stop_scan_scheduler
+from common.settings import settings
 
 setup_logging(ai_settings.log_level)
 logger = get_logger("ai_backend.main")
@@ -39,44 +49,66 @@ async def lifespan(app: FastAPI):
         f"Fallback={ai_settings.price_fallback_on_error}]"
     )
 
-    try:
-        from ai_backend.infra.market_data import VnstockPriceSource, CafefNewsSource
-        from ai_backend.infra.storage import (
-            SqliteMemoryStore,
-            SqlitePriceHistoryStore,
-            SqliteWatchlistStore,
-        )
-        from ai_backend.infra.graph.chat import run_chat_graph
-        from ai_backend.application.swarm_orchestrator import SwarmOrchestrator
-        from ai_backend.api.deps import set_ai_deps, AiDeps
+    # 1. PostgreSQL: kiểm tra kết nối và tạo bảng ngay khi khởi động
+    connect().close()
+    logger.info("AI Backend kết nối PostgreSQL")
 
-        db_path = ai_settings.sqlite_path
-        price_source = VnstockPriceSource(fallback_on_error=ai_settings.price_fallback_on_error)
-        news_source = CafefNewsSource()
-        history_store = SqlitePriceHistoryStore(db_path)
-        memory_store = SqliteMemoryStore(db_path)
-        watchlist_store = SqliteWatchlistStore(db_path)
+    # 2. Qdrant: đảm bảo collection bộ nhớ, nạp khái niệm chứng khoán nếu còn trống
+    from ai_backend.infra.storage.long_term_memory import get_qdrant_client, _ensure_collection
+    from ai_backend.infra.qdrant.concepts import index_concepts
 
-        orchestrator = SwarmOrchestrator(
-            graph_runner=run_chat_graph,
-            price_source=price_source,
-            news_source=news_source,
-            history_store=history_store,
-            memory_store=memory_store,
-            watchlist_store=watchlist_store,
-        )
+    q_client = get_qdrant_client(url=ai_settings.qdrant_url)
+    _ensure_collection(q_client, ai_settings.qdrant_collection or "portfolio_watch_memory")
+    concept_coll = getattr(ai_settings, "concept_collection", "stock_concepts")
+    if not q_client.collection_exists(concept_coll) or q_client.count(concept_coll).count == 0:
+        n_pts = index_concepts(client=q_client, collection_name=concept_coll)
+        logger.info(f"Đã nạp {n_pts} khái niệm vào Qdrant '{concept_coll}'.")
 
-        deps = AiDeps(
-            swarm_orchestrator=orchestrator,
-            price_source=price_source,
-            news_source=news_source,
-        )
-        set_ai_deps(deps)
-        logger.info("[OK] SwarmOrchestrator đã được khởi tạo và kết nối thành công.")
-    except Exception as exc:
-        logger.warning(f"Không thể khởi tạo SwarmOrchestrator: {exc}", exc_info=True)
+    # 3. MinIO: khởi tạo store ảnh biểu đồ (None nếu chart_backend != minio)
+    from common.storage import get_chart_store
+    store = get_chart_store()
+    if store is not None and not store.is_connected():
+        logger.info(f"MinIO chưa sẵn sàng, lưu ảnh biểu đồ tại {ai_settings.charts_dir}")
+
+    price_source = VnstockPriceSource(fallback_on_error=ai_settings.price_fallback_on_error)
+    news_source = CafefNewsSource()
+    history_store = PgPriceHistoryStore()
+    memory_store = PgMemoryStore()
+    watchlist_store = PgWatchlistStore()
+
+    # Tạo một lần lúc khởi động, router lấy lại qua request.app.state.orchestrator
+    app.state.orchestrator = SwarmOrchestrator(
+        graph_runner=run_chat_graph,
+        price_source=price_source,
+        news_source=news_source,
+        history_store=history_store,
+        memory_store=memory_store,
+        watchlist_store=watchlist_store,
+    )
+    scanner = SymbolScannerService(
+        price_source=price_source,
+        history_store=history_store,
+        memory_store=memory_store,
+        watchlist_store=watchlist_store,
+    )
+    app.state.symbol_scanner_service = scanner
+
+    # 4. Job nền: quét mọi mã trong watchlist của mọi user theo chu kỳ config
+    def _scan_watchlist_job() -> None:
+        items = watchlist_store.list_all()
+        triggered = 0
+        for item in items:
+            try:
+                out = scanner.scan(item.symbol, user_id=item.user_id, threshold_pct=item.threshold_pct)
+                triggered += sum(1 for a in out.alerts if a.triggered)
+            except Exception as exc:
+                logger.warning(f"Quét định kỳ lỗi mã {item.symbol} (user={item.user_id}): {exc}")
+        logger.info(f"Quét định kỳ xong {len(items)} mã, {triggered} cảnh báo vượt ngưỡng")
+
+    scheduler = start_scan_scheduler(_scan_watchlist_job, interval_minutes=settings.scan_interval_minutes)
 
     yield
+    stop_scan_scheduler(scheduler)
     logger.info("Dừng AI Backend Microservice.")
 
 
@@ -105,9 +137,7 @@ register_ai_exception_handlers(app)
 # 3. Đăng ký các Router nghiệp vụ AI Backend
 app.include_router(health_router)
 app.include_router(chat_stream_router)
-app.include_router(chat_stream_alias_router)
 app.include_router(scan_router)
-app.include_router(scan_alias_router)
 
 
 if __name__ == "__main__":

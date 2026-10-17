@@ -2,10 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import json
-import sqlite3
 from typing import Any
 
-from ai_backend.infra.storage.sqlite_db import connect
+from ai_backend.infra.storage.pg_db import connect
 from common.settings import settings
 
 
@@ -92,20 +91,20 @@ def apply_sliding_window_with_ttl_eviction(
 filter_conversation_history = apply_sliding_window_with_ttl_eviction
 
 
-class SqliteMemoryStore:
+class PgMemoryStore:
     def __init__(
         self,
-        db_path: str,
+        schema: str = "public",
         *,
         default_window: int | None = None,
         default_ttl_minutes: int | float | None = None,
     ):
-        self._db_path = db_path
+        self._schema = schema
         self._default_window = default_window
         self._default_ttl_minutes = default_ttl_minutes
 
-    def _conn(self) -> sqlite3.Connection:
-        return connect(self._db_path)
+    def _conn(self) -> Any:
+        return connect(self._schema)
 
     def read_preferences(self, user_id: str = "default") -> dict[str, Any]:
         with self._conn() as conn:

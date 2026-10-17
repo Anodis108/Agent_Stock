@@ -37,7 +37,7 @@ class _Body(io.BytesIO):
 
 
 def test_http_transport_proxies_chat_stream(client: TestClient, monkeypatch):
-    """Web không chạy answer_question. SSE từ AI được gắn session và lưu SQLite."""
+    """Web không chạy answer_question. SSE từ AI được gắn session và lưu database."""
     monkeypatch.setenv("AI_TRANSPORT", "http")
     monkeypatch.setenv("AI_BASE_URL", "http://ai.test:8001")
 
@@ -113,12 +113,11 @@ def test_http_transport_proxies_chat_stream(client: TestClient, monkeypatch):
     assert detail.json()["messages"][1]["id"] == final["message_id"]
 
 
-def test_web_entry_forwards_ui_sse(tmp_path, monkeypatch):
+def test_web_entry_forwards_ui_sse(monkeypatch, pg_schema):
     """Entry web_backend.main chỉ chuyển SSE của POST /chat sang AI."""
     from web_backend.main import app as web_app
 
     monkeypatch.setenv("AI_BASE_URL", "http://ai.test:8001")
-    monkeypatch.setenv("SQLITE_PATH", str(tmp_path / "web-sse.db"))
 
     def _boom(*_args, **_kwargs):
         raise AssertionError("web_backend.main không được gọi answer_question")
@@ -187,23 +186,23 @@ def test_web_entry_forwards_ui_sse(tmp_path, monkeypatch):
     assert seen["url"] == "http://ai.test:8001/v1/chat/stream"
 
 
-def test_web_entry_sends_account_lists_only_for_live_questions(tmp_path, monkeypatch):
+def test_web_entry_sends_account_lists_only_for_live_questions(monkeypatch, pg_schema):
     """Số liệu và danh mục kèm hai danh sách của user. Khái niệm không kèm."""
     from web_backend.api.deps import clear_deps_cache, get_app_deps, set_app_deps
     from web_backend.main import app as web_app
     from web_backend.api.routers import watchlist as watchlist_routes
-    from ai_backend.infra.storage.store import Store, WatchlistItem
+    from ai_backend.infra.storage.watchlist_store import PgWatchlistStore
+    from common.domain.entities import WatchlistItem
 
     monkeypatch.setenv("AI_BASE_URL", "http://ai.test:8001")
-    monkeypatch.setenv("SQLITE_PATH", str(tmp_path / "holdings.db"))
     set_app_deps(None)
     clear_deps_cache()
-    isolated = Store(str(tmp_path / "watch.db"))
+    isolated = PgWatchlistStore(pg_schema)
     monkeypatch.setattr(watchlist_routes, "store", isolated)
-    isolated.upsert_watchlist(
+    isolated.upsert(
         WatchlistItem(symbol="HPG", threshold_pct=4.5, user_id="user_a")
     )
-    isolated.upsert_watchlist(
+    isolated.upsert(
         WatchlistItem(symbol="VNM", threshold_pct=1.0, user_id="user_b")
     )
     holdings = get_app_deps().holdings_repo
@@ -711,14 +710,13 @@ def test_closing_the_chat_stream_stops_the_pipeline(monkeypatch):
     assert kept_going["value"] is False
 
 
-def test_web_entry_closes_the_ai_stream_when_the_client_disconnects(tmp_path, monkeypatch):
+def test_web_entry_closes_the_ai_stream_when_the_client_disconnects(monkeypatch, pg_schema):
     """Đóng POST /chat của web thì kết nối SSE tới AI bị đóng."""
     import threading
 
     from web_backend.main import app as web_app
 
     monkeypatch.setenv("AI_BASE_URL", "http://ai.test:8001")
-    monkeypatch.setenv("SQLITE_PATH", str(tmp_path / "cancel.db"))
 
     class BlockingBody:
         def __init__(self) -> None:

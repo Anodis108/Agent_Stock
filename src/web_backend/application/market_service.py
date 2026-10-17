@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sqlite3
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -13,6 +12,7 @@ from common.logging.logger import get_logger
 
 logger = get_logger("web_backend.application.market")
 
+from common.database import PgConn
 from web_backend.infra.database.connection import get_connection
 from web_backend.infra.database.repositories import MarketHistoryRecord, MarketHistoryRepository
 
@@ -73,7 +73,7 @@ class MarketService(BaseService):
 
     def __init__(
         self,
-        conn: sqlite3.Connection | None = None,
+        conn: PgConn | None = None,
         price_source: Any = None,
         history_repo: Any = None,
     ):

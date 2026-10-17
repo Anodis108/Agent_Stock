@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -15,6 +14,7 @@ from common.logging.logger import get_logger
 
 logger = get_logger("web_backend.application.hitl")
 
+from common.database import PgConn
 from web_backend.infra.database.connection import get_connection
 from web_backend.infra.database.repositories import (
     HITLEvaluationRepository,
@@ -87,10 +87,10 @@ class HitlFeedbackOutput(CustomBaseModel):
 class HitlService(BaseService):
     """Application Service quản lý phản hồi đánh giá và đo lường telemetry HITL."""
 
-    def __init__(self, conn: sqlite3.Connection | None = None) -> None:
+    def __init__(self, conn: PgConn | None = None) -> None:
         self._conn = conn
 
-    def _get_conn(self) -> sqlite3.Connection:
+    def _get_conn(self) -> PgConn:
         if self._conn is not None:
             return self._conn
         return get_connection()

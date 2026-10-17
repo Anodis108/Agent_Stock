@@ -76,12 +76,13 @@ class SymbolScannerService(BaseService):
         latest_close = 0.0
         price_err: str | None = None
 
-        if self.price_source is not None and hasattr(self.price_source, "get_quote"):
+        if self.price_source is not None:
             try:
-                quote = self.price_source.get_quote(sym)
-                if quote is not None:
-                    change_pct = float(getattr(quote, "change_pct", 0.0) or 0.0)
-                    latest_close = float(getattr(quote, "price", 0.0) or getattr(quote, "close", 0.0) or 0.0)
+                quote = self.price_source.fetch_latest_close(sym)
+                price_err = quote.error
+                latest_close = float(quote.latest_close or 0.0)
+                if quote.latest_close and quote.prev_close:
+                    change_pct = (quote.latest_close - quote.prev_close) / quote.prev_close * 100
             except Exception as exc:
                 price_err = str(exc)
                 logger.warning(f"Lỗi lấy giá từ price_source cho {sym}: {exc}")

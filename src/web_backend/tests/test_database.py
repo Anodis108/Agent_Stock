@@ -1,17 +1,15 @@
 """Unit & Integration tests for Web Backend Database Persistence.
 
 Verifies schema initialization, foreign keys, CRUD operations for all entities,
-and persistent data retention across closed/reopened SQLite connections.
+and persistent data retention across closed/reopened PostgreSQL connections.
 """
 
 from __future__ import annotations
 
-import sqlite3
-from pathlib import Path
-
 import pytest
 
-from web_backend.infra.database.connection import get_connection, init_db
+from common.database import PgConn
+from web_backend.infra.database.connection import get_connection
 from web_backend.infra.database.repositories import (
     HITLEvaluationRecord,
     HITLEvaluationRepository,
@@ -31,26 +29,15 @@ from web_backend.infra.database.repositories import (
 
 
 @pytest.fixture
-def temp_db_path(tmp_path: Path) -> Path:
-    return tmp_path / "test_persistence.db"
+def db_conn(temp_db: PgConn):
+    return temp_db
 
 
-@pytest.fixture
-def db_conn(temp_db_path: Path):
-    conn = get_connection(temp_db_path)
-    try:
-        yield conn
-    finally:
-        conn.close()
-
-
-def test_schema_initialization_and_foreign_keys(db_conn: sqlite3.Connection):
-    """Ensure all required tables and indices are created, and foreign keys are active."""
-    fk = db_conn.execute("PRAGMA foreign_keys").fetchone()[0]
-    assert fk == 1, "SQLite foreign keys must be enabled"
-
+def test_schema_initialization_and_foreign_keys(db_conn: PgConn):
+    """Ensure all required tables and indices are created."""
     cursor = db_conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name ASC"
+        "SELECT table_name AS name FROM information_schema.tables "
+        "WHERE table_schema = current_schema() ORDER BY table_name ASC"
     )
     tables = {row["name"] for row in cursor.fetchall()}
 
@@ -66,7 +53,7 @@ def test_schema_initialization_and_foreign_keys(db_conn: sqlite3.Connection):
     assert required_tables.issubset(tables), f"Missing tables: {required_tables - tables}"
 
 
-def test_session_repository_crud(db_conn: sqlite3.Connection):
+def test_session_repository_crud(db_conn: PgConn):
     repo = SessionRepository(db_conn)
 
     session = repo.create("Cuộc trò chuyện ban đầu", session_id="sess-crud")
@@ -87,7 +74,7 @@ def test_session_repository_crud(db_conn: sqlite3.Connection):
     assert repo.get("sess-crud") is None
 
 
-def test_message_repository_crud_and_cascade(db_conn: sqlite3.Connection):
+def test_message_repository_crud_and_cascade(db_conn: PgConn):
     s_repo = SessionRepository(db_conn)
     m_repo = MessageRepository(db_conn)
 
@@ -111,7 +98,7 @@ def test_message_repository_crud_and_cascade(db_conn: sqlite3.Connection):
     assert len(m_repo.list_by_session(s.id)) == 0
 
 
-def test_portfolio_holding_repository_crud(db_conn: sqlite3.Connection):
+def test_portfolio_holding_repository_crud(db_conn: PgConn):
     repo = PortfolioHoldingRepository(db_conn)
 
     h = repo.create(symbol="FPT", quantity=100.0, avg_buy_price=95000.0, user_id="user_a", holding_id="hold-1")
@@ -129,7 +116,7 @@ def test_portfolio_holding_repository_crud(db_conn: sqlite3.Connection):
     assert repo.get("hold-1") is None
 
 
-def test_watchlist_repository_crud(db_conn: sqlite3.Connection):
+def test_watchlist_repository_crud(db_conn: PgConn):
     repo = WatchlistRepository(db_conn)
 
     w = repo.upsert(symbol="HPG", threshold_pct=5.0, user_id="user_a")
@@ -143,7 +130,7 @@ def test_watchlist_repository_crud(db_conn: sqlite3.Connection):
     assert repo.get("HPG", user_id="user_a") is None
 
 
-def test_hitl_evaluation_repository_crud(db_conn: sqlite3.Connection):
+def test_hitl_evaluation_repository_crud(db_conn: PgConn):
     s_repo = SessionRepository(db_conn)
     m_repo = MessageRepository(db_conn)
     h_repo = HITLEvaluationRepository(db_conn)
@@ -169,7 +156,7 @@ def test_hitl_evaluation_repository_crud(db_conn: sqlite3.Connection):
     assert len(h_repo.list_by_session(s.id)) == 1
 
 
-def test_market_history_repository_crud(db_conn: sqlite3.Connection):
+def test_market_history_repository_crud(db_conn: PgConn):
     repo = MarketHistoryRepository(db_conn)
 
     b1 = repo.upsert_bar("VNM", "2026-10-10", 70.0, open_=69.5, high=71.0, low=69.0, volume=500000)
@@ -187,15 +174,15 @@ def test_market_history_repository_crud(db_conn: sqlite3.Connection):
     assert history[0].trade_date == "2026-10-10"
 
 
-def test_data_persistence_across_connection_reopen(temp_db_path: Path):
-    """Ensure data written to SQLite persists after closing and reopening the connection."""
-    conn1 = get_connection(temp_db_path)
+def test_data_persistence_across_connection_reopen(pg_schema: str):
+    """Ensure data written to PostgreSQL persists after closing and reopening the connection."""
+    conn1 = get_connection()
     s_repo1 = SessionRepository(conn1)
     s_repo1.create("Persistent Session", session_id="persist-1")
     conn1.close()
 
     # Reopen connection
-    conn2 = get_connection(temp_db_path)
+    conn2 = get_connection()
     s_repo2 = SessionRepository(conn2)
     session = s_repo2.get("persist-1")
     assert session is not None

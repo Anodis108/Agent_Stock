@@ -364,7 +364,6 @@ def test_ai_stream_says_not_in_the_documents_when_the_passage_is_missing():
 
     from ai_backend.main import app as ai_app
     from ai_backend.infra.qdrant.answer import NOT_IN_DOCS, answer_concept
-    from ai_backend.api.deps import AiDeps, get_ai_deps
 
     class MockSwarm:
         def stream(self, question, **kwargs):
@@ -379,14 +378,14 @@ def test_ai_stream_says_not_in_the_documents_when_the_passage_is_missing():
                 },
             )
 
-    ai_app.dependency_overrides[get_ai_deps] = lambda: AiDeps(swarm_orchestrator=MockSwarm())
+    ai_app.state.orchestrator = MockSwarm()
     try:
         response = TestClient(ai_app).post(
             "/v1/chat/stream",
             json={"question": "chứng quyền là gì", "user_id": ""},
         )
     finally:
-        ai_app.dependency_overrides.pop(get_ai_deps, None)
+        del ai_app.state.orchestrator
 
     assert response.status_code == 200
     final = None

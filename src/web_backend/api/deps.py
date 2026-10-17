@@ -28,13 +28,13 @@ def get_app_deps() -> AppDeps:
     if _deps_instance is not None:
         return _deps_instance
     try:
-        from web_backend.infra.database.connection import get_connection, get_db_path
+        from web_backend.infra.database.connection import get_connection
         from web_backend.infra.database.repositories import (
             PortfolioHoldingRepository,
             UserSettingsRepository,
             WatchlistRepository,
         )
-        conn = get_connection(get_db_path())
+        conn = get_connection()
         _deps_instance = AppDeps(
             holdings_repo=PortfolioHoldingRepository(conn),
             user_settings_repo=UserSettingsRepository(conn),

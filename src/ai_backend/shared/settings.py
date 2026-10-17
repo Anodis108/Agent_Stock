@@ -45,9 +45,15 @@ class AiSettings(CustomBaseModel):
     exact_cache_enabled: bool = True
     semantic_cache_enabled: bool = True
 
-    # Directories and Logging
-    sqlite_path: str = "resources/data/portfolio_watch.db"
+    # Database & Storage
+    database_url: str | None = None
     charts_dir: str = "resources/data/charts"
+    chart_backend: str = "minio"
+    minio_endpoint: str = "localhost:9000"
+    minio_bucket: str = "charts"
+    minio_access_key: str = "minioadmin"
+    minio_secret_key: str = "minioadmin"
+    minio_secure: bool = False
     log_level: str = "INFO"
     cors_origins: list[str] = ["*"]
 
@@ -105,8 +111,14 @@ class AiSettings(CustomBaseModel):
         else:
             price_fallback = bool(data.get("price_fallback_on_error", True))
 
-        # Charts Dir
-        charts_dir = os.environ.get("CHARTS_DIR") or data.get("charts_dir") or "resources/data/charts"
+        # Charts & MinIO
+        charts_dir = os.environ.get("CHARTS_DIR") or data.get("charts_dir") or data.get("chart_dir") or "resources/data/charts"
+        chart_backend = os.environ.get("CHART_BACKEND") or data.get("chart_backend") or "minio"
+        minio_endpoint = os.environ.get("MINIO_ENDPOINT") or data.get("minio_endpoint") or "localhost:9000"
+        minio_bucket = os.environ.get("MINIO_BUCKET") or data.get("minio_bucket") or "charts"
+        minio_access_key = os.environ.get("MINIO_ACCESS_KEY") or data.get("minio_access_key") or "minioadmin"
+        minio_secret_key = os.environ.get("MINIO_SECRET_KEY") or data.get("minio_secret_key") or "minioadmin"
+        minio_secure = os.environ.get("MINIO_SECURE", "").lower() in ("true", "1", "yes") if "MINIO_SECURE" in os.environ else bool(data.get("minio_secure", False))
 
         # CORS
         cors_raw = os.environ.get("CORS_ORIGINS") or data.get("cors_origins") or "*"
@@ -117,17 +129,14 @@ class AiSettings(CustomBaseModel):
         else:
             cors_origins = ["*"]
 
-        # SQLite Path
-        sqlite_path = (
-            os.environ.get("SQLITE_PATH")
-            or os.environ.get("BACKEND_SQLITE_PATH")
-            or data.get("sqlite_path")
-            or "resources/data/portfolio_watch.db"
-        )
+        # Database URL
+        database_url = os.environ.get("DATABASE_URL") or data.get("database_url")
+
 
         return cls(
             host=host,
             port=port,
+            database_url=database_url,
             qdrant_url=qdrant_url,
             qdrant_host=qdrant_host,
             qdrant_port=qdrant_port,
@@ -142,8 +151,13 @@ class AiSettings(CustomBaseModel):
             llm_backend=llm_backend,
             llm_model=llm_model,
             price_fallback_on_error=price_fallback,
-            sqlite_path=sqlite_path,
             charts_dir=charts_dir,
+            chart_backend=chart_backend,
+            minio_endpoint=minio_endpoint,
+            minio_bucket=minio_bucket,
+            minio_access_key=minio_access_key,
+            minio_secret_key=minio_secret_key,
+            minio_secure=minio_secure,
             cors_origins=cors_origins,
             log_level=os.environ.get("LOG_LEVEL", "INFO"),
         )

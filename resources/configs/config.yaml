@@ -53,8 +53,8 @@ memory:
 
 # 5. Hệ thống lưu trữ CSDL & Tệp (Storage & Persistence)
 storage:
-  sqlite_path: "./resources/data/portfolio_watch.db"
-  backend_sqlite_path: "./resources/data/backend_store.db"
+  sqlite_path: "./resources/data/fallback/portfolio_watch.db"
+  backend_sqlite_path: "./resources/data/fallback/backend_store.db"
   chart_dir: "./resources/data/charts"   # Fallback khi MinIO không kết nối được
   chart_backend: "minio"                # minio | local
   minio_endpoint: "localhost:9000"      # Compose ghi đè MINIO_ENDPOINT=minio:9000

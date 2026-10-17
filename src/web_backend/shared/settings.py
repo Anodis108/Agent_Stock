@@ -20,12 +20,17 @@ class WebSettings(CustomBaseModel):
     ai_base_url: str = "http://127.0.0.1:8001"
     ai_http_timeout: float = 60.0
     database_url: str | None = None
-    sqlite_path: str = "resources/data/portfolio_watch.db"
     log_level: str = "INFO"
     frontend_origin: str = "*"
     cors_origins: list[str] = ["*"]
     default_alert_threshold_pct: float = 3.0
     charts_dir: str = "resources/data/charts"
+    chart_backend: str = "minio"
+    minio_endpoint: str = "localhost:9000"
+    minio_bucket: str = "charts"
+    minio_access_key: str = "minioadmin"
+    minio_secret_key: str = "minioadmin"
+    minio_secure: bool = False
 
     @classmethod
     def load(cls) -> WebSettings:
@@ -71,8 +76,14 @@ class WebSettings(CustomBaseModel):
         else:
             cors_origins = ["*"]
 
-        # Parse Charts Dir
-        charts_dir = os.environ.get("CHARTS_DIR") or data.get("charts_dir") or "resources/data/charts"
+        # Parse Charts & MinIO
+        charts_dir = os.environ.get("CHARTS_DIR") or data.get("charts_dir") or data.get("chart_dir") or "resources/data/charts"
+        chart_backend = os.environ.get("CHART_BACKEND") or data.get("chart_backend") or "minio"
+        minio_endpoint = os.environ.get("MINIO_ENDPOINT") or data.get("minio_endpoint") or "localhost:9000"
+        minio_bucket = os.environ.get("MINIO_BUCKET") or data.get("minio_bucket") or "charts"
+        minio_access_key = os.environ.get("MINIO_ACCESS_KEY") or data.get("minio_access_key") or "minioadmin"
+        minio_secret_key = os.environ.get("MINIO_SECRET_KEY") or data.get("minio_secret_key") or "minioadmin"
+        minio_secure = os.environ.get("MINIO_SECURE", "").lower() in ("true", "1", "yes") if "MINIO_SECURE" in os.environ else bool(data.get("minio_secure", False))
 
         return cls(
             host=host,
@@ -82,6 +93,12 @@ class WebSettings(CustomBaseModel):
             cors_origins=cors_origins,
             log_level=os.environ.get("LOG_LEVEL", "INFO"),
             charts_dir=charts_dir,
+            chart_backend=chart_backend,
+            minio_endpoint=minio_endpoint,
+            minio_bucket=minio_bucket,
+            minio_access_key=minio_access_key,
+            minio_secret_key=minio_secret_key,
+            minio_secure=minio_secure,
         )
 
 

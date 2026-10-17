@@ -6,7 +6,9 @@ Cung cấp phương thức process() đồng bộ và phương thức stream() p
 
 from __future__ import annotations
 
+import queue
 import re
+import threading
 import uuid
 from typing import Any, Callable, Iterator
 from pydantic import Field
@@ -75,8 +77,12 @@ class SwarmOrchestrator(BaseService):
         self.memory_store = memory_store
         self.watchlist_store = watchlist_store
 
-    def process(self, inputs: SwarmInput) -> SwarmOutput:
-        """Xử lý điều phối Swarm hỏi-đáp đồng bộ."""
+    def process(
+        self,
+        inputs: SwarmInput,
+        event_callback: Callable[[str, dict[str, Any]], None] | None = None,
+    ) -> SwarmOutput:
+        """Xử lý điều phối Swarm hỏi-đáp đồng bộ. `event_callback` nhận event realtime từ các node graph."""
         q = inputs.question.strip()
         req_id = inputs.request_id or str(uuid.uuid4())
         logger.info(f"SwarmOrchestrator.process: q='{q[:50]}' user='{inputs.user_id}' req_id='{req_id}'")
@@ -127,6 +133,8 @@ class SwarmOrchestrator(BaseService):
                     kwargs["memory_store"] = self.memory_store
                 if wl_store is not None:
                     kwargs["watchlist_store"] = wl_store
+                if event_callback is not None:
+                    kwargs["event_callback"] = event_callback
 
                 res = self.graph_runner(q, **kwargs)
                 if isinstance(res, SwarmOutput):
@@ -206,7 +214,7 @@ class SwarmOrchestrator(BaseService):
                 "Xin chào! Tôi là trợ lý chứng khoán VN Stock Swarm. "
                 "Bạn có thể tra cứu thị giá, tin tức, chỉ báo kỹ thuật và danh mục đầu tư."
             )
-            yield ("token", {"token": greeting_text, "node": "greeting_fastpath", "index": 0})
+            yield ("token", {"delta": greeting_text, "node": "greeting_fastpath"})
             yield (
                 "node_finish",
                 {"node": "greeting_fastpath", "output_data": {"done": True}, "duration_ms": 10},
@@ -224,7 +232,8 @@ class SwarmOrchestrator(BaseService):
             )
             return
 
-        # Luồng tiêu chuẩn qua process()
+        # Luồng tiêu chuẩn: chạy process() trong thread riêng, các node graph đẩy event
+        # (node_start, token từ LLM, node_finish...) vào queue ngay khi phát sinh -> stream thật.
         inp = SwarmInput(
             question=q,
             user_id=user_id,
@@ -232,40 +241,41 @@ class SwarmOrchestrator(BaseService):
             watchlist=watchlist or [],
             holdings=holdings or [],
         )
+        events: queue.Queue[tuple[str, Any]] = queue.Queue()
+        cancel = threading.Event()
 
-        yield (
-            "node_start",
-            {"node": "supervisor", "input_data": {"question": q, "user_id": user_id}},
-        )
+        def _worker() -> None:
+            from ai_backend.infra.graph.chat import set_stream_cancel_event
 
-        output = self.process(inp)
+            # Graph kiểm tra cờ này ở mỗi emit_agent_event -> dừng khi client ngắt kết nối.
+            set_stream_cancel_event(cancel)
+            try:
+                result = self.process(inp, event_callback=lambda e, d: events.put((e, d)))
+            except Exception as exc:
+                logger.error(f"Lỗi SwarmOrchestrator.stream: {exc}", exc_info=True)
+                result = SwarmOutput(question=q, answer="", routing="error", error=str(exc))
+            finally:
+                set_stream_cancel_event(None)
+            events.put(("__done__", result))
 
-        yield (
-            "node_finish",
-            {
-                "node": "supervisor",
-                "output_data": {"route": output.routing, "symbol": output.rewritten_symbol},
-            },
-        )
+        threading.Thread(target=_worker, daemon=True).start()
 
-        yield (
-            "node_start",
-            {"node": "answer_composer", "input_data": {"route": output.routing}},
-        )
+        streamed = False
+        try:
+            while True:
+                event, data = events.get()
+                if event == "__done__":
+                    output: SwarmOutput = data
+                    break
+                streamed = streamed or event == "token"
+                yield (event, data)
+        finally:
+            # Generator bị đóng sớm (client ngắt) -> báo graph dừng, khỏi tốn token LLM.
+            cancel.set()
 
-        # Phát token từng từ
-        words = output.answer.split(" ")
-        for idx, word in enumerate(words):
-            token = word + (" " if idx < len(words) - 1 else "")
-            yield (
-                "token",
-                {"token": token, "node": "answer_composer", "index": idx},
-            )
-
-        yield (
-            "node_finish",
-            {"node": "answer_composer", "duration_ms": 50},
-        )
+        # Graph không phát token nào (fallback offline, lỗi...) -> gửi nguyên câu trả lời.
+        if not streamed and output.answer:
+            yield ("token", {"delta": output.answer, "node": "answer_composer"})
 
         yield (
             "complete",

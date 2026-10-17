@@ -12,22 +12,11 @@ from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, Settings
 # Nạp biến môi trường từ file .env (chỉ nạp các biến chưa có trong process environment)
 load_dotenv(find_dotenv(".env"), override=False)
 
+# src/common/settings/config.py -> resources/configs/config.yaml
+project_root = Path(__file__).resolve().parent.parent.parent.parent
 
 def get_config_yaml_path() -> Path:
-    """Xác định đường dẫn tệp cấu hình config.yaml duy nhất của ứng dụng."""
-    if os.environ.get("CONFIG_YAML_PATH"):
-        return Path(os.environ["CONFIG_YAML_PATH"])
-
-    # src/common/settings/config.py -> resources/configs/config.yaml
-    project_root = Path(__file__).resolve().parent.parent.parent.parent
     candidate = project_root / "resources" / "configs" / "config.yaml"
-    if candidate.exists():
-        return candidate
-
-    cwd_candidate = Path.cwd() / "resources" / "configs" / "config.yaml"
-    if cwd_candidate.exists():
-        return cwd_candidate
-
     return candidate
 
 
@@ -36,14 +25,8 @@ def load_config_yaml_data(yaml_path: Path | None = None) -> dict[str, Any]:
     if yaml_path is None:
         yaml_path = get_config_yaml_path()
 
-    if not yaml_path.exists():
-        return {}
-
-    try:
-        with open(yaml_path, "r", encoding="utf-8") as f:
-            raw = yaml.safe_load(f) or {}
-    except Exception:
-        return {}
+    with open(yaml_path, "r", encoding="utf-8") as f:
+        raw = yaml.safe_load(f) or {}
 
     flat: dict[str, Any] = {}
     for section, content in raw.items():
@@ -84,11 +67,15 @@ def load_config_yaml_data(yaml_path: Path | None = None) -> dict[str, Any]:
         "cache_semantic_enabled": "cache_semantic_enabled",
         "cache_semantic_threshold": "cache_semantic_threshold",
         "cache_ttl_seconds": "cache_ttl_seconds",
+        "cache_redis_url": "redis_url",
         "memory_short_term_window": "memory_short_term_window",
         "memory_short_term_ttl_minutes": "memory_short_term_ttl_minutes",
         "memory_embedding_model": "embedding_model",
         "memory_embedding_dim": "embedding_dim",
         "memory_qdrant_collection": "qdrant_collection",
+        "memory_qdrant_url": "qdrant_url",
+        "memory_qdrant_host": "qdrant_host",
+        "memory_qdrant_port": "qdrant_port",
         "storage_sqlite_path": "sqlite_path",
         "storage_backend_sqlite_path": "backend_sqlite_path",
         "storage_chart_dir": "chart_dir",
@@ -207,8 +194,8 @@ class Settings(BaseSettings):
     price_source: str = "vnstock"
     news_source: str = "cafef"
     price_fallback_on_error: bool = True
-    sqlite_path: str = "./resources/data/portfolio_watch.db"
-    backend_sqlite_path: str = "./resources/data/backend_store.db"
+    sqlite_path: str = "./resources/data/fallback/portfolio_watch.db"
+    backend_sqlite_path: str = "./resources/data/fallback/backend_store.db"
     chart_dir: str = "./resources/data/charts"
     chart_backend: str = "minio"
     minio_endpoint: str = "localhost:9000"
@@ -236,6 +223,7 @@ class Settings(BaseSettings):
     cache_semantic_enabled: bool = True
     cache_semantic_threshold: float = 0.93
     cache_ttl_seconds: int = 86400
+    redis_url: str = "redis://localhost:6379/0"
 
     @field_validator("cache_backend")
     @classmethod
@@ -251,6 +239,8 @@ class Settings(BaseSettings):
 
     # 12. Memory long-term & Qdrant
     qdrant_url: str | None = None
+    qdrant_host: str = "localhost"
+    qdrant_port: int = 6333
     qdrant_api_key: str | None = None
     qdrant_collection: str = "portfolio_watch_memory"
     embedding_model: str = "text-embedding-3-small"

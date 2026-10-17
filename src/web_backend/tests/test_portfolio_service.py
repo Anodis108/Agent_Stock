@@ -1,8 +1,7 @@
-"""Unit & Integration tests for PortfolioService: P&L calculations, NAV, and Multi-tenant SQLite isolation."""
+"""Unit & Integration tests for PortfolioService: P&L calculations, NAV, and Multi-tenant isolation."""
 
 from __future__ import annotations
 
-import sqlite3
 import pytest
 
 from common.domain.ports import PriceBar, PriceQuote
@@ -11,7 +10,7 @@ from web_backend.application.portfolio_service import (
     PortfolioService,
     PortfolioSummary,
 )
-from web_backend.infra.database.connection import init_db
+from common.database import PgConn
 from web_backend.infra.database.repositories import (
     PortfolioHoldingRepository,
     UserSettingsRepository,
@@ -35,7 +34,7 @@ class MockPriceSource:
         return []
 
 
-def test_portfolio_pnl_mathematical_precision(in_memory_db: sqlite3.Connection):
+def test_portfolio_pnl_mathematical_precision(in_memory_db: PgConn):
     """Kiểm tra độ chính xác công thức toán học:
     - Unrealized P&L = (current_price - avg_buy_price) * quantity
     - Total NAV = sum(current_price * quantity)
@@ -79,7 +78,7 @@ def test_portfolio_pnl_mathematical_precision(in_memory_db: sqlite3.Connection):
     assert summary.count == 3
 
 
-def test_portfolio_multi_tenant_isolation(in_memory_db: sqlite3.Connection):
+def test_portfolio_multi_tenant_isolation(in_memory_db: PgConn):
     """Đảm bảo cô lập dữ liệu tuyệt đối giữa các user_id."""
     holdings_repo = PortfolioHoldingRepository(in_memory_db)
     user_settings_repo = UserSettingsRepository(in_memory_db)
@@ -107,7 +106,7 @@ def test_portfolio_multi_tenant_isolation(in_memory_db: sqlite3.Connection):
     assert summary_default.count == 0
 
 
-def test_portfolio_missing_price_fallback(in_memory_db: sqlite3.Connection):
+def test_portfolio_missing_price_fallback(in_memory_db: PgConn):
     """Khi mất kết nối nguồn giá hoặc mã không tồn tại, thị giá fallback bằng giá vốn."""
     holdings_repo = PortfolioHoldingRepository(in_memory_db)
     user_settings_repo = UserSettingsRepository(in_memory_db)

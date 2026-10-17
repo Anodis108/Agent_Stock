@@ -13,8 +13,6 @@ from pydantic import BaseModel, Field
 from ai_backend.infra.llm.account_snapshot import SnapshotWatchlistStore
 from ai_backend.infra.market_data.price_source import VnstockPriceSource
 from ai_backend.infra.market_data.news_source import CafefNewsSource
-from ai_backend.infra.storage.memory_store import SqliteMemoryStore
-from ai_backend.infra.storage.price_history_store import SqlitePriceHistoryStore
 from common.domain.entities import WatchlistItem
 from web_backend.api.deps import AppDeps, get_app_deps
 from web_backend.api.helpers.validation import normalize_question, normalize_symbol, validate_threshold_pct

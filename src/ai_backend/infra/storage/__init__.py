@@ -5,18 +5,18 @@ from ai_backend.infra.storage.long_term_memory import (
     save_to_long_term,
 )
 from ai_backend.infra.storage.memory_store import (
-    SqliteMemoryStore,
+    PgMemoryStore,
     apply_sliding_window_with_ttl_eviction,
     filter_conversation_history,
     parse_timestamp,
 )
-from ai_backend.infra.storage.price_history_store import SqlitePriceHistoryStore
-from ai_backend.infra.storage.watchlist_store import SqliteWatchlistStore
+from ai_backend.infra.storage.price_history_store import PgPriceHistoryStore
+from ai_backend.infra.storage.watchlist_store import PgWatchlistStore
 
 __all__ = [
-    "SqliteMemoryStore",
-    "SqlitePriceHistoryStore",
-    "SqliteWatchlistStore",
+    "PgMemoryStore",
+    "PgPriceHistoryStore",
+    "PgWatchlistStore",
     "apply_sliding_window_with_ttl_eviction",
     "clear_long_term_fallback",
     "filter_conversation_history",

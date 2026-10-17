@@ -21,11 +21,10 @@ from ai_backend.infra.agents.supervisor_agent.nodes import (
     rewrite_question,
     store_memory,
 )
-from web_backend.infra.database.connection import get_connection, init_db
+from web_backend.infra.database.connection import get_connection
 from web_backend.infra.database.repositories import MessageRepository, SessionRepository
 from ai_backend.infra.graph.chat import run_chat_graph
 from ai_backend.infra.storage.memory_store import (
-    SqliteMemoryStore,
     apply_sliding_window_with_ttl_eviction,
     filter_conversation_history,
     parse_timestamp,
@@ -156,11 +155,9 @@ def test_long_term_user_isolation():
 # 3. Session & Message Database Persistence Tests
 # ==============================================================================
 
-def test_session_and_message_crud(tmp_path):
+def test_session_and_message_crud(pg_schema):
     """Kiểm tra tạo, đọc, cập nhật và xóa phiên hội thoại (cascade xóa tin nhắn)."""
-    db_file = tmp_path / "test_session_crud.db"
-    conn = get_connection(str(db_file))
-    init_db(conn)
+    conn = get_connection()
 
     s_repo = SessionRepository(conn)
     m_repo = MessageRepository(conn)

@@ -115,22 +115,31 @@ def test_ai_main_health_endpoint():
 
 
 def test_ai_main_chat_stream_endpoint():
-    """Kiểm tra endpoint POST /v1/chat/stream phát SSE."""
-    client = TestClient(app)
-    payload = {
-        "question": "Chào bạn, hãy giới thiệu thị trường",
-        "user_id": "test_user",
-        "request_id": "req-12345",
-    }
-    response = client.post("/v1/chat/stream", json=payload)
-    assert response.status_code == 200
-    assert "text/event-stream" in response.headers.get("content-type", "")
-    assert "node_start" in response.text
-    assert "node_finish" in response.text
+    """Kiểm tra endpoint POST /v1/chat/stream phát SSE qua SwarmOrchestrator."""
+    from ai_backend.application.swarm_orchestrator import SwarmOrchestrator
+
+    app.state.orchestrator = SwarmOrchestrator()
+    try:
+        client = TestClient(app)
+        payload = {
+            "question": "Chào bạn, hãy giới thiệu thị trường",
+            "user_id": "test_user",
+            "request_id": "req-12345",
+        }
+        response = client.post("/v1/chat/stream", json=payload)
+        assert response.status_code == 200
+        assert "text/event-stream" in response.headers.get("content-type", "")
+        assert "node_start" in response.text
+        assert "node_finish" in response.text
+    finally:
+        del app.state.orchestrator
 
 
 def test_ai_main_scan_endpoint():
     """Kiểm tra endpoint POST /v1/scan phân tích kỹ thuật."""
+    from ai_backend.application.symbol_scanner_service import SymbolScannerService
+
+    app.state.symbol_scanner_service = SymbolScannerService()
     client = TestClient(app)
     payload = {
         "symbol": "VNM",

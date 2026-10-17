@@ -2,6 +2,109 @@
 
 Nhật ký ghi nhận chi tiết mọi thay đổi, kết quả kiểm thử và tiến độ triển khai theo phương pháp **Spec-Driven Development (SDD)**.
 
+## 2026-10-16 — Bỏ SSE Fallback Giả Lập Trong `/v1/chat/stream`
+
+- **Mục tiêu**: Endpoint chat stream chỉ phát SSE từ `SwarmOrchestrator` thật; không còn luồng mock khi thiếu orchestrator.
+- **Thay đổi**:
+  - `src/ai_backend/api/routers/chat_stream.py`: xóa `_generate_fallback_stream`; thiếu orchestrator → HTTP 503.
+  - `src/ai_backend/tests/test_presentation.py`: inject `_MockSwarmOrchestrator` thay vì dựa vào fallback.
+  - `src/ai_backend/tests/test_entrypoint.py`: inject `SwarmOrchestrator` thật cho bài chat stream.
+- **Kết quả kiểm thử**:
+  - `pytest src/ai_backend/tests/test_presentation.py src/ai_backend/tests/test_entrypoint.py::test_ai_main_chat_stream_endpoint`: **7/7 PASS**.
+- **Cách kiểm tra thủ công**:
+  1. Chạy AI backend (`uvicorn ai_backend.main:app --port 8001`).
+  2. `POST /v1/chat/stream` với `{"question":"Xin chào"}` — nhận SSE thật (greeting / agent), không còn câu mock "Vnstock Swarm".
+
+---
+
+## 2026-10-16 — Loại Bỏ SQLite Khỏi Web Backend, Web & AI Dùng Chung PostgreSQL
+
+- **Mục tiêu**: `src/web_backend` chỉ dùng PostgreSQL; web_backend và ai_backend đọc/ghi cùng schema `public` để watchlist, holdings, session dùng chung một nguồn.
+- **Thay đổi**:
+  - `web_backend/infra/database/connection.py`: viết lại, chỉ PostgreSQL. `get_connection(schema=None)` dùng `DEFAULT_SCHEMA = "public"`, tạo bảng một lần cho mỗi schema; `RuntimeError` khi thiếu `DATABASE_URL`. Bỏ `get_db_path` và re-export SQLite (`SQLITE_SCHEMA_SQL`, `SCHEMA_SQL`, `_database_url`).
+  - `api/deps.py`: `get_connection()` thay cho `get_connection(get_db_path())` (đường dẫn `.db` trước đây luôn ép dùng SQLite).
+  - `watchlist_repo.py`: bỏ các nhánh fallback `sqlite3.OperationalError` (trên PostgreSQL câu lệnh lỗi làm hỏng cả transaction nên fallback không thể chạy).
+  - `hitl_service.py`, `market_service.py`: bỏ `import sqlite3`, type hint dùng `PgConn`. `main.py` health: `postgresql` | `not_configured`. `shared/settings.py`: bỏ `sqlite_path`.
+  - `common/database/pg.py`: `PgConn.execute/executemany` rollback khi lỗi để kết nối dùng lâu dài (AppDeps) không bị kẹt trạng thái transaction aborted.
+  - `ai_backend/infra/graph/chat.py`: đóng kết nối của `MarketService` sau khi đọc lịch sử (trước đây mở kết nối mới mỗi lần mà không đóng).
+  - `docker-compose.yml`: `web_backend`, `ai_backend`, `eval_test` dùng `DATABASE_URL=...@postgres:5432/...`, `depends_on: postgres` (`required: false`); bỏ toàn bộ `SQLITE_PATH`/`BACKEND_SQLITE_PATH`.
+  - Test: fixture `autouse` `_pg_test_schema` (web_backend, ai_backend, root `tests/`) đặt `DEFAULT_SCHEMA` sang `test_<uuid>` cho **mọi** test và xóa khi xong; `pg_schema` skip khi thiếu `DATABASE_URL`. Thay `sqlite3.connect`/`sqlite_master`/`PRAGMA` bằng `get_connection()`/`information_schema`. `tests/integration/test_system.py` kiểm tra `@postgres:5432/` và không còn `SQLITE_PATH`.
+- **Kết quả kiểm thử**:
+  - `pytest src/ai_backend/tests src/web_backend/tests src/common/tests tests/e2e/test_docker_setup.py tests/integration/test_system.py::test_compose_two_services_backend_and_frontend_and_volume`: **365/365 PASS**.
+  - Số dòng trong các bảng `public` trước/sau khi chạy test không đổi; không còn schema `test_*` sót lại; không rò rỉ kết nối.
+  - Kiểm tra thực tế trên schema tạm: thêm watchlist qua `POST /api/v1/watchlist` của web → `PgWatchlistStore` của AI đọc được ngay; 40 request liên tiếp không tăng số kết nối; kết nối AppDeps vẫn dùng được sau một câu lệnh lỗi.
+  - `docker compose config -q`: hợp lệ. Chưa rebuild/restart container.
+- **Còn tồn tại**:
+  - Trước khi có fixture `autouse`, 2 lần chạy test đã ghi vào `public`: 4 `sessions`, 6 `messages`, 2 `hitl_evaluations` (created_at `2026-10-16T09:5x`) và 100 dòng giá tổng hợp trong `market_history_10d` (`volume = 1000000`, `change_pct = 0`). Cần xóa thủ công.
+  - Chưa chuyển dữ liệu cũ từ `resources/data/fallback/*.db` và các schema PostgreSQL cũ `t_<hash>` sang `public`.
+  - `src/common/database/connection.py` vẫn còn code SQLite (`get_connection`, `SQLITE_SCHEMA_SQL`); web/ai không còn dùng, chỉ `src/common/tests/test_database.py` còn gọi.
+  - Có sẵn từ trước: `get_app_deps()` cache `AppDeps()` rỗng vĩnh viễn nếu lần kết nối đầu lỗi (watchlist rơi về store in-memory); lifespan web chỉ log warning khi init DB lỗi. Mỗi `get_connection()` mở kết nối mới (chưa có pool).
+
+---
+
+## 2026-10-16 — Loại Bỏ SQLite Khỏi AI Backend, Chỉ Dùng PostgreSQL
+
+- **Mục tiêu**: `src/ai_backend` không còn code SQLite và không còn fallback; mọi store đọc/ghi PostgreSQL qua `DATABASE_URL`.
+- **Thay đổi**:
+  - Tạo `src/ai_backend/infra/storage/pg_db.py`: `connect(schema="public")` mở kết nối PostgreSQL, tạo bảng (`PG_SCHEMA_SQL`) một lần cho mỗi schema; báo `RuntimeError` khi thiếu `DATABASE_URL`.
+  - Xóa `infra/storage/sqlite_db.py` và `infra/storage/store.py` (class `Store` SQLite cũ, chỉ còn test dùng).
+  - Đổi tên store: `SqliteMemoryStore` → `PgMemoryStore`, `SqlitePriceHistoryStore` → `PgPriceHistoryStore`, `SqliteWatchlistStore` → `PgWatchlistStore`; constructor nhận `schema` thay cho `db_path`. Bỏ nhánh `sqlite3.OperationalError` trong `PgWatchlistStore.upsert`.
+  - `main.py`: kiểm tra kết nối PostgreSQL ngay khi khởi động (báo lỗi sớm), khởi tạo store không cần `db_path`.
+  - `shared/settings.py`: bỏ `sqlite_path`. `api/routers/health.py`: `database` = `postgresql` | `not_configured`.
+  - `portfolio_watch_agent/nodes.py`: bỏ fallback đọc watchlist từ 2 file SQLite, dùng `watchlist_store or PgWatchlistStore()`.
+  - `infra/llm/account_snapshot.py`: đọc watchlist qua `list_items()` (API của `PgWatchlistStore`) thay cho `list_watchlist()` của `Store` đã xóa.
+  - `application/eval/agent_eval.py`, `api/routers/v1.py`: bỏ `Sqlite*Store(":memory:")` và các import không dùng.
+  - `docker-compose.yml` (service `ai_backend`): đặt `DATABASE_URL` trỏ tới `postgres:5432` (trước đó lấy `localhost:5433` từ `.env`, trong container không kết nối được nên âm thầm chạy SQLite), thêm `depends_on: postgres` (`required: false`), bỏ `BACKEND_SQLITE_PATH`.
+  - Test (`src/ai_backend/tests/conftest.py`, `tests/conftest.py`): fixture `pg_schema` tạo schema `test_<uuid>` riêng cho mỗi test và `DROP SCHEMA ... CASCADE` khi xong; skip nếu thiếu `DATABASE_URL`.
+- **Kết quả kiểm thử**:
+  - `pytest src/ai_backend/tests src/web_backend/tests src/common/tests tests/e2e/test_docker_setup.py`: **364/364 PASS**.
+  - `pytest tests/integration/test_system.py -k test_compose_two_services`: **1/1 PASS**; `docker compose config -q`: hợp lệ.
+  - Khởi động thật `ai_backend.main` (lifespan) với PostgreSQL local: `/health` trả `database: postgresql`. Thiếu `DATABASE_URL` → `RuntimeError` rõ ràng.
+  - Sau khi chạy test không còn schema `test_*` sót lại trong PostgreSQL.
+- **Còn tồn tại (ngoài phạm vi `src/ai_backend`)**:
+  - `web_backend` vẫn dùng SQLite: `get_app_deps()` gọi `get_connection(get_db_path())` với đường dẫn `.db` nên luôn rẽ nhánh SQLite (mục "Shared Database Kernel" phía dưới ghi web_backend ghi vào PostgreSQL là chưa đúng). Watchlist do web ghi (SQLite) và watchlist AI đọc (PostgreSQL `public`) hiện là **hai nguồn dữ liệu riêng**.
+  - Holdings trong `PortfolioWatchAgent` vẫn đọc qua repository của web_backend, nên container `ai_backend` vẫn giữ `SQLITE_PATH`.
+  - Chưa chuyển dữ liệu cũ (watchlist, conversations, preferences, rejections...) từ file SQLite sang PostgreSQL.
+  - `tests/integration/*`, `tests/unit/*` import package `backend.` đã không còn từ trước (22 lỗi collect), không liên quan thay đổi này.
+
+---
+
+## 2026-10-16 — Thống Nhất Tầng Cơ Sở Dữ Liệu (Shared Database Kernel) & Kết Nối Trực Tiếp PostgreSQL Cho AI Backend
+
+- **Mục tiêu**:
+  - Khắc phục triệt để tình trạng phân mảnh dữ liệu (split-brain): `web_backend` ghi vào PostgreSQL trong khi `ai_backend` lại ghi vào SQLite cục bộ riêng biệt.
+  - Chuyển toàn bộ tầng kết nối Database (`connection.py`, `pg.py`) thành Shared Kernel tại [src/common/database/](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/src/common/database) để cả hai microservice dùng chung mà không vi phạm ranh giới Clean Architecture (AC-2).
+  - Cập nhật [web_backend/infra/database/](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/src/web_backend/infra/database) re-export từ `common.database` để giữ nguyên tương thích ngược 100%.
+  - Bổ sung `database_url` vào `AiSettings` tại [src/ai_backend/shared/settings.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/src/ai_backend/shared/settings.py).
+  - Cập nhật [src/ai_backend/infra/storage/sqlite_db.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/src/ai_backend/infra/storage/sqlite_db.py) và [src/ai_backend/main.py](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/src/ai_backend/main.py): Tự động ưu tiên kết nối trực tiếp vào PostgreSQL thật qua `DATABASE_URL` khi có cấu hình, và tự động fallback về SQLite khi chạy test offline.
+  - Cập nhật các Store (`SqlitePriceHistoryStore`, `SqliteWatchlistStore`, `SqliteMemoryStore`) hỗ trợ `db_path: str | None = None` và tương thích kiểu kết nối DB-API chung.
+- **Kết quả kiểm thử**:
+  - `pytest src/common/tests/`: **27/27 PASS** (100% bao gồm kiểm tra ranh giới AST `test_web_backend_import_boundaries` và Shared DB `test_database.py`).
+  - `pytest src/web_backend/tests/`: **83/83 PASS** (100%).
+  - `pytest src/ai_backend/tests/`: **241/241 PASS** (100%).
+  - `pytest tests/e2e/test_golden_v6_slices.py`: **12/12 PASS** (bao phủ 20/20 test cases, 100%).
+- **Tệp đã tạo / sửa**:
+  - Tạo mới: `src/common/database/__init__.py`, `src/common/database/pg.py`, `src/common/database/connection.py`, `src/common/tests/test_database.py`.
+  - Sửa đổi: `src/web_backend/infra/database/pg.py`, `src/web_backend/infra/database/connection.py`, `src/ai_backend/shared/settings.py`, `src/ai_backend/infra/storage/sqlite_db.py`, `src/ai_backend/infra/storage/price_history_store.py`, `src/ai_backend/infra/storage/watchlist_store.py`, `src/ai_backend/infra/storage/memory_store.py`, `src/ai_backend/main.py`, `specs/test-plan.md`.
+
+---
+
+## 2026-10-16 — Chuyển Đổi Volume Lưu Trữ Sang Thư Mục Cục Bộ `resources/data` & Khởi Động Lại Hệ Thống
+
+- **Mục tiêu**:
+  - Chuyển đổi toàn bộ volume lưu trữ SQLite (`portfolio_watch.db`, `backend_store.db`), ảnh chart và cache ứng dụng từ Docker Named Volume (`pw_data`) sang thư mục cục bộ [resources/data](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/resources/data) dưới dạng bind-mount (`./resources/data:/app/data`).
+  - Cho phép người dùng trực tiếp mở, sao lưu và kiểm tra file database trên Windows File Explorer mà không bị giấu bên trong WSL2.
+  - Cập nhật [docker-compose.yml](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/docker-compose.yml) cho các service `backend`, `ai_backend` và `eval_test`.
+  - Cập nhật assertions trong `tests/e2e/test_docker_setup.py` và `tests/integration/test_system.py` để tương thích linh hoạt cả 2 kiểu mount.
+  - Khởi động lại toàn bộ 7 container trong hệ thống Docker Compose và kiểm tra trạng thái sức khỏe.
+- **Kết quả kiểm thử**:
+  - Toàn bộ 7 containers: `portfolio-watch-web-backend`, `portfolio-watch-ai-backend`, `portfolio-watch-frontend`, `portfolio-watch-postgres`, `portfolio-watch-redis`, `portfolio-watch-qdrant`, `portfolio-watch-minio` đều UP và **healthy**.
+  - `pytest tests/e2e/test_docker_setup.py`: **4/4 PASS** (100%).
+  - `pytest tests/integration/test_system.py -k test_compose_two_services`: **1/1 PASS** (100%).
+  - Dữ liệu `portfolio_watch.db`, `backend_store.db`, `.config`, `.matplotlib`, `charts` đã được ánh xạ và hiển thị trực tiếp tại [resources/data](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/resources/data).
+
+---
+
 ## 2026-10-15 — Chuẩn Hóa Semantic Naming cho Eval Datasets & CI/CD Pipeline
 
 - **Mục tiêu**:

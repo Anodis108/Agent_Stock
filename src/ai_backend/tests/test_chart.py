@@ -8,7 +8,7 @@ Tests:
 5. Edge case handling (empty data, 1 data point, invalid symbols).
 6. High-level dispatch via `run_chart_agent`.
 7. Supervisor routing & LangGraph integration with ChartAgent.
-8. Persistence of chart_path in SQLite messages table.
+8. Persistence of chart_path in PostgreSQL messages table.
 """
 
 from __future__ import annotations
@@ -354,7 +354,7 @@ def test_chat_graph_comparison_chart():
 
 
 def test_chat_api_endpoint_persists_chart_path(real_deps, monkeypatch):
-    """Kiểm tra API POST /api/v1/chat trả về chart_path và lưu vào SQLite messages."""
+    """Kiểm tra API POST /api/v1/chat trả về chart_path và lưu vào bảng messages."""
     from fastapi.testclient import TestClient
     from web_backend.main import app
     from web_backend.infra.database.connection import get_connection

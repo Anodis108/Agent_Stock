@@ -103,14 +103,14 @@ def load_account_snapshot(user_id: str) -> dict[str, list[dict]]:
 
     uid = (user_id or "default").strip() or "default"
     watchlist: list[dict] = []
-    if watchlist_store is not None and hasattr(watchlist_store, "list_watchlist"):
+    if watchlist_store is not None and hasattr(watchlist_store, "list_items"):
         watchlist = [
             {
                 "symbol": item.symbol,
                 "threshold_pct": float(item.threshold_pct),
                 "user_id": getattr(item, "user_id", uid) or uid,
             }
-            for item in watchlist_store.list_watchlist(uid) or []
+            for item in watchlist_store.list_items(uid) or []
         ]
     holdings: list[dict] = []
     deps = get_app_deps() if callable(get_app_deps) else None

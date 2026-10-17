@@ -15,7 +15,7 @@ from ai_backend.infra.llm.completion import chat_parsed
 from ai_backend.infra.llm.params import DETERMINISTIC
 from common.settings import settings
 
-JUDGE_MODEL = "gpt-4o-mini"
+JUDGE_MODEL = "gpt-4o"
 TASK_SUCCESS_SLICES = frozenset({"lookup", "comparison"})
 TRAJECTORY_WARN_THRESHOLD = 3.0
 

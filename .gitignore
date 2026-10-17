@@ -20,7 +20,10 @@ venv/
 # Runtime data & generated assets (resources/data)
 resources/data/*.db
 resources/data/*.db-*
+resources/data/fallback/
 resources/data/charts/
+resources/data/.config/
+resources/data/.matplotlib/
 resources/data/hitl_feedback.json
 resources/data/hitl_feedback_export.json
 resources/portfolio_watch.egg-info/

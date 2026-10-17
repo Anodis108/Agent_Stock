@@ -426,7 +426,10 @@ def chart_node(
                 from web_backend.application.market_service import MarketService
                 from ai_backend.infra.market_data.price_source import VnstockPriceSource
                 ms = MarketService(price_source=price_source)
-                hist_records = ms.get_symbol_history(s_upper, limit=max(15, (session_limit or 15) + 5))
+                try:
+                    hist_records = ms.get_symbol_history(s_upper, limit=max(15, (session_limit or 15) + 5))
+                finally:
+                    ms.conn.close()
                 if hist_records:
                     bars = [
                         PriceBar(

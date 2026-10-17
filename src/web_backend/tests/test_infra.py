@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import sqlite3
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from web_backend.infra.ai_client import RemoteAiClient
-from web_backend.infra.database.connection import get_connection, init_db
+from common.database import PgConn
+from web_backend.infra.database.connection import get_connection
 from web_backend.infra.database.pg import PgRow, qmark, schema_name
 from web_backend.infra.database.repositories import (
     HITLEvaluationRecord,
@@ -36,25 +36,21 @@ from web_backend.infra.database.repositories import (
 
 
 @pytest.fixture
-def db_conn() -> sqlite3.Connection:
-    """Tạo kết nối SQLite in-memory cho test."""
-    conn = sqlite3.connect(":memory:", check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON;")
-    init_db(conn)
-    yield conn
-    conn.close()
+def db_conn(temp_db: PgConn) -> PgConn:
+    """Kết nối PostgreSQL tới schema tạm cho test."""
+    return temp_db
 
 
 class TestDatabaseConnection:
     """Kiểm tra kết nối và khởi tạo cơ sở dữ liệu."""
 
-    def test_get_connection_sqlite(self, tmp_path) -> None:
-        db_file = tmp_path / "test_web.db"
-        conn = get_connection(db_file)
+    def test_get_connection_postgres(self, pg_schema) -> None:
+        conn = get_connection()
         assert conn is not None
         # Bảng phải được tạo đầy đủ
-        cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        cursor = conn.execute(
+            "SELECT table_name AS name FROM information_schema.tables WHERE table_schema = current_schema()"
+        )
         tables = {row["name"] for row in cursor.fetchall()}
         expected = {
             "sessions",
@@ -90,7 +86,7 @@ class TestDatabaseConnection:
 class TestSessionAndMessageRepositories:
     """Kiểm thử SessionRepo và MessageRepo."""
 
-    def test_session_repo_crud(self, db_conn: sqlite3.Connection) -> None:
+    def test_session_repo_crud(self, db_conn: PgConn) -> None:
         repo = SessionRepo(db_conn)
 
         # Create
@@ -119,7 +115,7 @@ class TestSessionAndMessageRepositories:
         assert repo.delete("sess-001") is True
         assert repo.get("sess-001") is None
 
-    def test_message_repo_crud_and_cascade(self, db_conn: sqlite3.Connection) -> None:
+    def test_message_repo_crud_and_cascade(self, db_conn: PgConn) -> None:
         s_repo = SessionRepo(db_conn)
         m_repo = MessageRepo(db_conn)
 
@@ -160,7 +156,7 @@ class TestSessionAndMessageRepositories:
 class TestPortfolioAndWatchlistRepositories:
     """Kiểm thử PortfolioRepo, UserSettingsRepo và WatchlistRepo."""
 
-    def test_portfolio_repo_crud(self, db_conn: sqlite3.Connection) -> None:
+    def test_portfolio_repo_crud(self, db_conn: PgConn) -> None:
         repo = PortfolioRepo(db_conn)
 
         # Create holding for user_a
@@ -191,7 +187,7 @@ class TestPortfolioAndWatchlistRepositories:
         assert repo.delete(h1.id, user_id="user_a") is True
         assert repo.get(h1.id) is None
 
-    def test_user_settings_repo(self, db_conn: sqlite3.Connection) -> None:
+    def test_user_settings_repo(self, db_conn: PgConn) -> None:
         repo = UserSettingsRepo(db_conn)
 
         # Default settings when not found
@@ -206,7 +202,7 @@ class TestPortfolioAndWatchlistRepositories:
         fetched = repo.get("user_new")
         assert fetched.alert_threshold_pct == 7.5
 
-    def test_watchlist_repo_crud(self, db_conn: sqlite3.Connection) -> None:
+    def test_watchlist_repo_crud(self, db_conn: PgConn) -> None:
         repo = WatchlistRepo(db_conn)
 
         # Upsert
@@ -231,7 +227,7 @@ class TestPortfolioAndWatchlistRepositories:
 class TestMarketHistoryAndHITLRepositories:
     """Kiểm thử MarketHistoryRepo và HITLEvalRepo."""
 
-    def test_market_history_repo(self, db_conn: sqlite3.Connection) -> None:
+    def test_market_history_repo(self, db_conn: PgConn) -> None:
         repo = MarketHistoryRepo(db_conn)
 
         # Bulk upsert bars
@@ -250,7 +246,7 @@ class TestMarketHistoryAndHITLRepositories:
         symbols = repo.get_tracked_symbols()
         assert "FPT" in symbols
 
-    def test_hitl_evaluation_repo(self, db_conn: sqlite3.Connection) -> None:
+    def test_hitl_evaluation_repo(self, db_conn: PgConn) -> None:
         s_repo = SessionRepo(db_conn)
         m_repo = MessageRepo(db_conn)
         h_repo = HITLEvalRepo(db_conn)

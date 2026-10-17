@@ -1,7 +1,8 @@
 """Pytest Shared Fixtures for AI Backend test suite.
 
 Cung cấp các fixture chuẩn:
-- `real_deps`: Wiring các dependency thật (Vnstock, CafeF, SQLite memory, watchlist).
+- `pg_schema`: Schema PostgreSQL tạm thời, xóa sau mỗi bài kiểm thử.
+- `real_deps`: Wiring các dependency thật (Vnstock, CafeF, PostgreSQL memory, watchlist).
 - `client`: FastAPI TestClient kết nối với database tạm thời cô lập.
 - `ai_server_url`: AI Swarm service phục vụ kiểm thử HTTP proxy.
 """
@@ -11,8 +12,9 @@ from __future__ import annotations
 import socket
 import threading
 import time
-from pathlib import Path
+import uuid
 
+import psycopg
 import pytest
 import uvicorn
 from fastapi.testclient import TestClient
@@ -20,11 +22,12 @@ from fastapi.testclient import TestClient
 from ai_backend.infra.market_data import CafefNewsSource, VnstockPriceSource
 from ai_backend.infra.notify import ConsoleNotifier
 from ai_backend.infra.storage import (
-    SqliteMemoryStore,
-    SqlitePriceHistoryStore,
-    SqliteWatchlistStore,
+    PgMemoryStore,
+    PgPriceHistoryStore,
+    PgWatchlistStore,
 )
 from ai_backend.main import app as ai_app
+from ai_backend.shared.settings import ai_settings
 from common.domain.entities import WatchlistItem
 from web_backend.api.deps import AppDeps, clear_deps_cache, set_app_deps
 from web_backend.infra.database.connection import get_connection
@@ -35,18 +38,47 @@ from web_backend.infra.database.repositories import (
 from web_backend.main import app as main_app
 
 
-def build_real_deps(db_path: str) -> AppDeps:
+def _new_pg_schema() -> str:
+    return f"test_{uuid.uuid4().hex[:12]}"
+
+
+def _drop_pg_schema(schema: str) -> None:
+    if not ai_settings.database_url:
+        return
+    with psycopg.connect(ai_settings.database_url, autocommit=True) as conn:
+        conn.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
+
+
+@pytest.fixture(autouse=True)
+def _pg_test_schema(monkeypatch):
+    """Mọi bài kiểm thử dùng schema PostgreSQL tạm (cả get_connection của web_backend), xóa khi kết thúc."""
+    from web_backend.infra.database import connection
+
+    schema = _new_pg_schema()
+    monkeypatch.setattr(connection, "DEFAULT_SCHEMA", schema)
+    yield schema
+    _drop_pg_schema(schema)
+
+
+@pytest.fixture
+def pg_schema(_pg_test_schema):
+    """Schema PostgreSQL tạm của bài kiểm thử; skip nếu thiếu DATABASE_URL."""
+    if not ai_settings.database_url:
+        pytest.skip("Cần DATABASE_URL để chạy kiểm thử PostgreSQL")
+    return _pg_test_schema
+
+
+def build_real_deps(schema: str) -> AppDeps:
     """Khởi tạo AppDeps chuẩn production phục vụ kiểm thử."""
-    Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-    conn = get_connection(db_path)
-    memory = SqliteMemoryStore(db_path)
+    conn = get_connection(schema)
+    memory = PgMemoryStore(schema)
     deps = AppDeps(
         price_source=VnstockPriceSource(fallback_on_error=True),
         news_source=CafefNewsSource(),
-        history_store=SqlitePriceHistoryStore(db_path),
+        history_store=PgPriceHistoryStore(schema),
         memory_store=memory,
         notifier=ConsoleNotifier(memory),
-        watchlist_store=SqliteWatchlistStore(db_path),
+        watchlist_store=PgWatchlistStore(schema),
         holdings_repo=PortfolioHoldingRepository(conn),
         user_settings_repo=UserSettingsRepository(conn),
     )
@@ -63,16 +95,13 @@ def _free_port() -> int:
 
 
 @pytest.fixture
-def real_deps(tmp_path, monkeypatch):
-    """SQLite tạm thời + nguồn giá/tin thật cho từng bài kiểm thử agent/graph."""
-    db = tmp_path / "portfolio_watch.db"
-    monkeypatch.setenv("SQLITE_PATH", str(db))
-    monkeypatch.setenv("BACKEND_SQLITE_PATH", str(tmp_path / "backend_store.db"))
+def real_deps(monkeypatch, pg_schema):
+    """PostgreSQL schema tạm thời + nguồn giá/tin thật cho từng bài kiểm thử agent/graph."""
     monkeypatch.setenv("MONITORING_ENABLED", "false")
     monkeypatch.setenv("LLM_MAX_RETRIES", "1")
     monkeypatch.setenv("PRICE_FALLBACK_ON_ERROR", "true")
     clear_deps_cache()
-    deps = build_real_deps(str(db))
+    deps = build_real_deps(pg_schema)
     set_app_deps(deps)
     yield deps
     set_app_deps(None)
@@ -80,16 +109,13 @@ def real_deps(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def client(tmp_path, monkeypatch):
+def client(monkeypatch, pg_schema):
     """TestClient kết nối tới app FastAPI với database tạm thời cô lập."""
-    temp_db = tmp_path / "test_api.db"
-    monkeypatch.setenv("SQLITE_PATH", str(temp_db))
-    monkeypatch.setenv("BACKEND_SQLITE_PATH", str(tmp_path / "test_store.db"))
     monkeypatch.setenv("MONITORING_ENABLED", "false")
     monkeypatch.setenv("LLM_MAX_RETRIES", "1")
     monkeypatch.setenv("PRICE_FALLBACK_ON_ERROR", "true")
     clear_deps_cache()
-    deps = build_real_deps(str(temp_db))
+    deps = build_real_deps(pg_schema)
     set_app_deps(deps)
     c = TestClient(main_app)
     yield c
@@ -98,12 +124,11 @@ def client(tmp_path, monkeypatch):
 
 
 @pytest.fixture(scope="session")
-def ai_server_url(tmp_path_factory):
+def ai_server_url():
     """AI service thật trên port ngẫu nhiên phục vụ kiểm thử HTTP proxy."""
-    base = tmp_path_factory.mktemp("ai_server")
-    db = base / "ai.db"
+    schema = _new_pg_schema()
     clear_deps_cache()
-    set_app_deps(build_real_deps(str(db)))
+    set_app_deps(build_real_deps(schema))
     port = _free_port()
     config = uvicorn.Config(ai_app, host="127.0.0.1", port=port, log_level="error")
     server = uvicorn.Server(config)
@@ -121,3 +146,4 @@ def ai_server_url(tmp_path_factory):
     yield url
     set_app_deps(None)
     clear_deps_cache()
+    _drop_pg_schema(schema)

@@ -6,8 +6,8 @@ Exports connection helpers and repositories.
 from __future__ import annotations
 
 from web_backend.infra.database.connection import (
+    DEFAULT_SCHEMA,
     get_connection,
-    get_db_path,
     init_db,
 )
 from web_backend.infra.database.pg import (
@@ -43,8 +43,8 @@ from web_backend.infra.database.repositories import (
 )
 
 __all__ = [
+    "DEFAULT_SCHEMA",
     "get_connection",
-    "get_db_path",
     "init_db",
     "connect_postgres",
     "PgConn",
