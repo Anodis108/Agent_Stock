@@ -1,0 +1,46 @@
+{
+  "device_id": "8ee4bcd46b92483f11f665eb4e039246",
+  "register_date": "2026-10-21T09:58:53.270129",
+  "version_installed": "0.0.1",
+  "os": "Linux",
+  "os_platform": "Linux-6.18.54.1-microsoft-standard-WSL2-x86_64-with-glibc2.41",
+  "python": "3.12.15",
+  "arch": "glibc2.41",
+  "cpu_count": 4,
+  "memory_gb": 7.8,
+  "environment": "script",
+  "hosting_service": null,
+  "ide": {
+    "ide_name": "Unknown",
+    "detection_method": "no_match",
+    "detected_at": "2026-10-21T09:58:53.270111",
+    "process_chain_depth": null,
+    "matched_process": null,
+    "environment_variable": null,
+    "frontend": null,
+    "shell_name": null
+  },
+  "reference_data": {
+    "commercial_usage": {
+      "commercial_probability": 0.20833333333333334,
+      "likely_commercial": false,
+      "indicators": {
+        "basic_indicators": {
+          "domain_match": true,
+          "env_var_match": false,
+          "dir_match": false,
+          "file_match": false
+        },
+        "framework_match": false,
+        "has_database": false,
+        "domain_is_commercial": false,
+        "project_structure": "commercial_app",
+        "business_hours_usage": true
+      }
+    },
+    "packages_snapshot": [],
+    "git_info": {
+      "has_git": false
+    }
+  }
+}

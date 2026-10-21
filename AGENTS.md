@@ -2,6 +2,8 @@
 
 Dự án phát triển theo phương pháp **Spec-Driven Development (SDD)**. Luôn đọc `specs/product-spec.md`, `specs/implementation-plan.md`, và `specs/test-plan.md` trước khi sửa code.
 
+**Superpowers (mặc định khi code):** Trước mọi sửa code, agent tuân `.cursor/rules/superpowers-coding.mdc` — đọc skill plugin `using-superpowers`, announce skill, route brainstorming / systematic-debugging / TDD / verification; gắn với SDD ở `specs/`.
+
 ## 1. Nguyên Tắc Cốt Lõi (Core Rules)
 - **Always read the specs before coding**: Đọc kỹ spec liên quan trong `specs/` trước khi viết bất kỳ dòng mã nào.
 - **Implement only one phase or task at a time**: Chỉ làm một ô chưa tick `[ ]` trong `specs/implementation-plan.md`. Phase trước hoàn thành 100% mới chuyển sang phase sau.

@@ -23,7 +23,7 @@ from ai_backend.api.models.stream_models import (
     TokenEvent,
     WatchlistSnapshot,
 )
-from ai_backend.api.routers.chat_stream import router as chat_stream_router
+from ai_backend.api.routers.chat import router as chat_router
 from ai_backend.api.routers.health import router as health_router
 from ai_backend.api.routers.scan import router as scan_router
 from ai_backend.application.symbol_scanner_service import SymbolScannerService
@@ -56,7 +56,7 @@ def ai_test_app(fake_scan_runner):
     register_ai_exception_handlers(app)
 
     app.include_router(health_router)
-    app.include_router(chat_stream_router)
+    app.include_router(chat_router)
     app.include_router(scan_router)
 
     @app.get("/test-error")

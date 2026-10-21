@@ -1,15 +1,51 @@
 ---
 name: antigravity-cli
 description: >-
-  Run Google Antigravity CLI (agy) headless for the right task type, capture
-  machine-readable output, and parse results. Use when the user mentions agy,
-  Antigravity CLI, antigravity, delegating work to agy, or orchestrating
-  external agent tasks from Cursor with structured JSON output.
+  MUST delegate coding to agy via agy_run.py (never Cursor Write/StrReplace for
+  app code when this skill applies). ALWAYS orchestrate with Superpowers
+  (using-superpowers first each turn) and vn-stock-swarm SDD (specs/, AGENTS.md).
+  Use when the user mentions agy, Antigravity, antigravity-cli, or delegates
+  implement/refactor/debug/test to Antigravity.
 ---
 
-# Antigravity CLI (agy)
+# Antigravity CLI (agy) — Superpowers + SDD + agy
 
-Orchestrate `agy` in headless mode (`-p`) from Cursor: pick flags by task type, run via the wrapper script, then read the saved JSON result.
+When **this skill applies**, Cursor is the **orchestrator** (Superpowers + SDD); **agy** performs file edits and test runs.
+
+## Mandatory Superpowers (every time this skill is invoked)
+
+1. Read and follow the Superpowers plugin skill **`using-superpowers`** before responding or running agy. Announce: `Using [skill] to …`.
+2. **Route before agy:**
+   | Situation | Superpowers skill first |
+   | --- | --- |
+   | New feature / behavior change | `brainstorming` — user approves design; update `specs/` if needed |
+   | Bug | `systematic-debugging` |
+   | Code change | `test-driven-development` when adding/changing behavior |
+   | Claiming done | `verification-before-completion` — run verify commands, cite output |
+3. **Project rule:** `.cursor/rules/antigravity-superpowers.mdc` (same requirements).
+
+## Mandatory SDD (vn-stock-swarm)
+
+- Read `AGENTS.md` and relevant files under `specs/` before the first agy call for a task.
+- Implement **one** unchecked `[ ]` in `specs/implementation-plan.md` per cycle unless the user scopes otherwise.
+- After successful agy run: tick checklist, update `specs/change-log.md`, report tests per `AGENTS.md` §5.
+- Do not add libraries outside `pyproject.toml` or break Golden v6 offline tests.
+
+## Hard rule (non-negotiable) — coding via agy only
+
+1. **Do NOT** write, edit, or refactor application code with Cursor `Write`, `StrReplace`, or `EditNotebook` for the coding goal.
+2. **MUST** run agy through the wrapper:
+   ```bash
+   python .cursor/skills/antigravity-cli/scripts/agy_run.py \
+     --task implement \
+     --prompt "…" \
+     --cwd "d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm"
+   ```
+   Use absolute `--cwd` to this repo (or `.` from repo root).
+3. **Allowed in Cursor:** read-only discovery (`Read`, `Grep`, `Glob`), draft agy prompts, run wrapper, read `.agy-runs/*.json`, summarize, `--conversation` follow-ups.
+4. If agy is missing or auth fails: **stop** and tell the user how to install/sign in. Do **not** fall back to Cursor coding unless the user says **“bỏ Antigravity, bạn code giúp”**.
+
+Orchestrate `agy` in headless mode (`-p`): pick flags by task type, run via the wrapper script, then read the saved JSON result.
 
 ## Prerequisites
 
@@ -115,10 +151,14 @@ Output: bullet summary + key file paths.
 
 ### implement
 ```
-You are implementing in {cwd}.
-Task: {goal}
-Constraints: minimal diff; match existing style; run relevant tests if cheap.
-Output: what changed, files touched, how to verify.
+You are implementing in {cwd} (vn-stock-swarm SDD).
+Task: {goal} — checklist item: {implementation-plan ref}
+Spec context: read specs/product-spec.md, specs/test-plan.md as needed.
+Constraints: minimal diff; match existing style; one plan checkbox; no new deps;
+offline tests (Golden v6 must stay green); follow AGENTS.md architecture boundaries.
+TDD: write/adjust failing tests first when behavior changes, then make them pass.
+Output: files touched, pytest commands run + results, how to verify manually.
+After edits: user/orchestrator will tick implementation-plan and update specs/change-log.md.
 ```
 
 ### review

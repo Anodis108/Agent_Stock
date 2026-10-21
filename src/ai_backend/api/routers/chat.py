@@ -13,7 +13,7 @@ from ai_backend.api.models.stream_models import ChatStreamRequest
 from ai_backend.application.swarm_orchestrator import SwarmInput, SwarmOrchestrator, SwarmOutput
 from common.logging.logger import get_logger
 
-logger = get_logger("ai_backend.api.chat_stream")
+logger = get_logger("ai_backend.api.chat")
 
 router = APIRouter(prefix="/v1", tags=["ai-stream"])
 

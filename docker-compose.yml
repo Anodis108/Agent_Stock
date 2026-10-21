@@ -284,3 +284,4 @@ volumes:
     name: portfolio-watch-pg-data
   minio_data:
     name: portfolio-watch-minio-data
+  

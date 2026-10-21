@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from ai_backend.api.helpers.exception_handler import register_ai_exception_handlers
 from ai_backend.api.helpers.middlewares import CorrelationIdMiddleware, RequestLoggingMiddleware
 from ai_backend.api.routers import (
-    chat_stream_router,
+    chat_router,
     health_router,
     scan_router,
 )
@@ -141,7 +141,7 @@ register_ai_exception_handlers(app)
 
 # 3. Đăng ký các Router nghiệp vụ AI Backend
 app.include_router(health_router)
-app.include_router(chat_stream_router)
+app.include_router(chat_router)
 app.include_router(scan_router)
 
 
