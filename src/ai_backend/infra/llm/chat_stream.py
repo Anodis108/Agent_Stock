@@ -13,9 +13,9 @@ from collections.abc import Callable, Iterator
 from typing import Any
 
 try:
-    from ai_backend.infra.graph.chat import answer_question
+    from ai_backend.infra.agents.chat.team import run_chat_graph
 except ImportError:
-    answer_question = None
+    run_chat_graph = None
 
 
 
@@ -92,7 +92,7 @@ def iter_swarm_events(
     watchlist_store: Any | None = None,
     account_holdings: list | None = None,
 ) -> Iterator[tuple[str, dict[str, Any]]]:
-    """Chạy answer_question và yield (event, data). Không mở session database."""
+    """Chạy run_chat_graph và yield (event, data). Không mở session database."""
     started = time.perf_counter()
     cancel = cancel_event or threading.Event()
     event_queue: queue.Queue[tuple[str, dict[str, Any]] | None] = queue.Queue()
@@ -101,11 +101,11 @@ def iter_swarm_events(
         event_queue.put((event, data))
 
     def _worker() -> None:
-        from ai_backend.infra.graph.chat import StreamCancelledError, set_stream_cancel_event
+        from ai_backend.infra.agents.chat.team import StreamCancelledError, set_stream_cancel_event
 
         set_stream_cancel_event(cancel)
         try:
-            result = answer_question(
+            result = run_chat_graph(
                 question,
                 price_source=deps.price_source,
                 news_source=deps.news_source,

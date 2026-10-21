@@ -2,6 +2,128 @@
 
 Nhật ký ghi nhận chi tiết mọi thay đổi, kết quả kiểm thử và tiến độ triển khai theo phương pháp **Spec-Driven Development (SDD)**.
 
+## 2026-10-18 — Settings Chỉ Đọc Biến Môi Trường, Bỏ config.yaml; Sửa Container AI/Web Backend
+
+- **Settings (common / web_backend / ai_backend)**: mọi trường khởi tạo `None`, chỉ đọc biến môi trường — không còn `config.yaml`, không còn chuỗi ưu tiên `ENV or yaml or mặc định`.
+  - `common/settings/config.py`: nguồn chỉ `init_settings` + `env_settings` (bỏ `YamlConfigSettingsSource`, `load_config_yaml_data`, `get_config_yaml_path`); `load_dotenv(override=False)` vẫn nạp `.env` thành biến môi trường khi chạy local.
+  - `AiSettings` / `WebSettings`: mỗi trường đúng **một** biến (`AI_HOST`/`AI_PORT` cho AI, `API_HOST`/`API_PORT` cho Web; `CORS_ORIGINS` dạng JSON như `["*"]`).
+  - `common/database/connection.py`: bỏ nhánh đọc `database_url` từ yaml.
+  - Xoá `resources/configs/config.yaml`; toàn bộ giá trị chuyển vào `.env.example` (đầy đủ ~95 biến). `.env` local được bổ sung các khoá cấu hình còn thiếu (không đổi bí mật / giá trị đã có); `MINIO_ENDPOINT=localhost:9100` (cổng MinIO map ra host — giá trị `localhost:9000` cũ sai khi chạy local).
+  - Cập nhật tài liệu: `AGENTS.md`, `README.md`, `specs/test-plan.md`, docstring `async_client` / `semaphore` / `main`.
+- **Container `ai-backend` restart liên tục / `web-backend` sai DB**: container tạo ngày 16/10 theo compose cũ nên mang `DATABASE_URL=localhost:5433` (từ `.env`). Tạo lại container theo compose hiện tại (`postgres:5432`). Sau đó AI vẫn unhealthy vì `/health` gọi MinIO `localhost:9000` (mặc định cứng) mất 6s → compose thêm `MINIO_ENDPOINT: minio:9000` cho các service app, đổi biến AI sang `AI_HOST` / `AI_PORT`. Kết quả: cả 2 container **healthy**, `/health` 3–29 ms.
+- **Tests**: `common/tests/test_config.py` viết lại (không biến → mọi trường None; ép kiểu; Ai/Web settings mỗi trường một biến; validator). `test_entrypoint::test_ai_settings_defaults` kiểm tra None. 3 test `test_ai_http_stream::test_web_entry_*` đặt rõ `AI_TRANSPORT=http` (trước đây dựa vào việc biến này không tồn tại).
+- **Kết quả kiểm thử**: `pytest src/ai_backend/tests src/common/tests` 281 PASS + 4 lỗi đã sửa, chạy lại 2 file liên quan 23/23 PASS. Chưa chạy `src/web_backend/tests` (teardown `DROP SCHEMA` treo — vấn đề có từ trước, ghi ở mục review 2026-10-17).
+
+---
+
+## 2026-10-18 — Tái Cấu Trúc Team Chat: guardrail_input → answer → guardrail_output, draw_agent, agents/ vào graph/
+
+- **Node team chat**:
+  - `pre_rewrite_guardrail` → `guardrail_input`. Vi phạm / câu chào thuần đi **thẳng sang `answer`** (bỏ `guardrail_refusal`, `greeting_node`).
+  - `answer_composer` → `answer`: gom mọi câu trả lời cho khách (`answer_kind`: refusal | greeting | concept | diagram | portfolio | composed). `concept_retrieval` không trả lời nữa mà đưa đoạn tài liệu (`concept_answer`) cho `answer`.
+  - **`guardrail_output`** (mới, tách từ vòng lặp ẩn trong `run_answer_composer`): câu LLM soạn → `check_answer` (cấm khuyên mua/bán, số liệu khớp evidence); vi phạm → quay lại `answer` soạn lại (tối đa `MAX_DRAFT_ATTEMPTS`), hết lượt → `safe_fallback_answer`. Trả lời thẳng → gỡ cụm mua/bán nếu có.
+  - `chart_agent` + `diagram_agent` → **`draw_agent`** (worker của chat_supervisor).
+- **Phân cấp lại**: `price_agent` / `news_agent` **chỉ nối với `scan_supervisor`**. Chat cần dữ liệu → `chat_supervisor` đặt `gather_request` và giao `scan_supervisor`; scan_supervisor (mode=chat) giao price/news còn thiếu rồi trả về `chat_supervisor`. `eval_agent` vẫn dùng chung (báo lại team đang chạy).
+- **`infra/agents/` → `infra/graph/agents/`** (`git mv`), cập nhật import ở 37 file (src, tests, docs).
+- `answer_composer`: tách `draft_answer` / `check_answer` / `safe_fallback_answer`; `run_answer_composer` (dùng ngoài graph) giữ nguyên hành vi bằng chính 3 hàm này.
+- Đồng bộ tên mới: `steps.py`, `tracing.KNOWN_AGENT_SPANS`, `agent_scorers` (trajectory `answer`), `run_excel_export`, `stream_models`, fallback event của `SwarmOrchestrator`, frontend `app.js` (canonical node `draw_agent`, `answer`, `guardrail_output`), `graph/README.md`, `agent_graph.png|.mmd`.
+- **Review sau khi làm**:
+  - Đạt: `pytest src/ai_backend/tests src/common/tests` 285/285; AC-5 golden 12/12, AC-6/7/8/9 + `test_hierarchical_swarm` (thêm 6 bài: lấy dữ liệu qua scan_supervisor, guardrail_output bắt "nên mua" → soạn lại, từ chối qua answer → guardrail_output, draw_agent cho sơ đồ/biểu đồ, answer dùng sơ đồ) 85/85; trace Langfuse đủ span `guardrail_input`, `answer`, `guardrail_output`.
+  - Lỗi đã sửa trong review: `route_from_top` còn trả `pre_rewrite_guardrail` (mọi câu chat sẽ lỗi); `answer` chỉ dùng sơ đồ khi `route == "diagram"` → sửa thành có `diagram_result` là dùng.
+  - Đã kiểm: frontend thay nội dung bằng `answer` trong event `complete`, nên khách luôn thấy bản đã qua `guardrail_output` dù token nháp đã stream trước.
+  - Còn lại (không thuộc phạm vi): token của bản nháp bị guardrail từ chối vẫn được stream trước khi bị thay — hành vi có từ trước khi tách node; `resources/eval/*.json` là kết quả eval cũ còn tên node cũ.
+
+---
+
+## 2026-10-17 — Gộp Node Graph Vào `nodes.py`, Bỏ `workflow.py`
+
+- **Bố cục `infra/graph/`**: `state.py` · `nodes.py` (supervisor tầng 1–2 + worker tầng 3, gộp từ `supervisors.py` + `workers.py`) · `chat.py` / `scan.py` (node riêng từng team + `run_chat_graph` / `run_scan_graph`) · `graph.py` (build + compile) · `run.py` (`run_swarm_graph`, visualize) · `events.py` · `steps.py`.
+- **Xoá**: `supervisors.py`, `workers.py`, `workflow.py` (facade re-export) cùng các alias `_portfolio_watch_intent`, `_target_symbols`, `_run_per_symbol` chỉ phục vụ facade.
+- **Cập nhật import**: `graph.py` ← `nodes`; `chat.py` / `scan.py` ← `run.run_swarm_graph`; tests (`test_agents`, `test_concept_rag`, `test_infra`) ← `graph.graph` / `graph.nodes` / `graph.run`; `specs/implementation-plan.md`. Vẽ sơ đồ: `python -m ai_backend.infra.graph.run`.
+- **Kết quả kiểm thử**: `test_hierarchical_swarm`, `test_agents`, `test_infra`, `test_concept_rag`, `test_chart`, `test_application`, `test_monitoring`: 127 PASS, 2 skipped.
+
+---
+
+## 2026-10-17 — Khôi Phục Langfuse Tracing Cho Swarm Graph
+
+- **Vấn đề**: Không có trace nào lên Langfuse kể từ 14/10. Đợt migrate Clean Architecture (`1d766fd`) xoá `application/answer_question.py` + `scan_symbol.py` — nơi duy nhất gọi `trace_request(...)` (tạo trace gốc + flush). Không có root, mọi `agent_span` chỉ buffer rồi bị bỏ.
+- **Thay đổi**: `infra/graph/workflow.py::run_swarm_graph` bọc lượt chạy graph trong `trace_request(mode, ...)` — 1 request = 1 trace `chat` | `scan`, metadata `turn`/`user_id`/`kind`(/`symbol`), output gồm answer (chat) hoặc route + gate1/gate2 (scan). Một chỗ dùng chung cho cả 2 team.
+- **Kiểm chứng**: chạy câu hỏi thật với Langfuse local (v4) → trace `chat` gồm 7 agent span (`pre_rewrite_guardrail`, `rewrite_question`, `supervisor`, `news_agent`, `price_agent`, `eval_agent`, `answer_composer`). `test_monitoring.py`, `test_hierarchical_swarm.py`, `test_agents.py`: 61/61 PASS.
+- **Cache hit vẫn trace**: trước đây chỉ cần 1 lời gọi LLM con trúng exact cache là bỏ cả trace. Nay `_should_trace_turn` không loại cache hit; root được gắn tag `cache_hit` (qua `langfuse.propagate_attributes`) và metadata `cache_hit: true`. Kiểm chứng: hỏi lặp cùng câu → trace `chat` lên Langfuse đủ 7 agent span, metadata `cache_hit: True`. `test_monitoring.py` cập nhật theo hành vi mới: 12/12 PASS.
+
+---
+
+## 2026-10-17 — Loại Bỏ Dữ Liệu Giả Lập Khỏi `src/ai_backend`
+
+- **Nguyên tắc**: code production không sinh dữ liệu giả; thiếu dữ liệu / dependency thì báo lỗi rõ ràng. Test cần chạy offline tự tạo fake trong file test (`conftest.py`). `src/web_backend` tạm giữ nguyên.
+- **Thay đổi**:
+  - `infra/market_data/price_source.py`: xoá `DEFAULT_BASE_PRICES`, tham số `fallback_on_error`, `_synthesize_fallback_bars`. Vnstock lỗi → `PriceQuote.error` / lịch sử rỗng, không trả giá bịa.
+  - `shared/settings.py`, `main.py`, `application/eval/agent_eval.py`: bỏ `price_fallback_on_error` / `PRICE_FALLBACK_ON_ERROR`.
+  - `infra/graph/workflow.py` (`chart_node`): xoá khối tự sinh ~20 nến giả và đường lấy lịch sử qua `web_backend.MarketService` (vốn cũng sinh nến giả, đồng thời là import ngược ai → web). Thiếu lịch sử → `ChartResult` báo lỗi "quá ít phiên để vẽ".
+  - `application/swarm_orchestrator.py`, `application/symbol_scanner_service.py`: bỏ câu trả lời mẫu / `_offline_scan`; thiếu `graph_runner` → `RuntimeError`.
+  - Tests: `conftest.py` thêm `OfflineQuote` (thay `vnstock.Quote` qua `quote_factory`, mã lạ → lỗi như thật), fixture `offline_prices`, `fake_chat_runner`, `fake_scan_runner`; `test_infra.py` thêm bài kiểm tra nguồn lỗi trả `error` chứ không trả giá giả.
+- **Kết quả kiểm thử**: `pytest src/ai_backend/tests`: **250/250 PASS**.
+- **Lệch spec cần cập nhật**: `product-spec.md` dòng 86 ("kèm offline mock fallback") và `test-plan.md` mục 4 (`VnstockPriceSource(fallback_on_error=True)`) không còn đúng với `ai_backend`; `common/settings` + `config.yaml` (`market_data.fallback_on_error`) vẫn còn vì dùng chung với web_backend.
+
+---
+
+## 2026-10-17 — Câu Chào Xử Lý Bằng `greeting_node` Trong Graph
+
+- **Mục tiêu**: Bỏ fast-path chào hỏi viết riêng trong `SwarmOrchestrator`; câu chào đi qua graph: `top_supervisor` → `pre_rewrite_guardrail` → `greeting_node` → END.
+- **Thay đổi**:
+  - `application/swarm_orchestrator.py`: xoá `_GREETING_REGEX` / `is_greeting` và nhánh chào hỏi trong `process()` + `stream()`.
+  - Sửa lỗi kèm theo: regex cũ bắt mọi câu **bắt đầu** bằng "xin chào/hi…" nên "Xin chào, giá FPT hôm nay bao nhiêu?" bị trả lời bằng câu chào. Graph dùng `is_pure_greeting` (domain guardrail) nên câu có mã + ý định tra cứu vẫn đi tiếp tới `chat_supervisor`.
+  - Tests: bỏ 3 test fast-path cũ ở `test_application.py`; thêm 3 test ở `test_hierarchical_swarm.py` (câu chào qua `greeting_node` không gọi `price_agent`, TTFT < 1s khi stream, câu chào kèm hỏi giá không bị chặn).
+- **Kết quả kiểm thử**: `test_hierarchical_swarm.py`, `test_application.py`, `test_greeting_fastpath.py` (AC-6), `test_entrypoint.py`, `test_presentation.py`: 63/63 PASS; `test_concept_rag.py`, `test_ai_http_stream.py`, `test_guardrails.py` (AC-7/8/9): 31/31 PASS.
+
+---
+
+## 2026-10-17 — Review Hierarchical Swarm Graph Theo Acceptance Criteria
+
+- **Phạm vi**: đối chiếu tính năng "Hợp nhất Chat + Scan thành một Hierarchical Swarm Graph" (mục ngay dưới) với `specs/product-spec.md` và `specs/test-plan.md`.
+- **Đạt**:
+  - AC-2 `pytest src/common/tests/test_config.py`: 7/7 PASS (web_backend không import `ai_backend` / `langgraph`).
+  - AC-3 `pytest src/common/tests/`: 31/31 PASS (`SymbolScannerService`, `SwarmOrchestrator` vẫn kế thừa `BaseService`).
+  - AC-5 `pytest tests/e2e/test_golden_v6_slices.py`: 12/12 PASS (golden chạy qua team chat của graph mới).
+  - AC-6 `test_greeting_fastpath.py` 20/20, AC-7 `test_guardrails.py` 6/6, AC-8 `test_concept_rag.py` 11/11, AC-9 `test_ai_http_stream.py` 14/14 PASS.
+  - `test_hierarchical_swarm.py`, `test_agents.py`, `test_infra.py`, `test_application.py`: 82/82 PASS.
+- **Lỗi / thiếu đã sửa**:
+  - AC-9 chưa có bằng chứng huỷ stream với graph **thật** (test cũ dùng hàm giả) → thêm `test_stream_disconnect_stops_graph_before_next_worker_round`: client ngắt khi `news_agent` đang chạy song song → graph dừng, `eval_agent` không được giao. Đã kiểm chứng test FAIL khi tắt `check_stream_cancelled`.
+  - `ai_backend/api/routers/v1.py` (router chưa mount): sau khi trỏ `scan_symbol` → `run_scan_graph`, lời gọi còn truyền `account_holdings` (không tồn tại) và thiếu `notifier` → sửa tham số.
+- **Chưa xử lý (ngoài phạm vi / cần quyết định)**:
+  - `product-spec.md` (dòng 10, 38, 61, 83) và `test-plan.md` (dòng 69) vẫn ghi endpoint `/v1/chat/stream`; code hiện là `/v1/chat` + `/v1/chat/stream-sse` (route do người dùng đổi tên). Chưa sửa spec — cần chủ dự án xác nhận tên endpoint chính thức.
+  - `src/web_backend/tests/test_api.py::test_scan_api` PASS nhưng teardown treo: `DROP SCHEMA ... CASCADE` trong `web_backend/tests/conftest.py:30` chờ khoá do còn kết nối PostgreSQL mở transaction trên schema test. Đường chạy của test (web scan router → `ai_scan` → `_attach_account_lists`) không thuộc thay đổi của tính năng này → không sửa.
+  - `resources/docs/agent_graph.html` (tài liệu viết tay) vẫn mô tả 2 nhánh tách rời.
+
+---
+
+## 2026-10-17 — Hợp Nhất Chat + Scan Thành Một Hierarchical Swarm Graph
+
+- **Mục tiêu**: Trước đây chat (`graph/chat.py`, supervisor 1 tầng, worker gộp trong `workers_node`) và scan (`SymbolScannerService` chỉ so ngưỡng; `graph/scan.py` là pipeline cố định không ai gọi) chạy tách rời; `workflow.py` chỉ là sơ đồ với node rỗng. Chuyển sang đúng mô hình Hierarchical multi-agent trong **một** StateGraph.
+- **Kiến trúc** (`src/ai_backend/infra/graph/workflow.py`):
+  - Tầng 1 `top_supervisor`: giao việc theo `mode` (`chat` | `scan`).
+  - Tầng 2 `chat_supervisor`: lượt đầu lập kế hoạch (LLM/heuristic `route_question`), các lượt sau xem kết quả worker để giao tiếp — gom dữ liệu (price + news song song) → phân tích (eval / chart / portfolio_watch) → `answer_composer`. `scan_supervisor`: mỗi lượt xem state để giao bước kế tiếp — price + news → `event_classifier` → `eval_agent` → `hitl_gate_2` (nếu có đề xuất) → `synthesis_agent` → `hitl_gate_1`.
+  - Tầng 3 workers dùng chung 2 team: `price_agent`, `news_agent`, `eval_agent` (+ `chart_agent`, `portfolio_watch_agent`); worker xong luôn quay về supervisor của team đang chạy.
+- **Thay đổi**:
+  - `graph/state.py`: `SwarmState` thay `ChatState`/`ScanState`; `completed` dùng reducer cộng dồn cho worker song song; kết quả classifier đổi tên `event_routing` (tránh trùng `routing` của chat).
+  - `graph/events.py` (mới): ContextVar deps theo request, `emit_agent_event`, cờ huỷ stream — dùng chung 2 team; `graph/chat.py` re-export để web_backend / llm không phải đổi import.
+  - `graph/chat.py`, `graph/scan.py`: chỉ còn node riêng của team + entrypoint `run_chat_graph` / `run_scan_graph` (gọi `run_swarm_graph`). Gộp `gate1_auto`/`gate1_pending` thành `hitl_gate_1`; bỏ `fetch` (dùng worker chung).
+  - **Sửa lỗi có sẵn**: `is_abnormal` so với `"abnormal"` trong khi `EventRoute.ABNORMAL = "bất thường"` → nhánh bất thường (eval → synthesis → HITL) trước đây không bao giờ chạy.
+  - `SymbolScannerService`: production gọi `run_scan_graph` (inject trong `main.py` kèm `ConsoleNotifier`); `/v1/scan` và job quét định kỳ đều đi qua team scan. Chỉ khi không inject graph (test offline) mới so ngưỡng giá giả.
+  - `infra/llm/client.py` in-process scan: gọi `run_scan_graph` thay vì `SymbolScannerService()` giả.
+  - Web backend (`remote_ai_client.py`, `common/transport/transport.py`) gọi `/v1/chat/stream-sse` cho khớp route mới.
+  - `steps.py`: dựng steps theo node worker riêng; `resources/docs/agent_graph.png|.mmd` sinh lại từ graph thật; xoá `chat_agent_graph.png` (graph cũ không còn).
+- **Kết quả kiểm thử**:
+  - `pytest src/ai_backend/tests`: 239/241 PASS; 2 bài lỗi (`test_application` streaming, `test_ai_http_stream` service route) đã sửa và chạy lại riêng 2 file: 36/36 PASS.
+  - `pytest src/ai_backend/tests/test_hierarchical_swarm.py` (mới): 5/5 PASS — scan bất thường chạy đủ pipeline, scan bình thường dừng sau classifier, chat supervisor giao worker theo lượt.
+  - Chưa chạy lại toàn bộ suite sau lần sửa cuối; `pytest src` chạy gộp 3 service báo lỗi hàng loạt ở `web_backend` (chưa điều tra).
+- **Cách kiểm tra thủ công**:
+  1. `python -m ai_backend.infra.graph.workflow` → mở `resources/docs/agent_graph.png`.
+  2. `POST /v1/chat/stream-sse` `{"question":"Tại sao FPT giảm?"}` → thứ tự event: `supervisor` → `price_agent`/`news_agent` → `eval_agent` → `answer_composer`.
+  3. `POST /v1/scan` `{"symbol":"FPT","threshold_pct":3}` → `steps` có `event_classifier` (và `eval_agent` → `synthesis_agent` → `confidence_gate` nếu bất thường).
+
+---
+
 ## 2026-10-16 — Bỏ SSE Fallback Giả Lập Trong `/v1/chat/stream`
 
 - **Mục tiêu**: Endpoint chat stream chỉ phát SSE từ `SwarmOrchestrator` thật; không còn luồng mock khi thiếu orchestrator.

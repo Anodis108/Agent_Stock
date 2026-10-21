@@ -58,7 +58,7 @@ class RemoteAiClient:
         request_id: str | None = None,
         is_disconnected: Callable[[], bool] | None = None,
     ) -> Iterator[tuple[str, dict[str, Any]]]:
-        """Stream SSE các sự kiện từ AI Backend (/v1/chat/stream)."""
+        """Stream SSE các sự kiện từ AI Backend (/v1/chat/stream-sse)."""
         payload: dict[str, Any] = {
             "question": question,
             "user_id": user_id,
@@ -67,7 +67,7 @@ class RemoteAiClient:
             payload["session_id"] = session_id
 
         return stream_remote_sse(
-            path="/v1/chat/stream",
+            path="/v1/chat/stream-sse",
             payload=payload,
             request_id=request_id,
             is_disconnected=is_disconnected,

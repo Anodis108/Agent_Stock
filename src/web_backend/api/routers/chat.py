@@ -39,14 +39,14 @@ def set_chat_answer_fn(fn: Any) -> None:
 def _get_chat_answer_fn() -> Any:
     if _chat_answer_fn is not None:
         return _chat_answer_fn
-    mod = sys.modules.get("ai_backend.infra.graph.chat")
+    mod = sys.modules.get("ai_backend.infra.agents.chat.team")
     if mod is not None:
-        return getattr(mod, "answer_question", None)
+        return getattr(mod, "run_chat_graph", None)
     return None
 
 
 def _get_stream_cancel_hooks() -> tuple[type[BaseException], Callable[[Any], None]]:
-    mod = sys.modules.get("ai_backend.infra.graph.chat")
+    mod = sys.modules.get("ai_backend.infra.agents.chat.team")
     if mod is not None:
         err_cls = getattr(mod, "StreamCancelledError", RuntimeError)
         set_fn = getattr(mod, "set_stream_cancel_event", lambda evt: None)

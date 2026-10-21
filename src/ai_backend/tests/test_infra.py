@@ -1,7 +1,7 @@
 """Unit tests for AI Backend Infrastructure Layer (ai_backend.infra).
 
 Tests:
-- Graph orchestration: build_swarm_graph, build_portfolio_graph, compile_portfolio_graph
+- Graph orchestration: build_swarm_graph, compile_swarm_graph, list_graph_nodes/edges
 - Market data: VnstockPriceSource with offline fallback
 - Qdrant/Concept loading: load_concept_chunks from resources/concepts
 - Cache layer: normalize_question, ExactCache context
@@ -18,12 +18,8 @@ import os
 from pathlib import Path
 import pytest
 
-from ai_backend.infra.graph.workflow import (
-    build_portfolio_graph,
-    build_swarm_graph,
-    compile_portfolio_graph,
-    list_graph_nodes,
-)
+from ai_backend.infra.agents.graph import build_swarm_graph, compile_swarm_graph
+from ai_backend.infra.agents.graph import list_graph_edges, list_graph_nodes
 from ai_backend.infra.market_data.price_source import VnstockPriceSource
 from ai_backend.infra.qdrant.concepts import load_concept_chunks
 from ai_backend.infra.cache.exact import normalize_question
@@ -36,10 +32,10 @@ from ai_backend.infra.storage.chart_store import safe_png_name
 from ai_backend.infra.storage.memory_store import PgMemoryStore
 from ai_backend.infra.storage.watchlist_store import PgWatchlistStore
 from ai_backend.infra.monitoring.tracing import redact_pii, sanitize_trace_payload
-from ai_backend.infra.agents.price_agent import run_price_agent, PriceAgentResult
-from ai_backend.infra.agents.eval_agent import run_eval_agent, EvalAgentBrain
-from ai_backend.infra.agents.event_classifier import classify_event, EventClassifierBrain
-from ai_backend.infra.agents.portfolio_watch_agent import run_portfolio_watch_agent
+from ai_backend.infra.agents.scan.price_agent import run_price_agent, PriceAgentResult
+from ai_backend.infra.agents.scan.eval_agent import run_eval_agent, EvalAgentBrain
+from ai_backend.infra.agents.scan.event_classifier import classify_event, EventClassifierBrain
+from ai_backend.infra.agents.chat.portfolio_watch_agent import run_portfolio_watch_agent
 from common.domain.entities import WatchlistItem, RoutingDecision, EventRoute, Severity, SeverityLevel
 
 
@@ -47,48 +43,74 @@ class TestGraphInfrastructure:
     """Kiểm thử cấu trúc StateGraph điều phối LangGraph Swarm."""
 
     def test_build_swarm_graph_nodes(self):
-        graph = build_swarm_graph()
-        nodes = list(graph.nodes.keys())
-        # Đảm bảo đủ các node cần thiết trong quy trình swarm 13 nodes
+        nodes = list(build_swarm_graph().nodes.keys())
+        # 3 tầng: top supervisor -> 2 team supervisor -> workers dùng chung
         expected_nodes = [
-            "orchestrator",
+            "top_supervisor",
+            "chat_supervisor",
+            "scan_supervisor",
             "price_agent",
             "news_agent",
-            "event_classifier",
             "eval_agent",
+            "event_classifier",
             "synthesis_agent",
+            "hitl_gate_1",
+            "hitl_gate_2",
+            "guardrail_input",
+            "answer",
             "guardrail_output",
-            "confidence_gate",
-            "supervisor",
-            "answer_composer",
+            "draw_agent",
         ]
         for node in expected_nodes:
             assert node in nodes, f"Node {node} must be present in swarm graph"
 
-    def test_compile_portfolio_graph(self):
-        compiled = compile_portfolio_graph()
-        assert compiled is not None
-        # Kiểm tra danh sách node từ helper
-        node_names = list_graph_nodes()
-        assert len(node_names) >= 10
+    def test_workers_report_back_to_team_supervisor(self):
+        assert compile_swarm_graph() is not None
+        edges = set(list_graph_edges())
+        assert ("__start__", "top_supervisor") in edges
+        assert ("top_supervisor", "guardrail_input") in edges
+        assert ("top_supervisor", "scan_supervisor") in edges
+        # price/news chỉ nối với scan_supervisor; chat nhờ scan_supervisor lấy dữ liệu
+        for worker in ("price_agent", "news_agent"):
+            assert (worker, "scan_supervisor") in edges
+            assert (worker, "chat_supervisor") not in edges
+            assert ("chat_supervisor", worker) not in edges
+        assert ("chat_supervisor", "scan_supervisor") in edges
+        assert ("scan_supervisor", "chat_supervisor") in edges
+        # eval_agent dùng chung, báo lại supervisor của team đang chạy
+        assert ("eval_agent", "chat_supervisor") in edges
+        assert ("eval_agent", "scan_supervisor") in edges
+        # mọi câu trả lời đi qua answer -> guardrail_output (có vòng soạn lại)
+        assert ("guardrail_input", "answer") in edges
+        assert ("answer", "guardrail_output") in edges
+        assert ("guardrail_output", "answer") in edges
+        assert len(list_graph_nodes()) >= 19
 
 
 class TestMarketDataInfrastructure:
-    """Kiểm thử nguồn dữ liệu thị trường và offline fallback."""
+    """Kiểm thử nguồn dữ liệu thị trường (OfflineQuote thay vnstock trong test)."""
 
-    def test_price_source_offline_fallback(self, monkeypatch):
-        # Thiết lập chạy 100% offline
-        monkeypatch.setenv("PRICE_FALLBACK_ON_ERROR", "true")
-        ps = VnstockPriceSource()
-        quote = ps.fetch_latest_close("HPG")
+    def test_price_source_parses_quote_history(self, offline_prices):
+        quote = offline_prices.fetch_latest_close("HPG")
         assert quote.symbol == "HPG"
-        assert quote.latest_close is not None
-        assert quote.latest_close > 0
+        assert quote.error is None
+        assert quote.latest_close is not None and quote.latest_close > 0
+        assert quote.prev_close is not None
 
-    def test_price_source_fetch_history_offline(self, monkeypatch):
-        monkeypatch.setenv("PRICE_FALLBACK_ON_ERROR", "true")
-        ps = VnstockPriceSource()
-        bars = ps.fetch_history("HPG", lookback_days=5)
+    def test_price_source_source_error_returns_error_not_fake_price(self):
+        class DownQuote:
+            def __init__(self, symbol, source=None):
+                pass
+
+            def history(self, **_kwargs):
+                raise ConnectionError("connection refused")
+
+        quote = VnstockPriceSource(quote_factory=DownQuote).fetch_latest_close("HPG")
+        assert quote.latest_close is None
+        assert "kết nối" in (quote.error or "")
+
+    def test_price_source_fetch_history_offline(self, offline_prices):
+        bars = offline_prices.fetch_history("HPG", lookback_days=5)
         assert isinstance(bars, list)
         assert len(bars) > 0
         assert bars[0].close > 0
@@ -184,16 +206,14 @@ class TestMonitoringInfrastructure:
 class TestWorkerAgentsInfrastructure:
     """Kiểm thử các Agent Worker vận hành offline."""
 
-    def test_price_agent_execution(self, monkeypatch):
-        monkeypatch.setenv("PRICE_FALLBACK_ON_ERROR", "true")
-        ps = VnstockPriceSource()
-        res = run_price_agent("VNM", price_source=ps)
+    def test_price_agent_execution(self, offline_prices):
+        res = run_price_agent("VNM", price_source=offline_prices)
         assert isinstance(res, PriceAgentResult)
         assert res.symbol == "VNM"
         assert res.latest_close is not None
 
     def test_eval_agent_offline(self):
-        from ai_backend.infra.agents.eval_agent.nodes import HeuristicEvalBrain
+        from ai_backend.infra.agents.scan.eval_agent.nodes import HeuristicEvalBrain
         p = PriceAgentResult(symbol="FPT", latest_close=130.0, prev_close=129.0, change_pct=0.77)
         res = run_eval_agent(p, None, None, brain=HeuristicEvalBrain())
         assert res.severity is not None
@@ -208,9 +228,8 @@ class TestWorkerAgentsInfrastructure:
         decision = classify_event(p, None, threshold_pct=3.0, brain=_MockClassifierBrain())
         assert decision.route == EventRoute.NORMAL
 
-    def test_portfolio_watch_agent_in_memory(self, monkeypatch):
-        monkeypatch.setenv("PRICE_FALLBACK_ON_ERROR", "true")
-        ps = VnstockPriceSource()
+    def test_portfolio_watch_agent_in_memory(self, offline_prices):
+        ps = offline_prices
         holdings = [
             {"symbol": "HPG", "quantity": 1000, "avg_buy_price": 28.0},
             {"symbol": "FPT", "quantity": 500, "avg_buy_price": 125.0},

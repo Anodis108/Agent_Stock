@@ -117,12 +117,12 @@ class V1ScanResponse(BaseModel):
 
 
 try:
-    from ai_backend.infra.graph.chat import answer_question
+    from ai_backend.infra.agents.chat.team import run_chat_graph
 except ImportError:
-    answer_question = None
+    run_chat_graph = None
 
 try:
-    from ai_backend.infra.graph.scan import scan_symbol
+    from ai_backend.infra.agents.scan.team import run_scan_graph as scan_symbol
 except ImportError:
     scan_symbol = None
 
@@ -136,7 +136,7 @@ def v1_chat(
     question = normalize_question(body.question)
     request_id = (body.request_id or x_request_id or "").strip() or None
     watchlist_store, account_holdings = _lists_from_body(body)
-    result = answer_question(
+    result = run_chat_graph(
         question,
         price_source=deps.price_source,
         news_source=deps.news_source,
@@ -231,18 +231,18 @@ def v1_scan(
     sym = normalize_symbol(body.symbol)
     threshold = validate_threshold_pct(body.threshold_pct)
     request_id = (body.request_id or x_request_id or "").strip() or None
-    watchlist_store, account_holdings = _lists_from_body(body)
+    watchlist_store, _account_holdings = _lists_from_body(body)
     result = scan_symbol(
         sym,
         price_source=deps.price_source,
         news_source=deps.news_source,
         history_store=deps.history_store,
         memory_store=deps.memory_store,
+        notifier=deps.notifier,
         user_id=body.user_id,
         threshold_pct=threshold,
         request_id=request_id,
         watchlist_store=watchlist_store,
-        account_holdings=account_holdings,
     )
 
     news_items = (

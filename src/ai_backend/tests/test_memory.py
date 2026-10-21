@@ -14,7 +14,7 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
-from ai_backend.infra.agents.supervisor_agent.nodes import (
+from ai_backend.infra.agents.chat.supervisor_agent.nodes import (
     HeuristicRewriteBrain,
     HeuristicSupervisorBrain,
     recall_memory,
@@ -23,7 +23,7 @@ from ai_backend.infra.agents.supervisor_agent.nodes import (
 )
 from web_backend.infra.database.connection import get_connection
 from web_backend.infra.database.repositories import MessageRepository, SessionRepository
-from ai_backend.infra.graph.chat import run_chat_graph
+from ai_backend.infra.agents.chat.team import run_chat_graph
 from ai_backend.infra.storage.memory_store import (
     apply_sliding_window_with_ttl_eviction,
     filter_conversation_history,

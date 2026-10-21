@@ -7,15 +7,18 @@ Cung cấp phương thức process() đồng bộ và phương thức stream() p
 from __future__ import annotations
 
 import queue
-import re
 import threading
 import uuid
-from typing import Any, Callable, Iterator
+from typing import TYPE_CHECKING, Any, Callable, Iterator
 from pydantic import Field
 
 from common.base.base_model import CustomBaseModel
 from common.base.base_service import BaseService
+from common.domain.ports import MemoryStore, NewsSource, PriceHistoryStore, PriceSource, WatchlistStore
 from common.logging.logger import get_logger
+
+if TYPE_CHECKING:  # chỉ cho IDE/type-check, lúc chạy application không import infra
+    from ai_backend.infra.agents.state import AnswerQuestionResult
 
 logger = get_logger("ai_backend.application.swarm_orchestrator")
 
@@ -46,29 +49,18 @@ class SwarmOutput(CustomBaseModel):
     error: str | None = None
 
 
-_GREETING_REGEX = re.compile(
-    r"^\s*(xin\s+chào|chào\s+bạn|hello|hi|hey|chào\s+bot|alo)\b",
-    re.IGNORECASE,
-)
-
-
-def is_greeting(text: str) -> bool:
-    """Nhận diện nhanh câu hỏi chào hỏi xã giao."""
-    return bool(_GREETING_REGEX.search(text.strip()))
-
-
 class SwarmOrchestrator(BaseService):
     """Service điều phối LangGraph Swarm Đa Tác Tử."""
 
     def __init__(
         self,
         *,
-        graph_runner: Callable[..., Any] | None = None,
-        price_source: Any = None,
-        news_source: Any = None,
-        history_store: Any = None,
-        memory_store: Any = None,
-        watchlist_store: Any = None,
+        graph_runner: Callable[..., AnswerQuestionResult] | None = None,  # production: run_chat_graph
+        price_source: PriceSource | None = None,
+        news_source: NewsSource | None = None,
+        history_store: PriceHistoryStore | None = None,
+        memory_store: MemoryStore | None = None,
+        watchlist_store: WatchlistStore | None = None,
     ) -> None:
         self.graph_runner = graph_runner
         self.price_source = price_source
@@ -84,113 +76,85 @@ class SwarmOrchestrator(BaseService):
     ) -> SwarmOutput:
         """Xử lý điều phối Swarm hỏi-đáp đồng bộ. `event_callback` nhận event realtime từ các node graph."""
         q = inputs.question.strip()
-        req_id = inputs.request_id or str(uuid.uuid4())
+        req_id = inputs.request_id
         logger.info(f"SwarmOrchestrator.process: q='{q[:50]}' user='{inputs.user_id}' req_id='{req_id}'")
 
-        # 1. Fast-path chào hỏi (TTFT < 1s, bỏ qua LLM / Swarm)
-        if is_greeting(q):
-            answer = (
-                "Xin chào! Tôi là trợ lý chứng khoán VN Stock Swarm. "
-                "Tôi có thể hỗ trợ bạn tra cứu thị giá, tin tức, chỉ báo kỹ thuật RSI/SMA, "
-                "vẽ biểu đồ nến và theo dõi danh mục đầu tư."
-            )
-            steps = [
-                {"id": "1", "name": "greeting_fastpath", "status": "done", "detail": "Greeting detected"},
-                {"id": "2", "name": "answer_composer", "status": "done", "detail": "Immediate greeting response"},
-            ]
-            return SwarmOutput(
-                question=q,
-                answer=answer,
-                routing="greeting",
-                steps=steps,
-            )
+        if self.graph_runner is None:
+            raise RuntimeError("SwarmOrchestrator chưa được inject graph_runner (run_chat_graph)")
 
-        # 2. Nếu có graph runner được inject (Phase 3.4) hoặc legacy graph runner
-        if self.graph_runner is not None:
-            try:
-                wl_store = self.watchlist_store
-                if inputs.watchlist and hasattr(wl_store, "upsert"):
-                    from common.domain.entities import WatchlistItem
-                    for sym in inputs.watchlist:
-                        try:
-                            wl_store.upsert(WatchlistItem(symbol=sym, user_id=inputs.user_id))
-                        except Exception:
-                            pass
+        # Chạy Hierarchical Swarm Graph (câu chào: guardrail_input → answer)
+        try:
+            wl_store = self.watchlist_store
+            if inputs.watchlist and hasattr(wl_store, "upsert"):
+                from common.domain.entities import WatchlistItem
+                for sym in inputs.watchlist:
+                    try:
+                        wl_store.upsert(WatchlistItem(symbol=sym, user_id=inputs.user_id))
+                    except Exception:
+                        pass
 
-                kwargs: dict[str, Any] = {
-                    "user_id": inputs.user_id,
-                    "request_id": req_id,
-                    "account_holdings": inputs.holdings,
-                    "news_days": inputs.news_days,
-                }
-                if self.price_source is not None:
-                    kwargs["price_source"] = self.price_source
-                if self.news_source is not None:
-                    kwargs["news_source"] = self.news_source
-                if self.history_store is not None:
-                    kwargs["history_store"] = self.history_store
-                if self.memory_store is not None:
-                    kwargs["memory_store"] = self.memory_store
-                if wl_store is not None:
-                    kwargs["watchlist_store"] = wl_store
-                if event_callback is not None:
-                    kwargs["event_callback"] = event_callback
+            kwargs: dict[str, Any] = {
+                "user_id": inputs.user_id,
+                "request_id": req_id,
+                "account_holdings": inputs.holdings,
+                "news_days": inputs.news_days,
+            }
+            if self.price_source is not None:
+                kwargs["price_source"] = self.price_source
+            if self.news_source is not None:
+                kwargs["news_source"] = self.news_source
+            if self.history_store is not None:
+                kwargs["history_store"] = self.history_store
+            if self.memory_store is not None:
+                kwargs["memory_store"] = self.memory_store
+            if wl_store is not None:
+                kwargs["watchlist_store"] = wl_store
+            if event_callback is not None:
+                kwargs["event_callback"] = event_callback
 
-                res = self.graph_runner(q, **kwargs)
-                if isinstance(res, SwarmOutput):
-                    return res
-                if hasattr(res, "answer"):
-                    steps_data = []
-                    for s in getattr(res, "steps", []):
-                        if hasattr(s, "model_dump"):
-                            steps_data.append(s.model_dump())
-                        elif hasattr(s, "__dict__"):
-                            steps_data.append(dict(s.__dict__))
-                        elif isinstance(s, dict):
-                            steps_data.append(s)
+            res = self.graph_runner(q, **kwargs)
+            if isinstance(res, SwarmOutput):
+                return res
+            if hasattr(res, "answer"):
+                steps_data = []
+                for s in getattr(res, "steps", []):
+                    if hasattr(s, "model_dump"):
+                        steps_data.append(s.model_dump())
+                    elif hasattr(s, "__dict__"):
+                        steps_data.append(dict(s.__dict__))
+                    elif isinstance(s, dict):
+                        steps_data.append(s)
 
-                    routing_val = "general"
-                    routing_obj = getattr(res, "routing", None)
-                    if routing_obj:
-                        routing_val = str(getattr(routing_obj, "route", routing_obj))
+                routing_val = "general"
+                routing_obj = getattr(res, "routing", None)
+                if routing_obj:
+                    routing_val = str(getattr(routing_obj, "route", routing_obj))
 
-                    symbol_val = None
-                    rewritten_obj = getattr(res, "rewritten", None)
-                    if rewritten_obj:
-                        symbol_val = getattr(rewritten_obj, "symbol", None)
+                symbol_val = None
+                rewritten_obj = getattr(res, "rewritten", None)
+                if rewritten_obj:
+                    symbol_val = getattr(rewritten_obj, "symbol", None)
 
-                    return SwarmOutput(
-                        question=q,
-                        answer=getattr(res, "answer", "") or "",
-                        rewritten_symbol=symbol_val,
-                        routing=routing_val,
-                        steps=steps_data,
-                        chart_path=getattr(res, "chart_path", None),
-                        source_file=getattr(res, "source_file", None),
-                        hitl_used=getattr(res, "hitl_used", False),
-                        pending_approvals_created=getattr(res, "pending_approvals_created", 0),
-                        error=getattr(res, "error", None),
-                    )
-            except Exception as exc:
-                logger.error(f"Lỗi graph_runner trong SwarmOrchestrator: {exc}", exc_info=True)
                 return SwarmOutput(
                     question=q,
-                    answer=f"Hệ thống gặp sự cố xử lý câu hỏi: {exc}",
-                    routing="error",
-                    error=str(exc),
+                    answer=getattr(res, "answer", "") or "",
+                    rewritten_symbol=symbol_val,
+                    routing=routing_val,
+                    steps=steps_data,
+                    chart_path=getattr(res, "chart_path", None),
+                    source_file=getattr(res, "source_file", None),
+                    hitl_used=getattr(res, "hitl_used", False),
+                    pending_approvals_created=getattr(res, "pending_approvals_created", 0),
+                    error=getattr(res, "error", None),
                 )
-
-        # 3. Luồng phản hồi tiêu chuẩn độc lập (hỗ trợ kiểm thử 100% offline)
-        steps = [
-            {"id": "1", "name": "supervisor", "status": "done", "detail": f"Route evaluated for '{q}'"},
-            {"id": "2", "name": "answer_composer", "status": "done", "detail": "Response generated"},
-        ]
-        return SwarmOutput(
-            question=q,
-            answer=f"Phản hồi từ VN Stock Swarm cho câu hỏi: '{q}'",
-            routing="general",
-            steps=steps,
-        )
+        except Exception as exc:
+            logger.error(f"Lỗi graph_runner trong SwarmOrchestrator: {exc}", exc_info=True)
+            return SwarmOutput(
+                question=q,
+                answer=f"Hệ thống gặp sự cố xử lý câu hỏi: {exc}",
+                routing="error",
+                error=str(exc),
+            )
 
     def stream(
         self,
@@ -203,34 +167,6 @@ class SwarmOrchestrator(BaseService):
         """Tạo luồng sự kiện SSE (event_type, payload) phục vụ streaming ra Web UI."""
         q = (question or "").strip()
         req_id = request_id or str(uuid.uuid4())
-
-        # Fast-path cho câu chào hỏi
-        if is_greeting(q):
-            yield (
-                "node_start",
-                {"node": "greeting_fastpath", "input_data": {"question": q, "user_id": user_id}},
-            )
-            greeting_text = (
-                "Xin chào! Tôi là trợ lý chứng khoán VN Stock Swarm. "
-                "Bạn có thể tra cứu thị giá, tin tức, chỉ báo kỹ thuật và danh mục đầu tư."
-            )
-            yield ("token", {"delta": greeting_text, "node": "greeting_fastpath"})
-            yield (
-                "node_finish",
-                {"node": "greeting_fastpath", "output_data": {"done": True}, "duration_ms": 10},
-            )
-            yield (
-                "complete",
-                {
-                    "answer": greeting_text,
-                    "route": "greeting",
-                    "request_id": req_id,
-                    "steps": [
-                        {"id": "1", "name": "greeting_fastpath", "status": "done"},
-                    ],
-                },
-            )
-            return
 
         # Luồng tiêu chuẩn: chạy process() trong thread riêng, các node graph đẩy event
         # (node_start, token từ LLM, node_finish...) vào queue ngay khi phát sinh -> stream thật.
@@ -245,7 +181,7 @@ class SwarmOrchestrator(BaseService):
         cancel = threading.Event()
 
         def _worker() -> None:
-            from ai_backend.infra.graph.chat import set_stream_cancel_event
+            from ai_backend.infra.agents.chat.team import set_stream_cancel_event
 
             # Graph kiểm tra cờ này ở mỗi emit_agent_event -> dừng khi client ngắt kết nối.
             set_stream_cancel_event(cancel)
@@ -273,9 +209,11 @@ class SwarmOrchestrator(BaseService):
             # Generator bị đóng sớm (client ngắt) -> báo graph dừng, khỏi tốn token LLM.
             cancel.set()
 
-        # Graph không phát token nào (fallback offline, lỗi...) -> gửi nguyên câu trả lời.
+        # Graph không phát token nào (nhánh concept/diagram, lỗi...) -> gửi nguyên câu trả lời.
         if not streamed and output.answer:
-            yield ("token", {"delta": output.answer, "node": "answer_composer"})
+            yield ("node_start", {"node": "answer"})
+            yield ("token", {"delta": output.answer, "node": "answer"})
+            yield ("node_finish", {"node": "answer"})
 
         yield (
             "complete",

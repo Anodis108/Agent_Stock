@@ -193,9 +193,10 @@
     { id: "price_agent", name: "PriceAgent", label: "Dữ liệu giá Vnstock", role: "Market Data Worker", icon: "📈" },
     { id: "news_agent", name: "NewsAgent", label: "Tin tức tài chính", role: "Financial News Worker", icon: "📰" },
     { id: "indicator_engine", name: "IndicatorEngine", label: "Chỉ báo RSI/SMA", role: "Quantitative Engine", icon: "📐" },
-    { id: "chart_agent", name: "ChartAgent", label: "Biểu đồ nến kỹ thuật", role: "Visualization Worker", icon: "📊" },
+    { id: "draw_agent", name: "DrawAgent", label: "Vẽ biểu đồ / sơ đồ", role: "Visualization Worker", icon: "📊" },
     { id: "eval_agent", name: "EvalAgent", label: "Đánh giá rủi ro", role: "Risk Assessment Engine", icon: "⚖️" },
-    { id: "answer_composer", name: "AnswerComposer", label: "Tổng hợp phản hồi", role: "Synthesis & Disclaimer", icon: "✍️" },
+    { id: "answer", name: "Answer", label: "Soạn câu trả lời", role: "Synthesis", icon: "✍️" },
+    { id: "guardrail_output", name: "GuardrailOutput", label: "Kiểm duyệt đầu ra", role: "Output Guardrail", icon: "🧱" },
   ];
 
   function canonicalNodeId(name) {
@@ -203,6 +204,7 @@
     if (lower.indexOf("llm_cache") >= 0 || lower === "llm cache") return "llm_cache";
     if (lower.indexOf("price_cache") >= 0 || lower === "price cache") return "price_cache";
     if (lower.indexOf("greeting") >= 0) return "greeting_responder";
+    if (lower.indexOf("guardrail_output") >= 0) return "guardrail_output";
     if (lower.indexOf("guardrail") >= 0 || lower.indexOf("gate") >= 0) return "guardrail";
     if (lower.indexOf("rewrite") >= 0) return "rewrite";
     if (lower.indexOf("supervisor") >= 0) return "supervisor";
@@ -210,9 +212,9 @@
     if (lower.indexOf("price") >= 0) return "price_agent";
     if (lower.indexOf("news") >= 0) return "news_agent";
     if (lower.indexOf("indicator") >= 0) return "indicator_engine";
-    if (lower.indexOf("chart") >= 0) return "chart_agent";
+    if (lower.indexOf("draw") >= 0 || lower.indexOf("chart") >= 0 || lower.indexOf("diagram") >= 0) return "draw_agent";
     if (lower.indexOf("eval") >= 0) return "eval_agent";
-    if (lower.indexOf("compose") >= 0 || lower.indexOf("answer") >= 0) return "answer_composer";
+    if (lower.indexOf("compose") >= 0 || lower.indexOf("answer") >= 0) return "answer";
     return lower;
   }
 
@@ -297,7 +299,7 @@
     "indicator_agent": "[Quantitative Engine: TechnicalIndicatorService]\n- Tính toán chỉ báo dao động RSI(14) (nhận diện vùng quá mua >70, quá bán <30).\n- Tính toán đường trung bình động MA(20), MA(50).\n- Nhận diện giao cắt xu hướng: Golden Cross (tăng giá) và Death Cross (giảm giá).",
 
     // 7. ChartAgent
-    "chart_agent": "[Visualization Worker: ChartAgent]\n- Matplotlib / Chart Engine: Vẽ biểu đồ nến kỹ thuật (candlestick chart) kèm đường SMA(20)/SMA(50).\n- Lưu ảnh vào thư mục static cache `/static/charts/` và cung cấp đường dẫn hiển thị trực tiếp trong khung chat.",
+    "draw_agent": "[Visualization Worker: DrawAgent]\n- Matplotlib / Chart Engine: Vẽ biểu đồ nến kỹ thuật (candlestick chart) kèm đường SMA(20)/SMA(50).\n- Lưu ảnh vào thư mục static cache `/static/charts/` và cung cấp đường dẫn hiển thị trực tiếp trong khung chat.",
     "chartagent": "[Visualization Worker: ChartAgent]\n- Matplotlib / Chart Engine: Vẽ biểu đồ nến kỹ thuật (candlestick chart) kèm đường SMA(20)/SMA(50).\n- Lưu ảnh vào thư mục static cache `/static/charts/` và cung cấp đường dẫn hiển thị trực tiếp trong khung chat.",
 
     // 8. EvalAgent
@@ -308,8 +310,9 @@
     "portfolio_watch_agent": "[Worker: PortfolioWatchAgent]\n- Quản lý danh mục đầu tư (Holdings), tính giá vốn, thị giá hiện tại, Unrealized P&L (VND & %) và tổng NAV theo từng user_id.\n- Quản lý danh sách theo dõi (Watchlist) và ngưỡng cảnh báo biến động (alert_threshold_pct).\n- Đảm bảo phản hồi khách quan, không đưa ra khuyến nghị mua bán.",
     "portfoliowatchagent": "[Worker: PortfolioWatchAgent]\n- Quản lý danh mục đầu tư (Holdings), tính giá vốn, thị giá hiện tại, Unrealized P&L (VND & %) và tổng NAV theo từng user_id.\n- Quản lý danh sách theo dõi (Watchlist) và ngưỡng cảnh báo biến động (alert_threshold_pct).\n- Đảm bảo phản hồi khách quan, không đưa ra khuyến nghị mua bán.",
 
-    // 10. AnswerComposer
-    "answer_composer": "[System Prompt: AnswerComposer]\n- Tổng hợp câu trả lời hoàn chỉnh dựa trên dữ liệu facts thu thập từ các worker.\n- Định dạng Markdown: in đậm, bảng dữ liệu giá, trích dẫn tin tức và nhúng biểu đồ nến kỹ thuật.\n- Tự động gắn tuyên bố miễn trừ trách nhiệm đầu tư trung lập đối với mọi tư vấn mua/bán.",
+    // 10. Answer + Output Guardrail
+    "guardrail_output": "[Output Guardrail]\n- Cấm khuyên mua/bán chắc chắn.\n- Số liệu phải khớp evidence; vi phạm thì yêu cầu Answer soạn lại, hết lượt thì viết lại an toàn kèm miễn trừ trách nhiệm.",
+    "answer": "[System Prompt: Answer]\n- Tổng hợp câu trả lời hoàn chỉnh dựa trên dữ liệu facts thu thập từ các worker.\n- Định dạng Markdown: in đậm, bảng dữ liệu giá, trích dẫn tin tức và nhúng biểu đồ nến kỹ thuật.\n- Tự động gắn tuyên bố miễn trừ trách nhiệm đầu tư trung lập đối với mọi tư vấn mua/bán.",
     "answercomposer": "[System Prompt: AnswerComposer]\n- Tổng hợp câu trả lời hoàn chỉnh dựa trên dữ liệu facts thu thập từ các worker.\n- Định dạng Markdown: in đậm, bảng dữ liệu giá, trích dẫn tin tức và nhúng biểu đồ nến kỹ thuật.\n- Tự động gắn tuyên bố miễn trừ trách nhiệm đầu tư trung lập đối với mọi tư vấn mua/bán.",
 
     // Quy trình quét & kiểm soát bổ sung

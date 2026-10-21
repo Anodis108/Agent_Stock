@@ -1,6 +1,6 @@
 """LLM concurrency limiter — M3-B4 Phase 10.
 
-Giới hạn số LLM call đồng thời theo ``llm.max_concurrency`` trong config.yaml.
+Giới hạn số LLM call đồng thời theo biến môi trường ``LLM_MAX_CONCURRENCY``.
 """
 
 from __future__ import annotations

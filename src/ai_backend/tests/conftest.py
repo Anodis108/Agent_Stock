@@ -68,12 +68,51 @@ def pg_schema(_pg_test_schema):
     return _pg_test_schema
 
 
+class OfflineQuote:
+    """Thay `vnstock.Quote` khi test offline: 30 phiên nến cố định theo mã; mã lạ -> lỗi như vnstock thật."""
+
+    BASE_PRICES = {
+        "FPT": 66.0, "VNM": 61.0, "HPG": 21.0, "VHM": 66.0, "VIC": 45.0,
+        "TCB": 33.0, "MBB": 20.0, "SSI": 21.0, "MWG": 73.0, "VCB": 58.0,
+    }
+
+    def __init__(self, symbol: str, source: str | None = None):
+        self.symbol = symbol
+
+    def history(self, start: str, end: str, interval: str = "1D"):
+        import pandas as pd
+
+        if self.symbol not in self.BASE_PRICES:
+            raise ValueError(f"symbol {self.symbol} not found")
+        base = self.BASE_PRICES[self.symbol]
+        days = pd.bdate_range(end=end, periods=30)
+        closes = [round(base * (1 + ((i % 7) - 3) * 0.004), 2) for i in range(len(days))]
+        return pd.DataFrame({
+            "time": days,
+            "open": [round(c * 0.995, 2) for c in closes],
+            "high": [round(c * 1.01, 2) for c in closes],
+            "low": [round(c * 0.99, 2) for c in closes],
+            "close": closes,
+            "volume": [1_000_000 + i * 10_000 for i in range(len(days))],
+        })
+
+
+def offline_price_source() -> VnstockPriceSource:
+    """VnstockPriceSource thật nhưng nguồn dữ liệu là OfflineQuote (không gọi mạng)."""
+    return VnstockPriceSource(quote_factory=OfflineQuote)
+
+
+@pytest.fixture
+def offline_prices() -> VnstockPriceSource:
+    return offline_price_source()
+
+
 def build_real_deps(schema: str) -> AppDeps:
-    """Khởi tạo AppDeps chuẩn production phục vụ kiểm thử."""
+    """Khởi tạo AppDeps chuẩn production phục vụ kiểm thử (giá lấy từ OfflineQuote)."""
     conn = get_connection(schema)
     memory = PgMemoryStore(schema)
     deps = AppDeps(
-        price_source=VnstockPriceSource(fallback_on_error=True),
+        price_source=offline_price_source(),
         news_source=CafefNewsSource(),
         history_store=PgPriceHistoryStore(schema),
         memory_store=memory,
@@ -99,7 +138,6 @@ def real_deps(monkeypatch, pg_schema):
     """PostgreSQL schema tạm thời + nguồn giá/tin thật cho từng bài kiểm thử agent/graph."""
     monkeypatch.setenv("MONITORING_ENABLED", "false")
     monkeypatch.setenv("LLM_MAX_RETRIES", "1")
-    monkeypatch.setenv("PRICE_FALLBACK_ON_ERROR", "true")
     clear_deps_cache()
     deps = build_real_deps(pg_schema)
     set_app_deps(deps)
@@ -113,7 +151,6 @@ def client(monkeypatch, pg_schema):
     """TestClient kết nối tới app FastAPI với database tạm thời cô lập."""
     monkeypatch.setenv("MONITORING_ENABLED", "false")
     monkeypatch.setenv("LLM_MAX_RETRIES", "1")
-    monkeypatch.setenv("PRICE_FALLBACK_ON_ERROR", "true")
     clear_deps_cache()
     deps = build_real_deps(pg_schema)
     set_app_deps(deps)
@@ -147,3 +184,55 @@ def ai_server_url():
     set_app_deps(None)
     clear_deps_cache()
     _drop_pg_schema(schema)
+
+
+@pytest.fixture
+def fake_scan_runner():
+    """Factory runner giả thay run_scan_graph (test double, không mạng / LLM): trả kết quả scan dựng sẵn."""
+    from ai_backend.infra.agents.scan.news_agent import NewsAgentResult
+    from ai_backend.infra.agents.scan.price_agent import PriceAgentResult
+    from ai_backend.infra.agents.scan.team import ScanSymbolResult
+    from common.domain.entities import EventRoute, RoutingDecision
+
+    def make(change_pct: float = -6.0, abnormal: bool = True):
+        def runner(symbol, **kwargs):
+            route = EventRoute.ABNORMAL if abnormal else EventRoute.NORMAL
+            return ScanSymbolResult(
+                symbol=symbol,
+                price=PriceAgentResult(
+                    symbol=symbol, latest_close=100.0 + change_pct, prev_close=100.0, change_pct=change_pct
+                ),
+                news=NewsAgentResult(symbol=symbol, items=[]),
+                routing=RoutingDecision(route=route, reason=f"giả lập {route.value}"),
+                threshold_pct=kwargs.get("threshold_pct") or 3.0,
+                steps=[
+                    {"id": "1", "name": "price_agent", "status": "done"},
+                    {"id": "2", "name": "event_classifier", "status": "done"},
+                ],
+            )
+
+        return runner
+
+    return make
+
+
+@pytest.fixture
+def fake_chat_runner():
+    """Runner giả thay run_chat_graph (test double): phát event như graph thật rồi trả kết quả dựng sẵn."""
+    from types import SimpleNamespace
+
+    def runner(question, event_callback=None, **_kwargs):
+        answer = f"Trả lời giả cho: {question}"
+        if event_callback:
+            event_callback("node_start", {"node": "answer_composer"})
+            for word in answer.split(" "):
+                event_callback("token", {"delta": word + " "})
+            event_callback("node_finish", {"node": "answer_composer"})
+        return SimpleNamespace(
+            answer=answer,
+            routing=SimpleNamespace(route="general"),
+            rewritten=SimpleNamespace(symbol=None),
+            steps=[{"id": "1", "name": "answer_composer", "status": "done"}],
+        )
+
+    return runner

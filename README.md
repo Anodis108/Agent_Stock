@@ -69,7 +69,7 @@ Dự án là sản phẩm đồ án tốt nghiệp cuối khóa, giải quyết 
 1. **Độ chính xác cao & Khách quan tuyệt đối**: Vượt qua **100% (20/20 test cases)** bộ dữ liệu chuẩn hóa [resources/eval/golden_v6_comprehensive.yaml](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/resources/eval/golden_v6_comprehensive.yaml) trên 10 lát cắt chức năng (`lookup`, `news`, `indicator`, `comparison`, `portfolio`, `watchlist`, `chart`, `out_of_scope`, `injection`, `disclaimer`).
 2. **Luồng Chào Hỏi Tức Thì (Greeting Fast-Path)**: Nhận diện câu chào giao tiếp ("Xin chào", "Hello", "Hi bot") là an toàn ngay tại Input Guardrail và nối thẳng sang Chat LLM/Composer (TTFT < 1.0s), không bị từ chối và không kích hoạt tra cứu giá ảo.
 3. **Quản Lý Danh Mục Đa Tài Khoản (Multi-tenant Portfolio)**: Cô lập dữ liệu nắm giữ (Holdings, Unrealized P&L, NAV) và danh sách theo dõi (Watchlist) giữa các người dùng (`User A`, `User B`, `Default`).
-4. **Kiến Trúc Tách Biệt Cấu Hình (Config Decoupling)**: File `.env` chỉ chứa các biến bí mật (API Keys); toàn bộ cấu hình hệ thống được quản lý tập trung tại [resources/configs/config.yaml](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/resources/configs/config.yaml).
+4. **Cấu Hình Chỉ Qua Biến Môi Trường**: Settings của cả 3 khối chỉ đọc biến môi trường (mặc định `None`). Danh sách biến đầy đủ ở `.env.example`; chạy local copy thành `.env`, Docker Compose nạp `.env` rồi ghi đè địa chỉ nội bộ.
 5. **Cấu Trúc Mã Nguồn Sạch Sẽ (Clean Modular Architecture)**: Toàn bộ code nằm trong `src/` (`src/backend/`, `src/frontend/`, `src/deploy/`), gốc dự án sạch sẽ chỉ chứa các tệp tĩnh và hồ sơ đặc tả SDD.
 6. **Kiểm Thử 3 Tầng Chuẩn Mực (3-Tier Test Suite)**: Phân tầng `tests/unit/`, `tests/integration/`, `tests/e2e/`, hỗ trợ mock offline bảo đảm pipeline CI chạy hoàn tất trong **< 5 phút**.
 
@@ -93,7 +93,7 @@ graph TD
     
     subgraph Config & Secrets
         Env[".env (Chỉ chứa Secrets: API Keys)"]
-        Yaml["resources/configs/config.yaml (Master App Config)"]
+        Yaml[".env / biến môi trường (Master App Config)"]
     end
     Env -.-> Settings[Settings Loader]
     Yaml -.-> Settings
@@ -191,7 +191,6 @@ Hệ thống sử dụng kiến trúc lưu trữ phân tầng nhằm bảo đả
 vn-stock-swarm/
 ├── resources/                  # Tài nguyên tĩnh tổng hợp (Master Assets)
 │   ├── configs/
-│   │   └── config.yaml         # Master Application Config (LLM, App, Cache, Storage)
 │   ├── data/                   # CSDL SQLite & PNG charts
 │   ├── docs/                   # Sơ đồ kiến trúc & Concepts markdown
 │   ├── eval/                   # Dữ liệu đánh giá Golden v6 & Báo cáo Excel
@@ -214,7 +213,7 @@ vn-stock-swarm/
 │   │   ├── logging/                                 # Hệ thống log & Correlation ID
 │   │   │   └── logger.py                            # Structured logger (Console / JSON)
 │   │   ├── settings/
-│   │   │   ├── config.py                            # Nạp resources/configs/config.yaml & Environment
+│   │   │   ├── config.py                            # Settings chỉ đọc biến môi trường
 │   │   │   └── secrets.py                           # Secret Manager (DATABASE_URL, API Keys)
 │   │   ├── transport/                               # HTTP client liên dịch vụ
 │   │   │   ├── transport.py                         # Remote SSE streamer, retry backoff
@@ -281,7 +280,7 @@ pip install -e .
 
 # 3. Tạo .env và điền secret. Tên biến nằm trong .env.example:
 #    DATABASE_URL, OPENAI_API_KEYS, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, QDRANT_API_KEY
-#    Tham số (model, cache, cổng, bộ nhớ, monitoring) sửa ở resources/configs/config.yaml
+#    Tham số (model, cache, cổng, bộ nhớ, monitoring) sửa trong .env (xem .env.example)
 
 # 4. Khởi chạy hai microservices trên hai tiến trình độc lập:
 # Cửa sổ 1 — Web Backend (cổng 8000, giao diện web & API người dùng):
@@ -301,7 +300,7 @@ Secret cần điền trong `.env` (mẫu tên biến ở `.env.example`):
 - `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`: tùy chọn, để ghi trace.
 - `QDRANT_API_KEY`: tùy chọn.
 
-Tham số còn lại nằm ở `resources/configs/config.yaml`: model, cache, cổng, bộ nhớ, monitoring, embedding, host/cổng/tên database (`storage.postgres_host`, `storage.postgres_port`, `storage.postgres_db`), collection khái niệm (`storage.concept_collection`), collection bộ nhớ dài hạn (`memory.qdrant_collection`). Sửa tham số ở file đó. Nếu cùng một giá trị có trong cả `.env` và `config.yaml`, `.env` ghi đè. Compose ghi đè `DATABASE_URL` trong container thành host `postgres` cổng 5432.
+Mọi tham số (model, cache, cổng, bộ nhớ, monitoring, embedding, `POSTGRES_HOST`/`POSTGRES_PORT`/`POSTGRES_DB`, `CONCEPT_COLLECTION`, `QDRANT_COLLECTION`...) là biến môi trường trong `.env` — xem `.env.example`. Thiếu biến nào thì setting đó là `None`. Compose ghi đè trong container: `DATABASE_URL` (host `postgres`:5432), `MINIO_ENDPOINT` (`minio:9000`), `QDRANT_URL`, `REDIS_URL`.
 
 ### 7.2. Hai image, Postgres, và Qdrant bằng Docker Compose
 
@@ -369,7 +368,7 @@ pytest tests/e2e/test_golden_v6_slices.py -v
 
 ### 7.5. Exact cache: mặc định memory, cách bật Redis
 
-Exact cache mặc định là **memory**. `resources/configs/config.yaml` có `cache.backend: "memory"`. App dùng bộ nhớ trong tiến trình, không cần Redis và không cần gói `redis`.
+Exact cache dùng **memory** khi `.env` có `CACHE_BACKEND=memory`. App dùng bộ nhớ trong tiến trình, không cần Redis và không cần gói `redis`.
 
 Bật Redis cho exact cache:
 
@@ -378,7 +377,7 @@ pip install redis
 docker compose up -d redis
 ```
 
-Trong `resources/configs/config.yaml`, đổi `cache.backend` thành `redis`, rồi khởi động lại app. `get_exact_cache()` giữ store của lần gọi đầu, nên đổi config khi app đang chạy thì chưa ăn.
+Trong `.env`, đặt `CACHE_BACKEND=redis`, rồi khởi động lại app. `get_exact_cache()` giữ store của lần gọi đầu, nên đổi config khi app đang chạy thì chưa ăn.
 
 - Máy host: `REDIS_URL` mặc định là `redis://localhost:6379`. Nếu cổng 6379 đã bị chiếm, chạy `REDIS_PORT=6380 docker compose up -d redis` và đặt `REDIS_URL=redis://localhost:6380`.
 - Docker Compose: backend đã có `REDIS_URL=redis://redis:6379`. Vẫn phải đổi `cache.backend` thành `redis`. File `resources/` được mount vào container.
@@ -387,7 +386,7 @@ Semantic cache không đi qua Redis.
 
 ### 7.6. Ảnh biểu đồ trên MinIO
 
-`storage.chart_backend` trong `resources/configs/config.yaml` mặc định là `minio`. Bucket là `charts`. URL trong chat vẫn là `/charts/chart_....png`. App đọc object và trả ảnh. Không dùng presigned URL.
+`CHART_BACKEND` trong `.env` là `minio`. Bucket là `charts`. URL trong chat vẫn là `/charts/chart_....png`. App đọc object và trả ảnh. Không dùng presigned URL.
 
 ```bash
 docker compose up -d minio
@@ -408,7 +407,7 @@ Qdrant phải đang chạy (`docker compose up -d qdrant` ở mục 7.2). Từ t
 PYTHONPATH=src python -c "from qdrant_client import QdrantClient; from ai_backend.retrieval.concepts import index_concepts; print(index_concepts(client=QdrantClient(url='http://localhost:6333', timeout=10, check_compatibility=False)))"
 ```
 
-Lệnh này cắt từng file theo đoạn văn, embed offline (không gọi OpenAI), xóa collection cũ rồi ghi lại. Tên collection lấy từ `storage.concept_collection` trong `config.yaml`, mặc định `stock_concepts`. Collection đó phải khác `memory.qdrant_collection` (`portfolio_watch_memory`). Số in ra là số đoạn đã ghi.
+Lệnh này cắt từng file theo đoạn văn, embed offline (không gọi OpenAI), xóa collection cũ rồi ghi lại. Tên collection lấy từ biến môi trường `CONCEPT_COLLECTION` (`stock_concepts`). Collection đó phải khác `QDRANT_COLLECTION` (`portfolio_watch_memory`). Số in ra là số đoạn đã ghi.
 
 ---
 

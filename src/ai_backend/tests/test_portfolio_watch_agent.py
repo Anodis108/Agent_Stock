@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import pytest
 
-from ai_backend.infra.agents.portfolio_watch_agent import run_portfolio_watch_agent
-from ai_backend.infra.agents.supervisor_agent.nodes import (
+from ai_backend.infra.agents.chat.portfolio_watch_agent import run_portfolio_watch_agent
+from ai_backend.infra.agents.chat.supervisor_agent.nodes import (
     HeuristicRewriteBrain,
     HeuristicSupervisorBrain,
     _extract_symbols,
@@ -21,7 +21,7 @@ from web_backend.infra.database.repositories import (
 )
 from common.domain.entities import WatchlistItem
 from common.domain.ports import PriceBar, PriceQuote, PriceSourcePort
-from ai_backend.infra.graph.chat import run_chat_graph
+from ai_backend.infra.agents.chat.team import run_chat_graph
 from ai_backend.infra.storage.watchlist_store import PgWatchlistStore
 
 

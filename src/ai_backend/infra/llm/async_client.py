@@ -1,7 +1,7 @@
 """Async LLM client. chat_stream gọi module này.
 
 AsyncOpenAI không chặn event loop của FastAPI. Retry dùng asyncio.sleep.
-Semaphore asyncio lấy giới hạn từ llm.max_concurrency trong config.yaml.
+Semaphore asyncio lấy giới hạn từ biến môi trường LLM_MAX_CONCURRENCY.
 Mọi lời gọi dùng chung một event loop để semaphore giới hạn được các stream chạy song song.
 """
 

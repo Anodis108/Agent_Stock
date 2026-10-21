@@ -206,7 +206,7 @@ def stream_remote_sse(
     cancel_event: threading.Event | None = None,
     is_disconnected: Callable[[], bool] | None = None,
 ) -> Iterator[tuple[str, dict[str, Any]]]:
-    """Kết nối SSE stream tới AI Backend tại POST /v1/chat/stream.
+    """Kết nối SSE stream tới AI Backend tại POST /v1/chat/stream-sse.
 
     Yields từng tuple (event_name, data_dict). Tự động đóng connection khi client ngắt.
     """
@@ -235,7 +235,7 @@ def stream_remote_sse(
         headers["X-Request-Id"] = request_id
 
     req = urllib.request.Request(
-        f"{_ai_base()}/v1/chat/stream",
+        f"{_ai_base()}/v1/chat/stream-sse",
         data=body,
         headers=headers,
         method="POST",

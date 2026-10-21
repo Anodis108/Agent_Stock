@@ -2,10 +2,11 @@
 
 Chỉ phục vụ:
 - /health: Trạng thái hoạt động của AI Engine, Swarm StateGraph, tài nguyên phụ trợ.
-- /v1/chat, /v1/chat/stream-sse: Hỏi-đáp Agent Swarm (JSON / Server-Sent Events).
-- /v1/scan: Quét phân tích kỹ thuật và cảnh báo mã cổ phiếu.
+- /v1/chat, /v1/chat/stream-sse: Hỏi-đáp → team chat của Hierarchical Swarm (JSON / Server-Sent Events).
+- /v1/scan: Quét cảnh báo một mã → team scan của Hierarchical Swarm.
 
-Job nền: quét toàn bộ watchlist mỗi `market_data.scan_interval_minutes` phút (config.yaml).
+Job nền: quét toàn bộ watchlist mỗi `SCAN_INTERVAL_MINUTES` phút (biến môi trường), cũng qua team scan.
+Cả hai nhánh chạy chung MỘT graph (infra/agents/workflow.py).
 """
 
 from __future__ import annotations
@@ -30,7 +31,9 @@ from ai_backend.infra.storage import (
     PgWatchlistStore,
 )
 from ai_backend.infra.storage.pg_db import connect
-from ai_backend.infra.graph.chat import run_chat_graph
+from ai_backend.infra.agents.chat.team import run_chat_graph
+from ai_backend.infra.agents.scan.team import run_scan_graph
+from ai_backend.infra.notify.console_notifier import ConsoleNotifier
 from ai_backend.application.swarm_orchestrator import SwarmOrchestrator
 from ai_backend.application.symbol_scanner_service import SymbolScannerService
 from ai_backend.infra.scheduler import start_scan_scheduler, stop_scan_scheduler
@@ -45,8 +48,7 @@ async def lifespan(app: FastAPI):
     """Quản lý vòng đời khởi động và dừng của AI Backend."""
     logger.info(
         f"Khởi động AI Backend Microservice tại http://{ai_settings.host}:{ai_settings.port} "
-        f"[LLM={ai_settings.llm_backend}, Qdrant={ai_settings.qdrant_host}:{ai_settings.qdrant_port}, "
-        f"Fallback={ai_settings.price_fallback_on_error}]"
+        f"[LLM={ai_settings.llm_backend}, Qdrant={ai_settings.qdrant_host}:{ai_settings.qdrant_port}]"
     )
 
     # 1. PostgreSQL: kiểm tra kết nối và tạo bảng ngay khi khởi động
@@ -70,7 +72,7 @@ async def lifespan(app: FastAPI):
     if store is not None and not store.is_connected():
         logger.info(f"MinIO chưa sẵn sàng, lưu ảnh biểu đồ tại {ai_settings.charts_dir}")
 
-    price_source = VnstockPriceSource(fallback_on_error=ai_settings.price_fallback_on_error)
+    price_source = VnstockPriceSource()
     news_source = CafefNewsSource()
     history_store = PgPriceHistoryStore()
     memory_store = PgMemoryStore()
@@ -86,10 +88,13 @@ async def lifespan(app: FastAPI):
         watchlist_store=watchlist_store,
     )
     scanner = SymbolScannerService(
+        graph_runner=run_scan_graph,
         price_source=price_source,
+        news_source=news_source,
         history_store=history_store,
         memory_store=memory_store,
         watchlist_store=watchlist_store,
+        notifier=ConsoleNotifier(memory_store),
     )
     app.state.symbol_scanner_service = scanner
 

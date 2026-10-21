@@ -14,7 +14,7 @@ Dự án phát triển theo phương pháp **Spec-Driven Development (SDD)**. Lu
 ## 2. Kiến Trúc 3 Khối Clean Architecture (Kế thừa từ AI_Face_checkin)
 - **`src/common/` (Shared Kernel)**: Base models (`CustomBaseModel`), Base services (`BaseService`, `AsyncBaseService`), Domain entities & indicators thuần túy, Ports trừu tượng, Logging (Correlation ID), Settings/Secrets, Transport schemas & client.
 - **`src/web_backend/` (Web Microservice - Cổng 8000)**: Entry `web_backend.main:app`. Xử lý Presentation (Routers, Middleware), Application (Use Cases), Domain (Session & Portfolio logic), Infra (PostgreSQL/SQLite, Repositories, Remote AI client).
-- **`src/ai_backend/` (AI Microservice - Cổng 8001)**: Entry `ai_backend.main:app`. Chỉ mở các endpoint `/health`, `/v1/chat/stream`, `/v1/scan`. Chứa 10 Worker Agents, LangGraph Swarm StateGraph, Concept RAG với Qdrant, Guardrails, Cache 2 tầng, Cost/Token Tracker, Eval Gate.
+- **`src/ai_backend/` (AI Microservice - Cổng 8001)**: Entry `ai_backend.main:app`. Chỉ mở các endpoint `/health`, `/v1/chat`, `/v1/chat/stream-sse`, `/v1/scan`. Chứa 10 Worker Agents, **một** Hierarchical Swarm StateGraph (`infra/agents/workflow.py`: `top_supervisor` → `chat_supervisor` | `scan_supervisor` ⇄ workers dùng chung), Concept RAG với Qdrant, Guardrails, Cache 2 tầng, Cost/Token Tracker, Eval Gate.
 - **Ranh giới nghiêm ngặt**:
   - `web_backend` và `ai_backend` tuyệt đối không import trực tiếp lẫn nhau.
   - `web_backend` không import `openai`, `langchain`, hay `langgraph`.
@@ -27,7 +27,7 @@ Dự án phát triển theo phương pháp **Spec-Driven Development (SDD)**. Lu
 - **Golden Dataset v6**: 20/20 test cases thuộc 10 lát cắt chuẩn trong `tests/e2e/test_golden_v6_slices.py` phải luôn đạt 100% PASS.
 
 ## 4. Vận Hành & Triển Khai
-- `.env` chỉ chứa secrets (`DATABASE_URL`, API Keys). Toàn bộ tham số cấu hình nằm tại `resources/configs/config.yaml`.
+- Settings (common / web_backend / ai_backend) **chỉ đọc biến môi trường**, mặc định mọi trường là `None`. Danh sách biến đầy đủ: `.env.example` (chạy local: copy thành `.env`; Docker Compose nạp `.env` rồi ghi đè địa chỉ nội bộ). Không còn `resources/configs/config.yaml`.
 - Nginx cổng 80 là cửa ngõ duy nhất proxy về `127.0.0.1:8000`, tắt buffering (`proxy_buffering off`) cho route stream `/chat`.
 - Vận hành phát hành bằng `src/deploy/release.ps1` (`up`, `smoke`, `rollback`, `status`), không gọi `gcloud`.
 - Public ra internet bằng Cloudflare Tunnel (`src/deploy/publish.ps1`) hoặc ngrok.

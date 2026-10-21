@@ -26,14 +26,10 @@ from ai_backend.shared.settings import AiSettings, ai_settings
 
 
 def test_ai_settings_defaults():
-    """Kiểm tra giá trị mặc định của AiSettings."""
+    """AiSettings khởi tạo không có biến môi trường: mọi trường là None (chỉ đọc biến môi trường)."""
     settings = AiSettings()
-    assert settings.port == 8001
-    assert settings.host == "0.0.0.0"
-    assert settings.qdrant_collection == "stock_concepts"
-    assert settings.llm_backend == "mock"
-    assert settings.price_fallback_on_error is True
-    assert ai_settings.port in (8001, int(os.environ.get("AI_PORT", 8001)))
+    assert settings.model_dump(exclude_none=True) == {}
+    assert ai_settings.port == (int(os.environ["AI_PORT"]) if os.environ.get("AI_PORT") else None)
 
 
 def test_ai_settings_load_env_override():
@@ -44,14 +40,12 @@ def test_ai_settings_load_env_override():
             "AI_PORT": "8888",
             "AI_HOST": "127.0.0.1",
             "LLM_BACKEND": "deepseek",
-            "PRICE_FALLBACK_ON_ERROR": "false",
         },
     ):
         custom = AiSettings.load()
         assert custom.port == 8888
         assert custom.host == "127.0.0.1"
         assert custom.llm_backend == "deepseek"
-        assert custom.price_fallback_on_error is False
 
 
 def test_ai_backend_exceptions():
@@ -114,11 +108,11 @@ def test_ai_main_health_endpoint():
     assert "x-correlation-id" in response.headers
 
 
-def test_ai_main_chat_stream_endpoint():
-    """Kiểm tra endpoint POST /v1/chat/stream phát SSE qua SwarmOrchestrator."""
+def test_ai_main_chat_stream_endpoint(fake_chat_runner):
+    """Kiểm tra endpoint POST /v1/chat/stream-sse phát SSE qua SwarmOrchestrator."""
     from ai_backend.application.swarm_orchestrator import SwarmOrchestrator
 
-    app.state.orchestrator = SwarmOrchestrator()
+    app.state.orchestrator = SwarmOrchestrator(graph_runner=fake_chat_runner)
     try:
         client = TestClient(app)
         payload = {
@@ -126,7 +120,7 @@ def test_ai_main_chat_stream_endpoint():
             "user_id": "test_user",
             "request_id": "req-12345",
         }
-        response = client.post("/v1/chat/stream", json=payload)
+        response = client.post("/v1/chat/stream-sse", json=payload)
         assert response.status_code == 200
         assert "text/event-stream" in response.headers.get("content-type", "")
         assert "node_start" in response.text
@@ -135,11 +129,11 @@ def test_ai_main_chat_stream_endpoint():
         del app.state.orchestrator
 
 
-def test_ai_main_scan_endpoint():
+def test_ai_main_scan_endpoint(fake_scan_runner):
     """Kiểm tra endpoint POST /v1/scan phân tích kỹ thuật."""
     from ai_backend.application.symbol_scanner_service import SymbolScannerService
 
-    app.state.symbol_scanner_service = SymbolScannerService()
+    app.state.symbol_scanner_service = SymbolScannerService(graph_runner=fake_scan_runner())
     client = TestClient(app)
     payload = {
         "symbol": "VNM",

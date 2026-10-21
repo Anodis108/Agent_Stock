@@ -11,15 +11,14 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 import pytest
 
-from ai_backend.infra.agents.answer_composer.nodes import (
+from ai_backend.infra.agents.chat.answer_composer.nodes import (
     HeuristicAnswerDraftBrain,
     LlmAnswerDraftBrain,
     build_evidence,
     run_answer_composer,
 )
-from ai_backend.infra.agents.price_agent.nodes import run_price_agent
+from ai_backend.infra.agents.scan.price_agent.nodes import run_price_agent
 from common.domain.ports import PriceQuote
-from ai_backend.infra.graph.chat import build_chat_graph
 from ai_backend.infra.llm.providers import call_with_backend_fallback, resolve_backend_chain
 
 

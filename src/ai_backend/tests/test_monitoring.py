@@ -161,8 +161,8 @@ def test_record_step_usage_aggregates_per_turn(mock_enabled, mock_get_langfuse):
 
 @patch("ai_backend.infra.monitoring.tracing._get_langfuse")
 @patch("ai_backend.infra.monitoring.tracing._enabled", return_value=True)
-def test_stream_cache_hit_does_not_write_trace(mock_enabled, mock_get_langfuse, monkeypatch):
-    """Exact cache trên chat_stream không gọi Langfuse. Lỗi trên cùng lượt vẫn ghi."""
+def test_stream_cache_hit_still_writes_trace_with_cache_flag(mock_enabled, mock_get_langfuse, monkeypatch):
+    """Exact cache trên chat_stream vẫn ghi trace, metadata đánh dấu cache_hit=True."""
     from ai_backend.infra.cache.exact import (
         clear_llm_cache_context,
         get_exact_cache,
@@ -204,8 +204,8 @@ def test_stream_cache_hit_does_not_write_trace(mock_enabled, mock_get_langfuse, 
         with trace_request("chat", question, metadata={"turn": "cache_turn"}):
             with agent_span("cache_turn", "answer_composer"):
                 assert list(chat_stream(messages)) == ["Xin chào"]
-        mock_langfuse.trace.assert_not_called()
-        mock_langfuse.flush.assert_not_called()
+        mock_langfuse.trace.assert_called_once()
+        assert mock_root.update.call_args.kwargs["metadata"]["cache_hit"] is True
 
         reset_client_for_tests()
         mock_langfuse.reset_mock()
@@ -217,7 +217,7 @@ def test_stream_cache_hit_does_not_write_trace(mock_enabled, mock_get_langfuse, 
 
         reset_client_for_tests()
         mark_turn_cache_hit("slow_cache")
-        assert _should_trace_turn("slow_cache", latency_s=0.2) is False
+        assert _should_trace_turn("slow_cache", latency_s=0.2) is True  # cache hit không còn bị loại
         assert _should_trace_turn("slow_cache", latency_s=5.0) is True
         from ai_backend.infra.monitoring.tracing import mark_turn_guardrail
 

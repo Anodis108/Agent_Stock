@@ -16,26 +16,27 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic import ValidationError
 
-from ai_backend.infra.agents import answer_composer, synthesis_agent
-from ai_backend.infra.agents.eval_agent.nodes import HeuristicEvalBrain
-from ai_backend.infra.agents.eval_agent.schemas import EvalSeverityOutput
-from ai_backend.infra.agents.event_classifier import classify_event
-from ai_backend.infra.agents.event_classifier.schemas import ClassifierOutput
-from ai_backend.infra.agents.news_agent import run_news_agent
-from ai_backend.infra.agents.news_agent.schemas import NewsAgentResult, NewsReactOutput
-from ai_backend.infra.agents.price_agent import PriceAgentResult, run_price_agent
-from ai_backend.infra.agents.supervisor_agent.nodes import (
+from ai_backend.infra.agents.chat import answer_composer
+from ai_backend.infra.agents.scan import synthesis_agent
+from ai_backend.infra.agents.scan.eval_agent.nodes import HeuristicEvalBrain
+from ai_backend.infra.agents.scan.eval_agent.schemas import EvalSeverityOutput
+from ai_backend.infra.agents.scan.event_classifier import classify_event
+from ai_backend.infra.agents.scan.event_classifier.schemas import ClassifierOutput
+from ai_backend.infra.agents.scan.news_agent import run_news_agent
+from ai_backend.infra.agents.scan.news_agent.schemas import NewsAgentResult, NewsReactOutput
+from ai_backend.infra.agents.scan.price_agent import PriceAgentResult, run_price_agent
+from ai_backend.infra.agents.chat.supervisor_agent.nodes import (
     HeuristicRewriteBrain,
     HeuristicSupervisorBrain,
     rewrite_question,
     route_question,
 )
-from ai_backend.infra.agents.supervisor_agent.schemas import RewriteOutput, SupervisorOutput
-from ai_backend.infra.agents.synthesis_agent.schemas import SynthesisAlertOutput
+from ai_backend.infra.agents.chat.supervisor_agent.schemas import RewriteOutput, SupervisorOutput
+from ai_backend.infra.agents.scan.synthesis_agent.schemas import SynthesisAlertOutput
 from common.domain.entities import EventRoute, Severity, SeverityLevel
 from ai_backend.domain.guardrails.output_checks import check_output
-from ai_backend.infra.graph.chat import compile_chat_graph, run_chat_graph
-from ai_backend.infra.graph.scan import compile_scan_graph
+from ai_backend.infra.agents.chat.team import run_chat_graph
+from ai_backend.infra.agents.graph import compile_swarm_graph
 from ai_backend.infra.llm.structured import (
     call_llm_structured,
     extract_json_str,
@@ -86,11 +87,13 @@ def test_event_classifier_with_real_price_and_news():
 # 2. LangGraph Workflow Tests
 # ==============================================================================
 
-def test_chat_graph_compile_and_nodes():
-    """Kiểm tra đồ thị Chat Graph biên dịch thành công và chứa đầy đủ các agent node."""
-    g = compile_chat_graph()
-    nodes = set(g.get_graph(xray=True).nodes.keys())
-    expected = {"pre_rewrite_guardrail", "guardrail_refusal", "rewrite_question", "supervisor", "workers", "answer_composer"}
+def test_chat_team_nodes_in_swarm_graph():
+    """Team chat nằm trong Swarm Graph: guardrail_input → rewrite → chat_supervisor ⇄ workers → answer → guardrail_output."""
+    nodes = set(compile_swarm_graph().get_graph().nodes.keys())
+    expected = {
+        "guardrail_input", "rewrite_question", "chat_supervisor", "concept_retrieval",
+        "eval_agent", "draw_agent", "portfolio_watch_agent", "answer", "guardrail_output",
+    }
     assert expected <= nodes
 
 
@@ -109,14 +112,13 @@ def test_chat_graph_execution(real_deps):
     assert result.answer is not None
     assert len(result.steps) > 0
     step_names = [s["name"] for s in result.steps]
-    assert "pre_rewrite_guardrail" in step_names or "rewrite_question" in step_names
+    assert "guardrail_input" in step_names and "answer" in step_names and "guardrail_output" in step_names
 
 
-def test_scan_graph_compiles():
-    """Kiểm tra đồ thị Scan Graph biên dịch thành công."""
-    g = compile_scan_graph()
-    nodes = set(g.get_graph(xray=True).nodes.keys())
-    assert "fetch" in nodes and "event_classifier" in nodes
+def test_scan_team_nodes_in_swarm_graph():
+    """Team scan nằm trong Swarm Graph: scan_supervisor điều phối classifier, synthesis và 2 cổng HITL."""
+    nodes = set(compile_swarm_graph().get_graph().nodes.keys())
+    assert {"scan_supervisor", "event_classifier", "synthesis_agent", "hitl_gate_1", "hitl_gate_2"} <= nodes
 
 
 # ==============================================================================
@@ -715,9 +717,9 @@ def test_compute_sma_and_crossovers():
 
 def test_eval_agent_with_technical_indicators():
     """Kiểm tra EvalAgent kết hợp chỉ báo kỹ thuật và tin tức để đưa ra Severity (EV-01)."""
-    from ai_backend.infra.agents.eval_agent.nodes import HeuristicEvalBrain
-    from ai_backend.infra.agents.news_agent.schemas import NewsAgentResult
-    from ai_backend.infra.agents.price_agent import PriceAgentResult
+    from ai_backend.infra.agents.scan.eval_agent.nodes import HeuristicEvalBrain
+    from ai_backend.infra.agents.scan.news_agent.schemas import NewsAgentResult
+    from ai_backend.infra.agents.scan.price_agent import PriceAgentResult
     from common.domain.entities import SeverityLevel
     from common.domain.indicators import IndicatorSummary
     from common.domain.ports import NewsItem, PriceBar
@@ -792,8 +794,8 @@ def test_phase3_vnstock_news_source_and_attribution():
         MultiSourceNewsSource,
         VnstockNewsSource,
     )
-    from ai_backend.infra.agents.news_agent.schemas import NewsAgentResult
-    from ai_backend.infra.agents.answer_composer.nodes import _news_summary, HeuristicAnswerDraftBrain
+    from ai_backend.infra.agents.scan.news_agent.schemas import NewsAgentResult
+    from ai_backend.infra.agents.chat.answer_composer.nodes import _news_summary, HeuristicAnswerDraftBrain
 
     # 1. Kiểm tra đối tượng NewsItem có trường source
     item_vnstock = NewsItem(
@@ -916,7 +918,7 @@ def test_dec_04_context_inheritance_in_subqueries():
 
 def test_dec_05_supervisor_routing_multi_subqueries():
     """DEC-05: Supervisor duyệt sub_questions kích hoạt đầy đủ cả price_agent và news_agent."""
-    from ai_backend.infra.agents.supervisor_agent import RewrittenQuestion, HeuristicSupervisorBrain
+    from ai_backend.infra.agents.chat.supervisor_agent import RewrittenQuestion, HeuristicSupervisorBrain
 
     supervisor = HeuristicSupervisorBrain()
     rewritten = RewrittenQuestion(
@@ -941,9 +943,9 @@ def test_dec_05_supervisor_routing_multi_subqueries():
 
 def test_answer_composer_multi_evidence_synthesis():
     """Kiểm tra AnswerComposer tổng hợp đa nguồn có cấu trúc rõ ràng theo từng mục khi so sánh nhiều mã."""
-    from ai_backend.infra.agents.answer_composer.nodes import HeuristicAnswerDraftBrain
-    from ai_backend.infra.agents.price_agent import PriceAgentResult
-    from ai_backend.infra.agents.news_agent import NewsAgentResult
+    from ai_backend.infra.agents.chat.answer_composer.nodes import HeuristicAnswerDraftBrain
+    from ai_backend.infra.agents.scan.price_agent import PriceAgentResult
+    from ai_backend.infra.agents.scan.news_agent import NewsAgentResult
     from common.domain.ports import NewsItem
 
     brain = HeuristicAnswerDraftBrain()
@@ -983,9 +985,9 @@ def test_answer_composer_multi_evidence_synthesis():
 
 def test_phase3_eval_agent_four_severity_levels():
     """Kiểm tra EvalAgent xếp hạng đủ 4 cấp độ rủi ro (none, low, medium, high) kết hợp chỉ báo và tin tức."""
-    from ai_backend.infra.agents.eval_agent.nodes import HeuristicEvalBrain
-    from ai_backend.infra.agents.news_agent.schemas import NewsAgentResult
-    from ai_backend.infra.agents.price_agent import PriceAgentResult
+    from ai_backend.infra.agents.scan.eval_agent.nodes import HeuristicEvalBrain
+    from ai_backend.infra.agents.scan.news_agent.schemas import NewsAgentResult
+    from ai_backend.infra.agents.scan.price_agent import PriceAgentResult
     from common.domain.entities import SeverityLevel
     from common.domain.indicators import IndicatorSummary
     from common.domain.ports import NewsItem, PriceBar
@@ -1046,8 +1048,8 @@ def test_phase3_eval_agent_four_severity_levels():
 
 def test_phase3_query_decomposition_comparison_and_stopwords():
     """Kiểm tra phân rã câu hỏi so sánh đa mã thành 2 sub-queries và bộ lọc stopword loại bỏ GIA, TAI, TIA, HIEN, TOI."""
-    from ai_backend.infra.agents.supervisor_agent import HeuristicRewriteBrain
-    from ai_backend.infra.agents.supervisor_agent.nodes import _extract_symbols
+    from ai_backend.infra.agents.chat.supervisor_agent import HeuristicRewriteBrain
+    from ai_backend.infra.agents.chat.supervisor_agent.nodes import _extract_symbols
 
     brain = HeuristicRewriteBrain()
 

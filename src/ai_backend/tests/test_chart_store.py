@@ -10,7 +10,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from ai_backend.infra.agents.chart_agent import _save_and_encode_fig
+from ai_backend.infra.agents.chat.chart_agent import _save_and_encode_fig
 from ai_backend.infra.storage.chart_store import (
     ChartObjectStore,
     read_chart_png,

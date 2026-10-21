@@ -318,11 +318,11 @@ def evaluate_case(
     else:
         # Thực thi qua Chat Graph Swarm
         try:
-            from ai_backend.infra.graph.chat import run_chat_graph
+            from ai_backend.infra.agents.chat.team import run_chat_graph
             from ai_backend.infra.market_data import CafefNewsSource, VnstockPriceSource
             from ai_backend.infra.storage import PgMemoryStore, PgPriceHistoryStore
 
-            ps = getattr(deps, "price_source", None) or VnstockPriceSource(fallback_on_error=True)
+            ps = getattr(deps, "price_source", None) or VnstockPriceSource()
             ns = getattr(deps, "news_source", None) or CafefNewsSource()
             hs = getattr(deps, "history_store", None) or PgPriceHistoryStore()
             ms = getattr(deps, "memory_store", None) or PgMemoryStore()

@@ -587,13 +587,13 @@ def make_answer_fn(
     memory_store: Any | None = None,
     user_id: str = "eval",
 ) -> Callable[[str], str]:
-    """Bọc `application.answer_question` → trả chuỗi answer.
+    """Bọc `run_chat_graph` → trả chuỗi answer.
 
     Gắn `fn.last_steps` (list[dict]) sau mỗi lần gọi để chấm trajectory.
     Không truyền deps → lấy `get_app_deps()` (giống POST /chat).
     """
     from web_backend.api.deps import get_app_deps
-    from ai_backend.infra.graph.chat import answer_question
+    from ai_backend.infra.agents.chat.team import run_chat_graph
 
     def _answer(question: str) -> str:
         deps = None
@@ -604,7 +604,7 @@ def make_answer_fn(
             or memory_store is None
         ):
             deps = get_app_deps()
-        result = answer_question(
+        result = run_chat_graph(
             question,
             price_source=price_source or deps.price_source,
             news_source=news_source or deps.news_source,

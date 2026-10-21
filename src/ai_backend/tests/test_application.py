@@ -16,7 +16,6 @@ from ai_backend.application.swarm_orchestrator import (
     SwarmInput,
     SwarmOrchestrator,
     SwarmOutput,
-    is_greeting,
 )
 from ai_backend.application.concept_rag_service import (
     ConceptRagInput,
@@ -51,27 +50,12 @@ class TestSwarmOrchestrator:
     def test_subclass_of_base_service(self):
         assert issubclass(SwarmOrchestrator, BaseService)
 
-    def test_greeting_detection(self):
-        assert is_greeting("Xin chào bot")
-        assert is_greeting("hello bạn")
-        assert is_greeting("Hi trợ lý")
-        assert is_greeting("chào bạn")
-        assert not is_greeting("Giá cổ phiếu HPG hôm nay bao nhiêu?")
-        assert not is_greeting("RSI là gì")
+    def test_requires_graph_runner(self):
+        with pytest.raises(RuntimeError, match="graph_runner"):
+            SwarmOrchestrator().process(SwarmInput(question="Giá HPG?"))
 
-    def test_greeting_fastpath_process(self):
-        orch = SwarmOrchestrator()
-        inp = SwarmInput(question="Xin chào bạn")
-        out = orch.process(inp)
-
-        assert isinstance(out, SwarmOutput)
-        assert out.routing == "greeting"
-        assert "Xin chào" in out.answer
-        assert len(out.steps) >= 1
-        assert any(s["name"] == "greeting_fastpath" for s in out.steps)
-
-    def test_standard_question_process(self):
-        orch = SwarmOrchestrator()
+    def test_standard_question_process(self, fake_chat_runner):
+        orch = SwarmOrchestrator(graph_runner=fake_chat_runner)
         inp = SwarmInput(question="Giá HPG hiện tại thế nào?", user_id="user_test")
         out = orch.process(inp)
 
@@ -80,22 +64,8 @@ class TestSwarmOrchestrator:
         assert len(out.answer) > 0
         assert len(out.steps) >= 1
 
-    def test_streaming_greeting(self):
-        orch = SwarmOrchestrator()
-        events = list(orch.stream(question="Xin chào", user_id="user_test"))
-        event_names = [e[0] for e in events]
-
-        assert "node_start" in event_names
-        assert "token" in event_names
-        assert "node_finish" in event_names
-        assert "complete" in event_names
-
-        complete_event = next(e[1] for e in events if e[0] == "complete")
-        assert complete_event["route"] == "greeting"
-        assert "Xin chào" in complete_event["answer"]
-
-    def test_streaming_general_question(self):
-        orch = SwarmOrchestrator()
+    def test_streaming_general_question(self, fake_chat_runner):
+        orch = SwarmOrchestrator(graph_runner=fake_chat_runner)
         events = list(orch.stream(question="Phân tích mã FPT", user_id="user_test"))
         event_names = [e[0] for e in events]
 
@@ -103,7 +73,7 @@ class TestSwarmOrchestrator:
         assert "token" in event_names
         assert "complete" in event_names
 
-        tokens = [e[1]["token"] for e in events if e[0] == "token"]
+        tokens = [e[1]["delta"] for e in events if e[0] == "token"]
         assert len(tokens) > 0
         reconstructed = "".join(tokens)
         complete_event = next(e[1] for e in events if e[0] == "complete")
@@ -176,33 +146,31 @@ class TestSymbolScannerService:
     def test_subclass_of_base_service(self):
         assert issubclass(SymbolScannerService, BaseService)
 
-    def test_symbol_scan_triggered_on_low_threshold(self):
-        scanner = SymbolScannerService()
-        # Ngưỡng cực thấp 0.001% chắc chắn bị vượt
-        inp = SymbolScannerInput(symbol="HPG", threshold_pct=0.001)
-        out = scanner.process(inp)
+    def test_requires_graph_runner(self):
+        # Không còn kết quả giả lập: thiếu graph thì báo lỗi rõ ràng
+        with pytest.raises(RuntimeError, match="graph_runner"):
+            SymbolScannerService().process(SymbolScannerInput(symbol="HPG"))
+
+    def test_abnormal_result_is_triggered(self, fake_scan_runner):
+        scanner = SymbolScannerService(graph_runner=fake_scan_runner(change_pct=-6.0, abnormal=True))
+        out = scanner.process(SymbolScannerInput(symbol="hpg", threshold_pct=3.0))
 
         assert isinstance(out, SymbolScannerOutput)
         assert out.symbol == "HPG"
-        assert out.route == "technical"
-        assert out.threshold_pct == 0.001
+        assert out.route == "bất thường"
+        assert out.change_pct == -6.0
         assert out.triggered is True
-        assert "vượt ngưỡng" in out.reason
         assert len(out.steps) >= 2
 
-    def test_symbol_scan_not_triggered_on_high_threshold(self):
-        scanner = SymbolScannerService()
-        # Ngưỡng cực cao 100% không thể bị vượt
-        inp = SymbolScannerInput(symbol="VNM", threshold_pct=100.0)
-        out = scanner.process(inp)
+    def test_normal_result_is_not_triggered(self, fake_scan_runner):
+        scanner = SymbolScannerService(graph_runner=fake_scan_runner(change_pct=0.5, abnormal=False))
+        out = scanner.process(SymbolScannerInput(symbol="VNM", threshold_pct=3.0))
 
-        assert isinstance(out, SymbolScannerOutput)
-        assert out.symbol == "VNM"
+        assert out.route == "bình thường"
         assert out.triggered is False
-        assert "nằm trong giới hạn" in out.reason
 
-    def test_scan_helper_method(self):
-        scanner = SymbolScannerService()
+    def test_scan_helper_method(self, fake_scan_runner):
+        scanner = SymbolScannerService(graph_runner=fake_scan_runner())
         res = scanner.scan(symbol="VCB", user_id="user_demo", threshold_pct=2.5)
 
         assert res.symbol == "VCB"

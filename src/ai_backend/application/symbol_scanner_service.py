@@ -1,22 +1,23 @@
-"""Symbol Scanner Service — Quét phân tích kỹ thuật và cảnh báo mã cổ phiếu.
+"""Symbol Scanner Service — Entrypoint nhánh scan của Hierarchical Swarm.
 
 Kế thừa BaseService từ common.base.base_service.
-Thực hiện:
-- Phân tích biến động giá so với ngưỡng threshold_pct.
-- Tính toán chỉ báo kỹ thuật RSI / SMA khi có dữ liệu lịch sử.
-- Đánh giá Gate 1 (Human-in-the-loop pending approval) và Gate 2 (Đề xuất cập nhật tham số).
-- Hỗ trợ chạy 100% offline với fallback price source.
+Gọi `graph_runner` (production: run_scan_graph) → top_supervisor → scan_supervisor điều phối
+price/news → event_classifier → eval → synthesis → HITL gate 1/2.
+Bắt buộc inject graph_runner; test truyền runner giả qua fixture.
 """
 
 from __future__ import annotations
 
 import uuid
-from typing import Any
+from typing import Any, Callable
 from pydantic import Field
 
 from common.base.base_model import CustomBaseModel
 from common.base.base_service import BaseService
+from common.domain.ports import MemoryStore, NewsSource, Notifier, PriceHistoryStore, PriceSource, WatchlistStore
 from common.logging.logger import get_logger
+from ai_backend.infra.agents.scan.team import ScanSymbolResult
+
 
 logger = get_logger("ai_backend.application.symbol_scanner")
 
@@ -44,126 +45,85 @@ class SymbolScannerOutput(CustomBaseModel):
     pending_events: list[dict[str, Any]] = Field(default_factory=list)
     alerts: list[dict[str, Any]] = Field(default_factory=list)
     steps: list[dict[str, Any]] = Field(default_factory=list)
+    severity: dict[str, Any] | None = None
+    alert: dict[str, Any] | None = None
+    news_count: int = 0
     error: str | None = None
     request_id: str | None = None
 
 
 class SymbolScannerService(BaseService):
-    """Service quét và phân tích kỹ thuật cổ phiếu."""
+    """Service quét cảnh báo một mã cổ phiếu qua Hierarchical Swarm Graph."""
 
     def __init__(
         self,
         *,
-        price_source: Any = None,
-        history_store: Any = None,
-        memory_store: Any = None,
-        watchlist_store: Any = None,
+        graph_runner: Callable[..., ScanSymbolResult] | None = None,  # production: run_scan_graph
+        price_source: PriceSource | None = None,
+        news_source: NewsSource | None = None,
+        history_store: PriceHistoryStore | None = None,
+        memory_store: MemoryStore | None = None,
+        watchlist_store: WatchlistStore | None = None,
+        notifier: Notifier | None = None,
     ) -> None:
+        self.graph_runner = graph_runner
         self.price_source = price_source
+        self.news_source = news_source
         self.history_store = history_store
         self.memory_store = memory_store
         self.watchlist_store = watchlist_store
+        self.notifier = notifier
 
     def process(self, inputs: SymbolScannerInput) -> SymbolScannerOutput:
-        """Thực thi quét phân tích kỹ thuật cho 1 mã."""
+        """Quét 1 mã: lấy giá + tin, phân loại sự kiện, đánh giá mức độ, soạn cảnh báo và qua cổng HITL."""
         sym = inputs.symbol.strip().upper()
         req_id = inputs.request_id or str(uuid.uuid4())
         threshold = float(inputs.threshold_pct) if inputs.threshold_pct is not None else DEFAULT_THRESHOLD_PCT
         logger.info(f"SymbolScannerService.process: sym='{sym}' threshold={threshold}% user='{inputs.user_id}'")
 
-        # 1. Tra cứu giá hiện tại (realtime hoặc fallback)
-        change_pct = 0.0
-        latest_close = 0.0
-        price_err: str | None = None
+        if self.graph_runner is None:
+            raise RuntimeError("SymbolScannerService chưa được inject graph_runner (run_scan_graph)")
 
-        if self.price_source is not None:
-            try:
-                quote = self.price_source.fetch_latest_close(sym)
-                price_err = quote.error
-                latest_close = float(quote.latest_close or 0.0)
-                if quote.latest_close and quote.prev_close:
-                    change_pct = (quote.latest_close - quote.prev_close) / quote.prev_close * 100
-            except Exception as exc:
-                price_err = str(exc)
-                logger.warning(f"Lỗi lấy giá từ price_source cho {sym}: {exc}")
-        else:
-            # Fallback mock giá offline deterministic (không phụ thuộc PYTHONHASHSEED)
-            char_sum = sum(ord(c) for c in sym)
-            offset = (char_sum % 12) + 1  # [1 .. 12]
-            sign = 1 if (char_sum % 2 == 0) else -1
-            change_pct = float(sign * (offset * 0.5))  # [+/- 0.5% .. 6.0%]
-            latest_close = float(50000 + (char_sum % 50) * 1000)
-
-
-        # 2. Đánh giá ngưỡng cảnh báo
-        triggered = abs(change_pct) >= threshold
-        if triggered:
-            direction = "tăng" if change_pct > 0 else "giảm"
-            reason = f"Biến động {direction} {abs(change_pct):.2f}% vượt ngưỡng cài đặt {threshold:.2f}%"
-        else:
-            reason = f"Biến động {change_pct:+.2f}% nằm trong giới hạn cho phép ({threshold:.2f}%)"
-
-        # 3. Đánh giá Gate 1 & Gate 2
-        gate1_action: str | None = None
-        gate2_pending = False
-        pending_events: list[dict[str, Any]] = []
-
-        if triggered and abs(change_pct) >= 5.0:
-            # Biến động mạnh >= 5%: Kích hoạt Gate 1 HITL pending approval
-            gate1_action = "pending_approval"
-            ev = {
-                "id": str(uuid.uuid4()),
-                "kind": "pending_approval",
-                "gate": "gate1",
-                "symbol": sym,
-                "user_id": inputs.user_id,
-                "change_pct": change_pct,
-                "reason": reason,
-            }
-            pending_events.append(ev)
-            if self.memory_store is not None and hasattr(self.memory_store, "append_alert_event"):
-                try:
-                    self.memory_store.append_alert_event(inputs.user_id, ev)
-                except Exception:
-                    pass
-
-        steps = [
-            {
-                "id": "1",
-                "name": "price_agent",
-                "status": "done" if not price_err else "error",
-                "detail": f"{sym} close={latest_close:,.0f} change={change_pct:+.2f}%",
-            },
-            {
-                "id": "2",
-                "name": "indicator_analyzer",
-                "status": "done",
-                "detail": f"Threshold {threshold:.1f}% checked. Triggered: {triggered}",
-            },
-        ]
-
-        alert_item = {
-            "symbol": sym,
-            "route": "technical",
-            "threshold_pct": threshold,
-            "change_pct": change_pct,
-            "triggered": triggered,
-            "reason": reason,
-        }
-
+        res = self.graph_runner(
+            sym,
+            price_source=self.price_source,
+            news_source=self.news_source,
+            history_store=self.history_store,
+            memory_store=self.memory_store,
+            notifier=self.notifier,
+            watchlist_store=self.watchlist_store,
+            user_id=inputs.user_id,
+            threshold_pct=threshold,
+            request_id=req_id,
+        )
+        route_obj = getattr(res.routing, "route", None)
+        route = str(getattr(route_obj, "value", route_obj or "bình thường"))
+        reason = getattr(res.routing, "reason", "") or ""
+        change_pct = float(getattr(res.price, "change_pct", None) or 0.0)
+        triggered = route_obj is not None and route in ("bất thường", "abnormal")
         return SymbolScannerOutput(
             symbol=sym,
-            route="technical",
-            threshold_pct=threshold,
+            route=route,
+            threshold_pct=res.threshold_pct,
             change_pct=change_pct,
             triggered=triggered,
             reason=reason,
-            gate1_action=gate1_action,
-            gate2_pending=gate2_pending,
-            pending_events=pending_events,
-            alerts=[alert_item],
-            steps=steps,
-            error=price_err,
+            gate1_action=res.gate1_action,
+            gate2_pending=res.gate2_pending,
+            pending_events=res.pending_events,
+            alerts=[{
+                "symbol": sym,
+                "route": route,
+                "threshold_pct": res.threshold_pct,
+                "change_pct": change_pct,
+                "triggered": triggered,
+                "reason": reason,
+            }],
+            steps=res.steps,
+            severity=res.severity.model_dump(mode="json") if res.severity is not None else None,
+            alert=res.alert.model_dump(mode="json") if res.alert is not None else None,
+            news_count=len(getattr(res.news, "items", None) or []),
+            error=res.error,
             request_id=req_id,
         )
 
@@ -177,26 +137,9 @@ class SymbolScannerService(BaseService):
         """Helper gọi từ API router trả về đối tượng tương thích ScanResponse."""
         from ai_backend.api.models.scan_models import ScanAlertOut, ScanResponse
 
-        inp = SymbolScannerInput(
-            symbol=symbol,
-            user_id=user_id,
-            threshold_pct=threshold_pct,
-            request_id=request_id,
+        out = self.process(
+            SymbolScannerInput(symbol=symbol, user_id=user_id, threshold_pct=threshold_pct, request_id=request_id)
         )
-        out = self.process(inp)
-
-        alerts_out = [
-            ScanAlertOut(
-                symbol=a["symbol"],
-                route=a["route"],
-                threshold_pct=a["threshold_pct"],
-                change_pct=a["change_pct"],
-                triggered=a["triggered"],
-                reason=a["reason"],
-            )
-            for a in out.alerts
-        ]
-
         return ScanResponse(
             symbol=out.symbol,
             route=out.route,
@@ -206,6 +149,10 @@ class SymbolScannerService(BaseService):
             gate2_pending=out.gate2_pending,
             error=out.error,
             request_id=out.request_id,
-            alerts=alerts_out,
+            alerts=[ScanAlertOut(**a) for a in out.alerts],
             steps=out.steps,
+            severity=out.severity,
+            alert=out.alert,
+            news_count=out.news_count,
+            pending_events=out.pending_events,
         )

@@ -228,7 +228,7 @@ def steps_from_answer_result(result: Any) -> list[dict]:
     if answer is not None:
         steps.append(
             {
-                "tool": "answer_composer",
+                "tool": "answer",
                 "args": {},
                 "observation": str(answer)[:200],
             }

@@ -305,12 +305,6 @@ def _database_url() -> str:
             return sec.strip()
     except Exception:
         pass
-    try:
-        from common.settings.config import load_config_yaml_data
-        data = load_config_yaml_data()
-        url = (data.get("database_url") or "").strip()
-    except Exception:
-        pass
     return url
 
 

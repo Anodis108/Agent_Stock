@@ -43,8 +43,8 @@ _turn_usage_totals: dict[str, dict[str, int]] = {}
 
 KNOWN_AGENT_SPANS = [
     "guardrail", "rewrite", "supervisor", "price", "news", "chart", "composer",
-    "pre_rewrite_guardrail", "guardrail_refusal", "rewrite_question",
-    "price_agent", "news_agent", "chart_agent", "answer_composer"
+    "guardrail_input", "rewrite_question", "price_agent", "news_agent",
+    "eval_agent", "draw_agent", "answer", "guardrail_output",
 ]
 
 def redact_pii(text: str) -> str:
@@ -144,13 +144,12 @@ def _flush_langfuse(langfuse: Any, *, timeout_s: float = 3.0) -> None:
 
 
 def _should_trace_turn(turn: str, *, latency_s: float | None = None) -> bool:
+    # Cache hit không loại trace nữa: vẫn gửi, gắn tag `cache_hit` để lọc trên Langfuse.
     with _lock:
         if turn in _guardrail_turns or turn in _error_turns:
             return True
-        cache_hit = turn in _cache_hit_turns
     return should_sample(
         latency_s=latency_s,
-        cache_hit=cache_hit,
         seed=turn,
         normal_rate=_sample_rate(),
     )
@@ -240,12 +239,21 @@ def _ensure_root(turn: str, *, agent_name: str = "", force: bool = False) -> Any
                 metadata=meta,
             )
         elif hasattr(langfuse, "start_observation"):
-            span = langfuse.start_observation(
-                name=pending["name"],
-                as_type="chain",
-                input=sanitized_input,
-                metadata=meta,
-            )
+            with _lock:
+                tags = ["cache_hit"] if turn in _cache_hit_turns else []
+            try:
+                from langfuse import propagate_attributes
+            except ImportError:
+                propagate_attributes = None
+            if tags and propagate_attributes is not None:
+                with propagate_attributes(tags=tags):
+                    span = langfuse.start_observation(
+                        name=pending["name"], as_type="chain", input=sanitized_input, metadata=meta
+                    )
+            else:
+                span = langfuse.start_observation(
+                    name=pending["name"], as_type="chain", input=sanitized_input, metadata=meta
+                )
     except Exception as exc:
         _logger.warning("Không thể khởi tạo trace root: %s", exc)
 
@@ -408,6 +416,8 @@ def trace_request(
                 has_error = turn in _error_turns
                 if has_error:
                     meta["has_agent_error"] = True
+                if turn in _cache_hit_turns:
+                    meta["cache_hit"] = True
                 turn_usage = dict(_turn_usage_totals.get(turn) or {})
             if hasattr(span, "update"):
                 sanitized_output = sanitize_trace_payload(box.get("output"))

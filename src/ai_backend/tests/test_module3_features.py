@@ -26,7 +26,7 @@ def test_pick_prompt_version_disabled():
 
 
 def test_restrict_symbols_blocks_xin_vui_from_typo():
-    from ai_backend.infra.agents.supervisor_agent.nodes import _restrict_symbols_to_original
+    from ai_backend.infra.agents.chat.supervisor_agent.nodes import _restrict_symbols_to_original
 
     q = "Cho tôi giá hiện tịa VNM"
     assert _restrict_symbols_to_original(q, ["VNM", "XIN", "VUI"]) == ["VNM"]

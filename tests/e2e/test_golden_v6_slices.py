@@ -19,7 +19,7 @@ import pytest
 from ai_backend.domain.guardrails.input_guardrail import check_input_guardrail
 from common.domain.entities import WatchlistItem
 from common.domain.ports import PriceBar, PriceQuote, NewsItem
-from ai_backend.infra.graph.chat import run_chat_graph
+from ai_backend.infra.agents.chat.team import run_chat_graph
 
 
 class MockPriceSource:

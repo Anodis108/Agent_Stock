@@ -110,7 +110,7 @@ Kế hoạch tái cấu trúc hệ thống theo phương pháp **Spec-Driven Dev
   - `guardrails/greeting_fastpath.py`: Nhận diện câu chào hỏi để phản hồi tức thì (TTFT < 1s).
   - *Kiểm tra*: `python -c "from ai_backend.domain.guardrails.input_guardrail import InputGuardrail"`
 - [x] **3.4. AI Infrastructure Layer (`infra/`)**:
-  - `infra/graph/`: StateGraph điều phối LangGraph Swarm (`workflow.py`, `state.py`, `steps.py`).
+  - `infra/agents/`: StateGraph điều phối LangGraph Swarm (`workflow.py`, `state.py`, `steps.py`).
   - `infra/agents/`: Toàn bộ 10 Agent Nodes (`supervisor_agent`, `price_agent`, `news_agent`, `eval_agent`, `chart_agent.py`, `diagram_agent`, `event_classifier`, `portfolio_watch_agent`, `synthesis_agent`, `answer_composer`).
   - `infra/market_data/`: `price_source.py` (Vnstock với offline fallback), `news_source.py` (CafeF / Vnstock).
   - `infra/qdrant/`: `concepts.py` (client nạp 5 file markdown), `answer.py` (semantic retrieval).
@@ -121,7 +121,7 @@ Kế hoạch tái cấu trúc hệ thống theo phương pháp **Spec-Driven Dev
   - `infra/storage/`: `chart_store.py`, `memory_store.py`, `long_term_memory.py`, `price_history_store.py`, `watchlist_store.py`.
   - `infra/notify/`: `console_notifier.py`.
   - `infra/scheduler/`: `cron.py`.
-  - *Kiểm tra*: `python -c "from ai_backend.infra.graph.workflow import build_swarm_graph"`
+  - *Kiểm tra*: `python -c "from ai_backend.infra.agents.graph import build_swarm_graph"`
 - [x] **3.5. AI Shared & Entrypoint**:
   - `shared/settings.py` (cấu hình AI: `PORT=8001`, Qdrant, Redis, OpenAI Keys).
   - `shared/charts.py` (Matplotlib styling chuẩn).

@@ -15,20 +15,6 @@ logger = logging.getLogger(__name__)
 # Mã chứng khoán VN: 3 chữ cái (cổ phiếu thông thường) hoặc 3-10 ký tự chữ/số (chứng quyền, quỹ ETF như E1VFVN30)
 _SYMBOL_PATTERN = re.compile(r"^[A-Z0-9]{3,10}$")
 
-# Baseline prices in thousands of VND used for realistic synthetic fallbacks if API is offline
-DEFAULT_BASE_PRICES: dict[str, float] = {
-    "FPT": 66.0,  # Đồng bộ thị giá thực tế (~65.x - 66.x), loại bỏ mốc 135.0 cũ
-    "VNM": 61.0,
-    "HPG": 21.0,
-    "VHM": 66.0,
-    "VIC": 45.0,
-    "TCB": 33.0,
-    "MBB": 20.0,
-    "SSI": 21.0,
-    "MWG": 73.0,
-    "VCB": 58.0,
-}
-
 # Module-level shared cache ensuring Single Source of Truth between Swarm PriceAgent and MarketService
 _SHARED_QUOTE_CACHE: dict[str, tuple[float, PriceQuote]] = {}
 _SHARED_HISTORY_CACHE: dict[tuple[str, int], tuple[float, list[PriceBar]]] = {}
@@ -45,19 +31,12 @@ class VnstockPriceSource:
         lookback_days: int = 14,
         quote_factory=None,
         cache_ttl_seconds: float = 300.0,
-        fallback_on_error: bool | None = None,
         use_shared_cache: bool | None = None,
     ):
         self.source = source
         self.lookback_days = lookback_days
         self._quote_factory = quote_factory
         self.cache_ttl_seconds = cache_ttl_seconds
-        if fallback_on_error is None:
-            import os
-            self.fallback_on_error = os.environ.get("PRICE_FALLBACK_ON_ERROR", "false").lower() in ("1", "true", "yes")
-        else:
-            self.fallback_on_error = fallback_on_error
-
         # In-memory TTL caches — mặc định dùng chung trừ khi truyền quote_factory riêng (mock test)
         if use_shared_cache is None:
             use_shared_cache = (quote_factory is None)
@@ -126,13 +105,6 @@ class VnstockPriceSource:
             )
         except (Exception, SystemExit) as exc:
             logger.warning("vnstock fetch_latest_close failed for %s: %r", sym, exc)
-            if self.fallback_on_error and sym in DEFAULT_BASE_PRICES:
-                base = DEFAULT_BASE_PRICES[sym]
-                prev = round(base * 0.99, 2)
-                fallback_quote = PriceQuote(symbol=sym, latest_close=base, prev_close=prev, error=None)
-                with self._lock:
-                    self._quote_cache[sym] = (now, fallback_quote)
-                return fallback_quote
             exc_str = str(exc).lower()
             if any(k in exc_str for k in ("429", "too many requests", "rate limit", "ratelimit")):
                 err_msg = f"Nguồn dữ liệu tạm thời chạm giới hạn truy vấn (rate limit) khi lấy mã '{sym}'. Vui lòng thử lại sau ít phút."
@@ -152,13 +124,6 @@ class VnstockPriceSource:
             )
 
         if df is None or getattr(df, "empty", True):
-            if self.fallback_on_error and sym in DEFAULT_BASE_PRICES:
-                base = DEFAULT_BASE_PRICES[sym]
-                prev = round(base * 0.99, 2)
-                fallback_quote = PriceQuote(symbol=sym, latest_close=base, prev_close=prev, error=None)
-                with self._lock:
-                    self._quote_cache[sym] = (now, fallback_quote)
-                return fallback_quote
             return PriceQuote(
                 symbol=sym,
                 latest_close=None,
@@ -234,22 +199,11 @@ class VnstockPriceSource:
                 end=end.isoformat(),
                 interval="1D",
             )
-        except (Exception, SystemExit):
-            if self.fallback_on_error and sym in DEFAULT_BASE_PRICES:
-                bars = self._synthesize_fallback_bars(sym, count=min(days, 15))
-                if bars:
-                    with self._lock:
-                        self._history_cache[key] = (now, bars)
-                    return bars
+        except (Exception, SystemExit) as exc:
+            logger.warning("vnstock fetch_history failed for %s: %r", sym, exc)
             return []
 
         if df is None or getattr(df, "empty", True):
-            if self.fallback_on_error and sym in DEFAULT_BASE_PRICES:
-                bars = self._synthesize_fallback_bars(sym, count=min(days, 15))
-                if bars:
-                    with self._lock:
-                        self._history_cache[key] = (now, bars)
-                    return bars
             return []
 
         try:
@@ -279,35 +233,3 @@ class VnstockPriceSource:
             return bars
         except Exception:
             return []
-
-    def _synthesize_fallback_bars(self, symbol: str, count: int = 15) -> list[PriceBar]:
-        """Tạo chuỗi nến giả lập an toàn dựa trên mốc giá chuẩn khi nguồn ngoài offline."""
-        sym = symbol.strip().upper()
-        base_price = DEFAULT_BASE_PRICES.get(sym, 50.0)
-        today = datetime.now().date()
-        dates: list[str] = []
-        curr = today
-        while len(dates) < count:
-            if curr.weekday() < 5:
-                dates.append(curr.isoformat())
-            curr -= timedelta(days=1)
-        dates.reverse()
-
-        closes: list[float] = [0.0] * len(dates)
-        closes[-1] = base_price
-        for i in range(len(dates) - 2, -1, -1):
-            drift_pct = (((i * 7 + hash(sym)) % 11) - 5) * 0.005
-            prev_val = closes[i + 1] / (1.0 + drift_pct)
-            closes[i] = round(max(prev_val, 1.0), 2)
-
-        bars: list[PriceBar] = []
-        for i, d_str in enumerate(dates):
-            p = closes[i]
-            open_p = round(p * 0.995, 2)
-            high_p = round(max(open_p, p) * 1.01, 2)
-            low_p = round(min(open_p, p) * 0.99, 2)
-            vol = 1_500_000 + ((i * 31 + hash(sym)) % 1_000_000)
-            bars.append(PriceBar(date=d_str, close=p, open_price=open_p, high=high_p, low=low_p, volume=float(vol)))
-        return bars
-
-

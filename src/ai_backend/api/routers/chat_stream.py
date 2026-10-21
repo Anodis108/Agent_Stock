@@ -1,4 +1,4 @@
-"""SSE Streaming router for AI Swarm Graph (/v1/chat/stream)."""
+"""Chat router cho AI Swarm Graph (/v1/chat, /v1/chat/stream-sse)."""
 
 from __future__ import annotations
 

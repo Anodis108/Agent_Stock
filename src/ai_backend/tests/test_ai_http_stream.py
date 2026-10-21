@@ -1,4 +1,4 @@
-"""AI_TRANSPORT=http: web proxy SSE, process AI phát /v1/chat/stream."""
+"""AI_TRANSPORT=http: web proxy SSE, process AI phát /v1/chat/stream-sse."""
 
 from __future__ import annotations
 
@@ -86,7 +86,7 @@ def test_http_transport_proxies_chat_stream(client: TestClient, monkeypatch):
     resp = client.post("/api/v1/chat/stream", json={"question": "FPT?", "user_id": "default"})
     assert resp.status_code == 200
     assert "text/event-stream" in resp.headers.get("content-type", "")
-    assert seen["url"] == "http://ai.test:8001/v1/chat/stream"
+    assert seen["url"] == "http://ai.test:8001/v1/chat/stream-sse"
     assert seen["body"]["question"] == "FPT?"
     assert seen["body"]["user_id"] == "default"
     assert seen["body"]["watchlist"][0]["symbol"] == "HPG"
@@ -117,6 +117,7 @@ def test_web_entry_forwards_ui_sse(monkeypatch, pg_schema):
     """Entry web_backend.main chỉ chuyển SSE của POST /chat sang AI."""
     from web_backend.main import app as web_app
 
+    monkeypatch.setenv("AI_TRANSPORT", "http")
     monkeypatch.setenv("AI_BASE_URL", "http://ai.test:8001")
 
     def _boom(*_args, **_kwargs):
@@ -157,7 +158,7 @@ def test_web_entry_forwards_ui_sse(monkeypatch, pg_schema):
     assert resp.status_code == 200
     assert "text/event-stream" in resp.headers.get("content-type", "")
     assert resp.headers.get("x-accel-buffering") == "no"
-    assert seen["url"] == "http://ai.test:8001/v1/chat/stream"
+    assert seen["url"] == "http://ai.test:8001/v1/chat/stream-sse"
     assert seen["accept"] == "text/event-stream"
     assert seen["body"]["question"] == "RSI là gì"
     assert seen["body"]["user_id"] == "user_a"
@@ -183,7 +184,7 @@ def test_web_entry_forwards_ui_sse(monkeypatch, pg_schema):
     fallback = web.post("/chat/stream", json={"question": "RSI là gì", "user_id": "user_a"})
     assert fallback.status_code == 200
     assert "text/event-stream" in fallback.headers.get("content-type", "")
-    assert seen["url"] == "http://ai.test:8001/v1/chat/stream"
+    assert seen["url"] == "http://ai.test:8001/v1/chat/stream-sse"
 
 
 def test_web_entry_sends_account_lists_only_for_live_questions(monkeypatch, pg_schema):
@@ -194,6 +195,7 @@ def test_web_entry_sends_account_lists_only_for_live_questions(monkeypatch, pg_s
     from ai_backend.infra.storage.watchlist_store import PgWatchlistStore
     from common.domain.entities import WatchlistItem
 
+    monkeypatch.setenv("AI_TRANSPORT", "http")
     monkeypatch.setenv("AI_BASE_URL", "http://ai.test:8001")
     set_app_deps(None)
     clear_deps_cache()
@@ -288,7 +290,7 @@ def test_ui_chat_post_only_forwards_ai_sse(client: TestClient, monkeypatch):
     )
     assert resp.status_code == 200
     assert "text/event-stream" in resp.headers.get("content-type", "")
-    assert seen["url"] == "http://ai.test:8001/v1/chat/stream"
+    assert seen["url"] == "http://ai.test:8001/v1/chat/stream-sse"
     assert seen["accept"] == "text/event-stream"
 
     events = _parse_sse(resp.text)
@@ -359,7 +361,7 @@ def test_iter_swarm_events_has_no_session_fields(monkeypatch):
             error=None,
         )
 
-    monkeypatch.setattr(chat_stream, "answer_question", fake_answer)
+    monkeypatch.setattr(chat_stream, "run_chat_graph", fake_answer)
     deps = SimpleNamespace(
         price_source=None,
         news_source=None,
@@ -574,7 +576,7 @@ def test_v1_chat_forwards_lists_and_does_not_touch_sessions(monkeypatch):
             news=None,
         )
 
-    monkeypatch.setattr(ai_routes, "answer_question", fake_answer)
+    monkeypatch.setattr(ai_routes, "run_chat_graph", fake_answer)
     ai_app.dependency_overrides[get_app_deps] = lambda: SimpleNamespace(
         price_source=None,
         news_source=None,
@@ -615,13 +617,13 @@ def test_v1_chat_forwards_lists_and_does_not_touch_sessions(monkeypatch):
 
 
 def test_portfolio_agent_uses_holdings_payload(monkeypatch):
-    from ai_backend.infra.agents.portfolio_watch_agent.nodes import run_portfolio_watch_agent
+    from ai_backend.infra.agents.chat.portfolio_watch_agent.nodes import run_portfolio_watch_agent
 
     def boom(*_args, **_kwargs):
         raise AssertionError("AI không được SELECT holdings")
 
     monkeypatch.setattr(
-        "ai_backend.infra.agents.portfolio_watch_agent.nodes.get_connection", boom
+        "ai_backend.infra.agents.chat.portfolio_watch_agent.nodes.get_connection", boom
     )
     price = SimpleNamespace(
         fetch_latest_close=lambda symbol: SimpleNamespace(
@@ -651,8 +653,8 @@ def test_closing_the_chat_stream_stops_the_pipeline(monkeypatch):
     import time
 
     from web_backend.api.routers.chat import ChatRequest, stream_chat_generator
-    import ai_backend.infra.graph.chat as answer_mod
-    from ai_backend.infra.graph.chat import StreamCancelledError, check_stream_cancelled
+    import ai_backend.infra.agents.chat.team as answer_mod
+    from ai_backend.infra.agents.chat.team import StreamCancelledError, check_stream_cancelled
     from ai_backend.infra.llm import chat_stream
     import common.transport.transport as transport
 
@@ -677,8 +679,8 @@ def test_closing_the_chat_stream_stops_the_pipeline(monkeypatch):
 
 
 
-    monkeypatch.setattr(answer_mod, "answer_question", fake_answer)
-    monkeypatch.setattr(chat_stream, "answer_question", fake_answer)
+    monkeypatch.setattr(answer_mod, "run_chat_graph", fake_answer)
+    monkeypatch.setattr(chat_stream, "run_chat_graph", fake_answer)
     monkeypatch.setattr(transport, "_use_http", lambda: False)
     monkeypatch.setattr(
         "web_backend.api.routers.chat._prepare_stream_session",
@@ -716,6 +718,7 @@ def test_web_entry_closes_the_ai_stream_when_the_client_disconnects(monkeypatch,
 
     from web_backend.main import app as web_app
 
+    monkeypatch.setenv("AI_TRANSPORT", "http")
     monkeypatch.setenv("AI_BASE_URL", "http://ai.test:8001")
 
     class BlockingBody:

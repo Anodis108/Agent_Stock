@@ -1,37 +1,64 @@
-%% Portfolio Watch — agent graph (dễ đọc)
-%% Hai nhánh tách riêng; khớp graph/scan.py + graph/chat.py
-%% Xem bản HTML: docs/agent_graph.html
-flowchart TB
-  subgraph SCAN["Nhánh SCAN — giám sát watchlist"]
-    direction TB
-    S0([START scan]) --> orch[orchestrator]
-    orch --> price_s[price_agent]
-    orch --> news_s[news_agent]
-    price_s --> clf[event_classifier]
-    news_s --> clf
-    clf -->|normal| END_N([END])
-    clf -->|abnormal| eval_s[eval_agent]
-    eval_s -->|gate2 proposal| H2[hitl_gate_2]
-    eval_s -->|alert| syn[synthesis_agent]
-    H2 --> END_H2([END])
-    syn --> grd_s[guardrail_output]
-    grd_s -->|retry| syn
-    grd_s --> conf[confidence_gate]
-    conf -->|auto-send| END_A([END])
-    conf -->|cần duyệt| H1[hitl_gate_1]
-    H1 --> END_H1([END])
-  end
-
-  subgraph CHAT["Nhánh CHAT — hỏi đáp"]
-    direction TB
-    C0([START chat]) --> rw[rewrite_question]
-    rw --> sup[supervisor]
-    sup --> price_c[price_agent]
-    sup --> news_c[news_agent]
-    sup --> eval_c[eval_agent]
-    price_c --> ans[answer_composer]
-    news_c --> ans
-    eval_c --> ans
-    ans --> grd_c[guardrail_output]
-    grd_c --> END_C([END — trả user + steps])
-  end
+%% Hierarchical Swarm — sinh tự động: python -m ai_backend.infra.graph.run
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	top_supervisor(top_supervisor)
+	chat_supervisor(chat_supervisor)
+	scan_supervisor(scan_supervisor)
+	price_agent(price_agent)
+	news_agent(news_agent)
+	eval_agent(eval_agent)
+	draw_agent(draw_agent)
+	portfolio_watch_agent(portfolio_watch_agent)
+	guardrail_input(guardrail_input)
+	rewrite_question(rewrite_question)
+	concept_retrieval(concept_retrieval)
+	answer(answer)
+	guardrail_output(guardrail_output)
+	event_classifier(event_classifier)
+	hitl_gate_2(hitl_gate_2)
+	synthesis_agent(synthesis_agent)
+	hitl_gate_1(hitl_gate_1)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> top_supervisor;
+	answer --> guardrail_output;
+	chat_supervisor -.-> answer;
+	chat_supervisor -.-> concept_retrieval;
+	chat_supervisor -.-> draw_agent;
+	chat_supervisor -.-> eval_agent;
+	chat_supervisor -.-> portfolio_watch_agent;
+	chat_supervisor -.-> scan_supervisor;
+	concept_retrieval --> answer;
+	draw_agent --> chat_supervisor;
+	eval_agent -.-> chat_supervisor;
+	eval_agent -.-> scan_supervisor;
+	event_classifier --> scan_supervisor;
+	guardrail_input -.-> answer;
+	guardrail_input -.-> rewrite_question;
+	guardrail_output -.-> __end__;
+	guardrail_output -.-> answer;
+	hitl_gate_1 --> scan_supervisor;
+	hitl_gate_2 --> scan_supervisor;
+	news_agent --> scan_supervisor;
+	portfolio_watch_agent --> chat_supervisor;
+	price_agent --> scan_supervisor;
+	rewrite_question --> chat_supervisor;
+	scan_supervisor -.-> __end__;
+	scan_supervisor -.-> chat_supervisor;
+	scan_supervisor -.-> eval_agent;
+	scan_supervisor -.-> event_classifier;
+	scan_supervisor -.-> hitl_gate_1;
+	scan_supervisor -.-> hitl_gate_2;
+	scan_supervisor -.-> news_agent;
+	scan_supervisor -.-> price_agent;
+	scan_supervisor -.-> synthesis_agent;
+	synthesis_agent --> scan_supervisor;
+	top_supervisor -.-> guardrail_input;
+	top_supervisor -.-> scan_supervisor;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc

@@ -48,7 +48,7 @@ class _MockSwarmOrchestrator:
 
 
 @pytest.fixture
-def ai_test_app():
+def ai_test_app(fake_scan_runner):
     """Khởi tạo FastAPI test app đăng ký đầy đủ router và middleware của AI Backend."""
     app = FastAPI(title="AI Backend Test App")
     app.add_middleware(CorrelationIdMiddleware)
@@ -64,7 +64,7 @@ def ai_test_app():
         raise HTTPException(status_code=400, detail="Lỗi thử nghiệm AI")
 
     app.state.orchestrator = _MockSwarmOrchestrator()
-    app.state.symbol_scanner_service = SymbolScannerService()  # không price_source -> giá giả offline
+    app.state.symbol_scanner_service = SymbolScannerService(graph_runner=fake_scan_runner())
     yield app
 
 
@@ -140,13 +140,13 @@ def test_health_endpoint(client: TestClient):
 
 
 def test_chat_stream_sse_endpoint(client: TestClient):
-    """Kiểm tra endpoint POST /v1/chat/stream phát luồng Server-Sent Events."""
+    """Kiểm tra endpoint POST /v1/chat/stream-sse phát luồng Server-Sent Events."""
     req_body = {
         "question": "Phân tích giá cổ phiếu FPT",
         "user_id": "test_user",
         "request_id": "req-stream-001",
     }
-    resp = client.post("/v1/chat/stream", json=req_body)
+    resp = client.post("/v1/chat/stream-sse", json=req_body)
     assert resp.status_code == 200
     assert "text/event-stream" in resp.headers.get("content-type", "").lower()
 

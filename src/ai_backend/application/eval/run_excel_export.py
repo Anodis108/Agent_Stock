@@ -115,7 +115,7 @@ def extract_observations(steps: list[dict], case_output: str) -> str:
             elif s.get("detail"):
                 news_titles.append(str(s.get("detail"))[:60])
 
-        elif name == "chart_agent":
+        elif name in ("draw_agent", "chart_agent"):
             if out.get("success"):
                 chart_info = f"Biểu đồ kỹ thuật: {out.get('url') or 'Đã tạo file PNG'}"
             elif out.get("error"):

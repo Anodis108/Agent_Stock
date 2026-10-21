@@ -203,12 +203,14 @@ def test_missing_collection_says_not_in_the_documents():
 
 
 def test_supervisor_sends_rsi_definition_to_retrieval_and_symbol_to_indicator():
-    from ai_backend.infra.agents.supervisor_agent import RewrittenQuestion, route_question
-    from ai_backend.infra.agents.supervisor_agent.nodes import (
+    from ai_backend.infra.agents.chat.supervisor_agent import RewrittenQuestion, route_question
+    from ai_backend.infra.agents.chat.supervisor_agent.nodes import (
         HeuristicRewriteBrain,
         _extract_symbols,
     )
-    from ai_backend.infra.graph.chat import compile_chat_graph, route_from_supervisor, run_chat_graph
+    from ai_backend.infra.agents.chat.team import run_chat_graph
+    from ai_backend.infra.agents.graph import compile_swarm_graph
+    from ai_backend.infra.agents.nodes import chat_supervisor_node
 
     class BoomBrain:
         def route(self, rewritten):
@@ -241,13 +243,17 @@ def test_supervisor_sends_rsi_definition_to_retrieval_and_symbol_to_indicator():
     concept_route = route_question(definition, brain=BoomBrain())
     indicator_route = route_question(live, brain=BoomBrain())
     assert concept_route.agents_to_call == ["retrieval"]
-    assert route_from_supervisor({"routing": concept_route}) == "concept_retrieval"
+    assert chat_supervisor_node({"routing": concept_route}, None)["next"] == ["concept_retrieval"]
     assert indicator_route.agents_to_call == ["eval"]
     assert "retrieval" not in indicator_route.agents_to_call
-    assert route_from_supervisor({"routing": indicator_route}) == "workers"
+    indicator_next = chat_supervisor_node({"routing": indicator_route, "symbol": "HPG", "symbols": ["HPG"]}, None)["next"]
+    # eval cần giá + tin trước → nhờ scan_supervisor lấy (price/news chỉ nối với scan team)
+    assert indicator_next == ["scan_supervisor"]
+    indicator_gather = chat_supervisor_node({"routing": indicator_route, "symbol": "HPG", "symbols": ["HPG"]}, None)["gather_request"]
+    assert indicator_gather == ["price_agent", "news_agent"]
     assert _extract_symbols("RSI của HPG") == ["HPG"]
 
-    compile_chat_graph.cache_clear()
+    compile_swarm_graph.cache_clear()
     client = _indexed_client()
     result = run_chat_graph(
         "RSI là gì",
@@ -270,9 +276,9 @@ def test_supervisor_sends_rsi_definition_to_retrieval_and_symbol_to_indicator():
     assert published["agents_to_call"] == ["retrieval"]
 
     from common.domain.ports import PriceBar, PriceQuote
-    from ai_backend.infra.agents.eval_agent.nodes import HeuristicEvalBrain
-    from ai_backend.infra.agents.answer_composer.nodes import HeuristicAnswerDraftBrain
-    from ai_backend.infra.agents.news_agent.schemas import NewsReactAction
+    from ai_backend.infra.agents.scan.eval_agent.nodes import HeuristicEvalBrain
+    from ai_backend.infra.agents.chat.answer_composer.nodes import HeuristicAnswerDraftBrain
+    from ai_backend.infra.agents.scan.news_agent.schemas import NewsReactAction
 
     class QuotePrice:
         def fetch_latest_close(self, symbol):
@@ -289,7 +295,7 @@ def test_supervisor_sends_rsi_definition_to_retrieval_and_symbol_to_indicator():
         def filter_relevant(self, symbol, items):
             return []
 
-    compile_chat_graph.cache_clear()
+    compile_swarm_graph.cache_clear()
     from unittest.mock import patch
 
     with patch(
@@ -321,8 +327,9 @@ def test_supervisor_sends_rsi_definition_to_retrieval_and_symbol_to_indicator():
 
 
 def test_thin_concept_match_does_not_invent_a_definition():
-    from ai_backend.infra.agents.supervisor_agent.nodes import HeuristicRewriteBrain
-    from ai_backend.infra.graph.chat import compile_chat_graph, run_chat_graph
+    from ai_backend.infra.agents.chat.supervisor_agent.nodes import HeuristicRewriteBrain
+    from ai_backend.infra.agents.chat.team import run_chat_graph
+    from ai_backend.infra.agents.graph import compile_swarm_graph
     from ai_backend.infra.qdrant.answer import NOT_IN_DOCS
 
     class Boom:
@@ -336,7 +343,7 @@ def test_thin_concept_match_does_not_invent_a_definition():
         def append_conversation(self, *_args, **_kwargs):
             return None
 
-    compile_chat_graph.cache_clear()
+    compile_swarm_graph.cache_clear()
     result = run_chat_graph(
         "chứng quyền là gì",
         price_source=Boom(),
@@ -351,7 +358,8 @@ def test_thin_concept_match_does_not_invent_a_definition():
     assert result.answer == NOT_IN_DOCS
     assert result.source_file is None
     assert result.eval_result is None
-    assert result.compose is None
+    # Trả nguyên văn từ tài liệu (answer kind=concept), không qua LLM soạn
+    assert result.compose is not None and result.compose.model == "direct"
 
 
 def test_ai_stream_says_not_in_the_documents_when_the_passage_is_missing():
@@ -381,7 +389,7 @@ def test_ai_stream_says_not_in_the_documents_when_the_passage_is_missing():
     ai_app.state.orchestrator = MockSwarm()
     try:
         response = TestClient(ai_app).post(
-            "/v1/chat/stream",
+            "/v1/chat/stream-sse",
             json={"question": "chứng quyền là gì", "user_id": ""},
         )
     finally:

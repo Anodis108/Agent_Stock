@@ -200,13 +200,13 @@ def _chat_inprocess(
 ) -> dict[str, Any]:
     try:
         from web_backend.api.deps import get_app_deps
-        from ai_backend.infra.graph.chat import answer_question
+        from ai_backend.infra.agents.chat.team import run_chat_graph
     except ImportError:
         raise AiClientError("In-process chat requires backend dependencies not available in isolated AI environment")
 
     deps = get_app_deps()
     try:
-        result = answer_question(
+        result = run_chat_graph(
             question,
             price_source=deps.price_source,
             news_source=deps.news_source,
@@ -266,17 +266,12 @@ def _scan_inprocess(
     threshold_pct: float | None,
     request_id: str | None,
 ) -> dict[str, Any]:
-    try:
-        from ai_backend.application.symbol_scanner_service import SymbolScannerInput, SymbolScannerService
-        svc = SymbolScannerService()
-        out = svc.process(SymbolScannerInput(symbol=symbol, user_id=user_id, threshold_pct=threshold_pct or 3.0, request_id=request_id))
-        return out.model_dump(mode="json")
-    except Exception as exc:
-        raise AiClientError(f"In-process scan requires scanner service: {exc}")
+    from ai_backend.infra.agents.scan.team import run_scan_graph
+    from web_backend.api.deps import get_app_deps
 
     deps = get_app_deps()
     try:
-        result = scan_symbol(
+        result = run_scan_graph(
             symbol,
             price_source=deps.price_source,
             news_source=deps.news_source,

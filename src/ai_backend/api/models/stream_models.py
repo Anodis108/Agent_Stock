@@ -64,7 +64,7 @@ class TokenEvent(CustomBaseModel):
     """Sự kiện phát từng token sinh ra từ AnswerComposer hoặc Agent LLM."""
     event: str = "token"
     token: str = Field(description="Đoạn văn bản token vừa sinh")
-    node: str = Field(default="answer_composer", description="Node phát token")
+    node: str = Field(default="answer", description="Node phát token")
     index: int = Field(default=0, description="Thứ tự token trong luồng stream")
 
 
