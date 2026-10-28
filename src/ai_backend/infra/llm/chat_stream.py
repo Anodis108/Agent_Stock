@@ -1,148 +1,128 @@
 """SSE của swarm chat — không ghi session vào database.
 
-Process AI phát các event này qua POST /v1/chat/stream.
-Process web, khi AI_TRANSPORT=http, chỉ proxy và tự lưu hội thoại.
+Wire format (giống llm-engineer-demo `/chat/stream-sse`):
+  ``data: {"token": "..."}`` từng chunk, payload cuối ``data: {"complete": true, ...}``,
+  kết thúc ``data: [DONE]``. Lỗi: ``data: {"error": "..."}``.
+
+Process web (AI_TRANSPORT=http) parse qua ``stream_remote_sse`` rồi có thể bọc lại ``event:``.
 """
 
 from __future__ import annotations
 
-import queue
-import threading
+import json
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import AsyncIterator
 from typing import Any
 
-try:
-    from ai_backend.infra.agents.chat.team import run_chat_graph
-except ImportError:
-    run_chat_graph = None
+from ai_backend.domain.agents.graph import start_graph
+from ai_backend.domain.agents.scan.state import main_item
 
 
+def swarm_public_payload(state: dict[str, Any], *, started: float) -> dict[str, Any]:
+    """Payload final SSE từ state checkpoint (``start_graph`` yield ``result``)."""
+    rewritten = state["rewritten"]
+    guard = state["guardrail_result"]
+    if rewritten is not None:
+        route = str(rewritten.intent)
+    elif guard is None:
+        route = "empty"
+    elif guard.category == "greeting":
+        route = "greeting"
+    else:
+        route = "guardrail"
 
-def swarm_public_payload(result: Any, *, started: float) -> dict[str, Any]:
-    """Payload final_answer / complete. Không có session_id hay message_id."""
-    price_payload: dict[str, Any] | None = None
-    if result.price is not None:
-        p = result.price
-        price_payload = {
+    notes = state["notes"]
+    agents_to_call = list(notes.keys()) if notes else []
+
+    prices = state["prices"] or []
+    p = main_item(prices, state) if prices else None
+    price = (
+        None
+        if p is None
+        else {
             "symbol": p.symbol,
             "latest_close": p.latest_close,
             "prev_close": p.prev_close,
             "change_pct": p.change_pct,
             "error": p.error,
         }
+    )
 
-    news_items: list[dict[str, Any]] = []
-    news_error: str | None = None
-    if result.news is not None:
-        news_error = result.news.error
-        news_items = [
-            {
-                "title": i.title,
-                "url": i.url,
-                "published_at": i.published_at,
-                "snippet": i.snippet,
-            }
-            for i in (result.news.items or [])
-        ]
+    news = main_item(state["news"] or [], state) if state["news"] else None
+    news_n = len(news.items) if news and news.items else 0
 
-    severity = None
-    if result.eval_result is not None:
-        severity = result.eval_result.severity.model_dump(mode="json")
+    ev = state["eval_result"]
+    severity = ev.severity.model_dump(mode="json") if ev is not None else None
 
-    chart_path = getattr(result, "chart_path", None)
-    raw_steps = [
-        s.model_dump() if hasattr(s, "model_dump") else s
-        for s in (result.steps or [])
-    ]
-    rewritten = result.rewritten if hasattr(result, "rewritten") else None
-    routing = getattr(result, "routing", None)
+    chart = state["chart_result"]
+    chart_path = chart.url if chart is not None and chart.success else None
+
     return {
-        "question": result.question,
-        "rewritten": rewritten.rewritten if rewritten else "",
-        "symbol": rewritten.symbol if rewritten else None,
-        "intent": rewritten.intent if rewritten else "",
-        "agents_to_call": list(routing.agents_to_call or []) if routing else [],
-        "route": str(getattr(routing.route, "value", routing.route)) if routing else "",
-        "reason": (routing.reason or "") if routing else "",
-        "answer": result.answer or "",
-        "steps": raw_steps,
-        "hitl_used": result.hitl_used,
-        "pending_approvals_created": result.pending_approvals_created,
-        "error": result.error,
-        "price": price_payload,
-        "news_count": len(news_items),
-        "news": news_items,
-        "news_error": news_error,
+        "question": state["question"] or "",
+        "rewritten": rewritten.rewritten if rewritten is not None else "",
+        "symbol": rewritten.symbol if rewritten is not None else None,
+        "intent": rewritten.intent if rewritten is not None else "",
+        "agents_to_call": agents_to_call,
+        "route": route,
+        "reason": "",
+        "answer": state["answer"] or "",
+        "error": state["error"],
+        "price": price,
+        "news_count": news_n,
+        "news": (
+            [
+                {"title": i.title, "url": i.url, "published_at": i.published_at, "snippet": i.snippet}
+                for i in (news.items or [])
+            ]
+            if news
+            else []
+        ),
+        "news_error": news.error if news else None,
         "severity": severity,
         "chart_path": chart_path,
-        "source_file": getattr(result, "source_file", None),
+        "source_file": state["source_file"],
         "total_duration_s": round(time.perf_counter() - started, 3),
     }
 
 
-def iter_swarm_events(
+def _sse_data(payload: dict[str, Any] | str) -> str:
+    if isinstance(payload, str):
+        return f"data: {payload}\n\n"
+    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+def _token_text(chunk: Any) -> str:
+    if isinstance(chunk, str):
+        return chunk
+    if isinstance(chunk, dict) and "delta" in chunk:
+        return str(chunk["delta"])
+    return str(chunk)
+
+
+async def swarm_sse(
     question: str,
-    deps: Any,
+    request_deps: dict[str, Any],
     *,
     user_id: str = "default",
     request_id: str | None = None,
-    cancel_event: threading.Event | None = None,
-    is_disconnected: Callable[[], bool] | None = None,
-    watchlist_store: Any | None = None,
-    account_holdings: list | None = None,
-) -> Iterator[tuple[str, dict[str, Any]]]:
-    """Chạy run_chat_graph và yield (event, data). Không mở session database."""
+) -> AsyncIterator[str]:
+    """Chạy start_graph (mode=chat) và yield SSE demo-format. Client đóng → generator huỷ, graph dừng theo."""
     started = time.perf_counter()
-    cancel = cancel_event or threading.Event()
-    event_queue: queue.Queue[tuple[str, dict[str, Any]] | None] = queue.Queue()
 
-    def _event_cb(event: str, data: dict[str, Any]) -> None:
-        event_queue.put((event, data))
-
-    def _worker() -> None:
-        from ai_backend.infra.agents.chat.team import StreamCancelledError, set_stream_cancel_event
-
-        set_stream_cancel_event(cancel)
-        try:
-            result = run_chat_graph(
-                question,
-                price_source=deps.price_source,
-                news_source=deps.news_source,
-                history_store=deps.history_store,
-                memory_store=deps.memory_store,
-                user_id=user_id,
-                request_id=request_id,
-                event_callback=_event_cb,
-                watchlist_store=watchlist_store,
-                account_holdings=account_holdings,
-            )
-            payload = swarm_public_payload(result, started=started)
-            event_queue.put(("final_answer", payload))
-            event_queue.put(("complete", dict(payload)))
-        except StreamCancelledError:
-            event_queue.put(("error", {"error": "client disconnected"}))
-        except Exception as exc:
-            event_queue.put(("error", {"error": str(exc)}))
-        finally:
-            set_stream_cancel_event(None)
-            event_queue.put(None)
-
-    worker = threading.Thread(target=_worker, daemon=True)
-    worker.start()
     try:
-        while True:
-            if is_disconnected and is_disconnected():
-                cancel.set()
-                break
-            try:
-                item = event_queue.get(timeout=0.2)
-            except queue.Empty:
-                if not worker.is_alive():
-                    break
-                continue
-            if item is None:
-                break
-            yield item
-    finally:
-        cancel.set()
+        async for kind, payload in start_graph(
+            "chat", question, request_deps, user_id=user_id, request_id=request_id
+        ):
+            if kind == "token":
+                yield _sse_data({"token": _token_text(payload)})
+            elif kind == "result":
+                yield _sse_data(
+                    {
+                        **swarm_public_payload(payload, started=started),
+                        "request_id": request_id,
+                        "complete": True,
+                    }
+                )
+        yield _sse_data("[DONE]")
+    except Exception as exc:  # noqa: BLE001 — báo lỗi cho client thay vì cắt stream
+        yield _sse_data({"error": str(exc)})

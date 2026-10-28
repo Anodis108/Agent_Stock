@@ -6,8 +6,8 @@ Tag: feature, model, prompt_version, cache_hit.
 from __future__ import annotations
 
 from contextvars import ContextVar
-from dataclasses import asdict, dataclass, field
 from typing import Any
+from pydantic import BaseModel, Field
 
 MODEL_PRICING_USD_PER_1M: dict[str, dict[str, float]] = {
     "gpt-4o-mini": {"prompt": 0.15, "completion": 0.60},
@@ -19,8 +19,7 @@ VND_PER_USD = 25400.0
 _cost_context: ContextVar[dict[str, Any]] = ContextVar("cost_context", default={})
 
 
-@dataclass(slots=True)
-class CostRecord:
+class CostRecord(BaseModel):
     feature: str
     model: str
     prompt_version: str
@@ -31,12 +30,11 @@ class CostRecord:
     cost_usd: float
 
     def as_dict(self) -> dict:
-        return asdict(self)
+        return self.model_dump()
 
 
-@dataclass
-class CostTracker:
-    records: list[CostRecord] = field(default_factory=list)
+class CostTracker(BaseModel):
+    records: list[CostRecord] = Field(default_factory=list)
 
     def record_cost(
         self,

@@ -9,7 +9,7 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.requests import Request
 from starlette.responses import Response
 
-from common.logging.logger import get_logger, set_correlation_id
+from ai_backend.shared.logging import get_logger, set_correlation_id
 
 logger = get_logger("ai_backend.api.middleware")
 

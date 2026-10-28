@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 
-from ai_backend.api.models.scan_models import ScanRequest, ScanResponse
-from ai_backend.application.symbol_scanner_service import SymbolScannerService
+from ai_backend.api.models.scan_models import ScanRequest, ScanResponse, ScanResumeRequest, ScanResumeResponse
+from ai_backend.application.symbol_scanner_service import ScanResumeInput, SymbolScannerService
 from ai_backend.shared.exceptions import ScanExecutionException
-from common.logging.logger import get_logger
+from ai_backend.shared.logging import get_logger
 
 logger = get_logger("ai_backend.api.scan")
 
@@ -32,3 +32,16 @@ def scan_symbol_endpoint(body: ScanRequest, request: Request) -> ScanResponse:
         # Báo lỗi rõ ràng thay vì trả kết quả "ổn định" giả -> người dùng không bị đánh lừa.
         logger.error(f"Lỗi scanner service: {exc}", exc_info=True)
         raise ScanExecutionException(sym, str(exc)) from exc
+
+
+@router.post("/scan/resume", response_model=ScanResumeResponse, summary="HITL scan — duyệt/từ chối hành động rồi resume graph")
+def scan_resume_endpoint(body: ScanResumeRequest, request: Request) -> ScanResumeResponse:
+    """Graph scan đang dừng trước scan_tools (thread_id) → duyệt thì chạy tool, từ chối thì bỏ qua rồi chạy tiếp."""
+    scanner: SymbolScannerService = request.app.state.symbol_scanner_service
+    try:
+        out = scanner.resume(
+            ScanResumeInput(thread_id=body.thread_id, approve=body.approve, reason=body.reason, user_id=body.user_id)
+        )
+    except ValueError as exc:  # thread không có hành động chờ duyệt
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return ScanResumeResponse(**out.model_dump())

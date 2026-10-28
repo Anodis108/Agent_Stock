@@ -205,6 +205,7 @@ def stream_remote_sse(
     holdings: list[dict[str, Any]] | None = None,
     cancel_event: threading.Event | None = None,
     is_disconnected: Callable[[], bool] | None = None,
+    **kwargs: Any,
 ) -> Iterator[tuple[str, dict[str, Any]]]:
     """Kết nối SSE stream tới AI Backend tại POST /v1/chat/stream-sse.
 
@@ -213,18 +214,6 @@ def stream_remote_sse(
     payload: dict[str, Any] = {"question": question, "user_id": user_id}
     if request_id:
         payload["request_id"] = request_id
-    if watchlist is not None:
-        payload["watchlist"] = watchlist
-    if holdings is not None:
-        payload["holdings"] = holdings
-
-    if "watchlist" not in payload and "holdings" not in payload:
-        try:
-            from ai_backend.infra.llm.account_snapshot import question_needs_account_lists
-        except ImportError:
-            def question_needs_account_lists(q): return False
-        if question_needs_account_lists(question):
-            _attach_account_lists(payload, user_id)
 
     body = json.dumps(payload).encode("utf-8")
     headers = {
@@ -271,21 +260,43 @@ def stream_remote_sse(
     event_name: str | None = None
     data_lines: list[str] = []
 
+    def _dispatch_demo_data(parsed: dict[str, Any]) -> tuple[str, dict[str, Any]] | None:
+        if "error" in parsed:
+            return "error", parsed
+        if "token" in parsed:
+            return "token", {"delta": parsed["token"]}
+        if parsed.get("complete") is True:
+            body = {k: v for k, v in parsed.items() if k != "complete"}
+            return "complete", body
+        if "answer" in parsed and "question" in parsed:
+            return "complete", parsed
+        return None
+
     def _flush() -> tuple[str, dict[str, Any]] | None:
         nonlocal event_name, data_lines
         name = event_name
         raw_data = "\n".join(data_lines).strip()
         event_name = None
         data_lines = []
-        if not name or not raw_data:
+        if not raw_data:
+            return None
+        if raw_data == "[DONE]":
             return None
         try:
             parsed = json.loads(raw_data)
         except json.JSONDecodeError:
-            parsed = {"raw": raw_data}
+            if not name:
+                return None
+            return name, {"raw": raw_data}
         if not isinstance(parsed, dict):
-            parsed = {"raw": parsed}
-        return name, parsed
+            if not name:
+                return None
+            return name, {"raw": parsed}
+        if name:
+            if name == "final_answer":
+                return "complete", parsed
+            return name, parsed
+        return _dispatch_demo_data(parsed)
 
     try:
         while True:
@@ -346,12 +357,6 @@ def ai_chat(
     payload: dict[str, Any] = {"question": question, "user_id": user_id}
     if request_id:
         payload["request_id"] = request_id
-    try:
-        from ai_backend.infra.llm.account_snapshot import question_needs_account_lists
-    except ImportError:
-        def question_needs_account_lists(q): return False
-    if question_needs_account_lists(question):
-        _attach_account_lists(payload, user_id)
     return post_json("/v1/chat", payload, request_id=request_id)
 
 
@@ -370,3 +375,18 @@ def ai_scan(
         payload["request_id"] = request_id
     _attach_account_lists(payload, user_id)
     return post_json("/v1/scan", payload, request_id=request_id)
+
+
+def ai_scan_resume(
+    *,
+    thread_id: str,
+    approve: bool,
+    reason: str = "",
+    user_id: str = "default",
+) -> dict[str, Any]:
+    """Gọi POST /v1/scan/resume — duyệt / từ chối hành động scan đang chờ (HITL).
+
+    Không retry: lần gọi đầu có thể đã chạy tool (gửi cảnh báo) dù client timeout.
+    """
+    payload = {"thread_id": thread_id, "approve": approve, "reason": reason, "user_id": user_id}
+    return post_json_once("/v1/scan/resume", payload)

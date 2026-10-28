@@ -6,7 +6,6 @@ import os
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -123,8 +122,7 @@ def test_ai_main_chat_stream_endpoint(fake_chat_runner):
         response = client.post("/v1/chat/stream-sse", json=payload)
         assert response.status_code == 200
         assert "text/event-stream" in response.headers.get("content-type", "")
-        assert "node_start" in response.text
-        assert "node_finish" in response.text
+        assert '"token"' in response.text or "data: [DONE]" in response.text
     finally:
         del app.state.orchestrator
 

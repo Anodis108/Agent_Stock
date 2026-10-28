@@ -1,22 +1,23 @@
 """Symbol Scanner Service — Entrypoint nhánh scan của Hierarchical Swarm.
 
 Kế thừa BaseService từ common.base.base_service.
-Gọi `graph_runner` (production: run_scan_graph) → top_supervisor → scan_supervisor điều phối
-price/news → event_classifier → eval → synthesis → HITL gate 1/2.
-Bắt buộc inject graph_runner; test truyền runner giả qua fixture.
+Gọi `run_graph` (mode=scan) → top_supervisor → scan_supervisor điều phối
+price/news → event_classifier → eval → synthesis; đề xuất update_watchlist dừng chờ duyệt (alert chỉ trên response)
+(interrupt_before scan_tools) → `resume` (resume_graph) để duyệt / từ chối.
 """
 
 from __future__ import annotations
 
+import asyncio
 import uuid
-from typing import Any, Callable
+from typing import Any
 from pydantic import Field
 
 from common.base.base_model import CustomBaseModel
 from common.base.base_service import BaseService
 from common.domain.ports import MemoryStore, NewsSource, Notifier, PriceHistoryStore, PriceSource, WatchlistStore
-from common.logging.logger import get_logger
-from ai_backend.infra.agents.scan.team import ScanSymbolResult
+from ai_backend.shared.logging import get_logger
+from ai_backend.domain.agents.graph import resume_graph, start_graph
 
 
 logger = get_logger("ai_backend.application.symbol_scanner")
@@ -40,9 +41,9 @@ class SymbolScannerOutput(CustomBaseModel):
     change_pct: float = 0.0
     triggered: bool = False
     reason: str = ""
-    gate1_action: str | None = None
-    gate2_pending: bool = False
-    pending_events: list[dict[str, Any]] = Field(default_factory=list)
+    status: str = "done"  # done | pending_approval
+    thread_id: str = ""
+    tool_call: dict[str, Any] | None = None
     alerts: list[dict[str, Any]] = Field(default_factory=list)
     steps: list[dict[str, Any]] = Field(default_factory=list)
     severity: dict[str, Any] | None = None
@@ -52,13 +53,31 @@ class SymbolScannerOutput(CustomBaseModel):
     request_id: str | None = None
 
 
+class ScanResumeInput(CustomBaseModel):
+    """Duyệt / từ chối hành động scan đang chờ (giống demo /assistant/approve)."""
+    thread_id: str
+    approve: bool
+    reason: str = ""
+    user_id: str = "default"
+
+
+class ScanResumeOutput(CustomBaseModel):
+    """Kết quả sau resume: done, hoặc lại pending_approval ở hành động kế tiếp."""
+    symbol: str = ""
+    status: str = "done"  # done | pending_approval
+    thread_id: str = ""
+    tool_call: dict[str, Any] | None = None
+    alert: dict[str, Any] | None = None
+    steps: list[dict[str, Any]] = Field(default_factory=list)
+    error: str | None = None
+
+
 class SymbolScannerService(BaseService):
     """Service quét cảnh báo một mã cổ phiếu qua Hierarchical Swarm Graph."""
 
     def __init__(
         self,
         *,
-        graph_runner: Callable[..., ScanSymbolResult] | None = None,  # production: run_scan_graph
         price_source: PriceSource | None = None,
         news_source: NewsSource | None = None,
         history_store: PriceHistoryStore | None = None,
@@ -66,7 +85,6 @@ class SymbolScannerService(BaseService):
         watchlist_store: WatchlistStore | None = None,
         notifier: Notifier | None = None,
     ) -> None:
-        self.graph_runner = graph_runner
         self.price_source = price_source
         self.news_source = news_source
         self.history_store = history_store
@@ -78,53 +96,105 @@ class SymbolScannerService(BaseService):
         """Quét 1 mã: lấy giá + tin, phân loại sự kiện, đánh giá mức độ, soạn cảnh báo và qua cổng HITL."""
         sym = inputs.symbol.strip().upper()
         req_id = inputs.request_id or str(uuid.uuid4())
-        threshold = float(inputs.threshold_pct) if inputs.threshold_pct is not None else DEFAULT_THRESHOLD_PCT
-        logger.info(f"SymbolScannerService.process: sym='{sym}' threshold={threshold}% user='{inputs.user_id}'")
+        threshold = inputs.threshold_pct
+        logger.info(f"SymbolScannerService.process: sym='{sym}' threshold={threshold} user='{inputs.user_id}'")
 
-        if self.graph_runner is None:
-            raise RuntimeError("SymbolScannerService chưa được inject graph_runner (run_scan_graph)")
+        deps = {
+            "price_source": self.price_source,
+            "news_source": self.news_source,
+            "history_store": self.history_store,
+            "memory_store": self.memory_store,
+            "notifier": self.notifier,
+            "watchlist_store": self.watchlist_store,
+            "threshold_pct": threshold,
+        }
 
-        res = self.graph_runner(
-            sym,
-            price_source=self.price_source,
-            news_source=self.news_source,
-            history_store=self.history_store,
-            memory_store=self.memory_store,
-            notifier=self.notifier,
-            watchlist_store=self.watchlist_store,
-            user_id=inputs.user_id,
-            threshold_pct=threshold,
-            request_id=req_id,
-        )
-        route_obj = getattr(res.routing, "route", None)
+        async def _run() -> Any:
+            async for kind, payload in start_graph(
+                "scan", sym, deps, user_id=inputs.user_id, request_id=req_id
+            ):
+                if kind == "result":
+                    return payload
+            raise RuntimeError("start_graph không yield result")
+
+        from ai_backend.domain.agents.scan.nodes import DEFAULT_THRESHOLD_PCT
+        from ai_backend.domain.agents.scan.state import main_item
+
+        state = asyncio.run(_run())
+        routing = state["event_routing"]
+        route_obj = routing.route if routing is not None else None
         route = str(getattr(route_obj, "value", route_obj or "bình thường"))
-        reason = getattr(res.routing, "reason", "") or ""
-        change_pct = float(getattr(res.price, "change_pct", None) or 0.0)
+        reason = routing.reason if routing is not None else ""
+        prices = state["prices"] or []
+        p = main_item(prices, state) if prices else None
+        price = (
+            None
+            if p is None
+            else {
+                "symbol": p.symbol,
+                "latest_close": p.latest_close,
+                "prev_close": p.prev_close,
+                "change_pct": p.change_pct,
+                "error": p.error,
+            }
+        )
+        change_pct = float(price["change_pct"] if price and price["change_pct"] is not None else 0.0)
+        pct = state["threshold_pct"]
+        threshold = pct if pct is not None else DEFAULT_THRESHOLD_PCT
         triggered = route_obj is not None and route in ("bất thường", "abnormal")
+        news = main_item(state["news"] or [], state) if state["news"] else None
+        ev = state["eval_result"]
+        alert = state["alert"]
         return SymbolScannerOutput(
             symbol=sym,
             route=route,
-            threshold_pct=res.threshold_pct,
+            threshold_pct=threshold,
             change_pct=change_pct,
             triggered=triggered,
-            reason=reason,
-            gate1_action=res.gate1_action,
-            gate2_pending=res.gate2_pending,
-            pending_events=res.pending_events,
+            reason=reason or "",
+            status="pending_approval" if state["pending_tool_call"] else "done",
+            thread_id=state["thread_id"] or "",
+            tool_call=state["pending_tool_call"],
             alerts=[{
                 "symbol": sym,
                 "route": route,
-                "threshold_pct": res.threshold_pct,
+                "threshold_pct": threshold,
                 "change_pct": change_pct,
                 "triggered": triggered,
-                "reason": reason,
+                "reason": reason or "",
             }],
-            steps=res.steps,
-            severity=res.severity.model_dump(mode="json") if res.severity is not None else None,
-            alert=res.alert.model_dump(mode="json") if res.alert is not None else None,
-            news_count=len(getattr(res.news, "items", None) or []),
-            error=res.error,
+            severity=ev.severity.model_dump(mode="json") if ev is not None else None,
+            alert=alert.model_dump(mode="json") if alert is not None else None,
+            news_count=len(news.items) if news and news.items else 0,
+            error=state["error"],
             request_id=req_id,
+        )
+
+    def resume(self, inputs: ScanResumeInput) -> ScanResumeOutput:
+        """Duyệt → scan_tools chạy (cập nhật watchlist); từ chối → bỏ qua tool, graph chạy tiếp."""
+        logger.info(f"SymbolScannerService.resume: thread='{inputs.thread_id}' approve={inputs.approve}")
+        state = asyncio.run(resume_graph(
+            inputs.thread_id,
+            inputs.approve,
+            inputs.reason,
+            {  # đủ port như process(): sau khi duyệt, scan_supervisor vẫn có thể gọi thêm worker
+                "price_source": self.price_source,
+                "news_source": self.news_source,
+                "history_store": self.history_store,
+                "memory_store": self.memory_store,
+                "notifier": self.notifier,
+                "watchlist_store": self.watchlist_store,
+            },
+        ))
+        symbols = state["symbols"]
+        alert = state["alert"]
+        return ScanResumeOutput(
+            symbol=symbols[0] if symbols else "",
+            status="pending_approval" if state["pending_tool_call"] else "done",
+            thread_id=state["thread_id"] or "",
+            tool_call=state["pending_tool_call"],
+            alert=alert.model_dump(mode="json") if alert is not None else None,
+            error=state["error"],
         )
 
     def scan(
@@ -145,8 +215,9 @@ class SymbolScannerService(BaseService):
             route=out.route,
             threshold_pct=out.threshold_pct,
             reason=out.reason,
-            gate1_action=out.gate1_action,
-            gate2_pending=out.gate2_pending,
+            status=out.status,
+            thread_id=out.thread_id,
+            tool_call=out.tool_call,
             error=out.error,
             request_id=out.request_id,
             alerts=[ScanAlertOut(**a) for a in out.alerts],
@@ -154,5 +225,4 @@ class SymbolScannerService(BaseService):
             severity=out.severity,
             alert=out.alert,
             news_count=out.news_count,
-            pending_events=out.pending_events,
         )

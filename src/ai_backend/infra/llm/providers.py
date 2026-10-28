@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
-from typing import Any, TypeVar
+from collections.abc import Callable
+from typing import TypeVar
 
 from common.settings import settings
 

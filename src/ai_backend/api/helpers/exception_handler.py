@@ -9,7 +9,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from ai_backend.shared.exceptions import AiBackendException
-from common.logging.logger import get_correlation_id, get_logger
+from ai_backend.shared.logging import get_correlation_id, get_logger
 
 logger = get_logger("ai_backend.api.exceptions")
 

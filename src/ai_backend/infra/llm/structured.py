@@ -78,23 +78,26 @@ def call_llm_structured(
     last_exc: Exception | None = None
     from ai_backend.infra.llm.completion import chat, chat_parsed
 
+    def _execute_attempt() -> TModel:
+        if chat_parsed_fn is not None:
+            res = chat_parsed_fn(messages, schema, params)
+            return parse_structured(res, schema)
+
+        if chat_fn is not None:
+            raw_text = chat_fn(messages, params)
+            return parse_structured(raw_text, schema)
+
+        # Production mặc định
+        try:
+            return chat_parsed(messages, schema, params)
+        except Exception as e:
+            logger.warning("chat_parsed gặp lỗi, thử fallback chat() + schema validate: %s", e)
+            raw_text = chat(messages, params)
+            return parse_structured(raw_text, schema)
+
     for attempt in range(max_retries + 1):
         try:
-            if chat_parsed_fn is not None:
-                res = chat_parsed_fn(messages, schema, params)
-                return parse_structured(res, schema)
-
-            if chat_fn is not None:
-                raw_text = chat_fn(messages, params)
-                return parse_structured(raw_text, schema)
-
-            # Production mặc định
-            try:
-                return chat_parsed(messages, schema, params)
-            except Exception as e:
-                logger.warning("chat_parsed gặp lỗi, thử fallback chat() + schema validate: %s", e)
-                raw_text = chat(messages, params)
-                return parse_structured(raw_text, schema)
+            return _execute_attempt()
         except (ValidationError, ValueError, json.JSONDecodeError, Exception) as exc:
             last_exc = exc
             logger.warning(
@@ -111,3 +114,4 @@ def call_llm_structured(
     if last_exc is not None:
         raise last_exc
     raise ValueError(f"Không thể parse output khớp schema {schema.__name__}.")
+

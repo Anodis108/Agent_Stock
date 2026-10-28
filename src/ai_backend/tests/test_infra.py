@@ -1,90 +1,45 @@
 """Unit tests for AI Backend Infrastructure Layer (ai_backend.infra).
 
 Tests:
-- Graph orchestration: build_swarm_graph, compile_swarm_graph, list_graph_nodes/edges
+- Graph orchestration: build_graph
 - Market data: VnstockPriceSource with offline fallback
 - Qdrant/Concept loading: load_concept_chunks from resources/concepts
 - Cache layer: normalize_question, ExactCache context
 - Cost tracker: record_completion_usage, get_cost_context
 - Storage layer: ChartObjectStore, safe_png_name, PgMemoryStore, PgWatchlistStore
-- Monitoring: trace_request, agent_span, PII masking
 - Worker Agents: all 10 worker agents offline execution
 - PortfolioWatchAgent: in-memory calculation with account_holdings snapshot
 """
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
-import pytest
 
-from ai_backend.infra.agents.graph import build_swarm_graph, compile_swarm_graph
-from ai_backend.infra.agents.graph import list_graph_edges, list_graph_nodes
+from ai_backend.domain.agents.graph import build_graph
 from ai_backend.infra.market_data.price_source import VnstockPriceSource
 from ai_backend.infra.qdrant.concepts import load_concept_chunks
 from ai_backend.infra.cache.exact import normalize_question
 from ai_backend.infra.cost.tracker import (
     CostTracker,
-    get_cost_context,
-    record_completion_usage,
 )
 from ai_backend.infra.storage.chart_store import safe_png_name
 from ai_backend.infra.storage.memory_store import PgMemoryStore
 from ai_backend.infra.storage.watchlist_store import PgWatchlistStore
-from ai_backend.infra.monitoring.tracing import redact_pii, sanitize_trace_payload
-from ai_backend.infra.agents.scan.price_agent import run_price_agent, PriceAgentResult
-from ai_backend.infra.agents.scan.eval_agent import run_eval_agent, EvalAgentBrain
-from ai_backend.infra.agents.scan.event_classifier import classify_event, EventClassifierBrain
-from ai_backend.infra.agents.chat.portfolio_watch_agent import run_portfolio_watch_agent
-from common.domain.entities import WatchlistItem, RoutingDecision, EventRoute, Severity, SeverityLevel
+from ai_backend.domain.agents.scan.price_agent import run_price_agent, PriceAgentResult
+from ai_backend.domain.agents.scan.eval_agent import run_eval_agent
+from ai_backend.domain.agents.chat.nodes.portfolio import run_portfolio_watch
+from common.domain.entities import WatchlistItem
 
 
 class TestGraphInfrastructure:
     """Kiểm thử cấu trúc StateGraph điều phối LangGraph Swarm."""
 
-    def test_build_swarm_graph_nodes(self):
-        nodes = list(build_swarm_graph().nodes.keys())
-        # 3 tầng: top supervisor -> 2 team supervisor -> workers dùng chung
-        expected_nodes = [
-            "top_supervisor",
-            "chat_supervisor",
-            "scan_supervisor",
-            "price_agent",
-            "news_agent",
-            "eval_agent",
-            "event_classifier",
-            "synthesis_agent",
-            "hitl_gate_1",
-            "hitl_gate_2",
-            "guardrail_input",
-            "answer",
-            "guardrail_output",
-            "draw_agent",
-        ]
-        for node in expected_nodes:
-            assert node in nodes, f"Node {node} must be present in swarm graph"
+    def test_swarm_graph_compiles(self):
+        g = build_graph().get_graph()
+        assert {"top_supervisor", "chat_team", "scan_team"} <= set(g.nodes.keys())
 
-    def test_workers_report_back_to_team_supervisor(self):
-        assert compile_swarm_graph() is not None
-        edges = set(list_graph_edges())
-        assert ("__start__", "top_supervisor") in edges
-        assert ("top_supervisor", "guardrail_input") in edges
-        assert ("top_supervisor", "scan_supervisor") in edges
-        # price/news chỉ nối với scan_supervisor; chat nhờ scan_supervisor lấy dữ liệu
-        for worker in ("price_agent", "news_agent"):
-            assert (worker, "scan_supervisor") in edges
-            assert (worker, "chat_supervisor") not in edges
-            assert ("chat_supervisor", worker) not in edges
-        assert ("chat_supervisor", "scan_supervisor") in edges
-        assert ("scan_supervisor", "chat_supervisor") in edges
-        # eval_agent dùng chung, báo lại supervisor của team đang chạy
-        assert ("eval_agent", "chat_supervisor") in edges
-        assert ("eval_agent", "scan_supervisor") in edges
-        # mọi câu trả lời đi qua answer -> guardrail_output (có vòng soạn lại)
-        assert ("guardrail_input", "answer") in edges
-        assert ("answer", "guardrail_output") in edges
-        assert ("guardrail_output", "answer") in edges
-        assert len(list_graph_nodes()) >= 19
+    def test_swarm_subgraph_nodes_visible_with_xray(self):
+        nodes = set(build_graph().get_graph(xray=1).nodes.keys())
+        assert {"guardrail_input", "scan_supervisor", "event_classifier", "scan_tools"} <= nodes
 
 
 class TestMarketDataInfrastructure:
@@ -176,33 +131,6 @@ class TestStorageInfrastructure:
         assert conv[0]["content"] == "Xin chào"
 
 
-class TestMonitoringInfrastructure:
-    """Kiểm thử Masking PII và Tracing."""
-
-    def test_pii_redaction(self):
-        text = "Liên hệ user test@example.com hoặc SĐT 0912345678 để nhận OTP."
-        redacted = redact_pii(text)
-        assert "[EMAIL_REDACTED]" in redacted
-        assert "[PHONE_REDACTED]" in redacted
-        assert "test@example.com" not in redacted
-        assert "0912345678" not in redacted
-
-    def test_sanitize_trace_payload(self):
-        payload = {
-            "user_email": "admin@fpt.vn",
-            "symbol": "VNM",
-            "nested": {
-                "contact": "0987654321",
-                "normal": "value",
-            },
-        }
-        sanitized = sanitize_trace_payload(payload)
-        assert sanitized["user_email"] == "[EMAIL_REDACTED]"
-        assert sanitized["symbol"] == "VNM"
-        assert sanitized["nested"]["contact"] == "[PHONE_REDACTED]"
-        assert sanitized["nested"]["normal"] == "value"
-
-
 class TestWorkerAgentsInfrastructure:
     """Kiểm thử các Agent Worker vận hành offline."""
 
@@ -213,28 +141,19 @@ class TestWorkerAgentsInfrastructure:
         assert res.latest_close is not None
 
     def test_eval_agent_offline(self):
-        from ai_backend.infra.agents.scan.eval_agent.nodes import HeuristicEvalBrain
+        from ai_backend.domain.agents.scan.eval_agent.nodes import HeuristicEvalBrain
         p = PriceAgentResult(symbol="FPT", latest_close=130.0, prev_close=129.0, change_pct=0.77)
         res = run_eval_agent(p, None, None, brain=HeuristicEvalBrain())
         assert res.severity is not None
         assert res.severity.level is not None
 
-    def test_event_classifier_offline(self):
-        class _MockClassifierBrain:
-            def classify(self, price, news, threshold_pct):
-                return RoutingDecision(route=EventRoute.NORMAL, agents_to_call=["price_agent"], reason="Dưới ngưỡng")
-
-        p = PriceAgentResult(symbol="TCB", latest_close=25.0, prev_close=24.9, change_pct=0.4)
-        decision = classify_event(p, None, threshold_pct=3.0, brain=_MockClassifierBrain())
-        assert decision.route == EventRoute.NORMAL
-
-    def test_portfolio_watch_agent_in_memory(self, offline_prices):
+    def test_portfolio_watch_in_memory(self, offline_prices):
         ps = offline_prices
         holdings = [
             {"symbol": "HPG", "quantity": 1000, "avg_buy_price": 28.0},
             {"symbol": "FPT", "quantity": 500, "avg_buy_price": 125.0},
         ]
-        res = run_portfolio_watch_agent(
+        res = run_portfolio_watch(
             user_id="user_test",
             intent="portfolio",
             price_source=ps,

@@ -47,8 +47,9 @@ class ScanResponse(CustomBaseModel):
     steps: list[str] = Field(default_factory=list)
     reason: str = ""
     threshold_pct: float | None = None
-    gate1_action: str | None = None
-    gate2_pending: bool = False
+    status: str = "done"  # done | pending_approval (HITL: graph dừng trước scan_tools)
+    thread_id: str = ""
+    tool_call: dict[str, Any] | None = None
     error: str | None = None
     request_id: str | None = None
     price: dict[str, Any] | None = None
@@ -57,7 +58,6 @@ class ScanResponse(CustomBaseModel):
     news_error: str | None = None
     severity: dict[str, Any] | None = None
     alert: dict[str, Any] | None = None
-    pending_events: list[str] = Field(default_factory=list)
 
 
 # ==============================================================================

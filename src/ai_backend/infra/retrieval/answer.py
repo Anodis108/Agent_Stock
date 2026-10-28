@@ -6,10 +6,10 @@ Không tách subquery, không rerank, không tìm web. Supervisor gửi câu kh�
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
 
-from ai_backend.infra.qdrant.concepts import embed_concept_texts
+from ai_backend.infra.retrieval.concepts import embed_concept_texts
 from common.settings import settings
+from pydantic import BaseModel, ConfigDict
 
 NOT_IN_DOCS = "Không có trong tài liệu."
 _WORD = re.compile(r"\w+", re.UNICODE)
@@ -44,8 +44,9 @@ _STOP = frozenset(
 )
 
 
-@dataclass(frozen=True, slots=True)
-class ConceptAnswer:
+class ConceptAnswer(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     answer: str
     source_file: str | None
     relevant: bool
@@ -74,20 +75,21 @@ def grade_chunk(question: str, chunk_text: str) -> bool:
 
 
 def answer_concept(
-    question: str,
+    question: Any,
     *,
     client: object,
     embed_fn=None,
     top_k: int = 4,
 ) -> ConceptAnswer:
     """Tìm top-k trên stock_concepts, chấm, rồi trả lời từ đoạn liên quan."""
-    asked = (question or "").strip()
+    q_text = getattr(question, "question", question)
+    asked = (q_text or "").strip() if isinstance(q_text, str) else str(q_text or "").strip()
     name = (settings.concept_collection or "").strip()
     memory_name = (settings.qdrant_collection or "").strip()
     if not asked or not name or name == memory_name:
-        return ConceptAnswer(NOT_IN_DOCS, None, False)
+        return ConceptAnswer(answer=NOT_IN_DOCS, source_file=None, relevant=False)
     if not client.collection_exists(name):
-        return ConceptAnswer(NOT_IN_DOCS, None, False)
+        return ConceptAnswer(answer=NOT_IN_DOCS, source_file=None, relevant=False)
 
     embed = embed_fn or embed_concept_texts
     vector = embed([asked])[0]
@@ -97,5 +99,5 @@ def answer_concept(
         text = str(payload.get("text") or "").strip()
         source = str(payload.get("source_file") or "").strip()
         if text and grade_chunk(asked, text):
-            return ConceptAnswer(text, source or None, True)
-    return ConceptAnswer(NOT_IN_DOCS, None, False)
+            return ConceptAnswer(answer=text, source_file=source or None, relevant=True)
+    return ConceptAnswer(answer=NOT_IN_DOCS, source_file=None, relevant=False)

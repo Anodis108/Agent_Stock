@@ -31,7 +31,7 @@ if str(ROOT) not in sys.path:
 
 import yaml  # noqa: E402
 
-from ai_backend.application.eval.history import get_git_sha  # noqa: E402
+from ai_backend.infra.eval.history import get_git_sha  # noqa: E402
 from ai_backend.infra.cost.tracker import (  # noqa: E402
     get_cost_tracker,
     reset_cost_tracker,

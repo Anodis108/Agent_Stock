@@ -382,8 +382,8 @@ def test_generate_markdown_report_formatting():
 
 def test_prompt_lint_passes_on_resources_prompts():
     """Mọi prompt trong resources/prompts/ phải pass lint (metadata + biến template)."""
-    from ai_backend.infra.llm.prompt_lint import lint_prompts_dir
-    from ai_backend.infra.llm.prompt_registry import resolve_prompts_dir
+    from ai_backend.infra.prompts.lint import lint_prompts_dir
+    from ai_backend.infra.prompts import resolve_prompts_dir
 
     issues = lint_prompts_dir(resolve_prompts_dir())
     assert not issues, "\n".join(str(i) for i in issues)
@@ -391,7 +391,7 @@ def test_prompt_lint_passes_on_resources_prompts():
 
 def test_prompt_lint_catches_missing_metadata(tmp_path: Path):
     """Lint báo lỗi khi thiếu metadata bắt buộc."""
-    from ai_backend.infra.llm.prompt_lint import lint_prompt_file
+    from ai_backend.infra.prompts.lint import lint_prompt_file
 
     prompt_dir = tmp_path / "demo_prompt"
     prompt_dir.mkdir()
@@ -409,7 +409,7 @@ def test_prompt_lint_catches_missing_metadata(tmp_path: Path):
 
 def test_prompt_lint_catches_variables_mismatch(tmp_path: Path):
     """Lint báo lỗi khi variables khai báo không khớp template."""
-    from ai_backend.infra.llm.prompt_lint import lint_prompt_file
+    from ai_backend.infra.prompts.lint import lint_prompt_file
 
     prompt_dir = tmp_path / "demo_prompt"
     prompt_dir.mkdir()
@@ -609,7 +609,7 @@ def test_gate_cli_exit_code(tmp_path: Path):
 
 def test_save_eval_history_writes_timestamped_file(tmp_path: Path):
     """History lưu vào <timestamp>_<sha>.json."""
-    from ai_backend.application.eval.history import load_history_reports, save_eval_history
+    from ai_backend.infra.eval.history import load_history_reports, save_eval_history
 
     payload = _gate_report()
     path = save_eval_history(
@@ -626,7 +626,7 @@ def test_save_eval_history_writes_timestamped_file(tmp_path: Path):
 
 def test_compute_noise_stats_three_runs():
     """3 runs cùng commit → tính σ và gợi ý tolerance."""
-    from ai_backend.application.eval.history import compute_noise_stats
+    from ai_backend.infra.eval.history import compute_noise_stats
 
     stats = compute_noise_stats([0.90, 0.92, 0.91])
     assert stats["count"] == 3

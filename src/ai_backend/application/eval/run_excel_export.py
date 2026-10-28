@@ -11,10 +11,8 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 import time
-from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -59,7 +57,6 @@ from ai_backend.application.eval.run import (
 from ai_backend.application.eval.run_detailed import (
     CachedNewsSource,
     CachedPriceSource,
-    TokenTracker,
     _hooked_chat_parsed,
     _tracker,
     extract_pipeline_trace,
@@ -121,7 +118,7 @@ def extract_observations(steps: list[dict], case_output: str) -> str:
             elif out.get("error"):
                 chart_info = f"Lỗi biểu đồ: {out.get('error')}"
 
-        elif name == "portfolio_watch_agent":
+        elif name == "portfolio_watch":
             nav = out.get("nav")
             wl_cnt = out.get("watchlist_count")
             p_parts = []

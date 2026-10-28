@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from common.domain.entities import AlertStatus, FinalAlert
 from common.domain.ports import MemoryStore
-from common.logging import get_logger
+from ai_backend.shared.logging import get_logger
 
 _logger = get_logger(__name__)
 

@@ -35,29 +35,6 @@ class ChatStreamRequest(CustomBaseModel):
     user_id: str = Field(default="default", description="Mã định danh người dùng")
     session_id: str | None = Field(default=None, description="Mã phiên hội thoại")
     request_id: str | None = Field(default=None, description="Mã tương quan yêu cầu")
-    watchlist: list[WatchlistSnapshot] | None = Field(
-        default=None, description="Ảnh chụp danh mục theo dõi"
-    )
-    holdings: list[HoldingSnapshot] | None = Field(
-        default=None, description="Ảnh chụp danh mục nắm giữ"
-    )
-
-
-class NodeStart(CustomBaseModel):
-    """Sự kiện bắt đầu thực thi một Agent Node trong Swarm Graph."""
-    event: str = "node_start"
-    node: str = Field(description="Tên agent node (ví dụ: supervisor, price_agent, news_agent)")
-    input_data: Any = Field(default=None, description="Dữ liệu đầu vào truyền tới node")
-    timestamp: str = Field(default_factory=_now_iso)
-
-
-class NodeFinish(CustomBaseModel):
-    """Sự kiện kết thúc thực thi một Agent Node trong Swarm Graph."""
-    event: str = "node_finish"
-    node: str = Field(description="Tên agent node vừa hoàn thành")
-    output_data: Any = Field(default=None, description="Kết quả sinh ra từ node")
-    duration_ms: int | None = Field(default=None, description="Thời gian thực thi của node (ms)")
-    timestamp: str = Field(default_factory=_now_iso)
 
 
 class TokenEvent(CustomBaseModel):
@@ -86,3 +63,15 @@ class ErrorEvent(CustomBaseModel):
     event: str = "error"
     error: str = Field(description="Mô tả thông báo lỗi")
     request_id: str | None = Field(default=None, description="Mã yêu cầu")
+
+
+class ChatResponse(CustomBaseModel):
+    """Phản hồi JSON POST /v1/chat (cùng shape SwarmOutput; `source_file` không map từ orchestrator)."""
+    question: str
+    answer: str
+    rewritten_symbol: str | None = None
+    routing: str = "general"
+    steps: list[dict[str, Any]] = Field(default_factory=list)
+    chart_path: str | None = None
+    source_file: str | None = Field(default=None, description="Không dùng trên JSON chat; giữ cho schema tương thích")
+    error: str | None = None

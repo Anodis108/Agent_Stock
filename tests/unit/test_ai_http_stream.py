@@ -1,4 +1,4 @@
-"""AI_TRANSPORT=http: web proxy SSE, process AI phát /v1/chat/stream."""
+"""AI_TRANSPORT=http: web proxy SSE, process AI phát /v1/chat/stream-sse."""
 
 from __future__ import annotations
 
@@ -37,14 +37,14 @@ class _Body(io.BytesIO):
 
 
 def test_http_transport_proxies_chat_stream(client: TestClient, monkeypatch):
-    """Web không chạy answer_question. SSE từ AI được gắn session và lưu SQLite."""
+    """Web không chạy answer_question. SSE từ AI được gắn session và lưu database."""
     monkeypatch.setenv("AI_TRANSPORT", "http")
     monkeypatch.setenv("AI_BASE_URL", "http://ai.test:8001")
 
     def _boom(*_args, **_kwargs):
         raise AssertionError("inprocess answer_question không được gọi")
 
-    monkeypatch.setattr("backend.answer_question.answer_question", _boom)
+    monkeypatch.setattr("web_backend.api.routers.chat._get_chat_answer_fn", lambda: _boom)
 
     sse = (
         "event: token\n"
@@ -67,7 +67,7 @@ def test_http_transport_proxies_chat_stream(client: TestClient, monkeypatch):
 
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
     monkeypatch.setattr(
-        "backend.infra.llm.account_snapshot.load_account_snapshot",
+        "ai_backend.infra.llm.account_snapshot.load_account_snapshot",
         lambda user_id: {
             "watchlist": [
                 {"symbol": "HPG", "threshold_pct": 3.0, "user_id": user_id}
@@ -86,11 +86,11 @@ def test_http_transport_proxies_chat_stream(client: TestClient, monkeypatch):
     resp = client.post("/api/v1/chat/stream", json={"question": "FPT?", "user_id": "default"})
     assert resp.status_code == 200
     assert "text/event-stream" in resp.headers.get("content-type", "")
-    assert seen["url"] == "http://ai.test:8001/v1/chat/stream"
+    assert seen["url"] == "http://ai.test:8001/v1/chat/stream-sse"
     assert seen["body"]["question"] == "FPT?"
     assert seen["body"]["user_id"] == "default"
-    assert seen["body"]["watchlist"][0]["symbol"] == "HPG"
-    assert seen["body"]["holdings"][0]["symbol"] == "FPT"
+    assert "watchlist" not in seen["body"]
+    assert "holdings" not in seen["body"]
     assert seen["timeout"] == 300.0
 
     events = _parse_sse(resp.text)
@@ -113,17 +113,17 @@ def test_http_transport_proxies_chat_stream(client: TestClient, monkeypatch):
     assert detail.json()["messages"][1]["id"] == final["message_id"]
 
 
-def test_web_entry_forwards_ui_sse(tmp_path, monkeypatch):
-    """Entry backend.main chỉ chuyển SSE của POST /chat sang AI."""
-    from backend.main import app as web_app
+def test_web_entry_forwards_ui_sse(monkeypatch, pg_schema):
+    """Entry web_backend.main chỉ chuyển SSE của POST /chat sang AI."""
+    from web_backend.main import app as web_app
 
+    monkeypatch.setenv("AI_TRANSPORT", "http")
     monkeypatch.setenv("AI_BASE_URL", "http://ai.test:8001")
-    monkeypatch.setenv("SQLITE_PATH", str(tmp_path / "web-sse.db"))
 
     def _boom(*_args, **_kwargs):
-        raise AssertionError("backend.main không được gọi answer_question")
+        raise AssertionError("web_backend.main không được gọi answer_question")
 
-    monkeypatch.setattr("backend.answer_question.answer_question", _boom)
+    monkeypatch.setattr("web_backend.api.routers.chat._get_chat_answer_fn", lambda: _boom)
 
     sse = (
         "event: token\n"
@@ -158,7 +158,7 @@ def test_web_entry_forwards_ui_sse(tmp_path, monkeypatch):
     assert resp.status_code == 200
     assert "text/event-stream" in resp.headers.get("content-type", "")
     assert resp.headers.get("x-accel-buffering") == "no"
-    assert seen["url"] == "http://ai.test:8001/v1/chat/stream"
+    assert seen["url"] == "http://ai.test:8001/v1/chat/stream-sse"
     assert seen["accept"] == "text/event-stream"
     assert seen["body"]["question"] == "RSI là gì"
     assert seen["body"]["user_id"] == "user_a"
@@ -184,26 +184,27 @@ def test_web_entry_forwards_ui_sse(tmp_path, monkeypatch):
     fallback = web.post("/chat/stream", json={"question": "RSI là gì", "user_id": "user_a"})
     assert fallback.status_code == 200
     assert "text/event-stream" in fallback.headers.get("content-type", "")
-    assert seen["url"] == "http://ai.test:8001/v1/chat/stream"
+    assert seen["url"] == "http://ai.test:8001/v1/chat/stream-sse"
 
 
-def test_web_entry_sends_account_lists_only_for_live_questions(tmp_path, monkeypatch):
-    """Số liệu và danh mục kèm hai danh sách của user. Khái niệm không kèm."""
-    from backend.api.deps import clear_deps_cache, get_app_deps, set_app_deps
-    from backend.main import app as web_app
-    from backend.api.routers.web import watchlist as watchlist_routes
-    from backend.infra.storage.store import Store, WatchlistItem
+def test_web_entry_sends_account_lists_only_for_live_questions(monkeypatch, pg_schema):
+    """Chat HTTP chỉ gửi question + user_id; danh mục do DBAgent đọc trong AI."""
+    from web_backend.api.deps import clear_deps_cache, get_app_deps, set_app_deps
+    from web_backend.main import app as web_app
+    from web_backend.api.routers import watchlist as watchlist_routes
+    from ai_backend.infra.storage.watchlist_store import PgWatchlistStore
+    from common.domain.entities import WatchlistItem
 
+    monkeypatch.setenv("AI_TRANSPORT", "http")
     monkeypatch.setenv("AI_BASE_URL", "http://ai.test:8001")
-    monkeypatch.setenv("SQLITE_PATH", str(tmp_path / "holdings.db"))
     set_app_deps(None)
     clear_deps_cache()
-    isolated = Store(str(tmp_path / "watch.db"))
+    isolated = PgWatchlistStore(pg_schema)
     monkeypatch.setattr(watchlist_routes, "store", isolated)
-    isolated.upsert_watchlist(
+    isolated.upsert(
         WatchlistItem(symbol="HPG", threshold_pct=4.5, user_id="user_a")
     )
-    isolated.upsert_watchlist(
+    isolated.upsert(
         WatchlistItem(symbol="VNM", threshold_pct=1.0, user_id="user_b")
     )
     holdings = get_app_deps().holdings_repo
@@ -236,17 +237,11 @@ def test_web_entry_sends_account_lists_only_for_live_questions(tmp_path, monkeyp
         set_app_deps(None)
         clear_deps_cache()
 
-    portfolio, price, concept = seen
-    assert portfolio["watchlist"] == [
-        {"symbol": "HPG", "threshold_pct": 4.5, "user_id": "user_a"}
-    ]
-    assert portfolio["holdings"][0]["symbol"] == "FPT"
-    assert portfolio["holdings"][0]["quantity"] == 10
-    assert portfolio["holdings"][0]["user_id"] == "user_a"
-    assert price["watchlist"][0]["symbol"] == "HPG"
-    assert price["holdings"][0]["symbol"] == "FPT"
-    assert "watchlist" not in concept
-    assert "holdings" not in concept
+    assert len(seen) == 3
+    for payload in seen:
+        assert payload["user_id"] == "user_a"
+        assert "watchlist" not in payload
+        assert "holdings" not in payload
 
 
 def test_ui_chat_post_only_forwards_ai_sse(client: TestClient, monkeypatch):
@@ -257,7 +252,7 @@ def test_ui_chat_post_only_forwards_ai_sse(client: TestClient, monkeypatch):
     def _boom(*_args, **_kwargs):
         raise AssertionError("web không được gọi answer_question khi stream")
 
-    monkeypatch.setattr("backend.answer_question.answer_question", _boom)
+    monkeypatch.setattr("web_backend.api.routers.chat._get_chat_answer_fn", lambda: _boom)
 
     sse = (
         "event: token\n"
@@ -289,7 +284,7 @@ def test_ui_chat_post_only_forwards_ai_sse(client: TestClient, monkeypatch):
     )
     assert resp.status_code == 200
     assert "text/event-stream" in resp.headers.get("content-type", "")
-    assert seen["url"] == "http://ai.test:8001/v1/chat/stream"
+    assert seen["url"] == "http://ai.test:8001/v1/chat/stream-sse"
     assert seen["accept"] == "text/event-stream"
 
     events = _parse_sse(resp.text)
@@ -305,7 +300,7 @@ def test_ui_chat_post_only_forwards_ai_sse(client: TestClient, monkeypatch):
 def test_http_stream_connection_error_is_sse_event(client: TestClient, monkeypatch):
     monkeypatch.setenv("AI_TRANSPORT", "http")
     monkeypatch.setattr(
-        "backend.infra.llm.account_snapshot.load_account_snapshot",
+        "ai_backend.infra.llm.account_snapshot.load_account_snapshot",
         lambda user_id: {"watchlist": [], "holdings": []},
     )
 
@@ -321,8 +316,8 @@ def test_http_stream_connection_error_is_sse_event(client: TestClient, monkeypat
 
 
 def test_ai_service_chat_stream_endpoint(monkeypatch):
-    from backend.infra.llm.service import app as ai_app
-    from backend.infra.llm import chat_stream
+    from ai_backend.infra.llm.service import app as ai_app
+    from ai_backend.infra.llm import chat_stream
 
     def fake_events(*_args, **_kwargs):
         yield ("token", {"delta": "z"})
@@ -338,7 +333,7 @@ def test_ai_service_chat_stream_endpoint(monkeypatch):
 
 
 def test_iter_swarm_events_has_no_session_fields(monkeypatch):
-    from backend.infra.llm import chat_stream
+    from ai_backend.infra.llm import chat_stream
 
     def fake_answer(*_args, **kwargs):
         kwargs["event_callback"]("token", {"delta": "ab"})
@@ -355,12 +350,10 @@ def test_iter_swarm_events_has_no_session_fields(monkeypatch):
             chart_path=None,
             source_file="rsi-va-sma.md",
             steps=[],
-            hitl_used=False,
-            pending_approvals_created=0,
             error=None,
         )
 
-    monkeypatch.setattr(chat_stream, "answer_question", fake_answer)
+    monkeypatch.setattr(chat_stream, "run_chat_graph", fake_answer)
     deps = SimpleNamespace(
         price_source=None,
         news_source=None,
@@ -394,7 +387,7 @@ def test_http_chat_and_scan_carry_lists_only_when_needed(monkeypatch):
     monkeypatch.setenv("AI_TRANSPORT", "http")
     monkeypatch.setenv("AI_BASE_URL", "http://ai.test:8001")
     monkeypatch.setattr(
-        "backend.infra.llm.account_snapshot.load_account_snapshot",
+        "ai_backend.infra.llm.account_snapshot.load_account_snapshot",
         _snapshot,
     )
     seen: list[tuple[str, dict]] = []
@@ -404,15 +397,15 @@ def test_http_chat_and_scan_carry_lists_only_when_needed(monkeypatch):
         return _Body(b'{"answer": "ok", "symbol": "HPG", "route": "qa"}')
 
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
-    from backend.shared.transport import ai_chat, ai_scan
+    from common.transport import ai_chat, ai_scan
 
     ai_chat(question="Danh mục của tôi", user_id="user_a")
     ai_scan(symbol="HPG", user_id="user_a")
     ai_chat(question="xin chào", user_id="user_a")
 
     assert seen[0][0] == "http://ai.test:8001/v1/chat"
-    assert seen[0][1]["watchlist"][0]["symbol"] == "HPG"
-    assert seen[0][1]["holdings"][0]["symbol"] == "FPT"
+    assert "watchlist" not in seen[0][1]
+    assert "holdings" not in seen[0][1]
     assert seen[1][0] == "http://ai.test:8001/v1/scan"
     assert seen[1][1]["watchlist"][0]["threshold_pct"] == 4.5
     assert seen[1][1]["holdings"][0]["symbol"] == "FPT"
@@ -421,7 +414,7 @@ def test_http_chat_and_scan_carry_lists_only_when_needed(monkeypatch):
 
 
 def test_concept_questions_omit_watchlist_and_holdings(monkeypatch):
-    from backend.infra.llm.account_snapshot import (
+    from ai_backend.infra.llm.account_snapshot import (
         is_concept_question,
         question_needs_account_lists,
     )
@@ -453,7 +446,7 @@ def test_concept_questions_omit_watchlist_and_holdings(monkeypatch):
     monkeypatch.setenv("AI_TRANSPORT", "http")
     monkeypatch.setenv("AI_BASE_URL", "http://ai.test:8001")
     monkeypatch.setattr(
-        "backend.infra.llm.account_snapshot.load_account_snapshot",
+        "ai_backend.infra.llm.account_snapshot.load_account_snapshot",
         _snapshot,
     )
     seen: list[dict] = []
@@ -463,24 +456,21 @@ def test_concept_questions_omit_watchlist_and_holdings(monkeypatch):
         return _Body(b'{"answer": "ok"}')
 
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
-    from backend.shared.transport import ai_chat
+    from common.transport import ai_chat
 
     ai_chat(question="NAV là gì", user_id="user_a")
     ai_chat(question="giá trần là gì", user_id="user_a")
     ai_chat(question="RSI của HPG", user_id="user_a")
 
-    assert "watchlist" not in seen[0]
-    assert "holdings" not in seen[0]
-    assert "watchlist" not in seen[1]
-    assert "holdings" not in seen[1]
-    assert seen[2]["watchlist"][0]["symbol"] == "HPG"
-    assert seen[2]["holdings"][0]["symbol"] == "FPT"
+    for payload in seen:
+        assert "watchlist" not in payload
+        assert "holdings" not in payload
 
 
 def test_v1_scan_uses_watchlist_from_body(monkeypatch):
-    from backend.infra.llm.service import app as ai_app
-    from backend.api.routers.ai import v1 as ai_routes
-    from backend.api.deps import get_app_deps
+    from ai_backend.infra.llm.service import app as ai_app
+    from ai_backend.api.routers import v1 as ai_routes
+    from web_backend.api.deps import get_app_deps
 
     class BoomStore:
         def get(self, *_args, **_kwargs):
@@ -554,15 +544,15 @@ def test_v1_scan_uses_watchlist_from_body(monkeypatch):
 def test_v1_chat_forwards_lists_and_does_not_touch_sessions(monkeypatch):
     from pathlib import Path
 
-    from backend.infra.llm.service import app as ai_app
-    from backend.api.routers.ai import v1 as ai_routes
-    from backend.api.deps import get_app_deps
+    from ai_backend.infra.llm.service import app as ai_app
+    from ai_backend.api.routers import v1 as ai_routes
+    from web_backend.api.deps import get_app_deps
 
     seen: dict[str, object] = {}
 
     def fake_answer(question, **kwargs):
         seen["watchlist_store"] = kwargs.get("watchlist_store")
-        seen["account_holdings"] = kwargs.get("account_holdings")
+        seen["kwargs"] = kwargs
         return SimpleNamespace(
             answer="ok",
             steps=[],
@@ -575,7 +565,7 @@ def test_v1_chat_forwards_lists_and_does_not_touch_sessions(monkeypatch):
             news=None,
         )
 
-    monkeypatch.setattr(ai_routes, "answer_question", fake_answer)
+    monkeypatch.setattr(ai_routes, "run_chat_graph", fake_answer)
     ai_app.dependency_overrides[get_app_deps] = lambda: SimpleNamespace(
         price_source=None,
         news_source=None,
@@ -589,62 +579,43 @@ def test_v1_chat_forwards_lists_and_does_not_touch_sessions(monkeypatch):
             json={
                 "question": "Danh mục của tôi",
                 "user_id": "user_a",
-                "watchlist": [
-                    {"symbol": "HPG", "threshold_pct": 3, "user_id": "user_a"}
-                ],
-                "holdings": [
-                    {
-                        "symbol": "FPT",
-                        "quantity": 10,
-                        "avg_buy_price": 60,
-                        "user_id": "user_a",
-                    }
-                ],
             },
         )
     finally:
         ai_app.dependency_overrides.clear()
 
     assert resp.status_code == 200
-    assert seen["account_holdings"][0]["symbol"] == "FPT"
-    item = seen["watchlist_store"].get("user_a", "HPG")
-    assert item.threshold_pct == 3
-    routes_path = Path(__file__).resolve().parents[2] / "src" / "backend" / "routes.py"
-    if not routes_path.exists():
-        routes_path = (
-            Path(__file__).resolve().parents[2] / "src" / "backend" / "api" / "routers" / "ai" / "v1.py"
-        )
+    assert seen["kwargs"].get("account_holdings") is None
+    assert seen["watchlist_store"] is None
+    routes_path = Path(__file__).resolve().parents[2] / "src" / "ai_backend" / "api" / "routers" / "v1.py"
     text = routes_path.read_text(encoding="utf-8")
     assert "SessionRepository" not in text
     assert "FROM sessions" not in text
 
 
-def test_portfolio_agent_uses_holdings_payload(monkeypatch):
-    from backend.agents.portfolio_watch_agent.nodes import run_portfolio_watch_agent
-
-    def boom(*_args, **_kwargs):
-        raise AssertionError("AI không được SELECT holdings")
+def test_portfolio_agent_uses_db_agent_holdings(monkeypatch):
+    from ai_backend.domain.agents.chat.nodes.portfolio import run_portfolio_watch
 
     monkeypatch.setattr(
-        "backend.agents.portfolio_watch_agent.nodes.get_connection", boom
+        "ai_backend.domain.agents.scan.db_agent.read_holdings",
+        lambda user_id, conn=None: [
+            {
+                "symbol": "FPT",
+                "quantity": 10,
+                "avg_buy_price": 60.0,
+                "user_id": user_id,
+            }
+        ],
     )
     price = SimpleNamespace(
         fetch_latest_close=lambda symbol: SimpleNamespace(
             latest_close=70.0, error=None
         )
     )
-    result = run_portfolio_watch_agent(
+    result = run_portfolio_watch(
         user_id="user_a",
         intent="portfolio",
         price_source=price,
-        account_holdings=[
-            {
-                "symbol": "FPT",
-                "quantity": 10,
-                "avg_buy_price": 60.0,
-                "user_id": "user_a",
-            }
-        ],
     )
     assert result.error is None
     assert result.portfolio_summary.items[0].symbol == "FPT"
@@ -655,11 +626,12 @@ def test_closing_the_chat_stream_stops_the_pipeline(monkeypatch):
     import threading
     import time
 
-    from backend.api.routers.chat import ChatRequest, stream_chat_generator
-    import backend.application.answer_question as answer_mod
-    from backend.graph.chat import StreamCancelledError, check_stream_cancelled
-    from backend.infra.llm import chat_stream
-    import backend.shared.transport as transport
+    from web_backend.api.routers.chat import ChatRequest, stream_chat_generator
+    import ai_backend.domain.agents.chat.graph as answer_mod
+    from ai_backend.domain.agents.events import StreamCancelledError, check_stream_cancelled
+    from ai_backend.infra.llm import chat_stream
+    import common.transport.transport as transport
+
 
     started = threading.Event()
     halted = threading.Event()
@@ -681,11 +653,11 @@ def test_closing_the_chat_stream_stops_the_pipeline(monkeypatch):
 
 
 
-    monkeypatch.setattr(answer_mod, "answer_question", fake_answer)
-    monkeypatch.setattr(chat_stream, "answer_question", fake_answer)
+    monkeypatch.setattr(answer_mod, "run_chat_graph", fake_answer)
+    monkeypatch.setattr(chat_stream, "run_chat_graph", fake_answer)
     monkeypatch.setattr(transport, "_use_http", lambda: False)
     monkeypatch.setattr(
-        "backend.api.routers.chat._prepare_stream_session",
+        "web_backend.api.routers.chat._prepare_stream_session",
         lambda body: ("sess-1", body.question),
     )
 
@@ -714,14 +686,14 @@ def test_closing_the_chat_stream_stops_the_pipeline(monkeypatch):
     assert kept_going["value"] is False
 
 
-def test_web_entry_closes_the_ai_stream_when_the_client_disconnects(tmp_path, monkeypatch):
+def test_web_entry_closes_the_ai_stream_when_the_client_disconnects(monkeypatch, pg_schema):
     """Đóng POST /chat của web thì kết nối SSE tới AI bị đóng."""
     import threading
 
-    from backend.main import app as web_app
+    from web_backend.main import app as web_app
 
+    monkeypatch.setenv("AI_TRANSPORT", "http")
     monkeypatch.setenv("AI_BASE_URL", "http://ai.test:8001")
-    monkeypatch.setenv("SQLITE_PATH", str(tmp_path / "cancel.db"))
 
     class BlockingBody:
         def __init__(self) -> None:

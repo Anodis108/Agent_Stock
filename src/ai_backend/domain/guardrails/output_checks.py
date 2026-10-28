@@ -10,8 +10,8 @@ Nhiệm vụ:
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
 from typing import Any
+from pydantic import BaseModel, Field
 
 # Các cụm từ khuyến nghị mua/bán chắc chắn bị cấm
 _BUY_SELL_PATTERNS = (
@@ -37,11 +37,10 @@ _NUMBER_RE = re.compile(
 DEFAULT_DISCLAIMER = "Thông tin tham khảo, không phải lời khuyên đầu tư."
 
 
-@dataclass(slots=True)
-class GuardrailResult:
+class GuardrailResult(BaseModel):
     """Kết quả kiểm tra đầu ra từ Guardrail."""
     ok: bool
-    violations: list[str] = field(default_factory=list)
+    violations: list[str] = Field(default_factory=list)
 
 
 def find_buy_sell_phrases(text: str) -> list[str]:

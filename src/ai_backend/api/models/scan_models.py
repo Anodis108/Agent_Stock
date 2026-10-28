@@ -43,8 +43,9 @@ class ScanResponse(CustomBaseModel):
     steps: list[dict[str, Any]] = Field(default_factory=list)
     reason: str = ""
     threshold_pct: float = 0.0
-    gate1_action: str | None = None
-    gate2_pending: bool = False
+    status: str = Field(default="done", description="done | pending_approval (graph dừng trước scan_tools)")
+    thread_id: str = Field(default="", description="Checkpointer thread — gửi lại khi duyệt / từ chối")
+    tool_call: dict[str, Any] | None = Field(default=None, description="Hành động chờ duyệt {id, name, args}")
     error: str | None = None
     request_id: str | None = None
     price: dict[str, Any] | None = None
@@ -53,4 +54,21 @@ class ScanResponse(CustomBaseModel):
     news_error: str | None = None
     severity: dict[str, Any] | None = None
     alert: dict[str, Any] | None = None
-    pending_events: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class ScanResumeRequest(CustomBaseModel):
+    """Duyệt / từ chối hành động scan đang chờ (POST /v1/scan/resume) — giống demo /assistant/approve."""
+    thread_id: str = Field(description="thread_id trả về từ /v1/scan khi status=pending_approval")
+    approve: bool
+    reason: str = Field(default="", description="Lý do từ chối (approve=false)")
+    user_id: str = "default"
+
+
+class ScanResumeResponse(CustomBaseModel):
+    symbol: str = ""
+    status: str = "done"
+    thread_id: str = ""
+    tool_call: dict[str, Any] | None = None
+    alert: dict[str, Any] | None = None
+    steps: list[dict[str, Any]] = Field(default_factory=list)
+    error: str | None = None

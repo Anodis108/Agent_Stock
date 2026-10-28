@@ -1,0 +1,62 @@
+"""Subgraph eval_agent — act ⇄ tools → summarize (runtime source of truth)."""
+
+from __future__ import annotations
+
+from functools import lru_cache
+
+from langgraph.graph import END, START, StateGraph
+from langgraph.prebuilt import ToolNode
+
+from ai_backend.domain.agents.multi_agent._llm import base_llm
+from ai_backend.domain.agents.scan.eval_agent.state import EvalWorkerState
+from ai_backend.domain.agents.scan.eval_agent.tools import TOOLS, eval_result_from_tool_artifacts, proposals_from_tool_artifacts
+
+SYSTEM_PROMPT = (
+    "Bạn đánh giá mức độ nghiêm trọng biến động của mã chính: đọc chỉ báo kỹ thuật, kết hợp giá + tin trong "
+    "ghi chú, rồi nộp đánh giá bằng submit_severity. Nếu nhiệm vụ là quét cảnh báo và biến động lớn bất "
+    "thường so với ngưỡng, có thể đề xuất đổi ngưỡng / theo dõi mã liên quan bằng propose_watchlist_update. "
+    "Chỉ dùng số liệu có trong tool / ghi chú, không bịa. Xong việc thì trả lời 1-2 câu tóm tắt kết quả."
+)
+
+
+@lru_cache(maxsize=1)
+def _worker_llm():
+    return base_llm().bind_tools(TOOLS)
+
+
+async def act(state: EvalWorkerState) -> dict:
+    notes = "\n".join(f"[{d}] {n}" for d, n in (state["notes"] or {}).items()) or "(chưa có)"
+    messages = state["message_worker"] or [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": f"Nhiệm vụ: {state['task']}\n\nGhi chú từ worker đã chạy:\n{notes}"},
+    ]
+    response = await _worker_llm().ainvoke(messages)
+    return {"message_worker": [response]}
+
+
+def route_tools(state: EvalWorkerState) -> str:
+    last = state["message_worker"][-1]
+    return "tools" if getattr(last, "tool_calls", None) else "summarize"
+
+
+def summarize(state: EvalWorkerState) -> dict:
+    last = state["message_worker"][-1]
+    tool_msgs = [m.content for m in state["message_worker"] if getattr(m, "type", None) == "tool"]
+    return {
+        "result": "\n".join(tool_msgs) if tool_msgs else last.content,
+        "eval_result": eval_result_from_tool_artifacts(state["message_worker"]),
+        "messages": proposals_from_tool_artifacts(state["message_worker"]),
+    }
+
+
+@lru_cache(maxsize=1)
+def build_eval_agent():
+    graph = StateGraph(EvalWorkerState)
+    graph.add_node("act", act)
+    graph.add_node("tools", ToolNode(TOOLS, messages_key="message_worker"))
+    graph.add_node("summarize", summarize)
+    graph.add_edge(START, "act")
+    graph.add_conditional_edges("act", route_tools, {"tools": "tools", "summarize": "summarize"})
+    graph.add_edge("tools", "act")
+    graph.add_edge("summarize", END)
+    return graph.compile()

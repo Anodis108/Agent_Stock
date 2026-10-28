@@ -13,13 +13,13 @@ Nhiệm vụ:
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
 from typing import Literal
 
 from ai_backend.domain.guardrails.greeting_fastpath import (
     is_greeting as _check_is_greeting,
     is_pure_greeting as _check_is_pure_greeting,
 )
+from pydantic import BaseModel
 
 # Phân loại vi phạm Guardrail đầu vào
 GuardrailCategory = Literal[
@@ -32,8 +32,7 @@ GuardrailCategory = Literal[
 ]
 
 
-@dataclass(slots=True)
-class InputGuardrailResult:
+class InputGuardrailResult(BaseModel):
     """Kết quả kiểm tra câu hỏi đầu vào của người dùng."""
     is_safe: bool
     category: GuardrailCategory

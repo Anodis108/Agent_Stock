@@ -6,10 +6,9 @@ preventing spurious ticker extraction (TRA, NAV, XEM).
 
 from __future__ import annotations
 
-import pytest
 
-from ai_backend.infra.agents.chat.portfolio_watch_agent import run_portfolio_watch_agent
-from ai_backend.infra.agents.chat.supervisor_agent.nodes import (
+from ai_backend.domain.agents.chat.nodes.portfolio import run_portfolio_watch
+from ai_backend.domain.agents.chat.chat_supervisor_agent.nodes import (
     HeuristicRewriteBrain,
     HeuristicSupervisorBrain,
     _extract_symbols,
@@ -21,7 +20,7 @@ from web_backend.infra.database.repositories import (
 )
 from common.domain.entities import WatchlistItem
 from common.domain.ports import PriceBar, PriceQuote, PriceSourcePort
-from ai_backend.infra.agents.chat.team import run_chat_graph
+from ai_backend.domain.agents.chat.graph import run_chat_graph
 from ai_backend.infra.storage.watchlist_store import PgWatchlistStore
 
 
@@ -120,17 +119,53 @@ def test_supervisor_routes_watchlist_intent():
     assert "portfolio_watch" in decision.agents_to_call
 
 
+def test_chat_supervisor_gather_db_agent_before_portfolio_watch():
+    """Portfolio/watchlist: chat_supervisor nhờ scan_supervisor chạy db_agent trước portfolio_watch."""
+    from ai_backend.domain.agents.chat.chat_supervisor_agent.nodes import chat_supervisor_node
+
+    rewriter = HeuristicRewriteBrain()
+    supervisor = HeuristicSupervisorBrain()
+    rw = rewriter.rewrite("Danh mục của tôi lãi hay lỗ?", [])
+    routing = supervisor.route(rw)
+
+    first = chat_supervisor_node(
+        {
+            "question": rw.original,
+            "rewritten": rw,
+            "routing": routing,
+            "completed": [],
+        },
+        None,
+    )
+    assert first["next"] == ["scan_supervisor"]
+    assert "db_agent" in first["gather_request"]
+    assert first["portfolio_db_intent"] in ("portfolio", "all")
+
+    after_db = chat_supervisor_node(
+        {
+            "question": rw.original,
+            "rewritten": rw,
+            "routing": routing,
+            "completed": ["db_agent"],
+            "db_agent_result": object(),
+        },
+        None,
+    )
+    assert after_db["next"] == ["portfolio_watch"]
+    assert "db_agent" not in (after_db["gather_request"] or [])
+
+
 # ==============================================================================
 # 3. PortfolioWatchAgent Unit Tests (Empty & Populated States, Isolation)
 # ==============================================================================
 
-def test_portfolio_watch_agent_empty(pg_schema):
+def test_portfolio_watch_empty(pg_schema):
     """When a user has no holdings, returns a clean informative markdown message."""
 
     store = PgWatchlistStore(pg_schema)
     price_source = MockPriceSource()
 
-    res = run_portfolio_watch_agent(
+    res = run_portfolio_watch(
         user_id="user_empty",
         intent="all",
         price_source=price_source,
@@ -143,7 +178,7 @@ def test_portfolio_watch_agent_empty(pg_schema):
     assert "nên bán" not in res.formatted_markdown.lower()
 
 
-def test_portfolio_watch_agent_with_data_and_multi_tenant(pg_schema):
+def test_portfolio_watch_with_data_and_multi_tenant(pg_schema):
     """Verifies holdings & watchlist calculation and strict multi-tenant isolation."""
 
     # 1. Thiết lập dữ liệu cho user_a: 1000 FPT giá 100.0, Watchlist FPT ±3%
@@ -169,7 +204,7 @@ def test_portfolio_watch_agent_with_data_and_multi_tenant(pg_schema):
     price_source = MockPriceSource({"FPT": 125.0, "VNM": 75.0})
 
     # 3. Kiểm tra user_a
-    res_a = run_portfolio_watch_agent(
+    res_a = run_portfolio_watch(
         user_id="user_a",
         intent="all",
         price_source=price_source,
@@ -184,7 +219,7 @@ def test_portfolio_watch_agent_with_data_and_multi_tenant(pg_schema):
     assert "±3.0%" in res_a.formatted_markdown
 
     # 4. Kiểm tra user_b
-    res_b = run_portfolio_watch_agent(
+    res_b = run_portfolio_watch(
         user_id="user_b",
         intent="all",
         price_source=price_source,

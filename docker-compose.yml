@@ -5,15 +5,23 @@
 # Lần đầu (hoặc khi đổi pyproject.toml):
 #   cp .env.example .env
 #   docker compose build
+#
+# Infra (postgres, qdrant, minio) dùng profiles — bật qua .env:
+#   COMPOSE_PROFILES=db,qdrant,storage   # hoặc: full
 #   docker compose up -d
 #
-# Sửa code / port / .env — không cần build:
+# Chỉ app + redis (không postgres/qdrant/minio):
+#   docker compose up -d redis ai_backend backend frontend
+#
+# Sửa code / port / .env — không cần build image:
 #   docker compose up -d --force-recreate
 #
 # Truy cập:
-#   Frontend : http://localhost:3001
-#   Backend  : http://localhost:8000
-#   Langfuse : http://localhost:3000 (compose riêng ../langfuse)
+#   Frontend   : http://localhost:3001
+#   Web API    : http://localhost:8000
+#   AI Backend : http://localhost:8001
+#   Postgres   : localhost:${POSTGRES_PORT:-5433} (profile db|storage|full)
+#   Langfuse   : http://localhost:3000 (compose riêng ../langfuse)
 
 services:
   backend:
@@ -60,7 +68,7 @@ services:
       redis:
         condition: service_healthy
       ai_backend:
-        condition: service_healthy
+        condition: service_started
       postgres:
         condition: service_healthy
         required: false
@@ -80,10 +88,10 @@ services:
           "-c",
           "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')",
         ]
-      interval: 15s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
+      interval: 60s
+      timeout: 3s
+      retries: 2
+      start_period: 5s
     restart: unless-stopped
 
   ai_backend:
@@ -145,10 +153,10 @@ services:
           "-c",
           "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health')",
         ]
-      interval: 15s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
+      interval: 60s
+      timeout: 3s
+      retries: 2
+      start_period: 5s
     restart: unless-stopped
 
   frontend:

@@ -6,10 +6,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ai_backend.application.eval.eval_cache import get_cached, prompt_hash_from_messages, set_cached
+from ai_backend.infra.eval.eval_cache import get_cached, prompt_hash_from_messages, set_cached
 from ai_backend.application.eval.run import eval_one_case
 from ai_backend.infra.cost.tracker import BudgetExceededError, check_budget_or_raise, reset_cost_tracker
-from ai_backend.infra.llm.prompt_experiment import pick_prompt_version
+from ai_backend.infra.prompts import pick_prompt_version
 from ai_backend.infra.llm.providers import resolve_backend_chain, resolve_model_chain
 from common.settings import settings
 
@@ -26,14 +26,14 @@ def test_pick_prompt_version_disabled():
 
 
 def test_restrict_symbols_blocks_xin_vui_from_typo():
-    from ai_backend.infra.agents.chat.supervisor_agent.nodes import _restrict_symbols_to_original
+    from ai_backend.domain.agents.chat.chat_supervisor_agent.nodes import _restrict_symbols_to_original
 
     q = "Cho tôi giá hiện tịa VNM"
     assert _restrict_symbols_to_original(q, ["VNM", "XIN", "VUI"]) == ["VNM"]
 
 
 def test_prompt_registry_accepts_v1_alias():
-    from ai_backend.infra.llm.prompt_registry import registry
+    from ai_backend.infra.prompts import registry
 
     p = registry().get("answer_compose", version="v1")
     assert p.version == 1
@@ -84,9 +84,9 @@ def test_chat_cache_respects_model_param(monkeypatch):
         total_tokens = 15
 
     def fake_create(**kwargs):
-        calls.append(str(kwargs.get("model")))
+        calls.append(str(kwargs["model"]))
         mock_resp = MagicMock()
-        mock_resp.choices = [MagicMock(message=MagicMock(content=f"ans-{kwargs.get('model')}"))]
+        mock_resp.choices = [MagicMock(message=MagicMock(content=f"ans-{kwargs['model']}"))]
         mock_resp.usage = _Usage()
         return mock_resp
 

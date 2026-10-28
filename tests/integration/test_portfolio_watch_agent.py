@@ -9,7 +9,7 @@ from __future__ import annotations
 import sqlite3
 import pytest
 
-from backend.agents.portfolio_watch_agent import run_portfolio_watch_agent
+from backend.agents.portfolio_watch import run_portfolio_watch
 from backend.agents.supervisor_agent.nodes import (
     HeuristicRewriteBrain,
     HeuristicSupervisorBrain,
@@ -135,7 +135,7 @@ def test_supervisor_routes_watchlist_intent():
 # 3. PortfolioWatchAgent Unit Tests (Empty & Populated States, Isolation)
 # ==============================================================================
 
-def test_portfolio_watch_agent_empty(test_db_path, monkeypatch):
+def test_portfolio_watch_empty(test_db_path, monkeypatch):
     """When a user has no holdings, returns a clean informative markdown message."""
     from backend.shared.settings import settings
     monkeypatch.setenv("SQLITE_PATH", test_db_path)
@@ -144,7 +144,7 @@ def test_portfolio_watch_agent_empty(test_db_path, monkeypatch):
     store = SqliteWatchlistStore(test_db_path)
     price_source = MockPriceSource()
 
-    res = run_portfolio_watch_agent(
+    res = run_portfolio_watch(
         user_id="user_empty",
         intent="all",
         price_source=price_source,
@@ -157,7 +157,7 @@ def test_portfolio_watch_agent_empty(test_db_path, monkeypatch):
     assert "nên bán" not in res.formatted_markdown.lower()
 
 
-def test_portfolio_watch_agent_with_data_and_multi_tenant(test_db_path, monkeypatch):
+def test_portfolio_watch_with_data_and_multi_tenant(test_db_path, monkeypatch):
     """Verifies holdings & watchlist calculation and strict multi-tenant isolation."""
     from backend.shared.settings import settings
     monkeypatch.setenv("SQLITE_PATH", test_db_path)
@@ -188,7 +188,7 @@ def test_portfolio_watch_agent_with_data_and_multi_tenant(test_db_path, monkeypa
     price_source = MockPriceSource({"FPT": 125.0, "VNM": 75.0})
 
     # 3. Kiểm tra user_a
-    res_a = run_portfolio_watch_agent(
+    res_a = run_portfolio_watch(
         user_id="user_a",
         intent="all",
         price_source=price_source,
@@ -203,7 +203,7 @@ def test_portfolio_watch_agent_with_data_and_multi_tenant(test_db_path, monkeypa
     assert "±3.0%" in res_a.formatted_markdown
 
     # 4. Kiểm tra user_b
-    res_b = run_portfolio_watch_agent(
+    res_b = run_portfolio_watch(
         user_id="user_b",
         intent="all",
         price_source=price_source,

@@ -189,9 +189,9 @@ def ai_server_url():
 @pytest.fixture
 def fake_scan_runner():
     """Factory runner giả thay run_scan_graph (test double, không mạng / LLM): trả kết quả scan dựng sẵn."""
-    from ai_backend.infra.agents.scan.news_agent import NewsAgentResult
-    from ai_backend.infra.agents.scan.price_agent import PriceAgentResult
-    from ai_backend.infra.agents.scan.team import ScanSymbolResult
+    from ai_backend.domain.agents.scan.news_agent.state import NewsAgentResult
+    from ai_backend.domain.agents.scan.price_agent.state import PriceAgentResult
+    from ai_backend.domain.agents.scan.state import ScanSymbolResult
     from common.domain.entities import EventRoute, RoutingDecision
 
     def make(change_pct: float = -6.0, abnormal: bool = True):
@@ -219,7 +219,9 @@ def fake_scan_runner():
 @pytest.fixture
 def fake_chat_runner():
     """Runner giả thay run_chat_graph (test double): phát event như graph thật rồi trả kết quả dựng sẵn."""
-    from types import SimpleNamespace
+    from ai_backend.domain.agents.chat.chat_supervisor_agent.nodes import RewrittenQuestion
+    from ai_backend.domain.agents.state import AnswerQuestionResult
+    from common.domain.entities import RoutingDecision
 
     def runner(question, event_callback=None, **_kwargs):
         answer = f"Trả lời giả cho: {question}"
@@ -228,10 +230,16 @@ def fake_chat_runner():
             for word in answer.split(" "):
                 event_callback("token", {"delta": word + " "})
             event_callback("node_finish", {"node": "answer_composer"})
-        return SimpleNamespace(
+        return AnswerQuestionResult(
+            question=question,
+            rewritten=RewrittenQuestion(
+                original=question,
+                rewritten=question,
+                symbol=None,
+                intent="explain",
+            ),
+            routing=RoutingDecision(route="general"),
             answer=answer,
-            routing=SimpleNamespace(route="general"),
-            rewritten=SimpleNamespace(symbol=None),
             steps=[{"id": "1", "name": "answer_composer", "status": "done"}],
         )
 

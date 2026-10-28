@@ -11,6 +11,7 @@ from web_backend.api.helpers.validation import (
     normalize_approval_id,
     normalize_reject_reason,
 )
+from web_backend.infra.ai_client.remote_ai_client import RemoteAiClient
 from web_backend.api.models.approvals import (
     ApproveRequest,
     ApprovalsListResponse,
@@ -88,11 +89,11 @@ def post_approve(
     aid = normalize_approval_id(approval_id)
     user_id = (body.user_id if body and body.user_id != "default" else current_user) or "default"
     if approve_pending is not None:
+        # Duyệt → AI Backend resume graph scan, scan_tools chạy tool (gửi cảnh báo / cập nhật watchlist)
         result = approve_pending(
             aid,
             memory_store=getattr(deps, "memory_store", None),
-            notifier=getattr(deps, "notifier", None),
-            watchlist_store=getattr(deps, "watchlist_store", None),
+            resume=RemoteAiClient().scan_resume,
             user_id=user_id,
         )
         _raise_if_failed(result)
@@ -115,11 +116,12 @@ def post_reject(
     user_id = (body.user_id if body.user_id != "default" else current_user) or "default"
 
     if reject_pending is not None:
+        # Từ chối → AI Backend resume graph, bỏ qua tool (ToolMessage báo từ chối)
         result = reject_pending(
             aid,
             reason=reason,
             memory_store=getattr(deps, "memory_store", None),
-            watchlist_store=getattr(deps, "watchlist_store", None),
+            resume=RemoteAiClient().scan_resume,
             user_id=user_id,
         )
         _raise_if_failed(result)

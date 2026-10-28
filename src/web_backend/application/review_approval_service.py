@@ -1,4 +1,4 @@
-"""Review Approval Application Service for Web Backend — Quản lý hàng đợi duyệt lệnh HITL Gate 1 & 2."""
+"""Review Approval Application Service for Web Backend — hàng đợi duyệt hành động scan (HITL interrupt_before)."""
 
 from __future__ import annotations
 
@@ -51,12 +51,10 @@ class ReviewApprovalService(BaseService):
     def __init__(
         self,
         memory_store: Any = None,
-        watchlist_store: Any = None,
-        notifier: Any = None,
+        resume: Any = None,  # RemoteAiClient().scan_resume — AI Backend chạy tiếp graph scan
     ) -> None:
         self.memory_store = memory_store
-        self.watchlist_store = watchlist_store
-        self.notifier = notifier
+        self.resume = resume
 
     def process(self, inputs: ReviewApprovalInput) -> ReviewApprovalOutput:
         """Thực thi nghiệp vụ phê duyệt theo chuẩn BaseService."""
@@ -89,12 +87,11 @@ class ReviewApprovalService(BaseService):
     ) -> ReviewApprovalOutput:
         """Phê duyệt một yêu cầu chờ duyệt."""
         aid = approval_id.strip()
-        if approve_pending is not None and self.memory_store is not None and self.watchlist_store is not None and self.notifier is not None:
+        if approve_pending is not None and self.memory_store is not None and self.resume is not None:
             res = approve_pending(
                 aid,
                 memory_store=self.memory_store,
-                notifier=self.notifier,
-                watchlist_store=self.watchlist_store,
+                resume=self.resume,
                 user_id=user_id,
             )
             return ReviewApprovalOutput(
@@ -121,12 +118,12 @@ class ReviewApprovalService(BaseService):
         """Từ chối một yêu cầu chờ duyệt."""
         aid = approval_id.strip()
         why = (reason or "").strip()
-        if reject_pending is not None and self.memory_store is not None:
+        if reject_pending is not None and self.memory_store is not None and self.resume is not None:
             res = reject_pending(
                 aid,
                 reason=why,
                 memory_store=self.memory_store,
-                watchlist_store=self.watchlist_store,
+                resume=self.resume,
                 user_id=user_id,
             )
             return ReviewApprovalOutput(

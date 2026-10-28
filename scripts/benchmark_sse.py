@@ -30,7 +30,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from ai_backend.application.eval.history import get_git_sha  # noqa: E402
+from ai_backend.infra.eval.history import get_git_sha  # noqa: E402
 from ai_backend.infra.llm.semaphore import (  # noqa: E402
     get_llm_semaphore_limit,
     llm_semaphore_slot,

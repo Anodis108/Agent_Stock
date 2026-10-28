@@ -49,7 +49,7 @@ class AgentEvalResult(BaseModel):
     step_count: int
 
 
-from ai_backend.infra.llm.prompt_registry import get_system_prompt, registry
+from ai_backend.infra.prompts import get_system_prompt, registry
 
 
 def _get_task_success_system_prompt() -> str:

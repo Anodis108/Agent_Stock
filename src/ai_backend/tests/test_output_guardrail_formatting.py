@@ -9,12 +9,10 @@ Kiểm tra:
 
 from __future__ import annotations
 
-import pytest
 
 from ai_backend.domain.guardrails.output_checks import (
     OutputGuardrail,
     check_output,
-    find_buy_sell_phrases,
     format_pnl_table,
     mask_structural_numbers,
     rewrite_keep_grounding,

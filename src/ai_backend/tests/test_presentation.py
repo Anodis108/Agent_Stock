@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
@@ -30,7 +29,10 @@ from ai_backend.application.symbol_scanner_service import SymbolScannerService
 
 
 class _MockSwarmOrchestrator:
-    """Orchestrator giả cho test presentation — phát SSE tối thiểu."""
+    """Orchestrator giả cho test presentation — request_deps cho swarm_sse."""
+
+    def request_deps(self):
+        return {}
 
     def stream(self, question, user_id="default", request_id=None, watchlist=None, holdings=None):
         yield ("node_start", {"node": "supervisor", "input_data": {"question": question, "user_id": user_id}})
@@ -139,8 +141,28 @@ def test_health_endpoint(client: TestClient):
     assert data["swarm"] == "ready"
 
 
-def test_chat_stream_sse_endpoint(client: TestClient):
+def test_chat_stream_sse_endpoint(client: TestClient, monkeypatch):
     """Kiểm tra endpoint POST /v1/chat/stream-sse phát luồng Server-Sent Events."""
+    from types import SimpleNamespace
+
+    async def _fake_start_graph(*_a, **_k):
+        yield "token", "ok"
+        yield "result", SimpleNamespace(
+            question="q",
+            rewritten=None,
+            routing=None,
+            answer="ok",
+            steps=[],
+            error=None,
+            price=None,
+            news=None,
+            eval_result=None,
+            chart_path=None,
+            source_file=None,
+        )
+
+    monkeypatch.setattr("ai_backend.infra.llm.chat_stream.start_graph", _fake_start_graph)
+
     req_body = {
         "question": "Phân tích giá cổ phiếu FPT",
         "user_id": "test_user",
@@ -150,11 +172,9 @@ def test_chat_stream_sse_endpoint(client: TestClient):
     assert resp.status_code == 200
     assert "text/event-stream" in resp.headers.get("content-type", "").lower()
 
-    lines = resp.text.split("\n")
-    events = [line.replace("event: ", "").strip() for line in lines if line.startswith("event: ")]
-    assert "node_start" in events
-    assert "token" in events
-    assert "complete" in events or "node_finish" in events
+    assert 'data: {"token"' in resp.text or '"token":' in resp.text
+    assert '"complete": true' in resp.text
+    assert resp.text.strip().endswith("data: [DONE]")
 
 
 def test_scan_endpoint(client: TestClient):

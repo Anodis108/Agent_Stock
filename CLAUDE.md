@@ -4,6 +4,8 @@
 - Viết code đơn giản, ngắn gọn, dễ đọc.
 - Không tách hàm nhỏ lẻ khi không cần thiết — giữ logic liền mạch trong một hàm nếu nó không quá dài hoặc phức tạp.
 - Tránh trừu tượng hóa (abstraction) không cần thiết khi task không yêu cầu.
+- Không bao giờ dùng `.get(...)` trên dict / state / context — code luôn đảm bảo key tồn tại, truy cập thẳng `x["key"]` (key có thể chưa được node nào ghi thì khởi tạo mặc định ở điểm vào, vd. `None`).
+  Ngoại lệ — dữ liệu ngoài code kiểm soát vẫn dùng `.get`: biến môi trường, header HTTP, JSON từ LLM / dataset eval / YAML prompt, payload Qdrant / Redis, dữ liệu vnstock, contextvar có thể rỗng, và chuỗi key thay thế kiểu `h.get("symbol") or h.get("ticker")`.
 
 # CLAUDE.md
 

@@ -9,15 +9,13 @@ Covers:
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
-import pytest
 
-from ai_backend.infra.agents.chat.answer_composer.nodes import (
+from ai_backend.domain.agents.chat.nodes.answer import (
     HeuristicAnswerDraftBrain,
-    LlmAnswerDraftBrain,
     build_evidence,
     run_answer_composer,
 )
-from ai_backend.infra.agents.scan.price_agent.nodes import run_price_agent
+from ai_backend.domain.agents.scan.price_agent.nodes import run_price_agent
 from common.domain.ports import PriceQuote
 from ai_backend.infra.llm.providers import call_with_backend_fallback, resolve_backend_chain
 
@@ -175,7 +173,7 @@ def test_edge_case_chat_endpoint_unknown_ticker(client):
     )
     assert res.status_code == 200
     data = res.json()
-    assert data.get("answer") is not None
+    assert data["answer"] is not None
     ans = data["answer"]
     assert "XYZ" in ans
     assert ("không tìm thấy" in ans.lower() or "không tồn tại" in ans.lower())
@@ -190,7 +188,7 @@ def test_edge_case_chat_endpoint_empty_portfolio(client):
     )
     assert res.status_code == 200
     data = res.json()
-    assert data.get("answer") is not None
+    assert data["answer"] is not None
     ans = data["answer"]
     assert ("chưa có cổ phiếu nào" in ans.lower() or "danh mục rỗng" in ans.lower() or "danh mục" in ans.lower())
 

@@ -7,6 +7,7 @@ ensuring multi-container and distributed setups can access chart artifacts direc
 from __future__ import annotations
 
 import io
+import os
 from pathlib import Path
 from typing import Any
 
@@ -67,8 +68,22 @@ class ChartObjectStore:
         except Exception:
             return False
 
+    def public_url(self, name: str) -> str:
+        """Return public / canonical HTTP URL for chart image."""
+        safe_name = safe_png_name(name) or name
+        public_base = getattr(settings, "minio_public_base_url", None) or os.environ.get("MINIO_PUBLIC_URL")
+        if public_base:
+            return f"{public_base.rstrip('/')}/{self.bucket}/{safe_name}"
+        backend_base = getattr(settings, "backend_base_url", None) or os.environ.get("BACKEND_BASE_URL")
+        if backend_base:
+            return f"{backend_base.rstrip('/')}/charts/{safe_name}"
+        return f"/charts/{safe_name}"
+
     def put(self, name: str, data: bytes) -> str:
-        """Upload image to MinIO. If MinIO is unavailable, write to local chart_dir."""
+        """Upload image to MinIO. If MinIO is unavailable, write to local chart_dir.
+
+        Returns canonical HTTP URL for the chart.
+        """
         safe_name = safe_png_name(name) or name
         self._ensure_bucket()
 
@@ -94,8 +109,15 @@ class ChartObjectStore:
                 disk_path.write_bytes(data)
             except Exception as exc:
                 logger.error("Failed to write chart to local disk fallback: %s", exc)
+        else:
+            try:
+                disk_path = get_default_charts_dir() / safe_name
+                if disk_path.is_file():
+                    disk_path.unlink(missing_ok=True)
+            except Exception:
+                pass
 
-        return f"minio://{self.bucket}/{safe_name}"
+        return self.public_url(safe_name)
 
     def get(self, name: str) -> bytes | None:
         """Retrieve image bytes from MinIO, falling back to local disk if not found."""

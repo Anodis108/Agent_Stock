@@ -1,10 +1,11 @@
 # AGENTS.md
 
-Dự án phát triển theo phương pháp **Spec-Driven Development (SDD)**. Luôn đọc `specs/product-spec.md`, `specs/implementation-plan.md`, và `specs/test-plan.md` trước khi sửa code.
+Dự án phát triển theo phương pháp **Spec-Driven Development (SDD)**. Thư mục **`specs/` chỉ gồm 4 file** — không thêm plan phụ: `product-spec.md`, `implementation-plan.md`, `test-plan.md`, `change-log.md`. Luôn đọc ba file đầu trước khi sửa code; sau mỗi task chỉ cập nhật `implementation-plan.md` (tick) và `change-log.md`.
 
 **Superpowers (mặc định khi code):** Trước mọi sửa code, agent tuân `.cursor/rules/superpowers-coding.mdc` — đọc skill plugin `using-superpowers`, announce skill, route brainstorming / systematic-debugging / TDD / verification; gắn với SDD ở `specs/`.
 
 ## 1. Nguyên Tắc Cốt Lõi (Core Rules)
+- **No `.get()` on agent/graph dicts**: Trong `src/ai_backend/domain/agents/**` dùng `d["key"]`, không `d.get(...)`. Key optional → `if key in d:` rồi `d[key]`. Chi tiết: `.cursor/rules/no-dict-get.mdc`.
 - **Always read the specs before coding**: Đọc kỹ spec liên quan trong `specs/` trước khi viết bất kỳ dòng mã nào.
 - **Implement only one phase or task at a time**: Chỉ làm một ô chưa tick `[ ]` trong `specs/implementation-plan.md`. Phase trước hoàn thành 100% mới chuyển sang phase sau.
 - **Keep the app simple**: Giữ mã nguồn đơn giản, dễ đọc, tập trung vào MVP. Không over-engineer, không thêm feature ngoài spec.
@@ -14,9 +15,10 @@ Dự án phát triển theo phương pháp **Spec-Driven Development (SDD)**. Lu
 - **After each implementation, explain how to test the change**: Luôn cung cấp lệnh chạy app, các bước test thủ công và lệnh pytest của ô vừa làm.
 
 ## 2. Kiến Trúc 3 Khối Clean Architecture (Kế thừa từ AI_Face_checkin)
-- **`src/common/` (Shared Kernel)**: Base models (`CustomBaseModel`), Base services (`BaseService`, `AsyncBaseService`), Domain entities & indicators thuần túy, Ports trừu tượng, Logging (Correlation ID), Settings/Secrets, Transport schemas & client.
+- **`src/common/` (Shared Kernel)**: Base, domain, logging, settings LLM chung, transport — dùng bởi cả web + ai (tương đương phần kernel nếu tách `AI_Face_checkin/shared`).
+- **`{ai,web}_backend/shared/`**: `settings/`, `logging/`, `base/`, `exceptions/` theo từng microservice.
 - **`src/web_backend/` (Web Microservice - Cổng 8000)**: Entry `web_backend.main:app`. Xử lý Presentation (Routers, Middleware), Application (Use Cases), Domain (Session & Portfolio logic), Infra (PostgreSQL/SQLite, Repositories, Remote AI client).
-- **`src/ai_backend/` (AI Microservice - Cổng 8001)**: Entry `ai_backend.main:app`. Chỉ mở các endpoint `/health`, `/v1/chat`, `/v1/chat/stream-sse`, `/v1/scan`. Chứa 10 Worker Agents, **một** Hierarchical Swarm StateGraph (`infra/agents/workflow.py`: `top_supervisor` → `chat_supervisor` | `scan_supervisor` ⇄ workers dùng chung), Concept RAG với Qdrant, Guardrails, Cache 2 tầng, Cost/Token Tracker, Eval Gate.
+- **`src/ai_backend/` (AI Microservice - Cổng 8001)**: Entry `ai_backend.main:app`. Endpoint: `/health`, `/v1/chat`, `/v1/chat/stream-sse`, `/v1/scan`. Layer: `api/`, `application/` (gồm `eval/` pipeline), `domain/`, **`infra/`** (`prompts/`, `llm/`, `eval/` scorers, agents, cache, …), `shared/`.
 - **Ranh giới nghiêm ngặt**:
   - `web_backend` và `ai_backend` tuyệt đối không import trực tiếp lẫn nhau.
   - `web_backend` không import `openai`, `langchain`, hay `langgraph`.

@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 import time
 
@@ -30,7 +29,6 @@ if hasattr(sys.stdout, "reconfigure"):
         sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
         pass
-from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -51,29 +49,22 @@ _SRC = ROOT / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-import yaml
 from openai.types.chat import ChatCompletion
 
 from ai_backend.application.eval.run import (
-    BASELINE_PATH,
     GOLDEN_V4_PATH,
     GOLDEN_V5_PATH,
     GOLDEN_V6_PATH,
     CaseEvalResult,
     build_report,
-    check_injection_gate,
-    check_regression,
-    check_regression_by_slice,
     eval_one_case,
-    format_report,
-    load_baseline,
     load_golden_dataset,
     make_answer_fn,
-    save_baseline,
 )
 from ai_backend.infra.llm import completion as completion_mod
 from ai_backend.infra.llm.params import GenerationParams
 from common.settings import settings
+from pydantic import BaseModel
 
 # Pricing per 1M tokens (USD)
 MODEL_PRICING = {
@@ -84,8 +75,7 @@ MODEL_PRICING = {
 VND_PER_USD = 25400
 
 
-@dataclass
-class TokenRecord:
+class TokenRecord(BaseModel):
     stage: str
     model: str
     prompt_tokens: int

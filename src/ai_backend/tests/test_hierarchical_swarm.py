@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from ai_backend.application.symbol_scanner_service import SymbolScannerInput, SymbolScannerService
-from ai_backend.infra.agents.scan.eval_agent.nodes import HeuristicEvalBrain
-from ai_backend.infra.agents.scan.event_classifier.nodes import HeuristicEventClassifier
-from ai_backend.infra.agents.scan.news_agent.nodes import HeuristicNewsBrain
-from ai_backend.infra.agents.chat.supervisor_agent.nodes import HeuristicRewriteBrain, HeuristicSupervisorBrain
-from ai_backend.infra.agents.scan.synthesis_agent.nodes import HeuristicAlertComposer
-from ai_backend.infra.agents.chat.team import run_chat_graph
-from ai_backend.infra.agents.scan.team import is_abnormal, run_scan_graph
+from ai_backend.domain.agents.scan.eval_agent.nodes import HeuristicEvalBrain
+from ai_backend.domain.agents.scan.nodes import HeuristicEventClassifier
+from ai_backend.domain.agents.scan.news_agent.nodes import HeuristicNewsBrain
+from ai_backend.domain.agents.chat.chat_supervisor_agent.nodes import HeuristicRewriteBrain, HeuristicSupervisorBrain
+from ai_backend.domain.agents.scan.synthesis import HeuristicAlertComposer
+from ai_backend.domain.agents.chat.graph import run_chat_graph
+from ai_backend.domain.agents.scan.nodes import is_abnormal
+from ai_backend.domain.agents.scan.graph import run_scan_graph
 from common.domain.entities import EventRoute
 from common.domain.ports import NewsItem, PriceBar, PriceQuote
 
@@ -143,7 +144,7 @@ def test_chat_supervisor_dispatches_workers_in_rounds():
         supervisor_brain=HeuristicSupervisorBrain(),
         news_brain=HeuristicNewsBrain(),
         eval_brain=HeuristicEvalBrain(),
-        event_callback=lambda event, data: started.append(data.get("node")) if event == "node_start" else None,
+        event_callback=lambda event, data: started.append(data["node"]) if event == "node_start" else None,
     )
 
     assert set(result.routing.agents_to_call) >= {"price", "news", "eval"}
@@ -194,7 +195,7 @@ def test_stream_disconnect_stops_graph_before_next_worker_round():
     )
     events = orch.stream(question="Tại sao giá FPT giảm?", user_id="")
     for event, data in events:
-        if event == "node_start" and data.get("node") == "news_agent":
+        if event == "node_start" and data["node"] == "news_agent":
             break
     news_started.wait(2)
     events.close()  # giống router đóng generator khi client ngắt kết nối
@@ -248,7 +249,7 @@ def test_greeting_stream_first_token_under_1s():
         events.append((event, data))
 
     assert first_token is not None and first_token < 1.0
-    started = [d.get("node") for e, d in events if e == "node_start"]
+    started = [d["node"] for e, d in events if e == "node_start"]
     assert started[:2] == ["guardrail_input", "answer"]
     complete = next(d for e, d in events if e == "complete")
     assert complete["route"] == "greeting"
@@ -267,7 +268,7 @@ def test_greeting_with_stock_question_is_not_short_circuited():
         rewrite_brain=HeuristicRewriteBrain(),
         supervisor_brain=HeuristicSupervisorBrain(),
         news_brain=HeuristicNewsBrain(),
-        event_callback=lambda event, data: started.append(data.get("node")) if event == "node_start" else None,
+        event_callback=lambda event, data: started.append(data["node"]) if event == "node_start" else None,
     )
     assert "rewrite_question" in started
     assert "price_agent" in started
@@ -286,7 +287,7 @@ def _chat(question, **kwargs):
         supervisor_brain=HeuristicSupervisorBrain(),
         news_brain=HeuristicNewsBrain(),
         eval_brain=HeuristicEvalBrain(),
-        event_callback=lambda event, data: started.append(data.get("node")) if event == "node_start" else None,
+        event_callback=lambda event, data: started.append(data["node"]) if event == "node_start" else None,
         **kwargs,
     )
     return result, started
@@ -294,29 +295,26 @@ def _chat(question, **kwargs):
 
 def test_chat_gets_price_news_through_scan_supervisor():
     """price_agent / news_agent chỉ nối với scan_supervisor: chat nhờ scan team lấy dữ liệu rồi nhận về."""
-    from ai_backend.infra.agents.graph import run_swarm_graph
+    from ai_backend.domain.agents.graph import run_graph
 
     result, _ = _chat("Tại sao giá FPT giảm?")
     assert result.answer
     # Thứ tự node thực tế: chat_supervisor → scan_supervisor → price/news → scan_supervisor → chat_supervisor
-    from ai_backend.infra.agents import chat as chat_mod
-
     captured = {}
-    orig = chat_mod.__dict__.get("run_swarm_graph")
 
-    def spy(initial, deps):
-        final, chunks, timings = run_swarm_graph(initial, deps)
+    async def spy(initial, deps, **kwargs):
+        final, chunks, timings = await run_graph(initial, deps, **kwargs)
         captured["order"] = [n for c in chunks for n in c]
         return final, chunks, timings
 
-    import ai_backend.infra.agents.graph as run_mod
+    import ai_backend.domain.agents.graph as run_mod
 
-    run_mod_orig = run_mod.run_swarm_graph
-    run_mod.run_swarm_graph = spy
+    run_mod_orig = run_mod.run_graph
+    run_mod.run_graph = spy
     try:
         _chat("Tại sao giá VNM giảm?")
     finally:
-        run_mod.run_swarm_graph = run_mod_orig
+        run_mod.run_graph = run_mod_orig
     order = captured["order"]
     i_sup, i_scan = order.index("chat_supervisor"), order.index("scan_supervisor")
     assert i_sup < i_scan < order.index("price_agent")
@@ -353,7 +351,7 @@ def test_refusal_goes_through_answer_and_guardrail_output():
 
 def test_diagram_route_dispatches_draw_agent_then_answer():
     """Yêu cầu sơ đồ: chat_supervisor giao draw_agent (gộp chart + diagram), xong thì sang answer."""
-    from ai_backend.infra.agents.nodes import chat_supervisor_node
+    from ai_backend.domain.agents.chat.chat_supervisor_agent.nodes import chat_supervisor_node
     from common.domain.entities import RoutingDecision
 
     routing = RoutingDecision(route="diagram", reason="vẽ sơ đồ", agents_to_call=["diagram"])
@@ -371,8 +369,8 @@ def test_answer_uses_diagram_when_draw_agent_produced_one():
     """draw_agent đã vẽ sơ đồ → answer trả thẳng sơ đồ (không để LLM soạn đè), kể cả route khác 'diagram'."""
     from types import SimpleNamespace
 
-    from ai_backend.infra.agents.chat.team import answer_node
-    from ai_backend.infra.agents.events import graph_deps
+    from ai_backend.domain.agents.chat.nodes.core import answer_node
+    from ai_backend.domain.agents.events import graph_deps
     from common.domain.entities import RoutingDecision
 
     token = graph_deps.set({})

@@ -11,8 +11,8 @@ Mục tiêu:
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
 from typing import Any
+from pydantic import BaseModel, Field
 
 # Các mẫu từ khóa chào hỏi và giao tiếp mở đầu
 _GREETING_PATTERNS = (
@@ -62,13 +62,12 @@ DEFAULT_GREETING_RESPONSE = (
 )
 
 
-@dataclass(slots=True)
-class FastpathGreetingResult:
+class FastpathGreetingResult(BaseModel):
     """Kết quả xử lý greeting fast-path."""
     is_greeting: bool
     is_pure_greeting: bool
     answer: str | None = None
-    steps: list[dict[str, Any]] = field(default_factory=list)
+    steps: list[dict[str, Any]] = Field(default_factory=list)
 
 
 def is_greeting(text: str) -> bool:

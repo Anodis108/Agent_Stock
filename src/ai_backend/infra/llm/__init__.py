@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from ai_backend.infra.llm.client import get_client, mark_current_key_limited
-from ai_backend.infra.llm.prompt_registry import (
+from ai_backend.infra.prompts import (
     Prompt,
     PromptRegistry,
     registry,

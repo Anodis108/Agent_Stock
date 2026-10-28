@@ -208,7 +208,7 @@
     if (lower.indexOf("guardrail") >= 0 || lower.indexOf("gate") >= 0) return "guardrail";
     if (lower.indexOf("rewrite") >= 0) return "rewrite";
     if (lower.indexOf("supervisor") >= 0) return "supervisor";
-    if (lower.indexOf("portfolio") >= 0 || lower.indexOf("watchlist") >= 0) return "portfolio_watch_agent";
+    if (lower.indexOf("portfolio") >= 0 || lower.indexOf("watchlist") >= 0) return "portfolio_watch";
     if (lower.indexOf("price") >= 0) return "price_agent";
     if (lower.indexOf("news") >= 0) return "news_agent";
     if (lower.indexOf("indicator") >= 0) return "indicator_engine";
@@ -307,8 +307,8 @@
     "evalagent": "[System Prompt: EvalAgent / Risk Assessment]\n- Đánh giá mức độ rủi ro (none/low/medium/high) kết hợp từ biến động giá, chỉ báo kỹ thuật và tin tức.\n- Phát hiện bất thường (giá tăng/giảm mạnh vượt ngưỡng) và đề xuất cảnh báo danh mục.",
 
     // 9. PortfolioWatchAgent
-    "portfolio_watch_agent": "[Worker: PortfolioWatchAgent]\n- Quản lý danh mục đầu tư (Holdings), tính giá vốn, thị giá hiện tại, Unrealized P&L (VND & %) và tổng NAV theo từng user_id.\n- Quản lý danh sách theo dõi (Watchlist) và ngưỡng cảnh báo biến động (alert_threshold_pct).\n- Đảm bảo phản hồi khách quan, không đưa ra khuyến nghị mua bán.",
-    "portfoliowatchagent": "[Worker: PortfolioWatchAgent]\n- Quản lý danh mục đầu tư (Holdings), tính giá vốn, thị giá hiện tại, Unrealized P&L (VND & %) và tổng NAV theo từng user_id.\n- Quản lý danh sách theo dõi (Watchlist) và ngưỡng cảnh báo biến động (alert_threshold_pct).\n- Đảm bảo phản hồi khách quan, không đưa ra khuyến nghị mua bán.",
+    "portfolio_watch": "[Node: portfolio_watch]\n- Quản lý danh mục đầu tư (Holdings), tính giá vốn, thị giá hiện tại, Unrealized P&L (VND & %) và tổng NAV theo từng user_id.\n- Quản lý danh sách theo dõi (Watchlist) và ngưỡng cảnh báo biến động (alert_threshold_pct).\n- Đảm bảo phản hồi khách quan, không đưa ra khuyến nghị mua bán.",
+    "portfoliowatch": "[Node: portfolio_watch]\n- Quản lý danh mục đầu tư (Holdings), tính giá vốn, thị giá hiện tại, Unrealized P&L (VND & %) và tổng NAV theo từng user_id.\n- Quản lý danh sách theo dõi (Watchlist) và ngưỡng cảnh báo biến động (alert_threshold_pct).\n- Đảm bảo phản hồi khách quan, không đưa ra khuyến nghị mua bán.",
 
     // 10. Answer + Output Guardrail
     "guardrail_output": "[Output Guardrail]\n- Cấm khuyên mua/bán chắc chắn.\n- Số liệu phải khớp evidence; vi phạm thì yêu cầu Answer soạn lại, hết lượt thì viết lại an toàn kèm miễn trừ trách nhiệm.",
@@ -319,7 +319,7 @@
     "diagram_agent": "[System Prompt: diagram_plan]\nMermaid Diagram Planner: Lập kế hoạch và tạo mã Mermaid biểu diễn luồng quan hệ doanh nghiệp hoặc dữ liệu.",
     "event_classifier": "[System Prompt: event_classification]\nPhân loại sự kiện định lượng / định tính từ dữ liệu quét biến động thị trường.",
     "synthesis_agent": "[System Prompt: synthesis_alert]\nTổng hợp thông tin từ Price/News/Eval để soạn thảo cảnh báo danh mục đầu tư.",
-    "confidence_gate": "[Human-in-the-Loop & Confidence Gate]:\nĐánh giá ngưỡng tin cậy (Threshold >= 0.70) để tự động duyệt phát cảnh báo hoặc chuyển vào hàng đợi phê duyệt.",
+    "scan_tools": "[Human-in-the-Loop: scan_tools]\nThực thi update_watchlist. Graph dừng trước node này (interrupt_before) — chỉ chạy sau khi bạn bấm Duyệt trong hàng đợi phê duyệt.",
 
     "llm_cache": "[Response Cache: LLM exact/semantic]\n- Trả lời ngay từ cache khi cùng prompt + câu hỏi đã được xử lý gần đây.\n- Không gọi API LLM — phản hồi nhanh, chi phí token = 0.",
     "price_cache": "[Market Data Cache: PriceSource TTL]\n- Giá vnstock đã lấy trong vòng TTL (mặc định ~5 phút) được phục vụ từ bộ nhớ.\n- Tránh gọi lại API khi nhiều agent cùng cần một mã."
@@ -479,7 +479,7 @@
       if (indList.length) {
         outContent += "\n\n📊 Chỉ báo kỹ thuật (Technical Indicators):\n" + indList.join("\n");
       }
-    } else if (canonicalId === "portfolio_watch_agent" && step.output && typeof step.output === "object") {
+    } else if (canonicalId === "portfolio_watch" && step.output && typeof step.output === "object") {
       var pwList = [];
       if (step.output.total_nav != null) pwList.push("  - Tổng NAV: " + Number(step.output.total_nav).toLocaleString("vi-VN") + " VND");
       if (step.output.watchlist_count != null) pwList.push("  - Số mã Watchlist: " + step.output.watchlist_count + " mã");
@@ -1747,10 +1747,8 @@
 
     var realtimeSteps = [];
     var streamedText = "";
-    var streamedChartUrl = null;
     var streamingMsgDiv = null;
     var streamingTextEl = null;
-    var streamFinalized = false;
 
     function getOrCreateStreamingMessage() {
       if (streamingMsgDiv) return streamingTextEl;
@@ -1782,54 +1780,30 @@
       return streamingTextEl;
     }
 
+    function handleParsedSse(eventName, parsed, rawData) {
+      if (rawData === "[DONE]") return;
+      if (parsed && parsed.token !== undefined) {
+        handleEvent("token", { delta: parsed.token });
+        return;
+      }
+      if (parsed && parsed.error) {
+        handleEvent("error", parsed);
+        return;
+      }
+      if (
+        parsed &&
+        (parsed.complete === true ||
+          (parsed.answer !== undefined && parsed.question !== undefined))
+      ) {
+        handleEvent("complete", parsed);
+        return;
+      }
+      handleEvent(eventName, parsed);
+    }
+
     function handleEvent(eventName, data) {
-      if (eventName === "node_start") {
-        var rawName = data.node || "agent";
-        var normName = normalizeNodeName(rawName);
-        var existing = realtimeSteps.find(function (s) { return s.name === normName || s.raw_name === rawName || s.id === rawName; });
-        if (!existing) {
-          existing = {
-            id: rawName,
-            name: normName,
-            raw_name: rawName,
-            status: "running",
-            detail: "Đang xử lý…",
-            input: data.input || (data.symbol ? { symbol: data.symbol } : (data.symbols ? { symbols: data.symbols } : null)),
-            output: null,
-          };
-          realtimeSteps.push(existing);
-        } else {
-          existing.status = "running";
-          existing.detail = "Đang xử lý…";
-          if (data.input) existing.input = data.input;
-        }
-        renderLiveGraphNodes(mergeWithCanonicalNodes(realtimeSteps));
-        renderTimeline(realtimeSteps);
-        setGraphStatus("Đang chạy (" + normName + ")…", "running");
-        setBoot("Agent đang chạy: " + normName);
-      } else if (eventName === "node_end" || eventName === "node_finish") {
-        var rawName = data.node || "agent";
-        var normName = normalizeNodeName(rawName);
-        var existing = realtimeSteps.find(function (s) { return s.name === normName || s.raw_name === rawName || s.id === rawName; });
-        if (existing) {
-          if (data.output !== undefined && data.output !== null) existing.output = data.output;
-          existing.status = data.status === "error" || stepOutputHasError(existing)
-            ? "error"
-            : "done";
-          if (data.duration_s != null) existing.duration_s = Number(data.duration_s);
-          if (data.duration_ms != null) existing.duration_ms = Number(data.duration_ms);
-          var durStr = existing.duration_s != null ? (existing.duration_s >= 1 ? existing.duration_s.toFixed(2) + "s" : existing.duration_ms + "ms") : "";
-          if (existing.status === "error") {
-            var errText = (existing.output && existing.output.error) ? String(existing.output.error) : "Lỗi agent";
-            existing.detail = errText + (durStr ? " (⏱ " + durStr + ")" : "");
-          } else {
-            existing.detail = "Hoàn tất" + (durStr ? " (⏱ " + durStr + ")" : "");
-          }
-        }
-        renderLiveGraphNodes(mergeWithCanonicalNodes(realtimeSteps));
-        renderTimeline(realtimeSteps);
-      } else if (eventName === "token") {
-        var delta = data.delta || "";
+      if (eventName === "token") {
+        var delta = data.delta || data.token || "";
         streamedText += delta;
         var textEl = getOrCreateStreamingMessage();
         if (textEl) {
@@ -1837,14 +1811,7 @@
           var box = document.getElementById("chat-messages");
           if (box) box.scrollTop = box.scrollHeight;
         }
-      } else if (eventName === "chart_url") {
-        if (data.url) {
-          streamedChartUrl = data.url;
-        }
-      } else if (eventName === "final_answer" || eventName === "complete") {
-        // Backend phát cả final_answer và complete (alias) — chỉ render một lần.
-        if (streamFinalized) return;
-        streamFinalized = true;
+      } else if (eventName === "complete") {
         if (streamingMsgDiv) {
           streamingMsgDiv.remove();
           streamingMsgDiv = null;
@@ -1855,7 +1822,7 @@
 
         var finalAnswer = data.answer || streamedText || "(không có câu trả lời cuối từ Backend)";
         var diagram = data.diagram || null;
-        var chartPath = data.chart_path || streamedChartUrl || null;
+        var chartPath = data.chart_path || null;
         var messageId = data.message_id || null;
         var sid = data.session_id || currentSessionId;
 
@@ -1902,14 +1869,15 @@
         "X-User-ID": getCurrentUserId(),
       };
 
-      var resp = await fetch(apiUrl("/chat"), {
+      // Ưu tiên /chat/stream (SSE token từ writer → run_graph)
+      var resp = await fetch(apiUrl("/chat/stream"), {
         method: "POST",
         headers: streamHeaders,
         body: JSON.stringify(chatPayload),
       });
 
       if (!resp.ok && (resp.status === 404 || resp.status === 405)) {
-        resp = await fetch(apiUrl("/chat/stream"), {
+        resp = await fetch(apiUrl("/chat"), {
           method: "POST",
           headers: streamHeaders,
           body: JSON.stringify(chatPayload),
@@ -1969,7 +1937,7 @@
             } catch (_e) {
               parsed = { text: rawData };
             }
-            handleEvent(currentEvt, parsed);
+            handleParsedSse(currentEvt, parsed, rawData);
           }
         }
       }
@@ -1988,7 +1956,8 @@
         }
         if (dataLines.length > 0) {
           try {
-            handleEvent(currentEvt, JSON.parse(dataLines.join("\n")));
+            var rawTail = dataLines.join("\n");
+            handleParsedSse(currentEvt, JSON.parse(rawTail), rawTail);
           } catch (_e) {}
         }
       }

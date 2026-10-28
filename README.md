@@ -195,12 +195,11 @@ vn-stock-swarm/
 │   ├── docs/                   # Sơ đồ kiến trúc & Concepts markdown
 │   ├── eval/                   # Dữ liệu đánh giá Golden v6 & Báo cáo Excel
 │   └── prompts/                # Prompt Registry tập trung (alias production)
-├── specs/                      # Toàn bộ hồ sơ Spec-Driven Development (SDD)
-│   ├── product-spec.md         # Đặc tả yêu cầu sản phẩm & kiến trúc
-│   ├── implementation-plan.md  # Kế hoạch triển khai 6 Phase chi tiết
-│   ├── test-plan.md            # Kế hoạch kiểm thử kim tự tháp 4 tầng
-│   ├── change-log.md           # Nhật ký thay đổi & mốc phát triển
-│   └── project-summary.md      # Tài liệu tổng hợp bảo vệ đồ án cuối khóa
+├── specs/                      # SDD — chỉ 4 file (xem AGENTS.md)
+│   ├── product-spec.md         # Yêu cầu sản phẩm & kiến trúc
+│   ├── implementation-plan.md  # Phase / checklist triển khai
+│   ├── test-plan.md            # Kiểm thử 4 tầng
+│   └── change-log.md           # Nhật ký thay đổi
 ├── src/
 │   ├── common/                                      # [KHỐI 1: SHARED KERNEL - DÙNG CHUNG]
 │   │   ├── base/                                    # Kế thừa chuẩn từ AI_Face_checkin
@@ -412,7 +411,7 @@ Lệnh này cắt từng file theo đoạn văn, embed offline (không gọi Ope
 ---
 
 ## 8. Hướng Dẫn Trình Bày Bảo Vệ Đồ Án Cuối Khóa (Capstone Presentation)
-Vui lòng tham khảo chi tiết tài liệu [specs/project-summary.md](file:///d:/Hoc_Tap/YOURClass/Project/vn-stock-swarm/specs/project-summary.md) để xem:
+Tham khảo [specs/product-spec.md](specs/product-spec.md) và phần demo trong README này để chuẩn bị:
 - Kịch bản demo 5 phút theo từng bước bấm trên màn hình.
 - Danh mục câu hỏi phản biện thường gặp của Hội đồng và câu trả lời mẫu.
 - Số liệu đo lường định lượng tiết kiệm chi phí và tỷ lệ cache hit.

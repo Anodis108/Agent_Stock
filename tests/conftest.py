@@ -73,7 +73,7 @@ def build_real_deps(schema: str) -> AppDeps:
     conn = get_connection(schema)
     memory = PgMemoryStore(schema)
     deps = AppDeps(
-        price_source=VnstockPriceSource(fallback_on_error=True),
+        price_source=VnstockPriceSource(),
         news_source=CafefNewsSource(),
         history_store=PgPriceHistoryStore(schema),
         memory_store=memory,

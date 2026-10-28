@@ -203,14 +203,14 @@ def test_missing_collection_says_not_in_the_documents():
 
 
 def test_supervisor_sends_rsi_definition_to_retrieval_and_symbol_to_indicator():
-    from ai_backend.infra.agents.chat.supervisor_agent import RewrittenQuestion, route_question
-    from ai_backend.infra.agents.chat.supervisor_agent.nodes import (
+    from ai_backend.domain.agents.chat.chat_supervisor_agent import RewrittenQuestion, route_question
+    from ai_backend.domain.agents.chat.chat_supervisor_agent.nodes import (
         HeuristicRewriteBrain,
         _extract_symbols,
     )
-    from ai_backend.infra.agents.chat.team import run_chat_graph
-    from ai_backend.infra.agents.graph import compile_swarm_graph
-    from ai_backend.infra.agents.nodes import chat_supervisor_node
+    from ai_backend.domain.agents.chat.graph import run_chat_graph
+    from ai_backend.domain.agents.graph import build_graph
+    from ai_backend.domain.agents.chat.chat_supervisor_agent.nodes import chat_supervisor_node
 
     class BoomBrain:
         def route(self, rewritten):
@@ -253,7 +253,7 @@ def test_supervisor_sends_rsi_definition_to_retrieval_and_symbol_to_indicator():
     assert indicator_gather == ["price_agent", "news_agent"]
     assert _extract_symbols("RSI của HPG") == ["HPG"]
 
-    compile_swarm_graph.cache_clear()
+    build_graph.cache_clear()
     client = _indexed_client()
     result = run_chat_graph(
         "RSI là gì",
@@ -276,9 +276,9 @@ def test_supervisor_sends_rsi_definition_to_retrieval_and_symbol_to_indicator():
     assert published["agents_to_call"] == ["retrieval"]
 
     from common.domain.ports import PriceBar, PriceQuote
-    from ai_backend.infra.agents.scan.eval_agent.nodes import HeuristicEvalBrain
-    from ai_backend.infra.agents.chat.answer_composer.nodes import HeuristicAnswerDraftBrain
-    from ai_backend.infra.agents.scan.news_agent.schemas import NewsReactAction
+    from ai_backend.domain.agents.scan.eval_agent.nodes import HeuristicEvalBrain
+    from ai_backend.domain.agents.chat.nodes.answer import HeuristicAnswerDraftBrain
+    from ai_backend.domain.agents.scan.news_agent.schemas import NewsReactAction
 
     class QuotePrice:
         def fetch_latest_close(self, symbol):
@@ -295,7 +295,7 @@ def test_supervisor_sends_rsi_definition_to_retrieval_and_symbol_to_indicator():
         def filter_relevant(self, symbol, items):
             return []
 
-    compile_swarm_graph.cache_clear()
+    build_graph.cache_clear()
     from unittest.mock import patch
 
     with patch(
@@ -327,9 +327,9 @@ def test_supervisor_sends_rsi_definition_to_retrieval_and_symbol_to_indicator():
 
 
 def test_thin_concept_match_does_not_invent_a_definition():
-    from ai_backend.infra.agents.chat.supervisor_agent.nodes import HeuristicRewriteBrain
-    from ai_backend.infra.agents.chat.team import run_chat_graph
-    from ai_backend.infra.agents.graph import compile_swarm_graph
+    from ai_backend.domain.agents.chat.chat_supervisor_agent.nodes import HeuristicRewriteBrain
+    from ai_backend.domain.agents.chat.graph import run_chat_graph
+    from ai_backend.domain.agents.graph import build_graph
     from ai_backend.infra.qdrant.answer import NOT_IN_DOCS
 
     class Boom:
@@ -343,7 +343,7 @@ def test_thin_concept_match_does_not_invent_a_definition():
         def append_conversation(self, *_args, **_kwargs):
             return None
 
-    compile_swarm_graph.cache_clear()
+    build_graph.cache_clear()
     result = run_chat_graph(
         "chứng quyền là gì",
         price_source=Boom(),
@@ -365,8 +365,6 @@ def test_thin_concept_match_does_not_invent_a_definition():
 def test_ai_stream_says_not_in_the_documents_when_the_passage_is_missing():
     """Đường HTTP mà web gọi: thiếu đoạn thì câu trả lời đúng Không có trong tài liệu."""
     import json
-    from types import SimpleNamespace
-    from unittest.mock import patch
 
     from fastapi.testclient import TestClient
 

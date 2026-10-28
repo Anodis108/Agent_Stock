@@ -16,7 +16,7 @@ import uuid
 from functools import lru_cache
 from typing import Any, Callable
 
-from common.logging import get_logger
+from ai_backend.shared.logging import get_logger
 from common.settings import settings
 
 _logger = get_logger(__name__)

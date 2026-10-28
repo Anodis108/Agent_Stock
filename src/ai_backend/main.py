@@ -4,9 +4,10 @@ Chỉ phục vụ:
 - /health: Trạng thái hoạt động của AI Engine, Swarm StateGraph, tài nguyên phụ trợ.
 - /v1/chat, /v1/chat/stream-sse: Hỏi-đáp → team chat của Hierarchical Swarm (JSON / Server-Sent Events).
 - /v1/scan: Quét cảnh báo một mã → team scan của Hierarchical Swarm.
+- /v1/concepts/ingest: Upload file markdown khái niệm (multipart) → Qdrant.
 
 Job nền: quét toàn bộ watchlist mỗi `SCAN_INTERVAL_MINUTES` phút (biến môi trường), cũng qua team scan.
-Cả hai nhánh chạy chung MỘT graph (infra/agents/workflow.py).
+Cả hai nhánh chạy chung MỘT graph (domain/agents/graph.py).
 """
 
 from __future__ import annotations
@@ -19,11 +20,12 @@ from ai_backend.api.helpers.exception_handler import register_ai_exception_handl
 from ai_backend.api.helpers.middlewares import CorrelationIdMiddleware, RequestLoggingMiddleware
 from ai_backend.api.routers import (
     chat_router,
+    concepts_router,
     health_router,
     scan_router,
 )
 from ai_backend.shared.settings import ai_settings
-from common.logging.logger import get_logger, setup_logging
+from ai_backend.shared.logging import get_logger, setup_logging
 from ai_backend.infra.market_data import VnstockPriceSource, CafefNewsSource    
 from ai_backend.infra.storage import (
     PgMemoryStore,
@@ -31,9 +33,8 @@ from ai_backend.infra.storage import (
     PgWatchlistStore,
 )
 from ai_backend.infra.storage.pg_db import connect
-from ai_backend.infra.agents.chat.team import run_chat_graph
-from ai_backend.infra.agents.scan.team import run_scan_graph
 from ai_backend.infra.notify.console_notifier import ConsoleNotifier
+from ai_backend.application.concept_ingestion_service import ConceptIngestionService
 from ai_backend.application.swarm_orchestrator import SwarmOrchestrator
 from ai_backend.application.symbol_scanner_service import SymbolScannerService
 from ai_backend.infra.scheduler import start_scan_scheduler, stop_scan_scheduler
@@ -55,16 +56,16 @@ async def lifespan(app: FastAPI):
     connect().close()
     logger.info("AI Backend kết nối PostgreSQL")
 
-    # 2. Qdrant: đảm bảo collection bộ nhớ, nạp khái niệm chứng khoán nếu còn trống
+    # 2. Qdrant: đảm bảo collection bộ nhớ; gợi ý nạp dữ liệu khái niệm nếu collection còn trống
     from ai_backend.infra.storage.long_term_memory import get_qdrant_client, _ensure_collection
-    from ai_backend.infra.qdrant.concepts import index_concepts
 
     q_client = get_qdrant_client(url=ai_settings.qdrant_url)
     _ensure_collection(q_client, ai_settings.qdrant_collection or "portfolio_watch_memory")
     concept_coll = getattr(ai_settings, "concept_collection", "stock_concepts")
     if not q_client.collection_exists(concept_coll) or q_client.count(concept_coll).count == 0:
-        n_pts = index_concepts(client=q_client, collection_name=concept_coll)
-        logger.info(f"Đã nạp {n_pts} khái niệm vào Qdrant '{concept_coll}'.")
+        logger.info(
+            f"Collection khái niệm '{concept_coll}' chưa có dữ liệu. Gọi POST /v1/concepts/ingest với multipart file .md."
+        )
 
     # 3. MinIO: khởi tạo store ảnh biểu đồ (None nếu chart_backend != minio)
     from common.storage import get_chart_store
@@ -78,9 +79,8 @@ async def lifespan(app: FastAPI):
     memory_store = PgMemoryStore()
     watchlist_store = PgWatchlistStore()
 
-    # Tạo một lần lúc khởi động, router lấy lại qua request.app.state.orchestrator
+    # Tạo một lần lúc khởi động, router lấy lại qua request.app.state
     app.state.orchestrator = SwarmOrchestrator(
-        graph_runner=run_chat_graph,
         price_source=price_source,
         news_source=news_source,
         history_store=history_store,
@@ -88,7 +88,6 @@ async def lifespan(app: FastAPI):
         watchlist_store=watchlist_store,
     )
     scanner = SymbolScannerService(
-        graph_runner=run_scan_graph,
         price_source=price_source,
         news_source=news_source,
         history_store=history_store,
@@ -97,6 +96,7 @@ async def lifespan(app: FastAPI):
         notifier=ConsoleNotifier(memory_store),
     )
     app.state.symbol_scanner_service = scanner
+    app.state.concept_ingestion_service = ConceptIngestionService(client=q_client)
 
     # 4. Job nền: quét mọi mã trong watchlist của mọi user theo chu kỳ config
     def _scan_watchlist_job() -> None:
@@ -143,6 +143,7 @@ register_ai_exception_handlers(app)
 app.include_router(health_router)
 app.include_router(chat_router)
 app.include_router(scan_router)
+app.include_router(concepts_router)
 
 
 if __name__ == "__main__":

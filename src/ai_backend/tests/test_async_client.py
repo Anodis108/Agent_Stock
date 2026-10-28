@@ -148,7 +148,7 @@ def _patch_stream(monkeypatch, client: _FakeAsyncClient) -> None:
 
     monkeypatch.setattr("ai_backend.infra.llm.completion.get_client", _sync_client)
     monkeypatch.setattr(
-        "ai_backend.infra.llm.completion.get_async_client",
+        "ai_backend.infra.llm.async_client.get_async_client",
         lambda backend_name=None: client,
     )
 
@@ -176,7 +176,7 @@ def test_chat_stream_releases_slot_on_error(monkeypatch):
 
     again = _FakeCompletions(["sau lỗi"])
     monkeypatch.setattr(
-        "ai_backend.infra.llm.completion.get_async_client",
+        "ai_backend.infra.llm.async_client.get_async_client",
         lambda backend_name=None: _FakeAsyncClient(again),
     )
     assert list(chat_stream([{"role": "user", "content": "hi"}])) == ["sau lỗi"]

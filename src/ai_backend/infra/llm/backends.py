@@ -1,12 +1,13 @@
 """Backend presets — Ollama/vLLM dùng OpenAI-compatible API."""
 
 from __future__ import annotations
+from pydantic import BaseModel, ConfigDict
 
-from dataclasses import dataclass
 
 
-@dataclass(frozen=True, slots=True)
-class Backend:
+class Backend(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     name: str
     default_base_url: str  # "" = SDK mặc định (OpenAI Cloud)
     requires_real_key: bool

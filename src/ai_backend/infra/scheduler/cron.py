@@ -10,7 +10,7 @@ try:
 except ImportError:
     BackgroundScheduler = Any  # type: ignore
 
-from common.logging import get_logger
+from ai_backend.shared.logging import get_logger
 
 _logger = get_logger(__name__)
 

@@ -2,19 +2,18 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
 
 from common.settings import settings
+from pydantic import BaseModel
 
 
-@dataclass(slots=True)
-class GenerationParams:
+class GenerationParams(BaseModel):
     temperature: float = settings.llm_temperature
     max_completion_tokens: int = settings.llm_max_completion_tokens
     top_p: float = settings.llm_top_p
 
     def to_openai_kwargs(self) -> dict:
-        return asdict(self)
+        return self.model_dump()
 
 
 DETERMINISTIC = GenerationParams(temperature=0.0)

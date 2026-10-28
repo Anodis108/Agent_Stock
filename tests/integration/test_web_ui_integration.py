@@ -61,7 +61,7 @@ def test_ui_js_node_mappings_and_inspector():
     js = (FE / "app.js").read_text(encoding="utf-8")
 
     # Greeting & Portfolio node references
-    assert "portfolio_watch_agent" in js
+    assert "portfolio_watch" in js
     assert "greeting_responder" in js
     assert "PortfolioWatchAgent" in js
     assert "GreetingResponder" in js
@@ -92,10 +92,10 @@ def test_ui_js_node_mappings_and_inspector():
         if (!NODE_FALLBACK_PROMPTS["greeting_responder"]) throw new Error("missing fallback prompt for greeting");
 
         // 3. Portfolio mapping
-        if (canonicalNodeId("portfolio_watch_agent") !== "portfolio_watch_agent") throw new Error("canonical portfolio failed");
-        if (normalizeNodeName("portfolio_watch_agent") !== "PortfolioWatchAgent") throw new Error("normalize portfolio failed");
+        if (canonicalNodeId("portfolio_watch") !== "portfolio_watch") throw new Error("canonical portfolio failed");
+        if (normalizeNodeName("portfolio_watch") !== "PortfolioWatchAgent") throw new Error("normalize portfolio failed");
         if (getNodeIcon("PortfolioWatchAgent") !== "💼") throw new Error("icon portfolio failed");
-        if (!NODE_FALLBACK_PROMPTS["portfolio_watch_agent"]) throw new Error("missing fallback prompt for portfolio_watch_agent");
+        if (!NODE_FALLBACK_PROMPTS["portfolio_watch"]) throw new Error("missing fallback prompt for portfolio_watch");
 
         console.log("PHASE4_JS_MAPPINGS_OK");
         """
@@ -182,7 +182,7 @@ def test_sse_streaming_greeting_fastpath(monkeypatch, tmp_path):
 
 
 def test_sse_streaming_portfolio_watch_node():
-    """Verify /chat/stream SSE streaming emits portfolio_watch_agent events for portfolio query."""
+    """Verify /chat/stream SSE streaming emits portfolio_watch events for portfolio query."""
     client = TestClient(app)
 
     resp = client.post(
@@ -208,10 +208,10 @@ def test_sse_streaming_portfolio_watch_node():
                 data = {"raw": raw_data}
             events.append((current_evt, data))
 
-    # Check for portfolio_watch_agent event
+    # Check for portfolio_watch event
     node_events = [e[1] for e in events if e[0] in ("node_start", "node_finish")]
-    pw_events = [e for e in node_events if e.get("node") == "portfolio_watch_agent"]
-    assert len(pw_events) > 0, f"No portfolio_watch_agent events emitted: {node_events}"
+    pw_events = [e for e in node_events if e.get("node") == "portfolio_watch"]
+    assert len(pw_events) > 0, f"No portfolio_watch events emitted: {node_events}"
 
     # Check final answer
     final_events = [e[1] for e in events if e[0] == "final_answer"]

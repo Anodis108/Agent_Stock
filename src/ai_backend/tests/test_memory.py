@@ -9,12 +9,10 @@ Bao gồm:
 from __future__ import annotations
 
 import datetime
-from unittest.mock import MagicMock
 
-import pytest
 from fastapi.testclient import TestClient
 
-from ai_backend.infra.agents.chat.supervisor_agent.nodes import (
+from ai_backend.domain.agents.chat.chat_supervisor_agent.nodes import (
     HeuristicRewriteBrain,
     HeuristicSupervisorBrain,
     recall_memory,
@@ -23,13 +21,12 @@ from ai_backend.infra.agents.chat.supervisor_agent.nodes import (
 )
 from web_backend.infra.database.connection import get_connection
 from web_backend.infra.database.repositories import MessageRepository, SessionRepository
-from ai_backend.infra.agents.chat.team import run_chat_graph
+from ai_backend.domain.agents.chat.graph import run_chat_graph
 from ai_backend.infra.storage.memory_store import (
     apply_sliding_window_with_ttl_eviction,
     filter_conversation_history,
     parse_timestamp,
 )
-from web_backend.main import app as product_app
 
 
 # ==============================================================================
@@ -140,14 +137,14 @@ def test_long_term_fallback_save_and_recall():
     )
 
     recalled = recall_memory({"user_id": uid, "question": "Danh mục của tôi có gì?", "turn": turn})
-    assert isinstance(recalled.get("memories"), list)
+    assert isinstance(recalled["memories"], list)
 
 
 def test_long_term_user_isolation():
     """Đảm bảo ký ức của User A không bao giờ bị rò rỉ sang User B."""
     store_memory({"user_id": "user_A", "question": "Mã bí mật của tôi là FPT", "answer": "OK", "symbols": ["FPT"]})
     res_b = recall_memory({"user_id": "user_B", "question": "Mã bí mật của tôi là gì?"})
-    memories_b = res_b.get("memories") or []
+    memories_b = res_b["memories"] or []
     assert not any("FPT" in m for m in memories_b)
 
 
@@ -198,8 +195,6 @@ def test_chat_creates_session_if_none_and_auto_titles(client: TestClient, monkey
         routing=None,
         answer="HPG là mã thép đầu ngành tại Việt Nam.",
         steps=[],
-        hitl_used=False,
-        pending_approvals_created=0,
         error=None,
         price=None,
         news=None,

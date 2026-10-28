@@ -39,8 +39,6 @@ class ChatResponse(CustomBaseModel):
     reason: str = ""
     answer: str
     steps: list[ChatStep] = Field(default_factory=list)
-    hitl_used: bool = False
-    pending_approvals_created: int = 0
     error: str | None = None
     price: dict[str, Any] | None = None
     news_count: int = 0

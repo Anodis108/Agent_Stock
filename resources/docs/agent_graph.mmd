@@ -1,4 +1,3 @@
-%% Hierarchical Swarm — sinh tự động: python -m ai_backend.infra.graph.run
 ---
 config:
   flowchart:
@@ -7,58 +6,125 @@ config:
 graph TD;
 	__start__([<p>__start__</p>]):::first
 	top_supervisor(top_supervisor)
-	chat_supervisor(chat_supervisor)
-	scan_supervisor(scan_supervisor)
-	price_agent(price_agent)
-	news_agent(news_agent)
-	eval_agent(eval_agent)
-	draw_agent(draw_agent)
-	portfolio_watch_agent(portfolio_watch_agent)
-	guardrail_input(guardrail_input)
-	rewrite_question(rewrite_question)
-	concept_retrieval(concept_retrieval)
-	answer(answer)
-	guardrail_output(guardrail_output)
-	event_classifier(event_classifier)
-	hitl_gate_2(hitl_gate_2)
-	synthesis_agent(synthesis_agent)
-	hitl_gate_1(hitl_gate_1)
 	__end__([<p>__end__</p>]):::last
 	__start__ --> top_supervisor;
-	answer --> guardrail_output;
-	chat_supervisor -.-> answer;
-	chat_supervisor -.-> concept_retrieval;
-	chat_supervisor -.-> draw_agent;
-	chat_supervisor -.-> eval_agent;
-	chat_supervisor -.-> portfolio_watch_agent;
-	chat_supervisor -.-> scan_supervisor;
-	concept_retrieval --> answer;
-	draw_agent --> chat_supervisor;
-	eval_agent -.-> chat_supervisor;
-	eval_agent -.-> scan_supervisor;
-	event_classifier --> scan_supervisor;
-	guardrail_input -.-> answer;
-	guardrail_input -.-> rewrite_question;
-	guardrail_output -.-> __end__;
-	guardrail_output -.-> answer;
-	hitl_gate_1 --> scan_supervisor;
-	hitl_gate_2 --> scan_supervisor;
-	news_agent --> scan_supervisor;
-	portfolio_watch_agent --> chat_supervisor;
-	price_agent --> scan_supervisor;
-	rewrite_question --> chat_supervisor;
-	scan_supervisor -.-> __end__;
-	scan_supervisor -.-> chat_supervisor;
-	scan_supervisor -.-> eval_agent;
-	scan_supervisor -.-> event_classifier;
-	scan_supervisor -.-> hitl_gate_1;
-	scan_supervisor -.-> hitl_gate_2;
-	scan_supervisor -.-> news_agent;
-	scan_supervisor -.-> price_agent;
-	scan_supervisor -.-> synthesis_agent;
-	synthesis_agent --> scan_supervisor;
-	top_supervisor -.-> guardrail_input;
-	top_supervisor -.-> scan_supervisor;
+	top_supervisor -.-> chat_team\3achat_input;
+	top_supervisor -.-> scan_team\3a__start__;
+	chat_team\3a__end__ --> __end__;
+	scan_team\3a__end__ --> __end__;
+	subgraph chat_team
+	chat_team\3achat_input(chat_input)
+	chat_team\3aguardrail_input(guardrail_input)
+	chat_team\3arewrite_question(rewrite_question)
+	chat_team\3achat_supervisor(chat_supervisor)
+	chat_team\3ascan_team(scan_team)
+	chat_team\3adraw_agent(draw_agent)
+	chat_team\3aportfolio_watch(portfolio_watch)
+	chat_team\3aconcept_retrieval(concept_retrieval)
+	chat_team\3aanswer(answer)
+	chat_team\3aguardrail_output(guardrail_output)
+	chat_team\3a__end__(<p>__end__</p>)
+	chat_team\3aanswer --> chat_team\3aguardrail_output;
+	chat_team\3achat_input --> chat_team\3aguardrail_input;
+	chat_team\3achat_supervisor -.-> chat_team\3aanswer;
+	chat_team\3achat_supervisor -.-> chat_team\3aconcept_retrieval;
+	chat_team\3achat_supervisor -.-> chat_team\3adraw_agent;
+	chat_team\3achat_supervisor -.-> chat_team\3aportfolio_watch;
+	chat_team\3achat_supervisor -.-> chat_team\3ascan_team;
+	chat_team\3aconcept_retrieval --> chat_team\3aanswer;
+	chat_team\3adraw_agent --> chat_team\3achat_supervisor;
+	chat_team\3aguardrail_input -.-> chat_team\3aanswer;
+	chat_team\3aguardrail_input -.-> chat_team\3arewrite_question;
+	chat_team\3aguardrail_output -.-> chat_team\3a__end__;
+	chat_team\3aguardrail_output -.-> chat_team\3aanswer;
+	chat_team\3aportfolio_watch --> chat_team\3achat_supervisor;
+	chat_team\3arewrite_question --> chat_team\3achat_supervisor;
+	chat_team\3ascan_team --> chat_team\3achat_supervisor;
+	end
+	subgraph scan_team
+	scan_team\3a__start__(<p>__start__</p>)
+	scan_team\3ascan_input(scan_input)
+	scan_team\3ascan_supervisor(scan_supervisor)
+	scan_team\3ascan_tools(scan_tools<hr/><small><em>__interrupt = before</em></small>)
+	scan_team\3aevent_classifier(event_classifier)
+	scan_team\3asynthesis_agent(synthesis_agent)
+	scan_team\3aprice_agent_collect(price_agent_collect)
+	scan_team\3anews_agent_collect(news_agent_collect)
+	scan_team\3adb_agent_collect(db_agent_collect)
+	scan_team\3aeval_agent_collect(eval_agent_collect)
+	scan_team\3aevent_classifier_collect(event_classifier_collect)
+	scan_team\3asynthesis_agent_collect(synthesis_agent_collect)
+	scan_team\3a__end__(<p>__end__</p>)
+	scan_team\3a__start__ -.-> scan_team\3ascan_input;
+	scan_team\3a__start__ -.-> scan_team\3ascan_supervisor;
+	scan_team\3adb_agent\3asummarize --> scan_team\3adb_agent_collect;
+	scan_team\3adb_agent_collect -.-> scan_team\3ascan_supervisor;
+	scan_team\3adb_agent_collect -.-> scan_team\3ascan_tools;
+	scan_team\3aeval_agent\3asummarize --> scan_team\3aeval_agent_collect;
+	scan_team\3aeval_agent_collect -.-> scan_team\3ascan_supervisor;
+	scan_team\3aeval_agent_collect -.-> scan_team\3ascan_tools;
+	scan_team\3aevent_classifier --> scan_team\3aevent_classifier_collect;
+	scan_team\3aevent_classifier_collect -.-> scan_team\3ascan_supervisor;
+	scan_team\3aevent_classifier_collect -.-> scan_team\3ascan_tools;
+	scan_team\3anews_agent\3asummarize --> scan_team\3anews_agent_collect;
+	scan_team\3anews_agent_collect -.-> scan_team\3ascan_supervisor;
+	scan_team\3anews_agent_collect -.-> scan_team\3ascan_tools;
+	scan_team\3aprice_agent\3asummarize --> scan_team\3aprice_agent_collect;
+	scan_team\3aprice_agent_collect -.-> scan_team\3ascan_supervisor;
+	scan_team\3aprice_agent_collect -.-> scan_team\3ascan_tools;
+	scan_team\3ascan_input --> scan_team\3ascan_supervisor;
+	scan_team\3ascan_supervisor -. &nbsp;final_answer&nbsp; .-> scan_team\3a__end__;
+	scan_team\3ascan_supervisor -.-> scan_team\3adb_agent\3a__start__;
+	scan_team\3ascan_supervisor -.-> scan_team\3aeval_agent\3a__start__;
+	scan_team\3ascan_supervisor -.-> scan_team\3aevent_classifier;
+	scan_team\3ascan_supervisor -.-> scan_team\3anews_agent\3a__start__;
+	scan_team\3ascan_supervisor -.-> scan_team\3aprice_agent\3a__start__;
+	scan_team\3ascan_supervisor -.-> scan_team\3asynthesis_agent;
+	scan_team\3ascan_tools --> scan_team\3ascan_supervisor;
+	scan_team\3asynthesis_agent --> scan_team\3asynthesis_agent_collect;
+	scan_team\3asynthesis_agent_collect -.-> scan_team\3ascan_supervisor;
+	scan_team\3asynthesis_agent_collect -.-> scan_team\3ascan_tools;
+	subgraph price_agent
+	scan_team\3aprice_agent\3a__start__(<p>__start__</p>)
+	scan_team\3aprice_agent\3aact(act)
+	scan_team\3aprice_agent\3atools(tools)
+	scan_team\3aprice_agent\3asummarize(summarize)
+	scan_team\3aprice_agent\3a__start__ --> scan_team\3aprice_agent\3aact;
+	scan_team\3aprice_agent\3aact -.-> scan_team\3aprice_agent\3asummarize;
+	scan_team\3aprice_agent\3aact -.-> scan_team\3aprice_agent\3atools;
+	scan_team\3aprice_agent\3atools --> scan_team\3aprice_agent\3aact;
+	end
+	subgraph news_agent
+	scan_team\3anews_agent\3a__start__(<p>__start__</p>)
+	scan_team\3anews_agent\3aact(act)
+	scan_team\3anews_agent\3atools(tools)
+	scan_team\3anews_agent\3asummarize(summarize)
+	scan_team\3anews_agent\3a__start__ --> scan_team\3anews_agent\3aact;
+	scan_team\3anews_agent\3aact -.-> scan_team\3anews_agent\3asummarize;
+	scan_team\3anews_agent\3aact -.-> scan_team\3anews_agent\3atools;
+	scan_team\3anews_agent\3atools --> scan_team\3anews_agent\3aact;
+	end
+	subgraph db_agent
+	scan_team\3adb_agent\3a__start__(<p>__start__</p>)
+	scan_team\3adb_agent\3aact(act)
+	scan_team\3adb_agent\3atools(tools)
+	scan_team\3adb_agent\3asummarize(summarize)
+	scan_team\3adb_agent\3a__start__ --> scan_team\3adb_agent\3aact;
+	scan_team\3adb_agent\3aact -.-> scan_team\3adb_agent\3asummarize;
+	scan_team\3adb_agent\3aact -.-> scan_team\3adb_agent\3atools;
+	scan_team\3adb_agent\3atools --> scan_team\3adb_agent\3aact;
+	end
+	subgraph eval_agent
+	scan_team\3aeval_agent\3a__start__(<p>__start__</p>)
+	scan_team\3aeval_agent\3aact(act)
+	scan_team\3aeval_agent\3atools(tools)
+	scan_team\3aeval_agent\3asummarize(summarize)
+	scan_team\3aeval_agent\3a__start__ --> scan_team\3aeval_agent\3aact;
+	scan_team\3aeval_agent\3aact -.-> scan_team\3aeval_agent\3asummarize;
+	scan_team\3aeval_agent\3aact -.-> scan_team\3aeval_agent\3atools;
+	scan_team\3aeval_agent\3atools --> scan_team\3aeval_agent\3aact;
+	end
+	end
 	classDef default fill:#f2f0ff,line-height:1.2
 	classDef first fill-opacity:0
 	classDef last fill:#bfb6fc

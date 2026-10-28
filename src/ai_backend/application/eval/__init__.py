@@ -1,16 +1,9 @@
-"""Eval package for AI Backend Microservice.
+"""Eval use cases & CLI — golden runner, regression, reports.
 
-Bao gồm:
-- gate: Kiểm tra và chặn merge khi điểm kiểm chuẩn tụt quá ngưỡng.
-- history: Lưu lịch sử chạy eval và đo noise (σ).
-- regression: Full golden regression test runner.
-- agent_eval: Đánh giá chất lượng toàn diện của Multi-Agent Swarm.
-- eval_cache: Cache kết quả eval tránh gọi LLM dư thừa.
-- steps: Chuẩn hóa cấu trúc steps và gắn trạng thái lỗi.
-- run, run_detailed, run_excel_export: Bộ công cụ chạy benchmark và xuất báo cáo.
+Infra (scorers, dataset, gate policy, cache): `ai_backend.infra.eval`.
 """
 
-from ai_backend.application.eval.agent_eval import (
+from ai_backend.application.eval.agent_eval import (  # noqa: F401 — re-export shim
     AgentEvalSummary,
     CaseAgentEvalResult,
     export_eval_report,

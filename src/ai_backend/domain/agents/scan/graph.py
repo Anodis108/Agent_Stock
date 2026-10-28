@@ -1,0 +1,133 @@
+"""Graph team scan: dựng subgraph scan (`start_graph` / `resume_graph` → state checkpoint).
+
+Kiến trúc multi_agent/hierarchical.py: scan_supervisor (LLM, đọc task + notes) chọn worker
+price_agent / news_agent / db_agent / event_classifier_node / eval_agent [đề xuất update_watchlist]
+/ synthesis_node [soạn + gửi cảnh báo ngay qua notifier]; mỗi ReAct worker = `build_*_agent()` từ folder riêng.
+
+HITL (chỉ update_watchlist của eval_agent) giống llm-engineer-demo: hành động đề xuất = AIMessage.tool_calls trong `messages`; graph DỪNG
+trước scan_tools (interrupt_before) → status="pending_approval" + thread_id; resume_graph duyệt/từ chối.
+"""
+
+from __future__ import annotations
+
+from functools import lru_cache
+from typing import Any
+
+from langgraph.graph import END, START, StateGraph
+from langgraph.prebuilt import ToolNode
+from langgraph.runtime import get_runtime
+
+from ai_backend.domain.agents.scan.db_agent.graph import build_db_agent
+from ai_backend.domain.agents.scan.eval_agent.graph import build_eval_agent
+from ai_backend.domain.agents.scan.news_agent.graph import build_news_agent
+from ai_backend.domain.agents.multi_agent._llm import base_llm
+from ai_backend.domain.agents.scan.nodes import event_classifier_node, synthesis_node
+from pydantic import BaseModel, Field
+from ai_backend.domain.agents.scan.price_agent.graph import build_price_agent
+from ai_backend.domain.agents.scan.state import ScanHierarchicalState
+from ai_backend.domain.agents.scan.tools import SCAN_ACTION_TOOLS
+from ai_backend.infra.monitoring.tracing import trace_step
+from ai_backend.shared.logging import get_logger
+
+_logger = get_logger(__name__)
+
+# Tên worker cho supervisor routing + collect
+SCAN_WORKERS = [
+    "price_agent",
+    "news_agent",
+    "db_agent",
+    "event_classifier_node",
+    "eval_agent",
+    "synthesis_node",
+]
+
+SCAN_SUPERVISOR_SYSTEM = """Bạn điều phối team scan cổ phiếu Việt Nam gồm các worker:
+- 'price_agent': lấy giá đóng cửa, % thay đổi
+- 'news_agent': lấy tin tức
+- 'db_agent': đọc danh mục nắm giữ / watchlist của người dùng
+- 'event_classifier_node': phân loại biến động bình thường / bất thường (cần có giá + tin trước)
+- 'eval_agent': đánh giá mức độ nghiêm trọng (chỉ khi BẤT THƯỜNG, hoặc khi nhiệm vụ yêu cầu đánh giá)
+- 'synthesis_node': soạn và gửi cảnh báo ngay (chỉ khi quét cảnh báo và đã có đánh giá)
+Worker KHÔNG tự giao tiếp với nhau — bạn quyết định worker nào chạy tiếp theo dựa trên nhiệm vụ và ghi chú đã có;
+không chạy lại worker đã có kết quả trong ghi chú. 
+
+Chọn 'done' khi đã đủ thông tin để trả lời user, kể cả khi chỉ cần 1 worker."""
+
+
+class _RoutingDecision(BaseModel):
+    next_agent: str = Field(description="Tên worker trong system prompt, hoặc 'done'")
+    reasoning: str = Field(description="Lý do ngắn gọn cho quyết định")
+
+
+def route_collect(state: ScanHierarchicalState) -> str:
+    """Sau eval_agent: còn tool_call (update_watchlist) → scan_tools; không thì → scan_supervisor."""
+    messages = state["messages"]
+    pending = bool(messages) and bool(getattr(messages[-1], "tool_calls", None))
+    return "scan_tools" if pending else "scan_supervisor"
+
+
+def _make_collect_node(worker: str):
+    """Như `_make_collect_node` của hierarchical.py + ghi completed_workers (chat đọc để không gọi lại). Team chat dùng chung."""
+
+    def collect(state: dict) -> dict[str, Any]:
+        return {"notes": {**state["notes"], worker: state["result"] or ""}, "completed_workers": [worker]}
+
+    return collect
+
+def _make_route_supervisor(worker_domains: list[str]):
+    def route_supervisor(state: ScanHierarchicalState) -> str:
+        return state["next_agent"] if state["next_agent"] in worker_domains else "final_answer"
+    return route_supervisor
+
+def _make_supervisor_node(name: str, system_prompt: str, worker_domains: list[str]):
+    async def supervisor_node(state: dict) -> dict[str, Any]:
+        with trace_step(get_runtime().context["trace_span"], name, input={"task": state["task"], "notes": state["notes"]}) as box:
+            notes_text = "\n".join(f"[{d}] {n}" for d, n in state["notes"].items()) or "(chưa có)"
+            prompt = f"Nhiệm vụ: {state['task']}\n\nGhi chú từ worker đã chạy:\n{notes_text}"
+
+            decision = await base_llm().with_structured_output(_RoutingDecision).ainvoke(
+                [{"role": "system", "content": system_prompt}, {"role": "user", "content": prompt}]
+            )
+            next_agent = decision.next_agent if decision.next_agent in [*worker_domains, "done"] else "done"
+        return {"next_agent": next_agent}
+
+    return supervisor_node
+
+
+@lru_cache(maxsize=1)
+def build_graph():
+    """START → scan_supervisor → <worker> → <worker>_collect → …; 'done' → END."""
+    graph = StateGraph(ScanHierarchicalState)
+    graph.add_node(
+        "scan_supervisor",
+        _make_supervisor_node("scan_supervisor", SCAN_SUPERVISOR_SYSTEM, SCAN_WORKERS),
+    )
+    graph.add_node("scan_tools", ToolNode(SCAN_ACTION_TOOLS))
+
+    graph.add_node("price_agent", build_price_agent())
+    graph.add_node("news_agent", build_news_agent())
+    graph.add_node("db_agent", build_db_agent())
+    graph.add_node("eval_agent", build_eval_agent())
+    
+    graph.add_node("event_classifier_node", event_classifier_node)
+    graph.add_node("synthesis_node", synthesis_node)
+
+    # HITL chỉ sau eval_agent (update_watchlist); synthesis chỉ ghi alert, collect → supervisor.
+    hitl_workers = {"eval_agent"}
+    routing_map = {"final_answer": END}  # supervisor chọn 'done' → kết thúc team
+    for worker in SCAN_WORKERS:
+        graph.add_node(f"{worker}_collect", _make_collect_node(worker))
+        graph.add_edge(worker, f"{worker}_collect")
+        if worker in hitl_workers:
+            graph.add_conditional_edges(f"{worker}_collect", route_collect, ["scan_supervisor", "scan_tools"])
+        else:
+            graph.add_edge(f"{worker}_collect", "scan_supervisor")
+        routing_map[worker] = worker
+
+    graph.add_edge(START, "scan_supervisor")
+    graph.add_conditional_edges("scan_supervisor", _make_route_supervisor(SCAN_WORKERS), routing_map)
+    graph.add_edge("scan_tools", "scan_supervisor")
+    return graph.compile(interrupt_before=["scan_tools"])
+
+
+_build_graph = build_graph

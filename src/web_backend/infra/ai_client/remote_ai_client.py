@@ -14,6 +14,7 @@ from common.transport.transport import (
     AiClientError,
     ai_chat,
     ai_scan,
+    ai_scan_resume,
     post_json,
     stream_remote_sse,
 )
@@ -108,3 +109,13 @@ class RemoteAiClient:
             threshold_pct=threshold_pct,
             request_id=request_id,
         )
+
+    def scan_resume(
+        self,
+        thread_id: str,
+        approve: bool,
+        reason: str = "",
+        user_id: str = "default",
+    ) -> dict[str, Any]:
+        """Duyệt / từ chối hành động scan đang chờ rồi resume graph (POST /v1/scan/resume)."""
+        return ai_scan_resume(thread_id=thread_id, approve=approve, reason=reason, user_id=user_id)

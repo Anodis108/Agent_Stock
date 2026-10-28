@@ -1,21 +1,5 @@
 """Observability hooks (Langfuse)."""
 
-from ai_backend.infra.monitoring.tracing import (
-    agent_span,
-    agent_step,
-    record_step_usage,
-    reset_client_for_tests,
-    step_parent,
-    trace_request,
-    trace_step,
-)
+from ai_backend.infra.monitoring.tracing import trace_answer, trace_step, trace_stream
 
-__all__ = [
-    "agent_span",
-    "agent_step",
-    "record_step_usage",
-    "reset_client_for_tests",
-    "step_parent",
-    "trace_request",
-    "trace_step",
-]
+__all__ = ["trace_answer", "trace_step", "trace_stream"]

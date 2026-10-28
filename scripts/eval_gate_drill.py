@@ -28,7 +28,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from ai_backend.application.eval.gate import check_gates, format_gate_result, main as gate_main  # noqa: E402
-from ai_backend.application.eval.history import save_eval_history  # noqa: E402
+from ai_backend.infra.eval.history import save_eval_history  # noqa: E402
 
 
 def _good_report() -> dict:

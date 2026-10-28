@@ -73,8 +73,10 @@ Kế hoạch tái cấu trúc hệ thống theo phương pháp **Spec-Driven Dev
   - `infra/ai_client/`: `remote_ai_client.py` (Client gọi sang `ai_backend:8001`).
   - *Kiểm tra*: `python -c "from web_backend.infra.database.connection import get_connection"`
 - [x] **2.5. Web Shared & Entrypoint**:
-  - `shared/settings.py` (cấu hình Web: `PORT=8000`, `AI_BASE_URL`).
-  - `shared/exceptions.py` (`WebDatabaseException`, `SessionNotFoundException`,...).
+  - `shared/settings/`: `settings.py` (cấu hình Web: `PORT=8000`, `AI_BASE_URL`), `models/` (nested `MinioSettings`).
+  - `shared/logging/`: facade re-export kernel `common.logging`.
+  - `shared/base/`: facade re-export kernel `common.base`.
+  - `shared/exceptions/`: `WebDatabaseException`, `SessionNotFoundException`, v.v.
   - `main.py`: Entrypoint FastAPI của Web, cấu hình CORS, Middleware, phục vụ static frontend và route include.
   - `Dockerfile`: Multi-stage Dockerfile độc lập cho Web Backend.
   - *Kiểm tra*: `python -c "from web_backend.main import app"`
@@ -100,7 +102,7 @@ Kế hoạch tái cấu trúc hệ thống theo phương pháp **Spec-Driven Dev
   - *Kiểm tra*: `python -c "from ai_backend.api.routers import chat_stream, health, scan"`
 - [x] **3.2. AI Application Layer (`application/`)**:
   - `swarm_orchestrator.py`: Điểm điều phối LangGraph Swarm (thay thế use-case `answer_question.py`).
-  - `concept_rag_service.py`: Tìm kiếm ngữ nghĩa tài liệu khái niệm trên Qdrant.
+  - `rag_service.py`: Tìm kiếm ngữ nghĩa tài liệu khái niệm trên Qdrant (`RagService`).
   - `symbol_scanner_service.py`: Quét phân tích kỹ thuật mã cổ phiếu.
   - `application/eval/`: Bộ công cụ đánh giá (`gate.py`, `history.py`, `regression.py`, `run.py`, `run_detailed.py`, `run_excel_export.py`, `agent_eval.py`, `eval_cache.py`).
   - *Kiểm tra*: `python -c "from ai_backend.application.swarm_orchestrator import SwarmOrchestrator"`
@@ -114,18 +116,22 @@ Kế hoạch tái cấu trúc hệ thống theo phương pháp **Spec-Driven Dev
   - `infra/agents/`: Toàn bộ 10 Agent Nodes (`supervisor_agent`, `price_agent`, `news_agent`, `eval_agent`, `chart_agent.py`, `diagram_agent`, `event_classifier`, `portfolio_watch_agent`, `synthesis_agent`, `answer_composer`).
   - `infra/market_data/`: `price_source.py` (Vnstock với offline fallback), `news_source.py` (CafeF / Vnstock).
   - `infra/qdrant/`: `concepts.py` (client nạp 5 file markdown), `answer.py` (semantic retrieval).
-  - `infra/llm/`: `client.py`, `async_client.py`, `completion.py`, `structured.py`, `prompt_registry.py`, `prompt_lint.py`, `prompt_experiment.py`, `semaphore.py`, `resilience.py`, `account_snapshot.py`.
+  - `infra/prompts/`: registry, lint, experiment (YAML: `resources/prompts/`).
+  - `infra/llm/`: `client.py`, `async_client.py`, `completion.py`, `structured.py`, `providers.py`, `semaphore.py`, `resilience.py`, …
+  - `infra/eval/` (chấm điểm agent_scorers, metrics), `application/eval/` (canonical eval pipeline: dataset, runner, scorers, gate), `infra/guardrails/` (→ `domain/guardrails/`), `infra/optimization/`, `infra/observability/` (README).
   - `infra/cache/`: `exact.py`, `semantic.py`, `redis_store.py`.
   - `infra/cost/`: `tracker.py`.
   - `infra/monitoring/`: `tracing.py` (Langfuse span & che mờ PII).
   - `infra/storage/`: `chart_store.py`, `memory_store.py`, `long_term_memory.py`, `price_history_store.py`, `watchlist_store.py`.
   - `infra/notify/`: `console_notifier.py`.
   - `infra/scheduler/`: `cron.py`.
-  - *Kiểm tra*: `python -c "from ai_backend.infra.agents.graph import build_swarm_graph"`
+  - *Kiểm tra*: `python -c "from ai_backend.domain.agents.graph import compile_graph"`
 - [x] **3.5. AI Shared & Entrypoint**:
-  - `shared/settings.py` (cấu hình AI: `PORT=8001`, Qdrant, Redis, OpenAI Keys).
-  - `shared/charts.py` (Matplotlib styling chuẩn).
-  - `shared/exceptions.py` (`GuardrailViolation`, `LLMTimeoutException`,...).
+  - `shared/settings/`: `settings.py` (cấu hình AI: `PORT=8001`), `models/` (nested `QdrantSettings`, `RedisSettings`, `MinioSettings`).
+  - `shared/logging/`: facade re-export kernel `common.logging`.
+  - `shared/base/`: facade re-export kernel `common.base`.
+  - `shared/exceptions/`: `GuardrailViolation`, `LLMTimeoutException`, v.v.
+  - `shared/charts.py`: (Matplotlib styling chuẩn).
   - `main.py`: Entrypoint FastAPI của AI Backend, chỉ phục vụ `/health`, `/v1/chat/stream`, `/v1/scan`.
   - `Dockerfile`: Multi-stage Dockerfile độc lập cho AI Backend.
   - *Kiểm tra*: `python -c "from ai_backend.main import app"`
@@ -148,6 +154,12 @@ Kế hoạch tái cấu trúc hệ thống theo phương pháp **Spec-Driven Dev
     - `src/ai_backend/tests/test_module3_features.py`
     - `src/ai_backend/tests/test_edge_cases.py`
   - *Kiểm tra*: `pytest src/ai_backend/tests/ -q`
+- [ ] **3.7. HITL scan theo `interrupt_before` (align llm-engineer-demo)** — code xong, **chưa cập nhật test**:
+  - Bỏ node `hitl_gate_1` / `hitl_gate_2` + auto-send; một node `scan_tools` = `ToolNode([send_alert, update_watchlist], messages_key="actions")`, scan subgraph compile `interrupt_before=["scan_tools"]`.
+  - `eval_agent` đề xuất `update_watchlist`, `synthesis_agent` đề xuất `send_alert` (AIMessage.tool_calls trong `actions`); `scan_supervisor` route `scan_tools` khi còn tool_call chưa trả lời.
+  - Graph gốc compile với checkpointer (`PostgresSaver` khi có `DATABASE_URL`, fallback `MemorySaver`); `run_graph(thread_id)` trả `pending_tool_call`; `resume_graph` approve (`stream(None)`) / reject (`update_state(as_node="scan_tools")`).
+  - API: `/v1/scan` trả `status` / `thread_id` / `tool_call` (thay `gate1_action` / `gate2_pending` / `pending_events`); `POST /v1/scan/resume`. Web `/approvals/{id}/approve|reject` gọi resume thay vì tự gửi / upsert.
+  - *Còn lại*: viết lại test HITL scan + approvals (`test_hitl_summary.py`, `test_scan_*`, `test_review_approval*`, `test_api_approvals.py`, `test_hierarchical_swarm.py`).
 
 ---
 

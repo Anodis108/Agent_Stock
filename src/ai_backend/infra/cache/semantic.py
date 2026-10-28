@@ -11,11 +11,11 @@ import os
 import re
 import time
 from contextvars import ContextVar
-from dataclasses import dataclass, field
 from typing import Any
 
 from ai_backend.infra.cache.exact import get_llm_cache_context, normalize_question
 from common.settings import settings
+from pydantic import BaseModel, Field, PrivateAttr
 
 COSINE_THRESHOLD = 0.93
 TTL_SECONDS = 24 * 3600
@@ -112,16 +112,14 @@ def embed_question(text: str) -> list[float]:
     return _embed_simple(normalized)
 
 
-@dataclass(slots=True)
-class _SemanticEntry:
+class _SemanticEntry(BaseModel):
     embedding: list[float]
     value: str
     source_question: str
     expires_at: float
 
 
-@dataclass(slots=True)
-class SemanticHitAudit:
+class SemanticHitAudit(BaseModel):
     query: str
     matched_question: str
     similarity: float
@@ -138,12 +136,11 @@ class SemanticHitAudit:
         }
 
 
-@dataclass
-class SemanticCache:
+class SemanticCache(BaseModel):
     threshold: float = COSINE_THRESHOLD
     ttl_seconds: float = TTL_SECONDS
-    _entries: dict[str, list[_SemanticEntry]] = field(default_factory=dict)
-    audit_log: list[SemanticHitAudit] = field(default_factory=list)
+    _entries: dict[str, list[_SemanticEntry]] = PrivateAttr(default_factory=dict)
+    audit_log: list[SemanticHitAudit] = Field(default_factory=list)
 
     def _bucket_key(self, prompt_name: str, prompt_version: str, model: str) -> str:
         return f"{prompt_name}|{prompt_version}|{model}"

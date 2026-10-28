@@ -33,7 +33,7 @@ __all__ = ["app", "health"]
 
 if __name__ == "__main__":
     import uvicorn
-    from common.logging import get_logger
+    from ai_backend.shared.logging import get_logger
     from common.settings import settings
 
     logger = get_logger(__name__)

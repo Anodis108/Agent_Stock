@@ -5,8 +5,10 @@ description = "Portfolio Watch & Chat Agent — multi-agent giám sát cổ phi�
 requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.111.0",
+    "python-multipart>=0.0.9",
     "uvicorn[standard]>=0.30.0",
     "langgraph>=0.2.0",
+    "langgraph-checkpoint-postgres>=2.0.0",
     "langchain-openai>=0.2.0",
     "pydantic-settings>=2.3.0",
     "python-dotenv>=1.0.0",

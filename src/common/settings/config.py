@@ -77,6 +77,7 @@ class Settings(BaseSettings):
     # 9. Data sources & Storage
     price_source: str | None = None
     news_source: str | None = None
+    news_days: int | None = None
     price_fallback_on_error: bool | None = None
     sqlite_path: str | None = None
     backend_sqlite_path: str | None = None
@@ -87,6 +88,7 @@ class Settings(BaseSettings):
     minio_secure: bool | None = None
     minio_access_key: str | None = None
     minio_secret_key: str | None = None
+    minio_public_base_url: str | None = None
     postgres_host: str | None = None
     postgres_port: int | None = None
     postgres_db: str | None = None

@@ -8,16 +8,23 @@ Mọi lời gọi dùng chung một event loop để semaphore giới hạn đư
 from __future__ import annotations
 
 import asyncio
+import queue
 import random
 import threading
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from contextlib import asynccontextmanager
+from typing import Any
 
 from openai import APITimeoutError, AsyncOpenAI, RateLimitError
+from openai.types.chat import ChatCompletionMessageParam
 
 from ai_backend.infra.llm.backends import get_backend
-from ai_backend.infra.llm.client import _get_pool
+from ai_backend.infra.llm.client import _get_pool, mark_current_key_limited
+from ai_backend.infra.llm.params import GenerationParams
+from ai_backend.infra.llm.providers import resolve_backend_chain, resolve_model_chain
 from common.settings import settings
+
+Messages = list[ChatCompletionMessageParam]
 
 _semaphore: asyncio.Semaphore | None = None
 _semaphore_limit: int | None = None
@@ -111,3 +118,109 @@ async def acall_with_retry(
                 raise
             await asyncio.sleep(min(2**attempt, 16) + random.uniform(0, 1))
     raise RuntimeError("acall_with_retry: hết số lần thử")
+
+
+async def astream_chat(
+    messages: Messages,
+    params: GenerationParams | None = None,
+    *,
+    model: str | None = None,
+) -> AsyncIterator[str]:
+    """Stream token async (AsyncOpenAI + semaphore + retry). Dùng từ completion.chat_stream."""
+    params = params or GenerationParams()
+    resolved_model = resolve_model_chain(model)[0]
+
+    async def _open_stream():
+        chain = resolve_backend_chain()
+        names: list[str | None] = [None] if len(chain) == 1 else [None, *chain[1:]]
+        last_exc: Exception | None = None
+        for backend_name in names:
+            client = (
+                get_async_client()
+                if backend_name is None
+                else get_async_client(backend_name)
+            )
+            try:
+                return await client.chat.completions.create(
+                    model=resolved_model,
+                    messages=messages,
+                    stream=True,
+                    **params.to_openai_kwargs(),
+                )
+            except RateLimitError as exc:
+                mark_current_key_limited(client)
+                if len(names) == 1:
+                    raise
+                last_exc = exc
+                continue
+            except Exception as exc:
+                last_exc = exc
+                if len(names) == 1:
+                    raise
+                continue
+        if isinstance(last_exc, Exception):
+            raise last_exc
+        raise RuntimeError("astream_chat: không mở được stream")
+
+    async with async_llm_slot():
+        stream = await acall_with_retry(
+            _open_stream,
+            max_retries=settings.llm_max_retries,
+        )
+        async for chunk in stream:
+            if not chunk.choices:
+                continue
+            delta = chunk.choices[0].delta.content
+            if delta:
+                yield delta
+
+
+def iter_sync_astream(
+    messages: Messages,
+    params: GenerationParams | None = None,
+    *,
+    model: str | None = None,
+    stream_completed: list[bool] | None = None,
+) -> Iterator[str]:
+    """Bridge astream_chat → sync iterator (LangGraph / composer chạy trong thread)."""
+    loop = ensure_llm_async_loop()
+    out: queue.Queue[Any] = queue.Queue()
+    done = object()
+
+    async def _produce() -> None:
+        try:
+            async for token in astream_chat(messages, params, model=model):
+                out.put(token)
+        except Exception as exc:
+            out.put(exc)
+        finally:
+            out.put(done)
+
+    task_box: dict[str, asyncio.Task[None]] = {}
+
+    async def _run() -> None:
+        task_box["task"] = asyncio.current_task()
+        await _produce()
+
+    asyncio.run_coroutine_threadsafe(_run(), loop)
+    finished = False
+    try:
+        while True:
+            item = out.get()
+            if item is done:
+                finished = True
+                break
+            if isinstance(item, Exception):
+                raise item
+            yield item
+    finally:
+
+        def _cancel() -> None:
+            task = task_box.get("task")
+            if task is not None and not task.done():
+                task.cancel()
+
+        loop.call_soon_threadsafe(_cancel)
+
+    if stream_completed is not None and finished:
+        stream_completed.append(True)

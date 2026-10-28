@@ -2,7 +2,7 @@
 
 Kiểm tra:
 1. SwarmOrchestrator: Kế thừa BaseService, Fast-path Chào hỏi, Stream SSE events, Process input/output.
-2. ConceptRagService: Kế thừa BaseService, Khớp khái niệm 5 file markdown (RSI, ATO, Trần/Sàn), Trả về 'Không có trong tài liệu.' khi không tìm thấy.
+2. RagService: Kế thừa BaseService, Khớp khái niệm 5 file markdown (RSI, ATO, Trần/Sàn), Trả về 'Không có trong tài liệu.' khi không tìm thấy.
 3. SymbolScannerService: Kế thừa BaseService, Quét biến động giá, Kiểm tra ngưỡng threshold_pct, Đánh giá Gate 1 HITL.
 4. Eval Gate & Helpers: check_gates, GateResult, GATES thresholds, normalize_steps, mark_mid_run_error.
 """
@@ -17,12 +17,7 @@ from ai_backend.application.swarm_orchestrator import (
     SwarmOrchestrator,
     SwarmOutput,
 )
-from ai_backend.application.concept_rag_service import (
-    ConceptRagInput,
-    ConceptRagOutput,
-    ConceptRagService,
-    NOT_IN_DOCS,
-)
+from ai_backend.application.rag_service import NOT_IN_DOCS, RagInput, RagOutput, RagService
 from ai_backend.application.symbol_scanner_service import (
     SymbolScannerInput,
     SymbolScannerOutput,
@@ -33,11 +28,9 @@ from ai_backend.application.eval.gate import (
     GateResult,
     check_gates,
     format_gate_result,
-    normalize_gate_report,
 )
-from ai_backend.application.eval.steps import (
+from ai_backend.infra.eval.steps import (
     ensure_steps_reflect_error,
-    mark_mid_run_error,
     normalize_steps,
 )
 
@@ -81,56 +74,56 @@ class TestSwarmOrchestrator:
 
 
 # ==============================================================================
-# 2. Tests cho ConceptRagService
+# 2. Tests cho RagService
 # ==============================================================================
 
-class TestConceptRagService:
+class TestRagService:
     def test_subclass_of_base_service(self):
-        assert issubclass(ConceptRagService, BaseService)
+        assert issubclass(RagService, BaseService)
 
     def test_concept_rsi_found(self):
-        service = ConceptRagService()
-        inp = ConceptRagInput(question="RSI là gì")
+        service = RagService()
+        inp = RagInput(question="RSI là gì")
         out = service.process(inp)
 
-        assert isinstance(out, ConceptRagOutput)
+        assert isinstance(out, RagOutput)
         assert out.relevant is True
         assert out.source_file == "rsi-va-sma.md"
         assert "RSI" in out.answer
 
     def test_concept_ato_found(self):
-        service = ConceptRagService()
-        inp = ConceptRagInput(question="Lệnh ATO là gì")
+        service = RagService()
+        inp = RagInput(question="Lệnh ATO là gì")
         out = service.process(inp)
 
-        assert isinstance(out, ConceptRagOutput)
+        assert isinstance(out, RagOutput)
         assert out.relevant is True
         assert out.source_file == "lenh-ato-atc-lo.md"
         assert "ATO" in out.answer
 
     def test_concept_gia_tran_found(self):
-        service = ConceptRagService()
-        inp = ConceptRagInput(question="Giá trần là gì")
+        service = RagService()
+        inp = RagInput(question="Giá trần là gì")
         out = service.process(inp)
 
-        assert isinstance(out, ConceptRagOutput)
+        assert isinstance(out, RagOutput)
         assert out.relevant is True
         assert out.source_file == "gia-tran-san.md"
         assert "trần" in out.answer.lower()
 
     def test_concept_out_of_scope_fallback(self):
-        service = ConceptRagService()
-        inp = ConceptRagInput(question="Thời tiết ngày mai ở Hà Nội thế nào?")
+        service = RagService()
+        inp = RagInput(question="Thời tiết ngày mai ở Hà Nội thế nào?")
         out = service.process(inp)
 
-        assert isinstance(out, ConceptRagOutput)
+        assert isinstance(out, RagOutput)
         assert out.relevant is False
         assert out.source_file is None
         assert out.answer == NOT_IN_DOCS
 
     def test_empty_question(self):
-        service = ConceptRagService()
-        inp = ConceptRagInput(question="")
+        service = RagService()
+        inp = RagInput(question="")
         out = service.process(inp)
 
         assert out.relevant is False
@@ -249,4 +242,4 @@ class TestEvalGateAndSteps:
         marked = ensure_steps_reflect_error(steps, error="Timeout calling Vnstock")
         assert any(s["status"] == "error" for s in marked)
         err_step = next(s for s in marked if s["status"] == "error")
-        assert "Timeout calling Vnstock" in err_step.get("detail", "")
+        assert "Timeout calling Vnstock" in err_step["detail"]

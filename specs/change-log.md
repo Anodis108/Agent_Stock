@@ -2,6 +2,401 @@
 
 Nhật ký ghi nhận chi tiết mọi thay đổi, kết quả kiểm thử và tiến độ triển khai theo phương pháp **Spec-Driven Development (SDD)**.
 
+## 2026-10-24 — domain/agents/events.py rút gọn
+
+- Giữ `graph_deps`, `emit_agent_event`, `StreamCancelledError` / `set_stream_cancel_event`, `main_item` (đang được dùng). Gộp `target_symbols` vào main_item, `check_stream_cancelled` vào emit_agent_event (chỉ 1 chỗ gọi mỗi hàm).
+- Bỏ phát kèm `node_end` ⇄ `node_finish`: frontend (app.js) xử lý cả 2 tên cùng nhánh → trước đây mỗi node bị phát / xử lý 2 lần.
+
+## 2026-10-24 — @dataclass → pydantic BaseModel toàn ai_backend; thu gọn class chat
+
+- 40 class `@dataclass` trong ai_backend (agents, guardrails, eval, cache, cost, llm, prompts, retrieval, charts) → `pydantic.BaseModel`: `field()` → `Field()`, `frozen=True` → `ConfigDict(frozen=True)`, `asdict(x)` → `x.model_dump()`, `SemanticCache._entries` → `PrivateAttr`. Lời gọi khởi tạo theo vị trí (BaseModel chỉ nhận keyword) đổi sang keyword: prompts/lint.py, retrieval/answer.py, price/news/eval tools, eval/runner.py. Mọi class `model_rebuild` OK. Class dùng CustomBaseModel có sẵn giữ nguyên.
+- chat/state.py: `RewrittenQuestion.symbol` và `AnswerQuestionResult.question` thành `@property` (= symbols[0] / rewritten.original); `AnswerComposeResult` còn evidence / guardrail_violations / draft_attempts (bỏ answer, model, hitl_used); bỏ `compose` khỏi ChatTeamState (chat_result dựng từ answer_evidence / guardrail_violations / answer_attempts).
+- Kiểm tra LLM giả: chat, chat vi phạm guardrail 3 lượt, câu rỗng / chào, scan HITL duyệt / từ chối — OK. `eval/run_detailed.py` import lỗi `GOLDEN_V4_PATH` là lỗi có sẵn (thay đổi đã staged xoá hằng này).
+
+## 2026-10-24 — AnswerQuestionResult chuyển vào chat/state.py, bỏ field thừa
+
+- `AnswerQuestionResult` từ `agents/state.py` → `chat/state.py` (cạnh ScanSymbolResult ở scan/state.py); agents/state.py chỉ còn AssistantState (bỏ import TYPE_CHECKING ngược).
+- Bỏ field không caller nào đọc: `memories`, `portfolio_watch_result`, `chart_result` (client.py đọc qua getattr → None; đã có `chart_path`). Giữ 13 field caller dùng.
+
+## 2026-10-24 — Chat không biết worker bên trong scan
+
+- Bỏ `_AGENT_NAMES` (chat/graph.py); `routing.agents_to_call` = worker của chat đã chạy (scan_team / draw_agent / portfolio_watch / concept_retrieval), gom từ chunk `<worker>_collect`. `scan_team_node` không trả `completed_workers` của scan nữa — chat chỉ nhận dữ liệu + `result`.
+- Ảnh hưởng: eval `routing_accuracy` (so tên cũ price / news / eval / chart) cần cập nhật bộ kỳ vọng.
+
+## 2026-10-24 — answer tách thành answer → guardrail_output → save_long_term_memory
+
+- `chat/answer.py`: 3 node + `route_guardrail_output`. answer: chọn loại trả lời bằng bảng (điều kiện đầu tiên đúng thắng) thay chuỗi `elif`, composed → LLM soạn từ evidence. guardrail_output: vi phạm & còn lượt → quay lại answer (tối đa 3), hết lượt → viết lại an toàn từ evidence. save_long_term_memory: ghi hội thoại + store_memory + AIMessage.
+- Bỏ: compose_heuristic (LLM lỗi → bản rỗng → guardrail viết lại an toàn), A/B prompt version + chọn model theo mức đánh giá, fallback `chat()` khi không stream được.
+- State thêm lại `answer_evidence` / `answer_attempts` / `guardrail_violations` / `last_grounded` (vòng answer ⇄ guardrail_output qua state). Step `guardrail_output` có lại trên timeline.
+- Kiểm tra LLM giả: chat bình thường; LLM khuyên mua + bịa số → 3 vòng answer ⇄ guardrail_output → tóm tắt evidence; câu chào → answer → guardrail_output.
+
+## 2026-10-24 — run_graph / resume_graph là 2 entrypoint duy nhất
+
+- Bỏ `run_chat_graph` (chat/graph.py), `run_scan_graph` / `resume_scan_graph` / `_resolve_threshold` (scan/graph.py). `run_graph(mode, text, request_deps, user_id=, request_id=)` trả `AnswerQuestionResult` | `ScanSymbolResult`; `resume_graph(thread_id, approve, rejection_reason, request_deps)` trả `ScanSymbolResult`. `initial` là `AssistantState` (message dạng dict) như demo; câu / mã rỗng trả sớm.
+- Sơ đồ graph không đổi; logic trước / sau lượt chuyển vào node có sẵn: guardrail_input (xoá semantic cache, tự check guardrail), rewrite_question (đọc hội thoại ngắn hạn + recall memory → field `memories`), answer (ghi hội thoại + store_memory khi đã rewrite), scan_input (ngưỡng: deps `threshold_pct` > watchlist > mặc định → field `threshold_pct`, event_classifier đọc state). Map kết quả: `chat_result` / `scan_result` (scan ghi event pending_approval).
+- Caller đổi sang `asyncio.run(run_graph(...))` / `asyncio.run(resume_graph(...))`: swarm_orchestrator, symbol_scanner_service (bỏ inject graph_runner / resume_runner; resume truyền đủ port), main.py, api/v1, llm/client, llm/chat_stream, eval runner, agent_eval, web_backend chat (adapter gọi run_graph).
+- symbol_scanner_service: không ép ngưỡng mặc định 3% nữa → None thì dùng ngưỡng watchlist của user. Sửa lỗi có sẵn `q` chưa định nghĩa trong log SwarmOrchestrator.process.
+- Kiểm tra LLM giả: chat (biểu đồ + giá, ghi hội thoại), câu rỗng, câu chào, scan rỗng, scan HITL duyệt / từ chối (event pending_approval ghi đúng). Test chưa cập nhật.
+
+## 2026-10-24 — run_graph / run_chat_graph gọn như start_conversation của demo
+
+- `run_graph`: docstring ngắn (vì sao stream thay ainvoke), bỏ comment đánh số, tìm pending tool_call bằng 1 `next(...)`, trace output 1 dòng (`answer` | `pending_tool`), thêm `thread_id` vào metadata trace.
+- `run_chat_graph`: câu hỏi rỗng trả sớm trước khi đọc memory; guardrail không còn nhánh None; `initial` / `request_deps` tách rõ rồi `asyncio.run(run_graph(initial, request_deps))`; steps truyền thẳng vào AnswerQuestionResult.
+- Kiểm tra LLM giả: chat biểu đồ + giá, câu rỗng, câu chào; scan HITL duyệt / từ chối — đều OK.
+
+## 2026-10-24 — run_graph / resume_graph async như demo
+
+- `run_graph` / `resume_graph` thành `async def` (astream, aget_state, aupdate_state); `asyncio.run` chuyển ra entrypoint sync `run_chat_graph` / `run_scan_graph` / `resume_scan_graph`.
+- resume_graph theo demo: `aget_state(config, subgraphs=True).tasks[0].state` (HITL dừng trong subgraph scan_team, không phải graph gốc) → từ chối: `aupdate_state` chèn tool message dạng dict, `as_node="scan_tools"`. Tham số đổi tên `reason` → `rejection_reason`, `deps` → `request_deps`.
+- Khôi phục `thread_id = thread_id or uuid4()` trong run_graph (thiếu → checkpoint không có thread, resume báo không có hành động chờ).
+- Kiểm tra LLM giả: scan HITL duyệt → watchlist FPT=5%; từ chối → watchlist không đổi, supervisor đi tiếp 'done'; chat e2e OK.
+- Trace lượt resume như demo `assistant_resume`: span riêng `scan_resume`, input `approve=…` (run_graph nhận `trace_input`); `metadata.symbol` lấy từ `symbols[0]` thay vì message cuối (resume là tool message).
+- Lưu ý: `PostgresSaver` (sync) không hỗ trợ astream / aget_state — khi có DATABASE_URL cần `AsyncPostgresSaver` (chưa sửa).
+
+## 2026-10-24 — Code vẽ biểu đồ ra khỏi folder agent
+
+- `chat/draw_agent/chart.py` → `infra/charts/price_chart.py` (Matplotlib + lưu chart_store, không phải logic agent): `draw_agent/` giờ chỉ còn `tools.py` + `state.py` như agent của scan. Bỏ `get_charts_dir` / `_is_dir_writable` chép lại, dùng `shared/charts.py`.
+- Test `test_chart.py` / `test_chart_store.py` còn import đường dẫn cũ — chưa cập nhật. Chat e2e LLM giả (biểu đồ nến FPT) OK.
+
+## 2026-10-24 — ChatTeamState bỏ field trùng
+
+- Bỏ `conversation` / `memories` (rewrite_node đọc thẳng graph_deps) và node `chat_input` (`question` + `guardrail_result` do guardrail_input ghi; graph START → guardrail_input).
+- Bỏ `chart_path` (trùng `chart_result.url`; DrawWorkerState / artifact draw_price_chart chỉ còn `chart_result`; AnswerQuestionResult.chart_path suy ra khi success).
+- Bỏ `answer_attempts` / `guardrail_violations` (trùng `compose.draft_attempts` / `compose.guardrail_violations`; step `answer` đọc từ compose).
+- Giữ `symbols` (trùng rewritten.symbols nhưng là field chung với team scan / main_item). Chat e2e LLM giả OK.
+
+## 2026-10-23 — answer + guardrail_output gộp thành 1 node
+
+- `chat/answer.py`: còn 1 node `answer_node` — helper (sanitize, build_evidence, compose_llm, compose_heuristic) lồng bên trong; vòng soạn ⇄ guardrail đầu ra (tối đa 3 lượt, hết lượt viết lại an toàn) chạy trong node thay vì 2 node + cạnh quay lại. Graph chat: `answer → END`.
+- Bỏ field `next` / `answer_model` / `answer_evidence` / `last_grounded` khỏi ChatTeamState, `route_by_next` (agents/nodes.py), step `guardrail_output` (vi phạm hiện trong output step `answer`).
+- Kiểm tra: chat e2e LLM giả OK; LLM khuyên mua + bịa số → 3 lượt soạn → viết lại an toàn từ evidence.
+
+## 2026-10-23 — Sửa biến prompt diagram_plan
+
+- `resources/prompts/diagram_plan/production.txt` (template production, đè lên v1.yaml) dùng `{{symbol}}` / `{{question}}` — registry render bằng `string.Template` nên không thay biến, LLM không thấy câu hỏi người dùng. Đổi sang `$symbol` / `$question` (khớp v1.yaml); render đã thay đúng. Các prompt khác không còn `{{`.
+
+## 2026-10-23 — Team chat theo khuôn scan (hierarchical: supervisor LLM + make_agent_graph + node)
+
+- `chat_supervisor` = `hierarchical._make_supervisor_node` (LLM đọc task + notes → next_agent), dùng chung wrapper SSE / collect với scan (`scan/graph._make_supervisor_node(name, …)`, `_make_collect_node`). Worker: `draw_agent` (make_agent_graph) + node `scan_team` / `portfolio_watch` / `concept_retrieval` (ghi `result` cho notes); 'done' → answer ⇄ guardrail_output.
+- Xoá `chat_supervisor_agent/` (~1290 dòng regex / Heuristic*Brain / Protocol / route_question), `chat/nodes/` (gộp vào `chat/nodes.py`, answer → `chat/answer.py`), `draw_agent/{nodes,diagram,__init__}.py`, `agents/tools.py`; `agents/nodes.py` chỉ còn top_supervisor + `_base_llm` (bỏ agent_node / run_worker / compact).
+- rewrite_question: 1 lời gọi LLM `RewriteOutput` → `task` cho supervisor (kèm memory dài hạn). `RewrittenQuestion` → `chat/state.py`; ChatTeamState kế thừa AssistantState + HierarchicalState (bỏ routing / gather_request / portfolio_db_intent / AnswerComposerState).
+- draw_agent: `draw_agent/state.py` (DrawWorkerState, DiagramAgentResult); tool `draw_price_chart(symbols, chart_type, sessions)` — LLM chọn loại biểu đồ (bỏ dò từ khoá); `draw_diagram` gọi LLM `diagram_plan` (bỏ HeuristicDiagramBrain mặc định).
+- portfolio_watch luôn hiển thị cả danh mục + watchlist (bỏ dò intent theo từ khoá). Memory: `recall_memory` / `store_memory` (LLM `memory_fact`, bỏ heuristic).
+- `run_chat_graph`: bỏ tham số rewrite_brain / supervisor_brain / compose_fn / diagram_brain / account_holdings / extract_fn (không caller production nào dùng); `routing` dựng từ completed_workers. `steps.build_chat_steps` xoá (không còn dùng).
+- `run_graph` chuyển sang `astream` (bọc `asyncio.run`): supervisor / worker là node async → `app.stream` sync báo lỗi "No synchronous function". `scan_team_node` dùng `ainvoke`.
+- Kiểm tra LLM giả: chat "vẽ biểu đồ nến FPT + giá" → scan_team(price_agent) → draw_agent → answer, agents_to_call=['price','chart']; scan HITL: price_agent → eval_agent đề xuất update_watchlist → pending_approval → resume duyệt → watchlist FPT=5%. Test chưa cập nhật.
+
+## 2026-10-23 — WorkerState chung + state riêng từng agent; event_classifier / synthesis là node
+
+- `hierarchical.WorkerState` (task, notes, messages nội bộ, result) dùng chung; `make_agent_graph(name, tools, prompt, worker_state)` không nhận / trả `messages` (hội thoại nội bộ).
+- `<agent>/state.py` kế thừa WorkerState: PriceWorkerState (request_id, prices), NewsWorkerState (request_id, news), DBWorkerState (user_id, db_results), EvalWorkerState (user_id, eval_result, actions).
+- HITL chuyển sang field `actions` (ScanHierarchicalState); scan_tools `messages_key="actions"`; run_graph / resume_graph / steps đọc `actions`.
+- event_classifier / synthesis = node trong scan/nodes.py (1 lời gọi LLM structured output: ClassifierOutput / SynthesisAlertOutput), bỏ tool submit_event_classification / submit_alert. scan/graph.py: SCAN_AGENTS (tools, prompt, state) + SCAN_NODES.
+- Kiểm tra LLM giả + checkpointer thật: chạy 5 worker, dừng trước scan_tools (send_alert), resume → gửi; `messages` team chỉ còn input (không lộ hội thoại worker).
+
+## 2026-10-23 — Team scan thu gọn: worker = tool + system prompt (LLM quyết định, không if/else)
+
+- `scan/<agent>/` chỉ còn `tools.py` (db_agent giữ thêm `hitl_graph.py` cho API /v1/hitl/db). Xoá nodes / schemas / state / graph / __init__, brain Heuristic/Llm, ReAct tự viết.
+- Tool tự lấy dữ liệu, trả artifact `{field: value}`: get_stock_price → prices, get_stock_news → news, read_user_portfolio → db_results, get_technical_indicators (dữ liệu thô). LLM nộp kết quả bằng tool: submit_severity → eval_result, propose_watchlist_update → đề xuất HITL, submit_event_classification → event_routing, submit_alert → alert + đề xuất send_alert (`scan/tools.py`).
+- `make_agent_graph(name, tools, system_prompt, input_schema, output_schema)` (hierarchical.py): LLM nhận system prompt + task + notes, gộp artifact; `result` = câu trả lời cuối.
+- `scan/graph.py`: `SCAN_WORKERS = {worker: (tools, system_prompt)}`; collect ghi notes + completed_workers; guard: chờ duyệt → scan_tools. Kết quả (PriceAgentResult…) chuyển vào `scan/state.py`. Bỏ inject news_brain / classifier_brain / eval_brain / alert_composer.
+- Chat: eval_agent đi qua team scan (gather_request), scan_team_node trả thêm eval_result; agents/tools.py chỉ còn tool draw.
+- Bỏ: guardrail soạn lại của synthesis (còn strip_buy_sell trong submit_alert), heuristic fallback, đồng bộ market_history_10d của price, SSE node của từng worker. Kiểm tra LLM giả: chạy trọn scan 5 worker, artifact vào đúng field, đề xuất send_alert. Test chưa cập nhật.
+
+## 2026-10-23 — Agent scan (price / news / eval / db) thành subgraph riêng
+
+- Khung subgraph = `make_agent_graph(name, tools, task, parse, input_schema, output_schema)` trong `multi_agent/hierarchical.py` (xoá `scan/agent_graph.py`): act (LLM bind tool) ⇄ tools → finish; `agent_messages` nội bộ. Schema vào/ra của team scan: `ScanAgentInput` / `ScanAgentOutput` (`scan/state.py`). Bỏ SSE node_start/finish + span riêng của từng agent.
+- Mỗi agent có `<agent>/graph.py` (task / parse / summarize + `compile_<agent>_graph`); bỏ `<agent>_agent_node` (run_worker). `scan/graph.py` chỉ nối subgraph + event_classifier / synthesis (`_scan_node`); chat dùng `compile_eval_agent_graph()`.
+- Kiểm tra (LLM giả): messages nội bộ không lộ ra, completed_workers không nhân đôi, `result` bị bỏ qua ở state chat; graph 47 node. Test chưa cập nhật.
+
+## 2026-10-23 — synthesis gộp vào scan/nodes.py (1 hàm node)
+
+- Xoá `scan/synthesis.py` (`AlertComposer` / `HeuristicAlertComposer` / `LlmAlertComposer` / `compose_alert` / `SynthesisResult`) → `synthesis_node` trong `scan/nodes.py`: hàm lồng `draft()` soạn (inject `alert_composer` | LLM `synthesis_alert` | ghép từ evidence) ⇄ guardrail tối đa 3 lượt → viết lại an toàn → alert PENDING_APPROVAL + đề xuất send_alert. `alert_composer` giờ là hàm `(symbol, severity, preferences, violations) -> (title, body)`.
+- `scan/nodes.py` chia 4 nhóm: điểm vào team / HITL / event_classifier / synthesis; helper dùng 1 chỗ (`has_negative`, `news_titles`) lồng vào hàm gọi.
+- event_classifier gọn thành 1 hàm `event_classifier_node` (hàm lồng `has_negative` / `heuristic` / `llm`); bỏ `EventClassifierBrain` / `HeuristicEventClassifier` / `LlmEventClassifier` / `classify_event` / `_DEFAULT_BRAIN_FACTORY`. Inject `classifier_brain` giờ là hàm `(price, news, threshold_pct) -> RoutingDecision`. Test dùng API cũ (`test_agents`, `test_infra`, `test_hierarchical_swarm`) chưa cập nhật.
+- `test_hierarchical_swarm.py` còn import `HeuristicAlertComposer` — chưa cập nhật.
+
+## 2026-10-23 — State: gộp symbol → symbols, completed → completed_workers, turn → request_id
+
+- `symbol` bỏ khỏi ScanHierarchicalState / ChatTeamState: `symbols[0]` là mã chính (rewrite_node đưa `rewritten.symbol` lên đầu; scan_input ghi `symbols=[sym]`). Các node đọc mã chính qua `symbols[0]`; `target_symbols()` chỉ trả `symbols`.
+- `completed` → `completed_workers` (chat + scan, mọi worker ghi, chat_supervisor / scan_team_node đọc; key trace Langfuse `agents` giữ nguyên).
+- Key state `turn` → `request_id` (theo AssistantState): `state.get`, `InjectedState` của 5 tool, state ban đầu run_chat_graph / run_scan_graph / run_worker.
+- ScanHierarchicalState kế thừa AssistantState + HierarchicalState (bỏ khai báo lại messages / user_id / mode / turn).
+- Bỏ khỏi state scan: `routing` (news_agent lấy tin cho mọi mã), `portfolio_db_intent` (db_agent luôn đọc holdings + watchlist), `severity` (dùng `eval_result.severity`), `threshold_pct` (đọc `graph_deps`; resume dùng mặc định).
+- Gộp `price` → `prices`, `news` (đơn) vào list tin (chat + scan); đổi tên `news_list` → `news`, `db_agent_result` → `db_results`: helper `events.main_item(items, state)` lấy phần tử của mã chính `symbols[0]` (dò theo mã); API `price` / `news` vẫn tính lúc map kết quả.
+- Test chưa cập nhật.
+
+## 2026-10-23 — Team scan chuyển sang kiến trúc multi_agent/hierarchical.py
+
+- **multi_agent/hierarchical.py / _llm.py**: _llm.base_llm dùng agents/nodes._base_llm (bỏ app.config của demo); bỏ lru_cache trên _build_graph (dict không hash được); run_hierarchical / save_graph_visualization nhận app; _RoutingDecision mô tả chung.
+- **scan/state.py**: ScanHierarchicalState là TypedDict riêng (total=False), tự khai báo messages / user_id / mode / turn trùng tên graph gốc; HITL dùng chung `messages` (bỏ field `actions`, ToolNode dùng messages_key mặc định); thêm task / result / notes / next_agent / completed; bỏ WorkerState / RoutingDecision trùng (RoutingDecision che class domain). Đổi import ScanTeamState → ScanHierarchicalState.
+- **scan/graph.py**: dựng team scan bằng _make_supervisor_node / _make_route_supervisor / _make_collect_node: START → (scan_input | scan_supervisor) → worker → worker_collect → guard route_after_collect (lỗi → END, chờ duyệt → scan_tools, còn lại → supervisor); scan_tools → supervisor; 'done' → END. SCAN_SUPERVISOR_SYSTEM mô tả 6 worker; _scan_worker bọc node có sẵn thêm result tóm tắt; _traced_supervisor phát SSE + span. Bỏ SCAN_TOOL_GROUPS dở dang.
+- **scan/nodes.py**: bỏ scan_supervisor_node / _scan_notes / _RoutingDecision / _SUPERVISOR_SYSTEM; scan_input đặt notes = {}.
+- **chat/nodes/core.py**: scan_team_node truyền notes = {} (task vẫn nêu worker cần chạy theo gather_request).
+- Chưa xử lý: node async của hierarchical.py trong swarm graph sync; test scan supervisor / steps UI chưa cập nhật; chạy thật cần API key.
+
+## 2026-10-22 — scan_supervisor = LLM supervisor (Hierarchical như demo)
+
+- `scan_supervisor_node` (`scan/nodes.py`): LLM structured output `_RoutingDecision{next_agent, reasoning}` đọc nhiệm vụ (quét cảnh báo / thu thập cho chat) + ghi chú worker (`_scan_notes`) → chọn worker trong danh sách cho phép theo mode hoặc `done`; ngoài danh sách → END.
+- Guard bằng code (giữ HITL): `error` → END; còn hành động chờ duyệt → `scan_tools`.
+- `ScanTeamState.task` đặt 1 lần ở điểm vào (`scan_input_node`: quét cảnh báo; `scan_team_node` của chat: thu thập + worker cần chạy); prompt supervisor đúng mẫu demo `Nhiệm vụ: {state['task']} … Ghi chú từ worker đã chạy: …`.
+- Chưa chạy thử với LLM thật; test cũ dựa trên thứ tự `if` cần viết lại.
+
+## 2026-10-22 — scan_supervisor: agent package → 1 hàm node (kiểu hierarchical.py demo)
+
+- Bỏ `scan/scan_supervisor_agent/` (`ScanSupervisorBrain`, `HeuristicScanSupervisorBrain`, `ScanSupervisorDecision`, `plan_scan_supervisor`, deps `scan_supervisor_brain`) — logic deterministic (chat gather / scan tuần tự), không phải agent.
+- `scan_supervisor_node` = 1 hàm trong `scan/nodes.py`: chuỗi `if` → `{"next": [...]}`, `reason` ghi vào span. Logic giữ nguyên.
+- `test_scan_supervisor_agent.py` dùng API cũ — chưa cập nhật.
+
+## 2026-10-22 — Chuẩn hoá node input mỗi team (`<team>_input`)
+
+- **Chat**: tách `chat_input_node` (question từ HumanMessage cuối + conversation / memories / guardrail_result từ deps) khỏi `guardrail_input_node` (giờ chỉ kiểm an toàn). `START → chat_input → guardrail_input`.
+- **Scan**: `scan_input_node` bỏ nhánh `mode=chat`; graph scan dùng conditional entry `route_scan_entry`: `mode=scan` → `scan_input`, chat nhờ gather → thẳng `scan_supervisor`.
+- Sửa import hỏng có sẵn: `scan_supervisor_agent/nodes.py` import `is_abnormal` từ `scan.nodes` (đã chuyển vào supervisor).
+
+## 2026-10-22 — chat nodes: chỉ function (bỏ brain class), chat_supervisor_node về agent
+
+- **`chat_supervisor_node`**: `agents/nodes.py` → `chat/chat_supervisor_agent/nodes.py` (đồng bộ `scan_supervisor_node`).
+- **`chat/nodes/answer.py`** (660 → ~300 dòng): `answer_node` + `guardrail_output_node` (chuyển từ `core.py`) + helper thuần `build_evidence(state)`, `compose_llm`, `compose_heuristic` (fallback khi LLM lỗi), `check_answer`, `safe_fallback_answer`. Bỏ `AnswerDraftBrain` / `HeuristicAnswerDraftBrain` / `LlmAnswerDraftBrain`, `draft_answer` (inspect.signature), `run_answer_composer` (trùng vòng answer ⇄ guardrail_output của graph). Inject: deps `compose_fn` (thay `answer_brain`). Bảng danh mục → `answer_kind="portfolio"` ngay trong `answer_node`.
+- **`chat/nodes/portfolio.py`**: `portfolio_watch_node` + `holdings_summary` (dict, 1 cách tính NAV/P&L) + format markdown. Bỏ class tạm trong hàm, bỏ import `web_backend.PortfolioService` (ai_backend không import web_backend), bỏ nhánh off-graph gọi thẳng db_agent. State: `portfolio_watch_result` = dict {user_id, intent, summary, watchlist, markdown, error}; bỏ `portfolio_summary` / `watchlist_items`.
+- Kiểm tra: import app OK, graph 24 node; **3 file test chưa cập nhật** (`test_edge_cases.py`, `test_infra.py`, `test_portfolio_watch_agent.py` dùng API cũ) + các test truyền `answer_brain=HeuristicAnswerDraftBrain()`.
+
+## 2026-10-22 — chat/nodes/ package
+
+- `chat/nodes.py` → `chat/nodes/core.py`; `chat/answer.py`, `chat/portfolio.py` → `chat/nodes/`. `__init__` không re-export (tránh vòng import với `chat/state.py`). Import collect 357 test OK.
+
+## 2026-10-22 — Gom draw_agent; answer_composer / portfolio_watch_agent → node
+
+- **draw_agent** (agent ReAct duy nhất của nhóm vẽ): `chart_agent/nodes.py` → `draw_agent/chart.py` (Matplotlib, không LLM), `diagram_agent/` → `draw_agent/diagram.py` (gộp `DiagramBrain`). Xoá `chart_agent/`, `diagram_agent/`.
+- **answer_composer** → `chat/answer.py` (logic của node `answer` / `guardrail_output`); `AnswerComposerState` → `chat/state.py`. Xoá package.
+- **portfolio_watch_agent** → `chat/portfolio.py` (logic: `run_portfolio_watch`, `PortfolioWatchResult`, `portfolio_watch_intent`, format markdown); `portfolio_watch_node` → `chat/nodes.py`. Đổi tên: `run_portfolio_watch_agent` → `run_portfolio_watch`, `PortfolioWatchAgentResult` → `PortfolioWatchResult`.
+- **Đổi tên node graph** `portfolio_watch_agent` → `portfolio_watch` (graph, `completed`, steps, frontend `app.js` canonical id, eval `agent_eval` / `run_excel_export`, tests). Nhãn hiển thị UI "PortfolioWatchAgent" giữ nguyên.
+- Kiểm tra: ruff F821 sạch; import `ai_backend.main` / `web_backend.main` OK; `pytest --collect-only` 357 test không lỗi import (chưa chạy test); sinh lại `agent_graph.png`.
+
+## 2026-10-22 — Tách `team.py` thành `nodes.py` + `graph.py` (chat / scan)
+
+- **`scan/nodes.py`**: `scan_input_node`, event classifier (`classify_event`, brains), `event_classifier_node`, `synthesis_node`, helper HITL `propose_action` / `has_pending_action` / `is_abnormal`.
+- **`scan/graph.py`**: `build_scan_team_graph` / `compile_scan_team_graph` (chuyển từ `agents/graph.py`) + `ScanSymbolResult`, `run_scan_graph`, `resume_scan_graph`.
+- **`chat/nodes.py`**: `guardrail_input_node`, `route_after_guardrail`, `rewrite_node`, `concept_retrieval_node`, `answer_node`, `guardrail_output_node` (chuyển từ `chat_supervisor_agent/nodes.py`) + `scan_team_node` (từ `agents/graph.py`).
+- **`chat/graph.py`**: `build_chat_team_graph` / `compile_chat_team_graph` + `run_chat_graph`.
+- **`agents/graph.py`**: chỉ còn swarm gốc, checkpointer, `run_swarm_graph` / `resume_swarm_graph`, vẽ sơ đồ.
+- Xoá `chat/team.py`, `scan/team.py`; re-export `StreamCancelledError` / `set_stream_cancel_event` / `emit_agent_event` → import thẳng `agents.events`. Cập nhật import ở application / llm / eval / web_backend / tests, README agents.
+- Kiểm tra: ruff F401/F821 sạch; import `ai_backend.main` / `web_backend.main` OK; `pytest --collect-only` 369 test, không lỗi import (chưa chạy test).
+
+## 2026-10-22 — event_classifier: agent package → node trong `scan/team.py`
+
+- `event_classifier` chỉ là bước lọc rẻ (heuristic / 1 lời gọi LLM structured, không ReAct / tool) → gộp `EventClassifierBrain`, `HeuristicEventClassifier`, `LlmEventClassifier`, `classify_event` vào `scan/team.py` cạnh `event_classifier_node`; xoá package `scan/event_classifier/` (`EventClassifierState` không dùng → bỏ). `ClassifierOutput` import thẳng từ `common.transport.schemas`.
+- Cập nhật import ở `test_agents.py`, `test_hierarchical_swarm.py`, `test_infra.py`.
+
+## 2026-10-22 — HITL scan = `interrupt_before` (align llm-engineer-demo), bỏ 2 node gate
+
+- **Graph** (`infra/agents/graph.py`): bỏ `hitl_gate_1` / `hitl_gate_2`; thêm `scan_tools` = `ToolNode(SCAN_ACTION_TOOLS, messages_key="actions")`, scan subgraph `compile(interrupt_before=["scan_tools"])`; swarm graph `compile(checkpointer=build_checkpointer())` — `PostgresSaver` khi có `DATABASE_URL`, lỗi/không có → `MemorySaver`. `run_swarm_graph(..., thread_id, resume)` trả `final["pending_tool_call"]`; `resume_swarm_graph(thread_id, approve, reason, deps)` — từ chối chèn `ToolMessage` qua `update_state(as_node="scan_tools")`. Sơ đồ `xray=True`, sinh lại `resources/docs/agent_graph.png`.
+- **Tools** (`scan/tools.py`): `send_alert` (notifier), `update_watchlist` (ngưỡng đề xuất + mã liên quan) — logic chuyển từ `web_backend/application/review_approval.py` vào graph.
+- **Đề xuất**: `eval_agent_node` (scan) → `update_watchlist` khi có `proposed_threshold_pct` / `proposed_related_symbols`; `synthesis_node` → `send_alert` (alert `PENDING_APPROVAL`). `scan_supervisor` → `scan_tools` khi `has_pending_action`.
+- **Bỏ auto-send** (confidence ≥ 0.8): mọi hành động đều chờ người duyệt.
+- **State / API**: `ScanTeamState.actions` thay `gate1_action` / `gate2_pending` / `pending_events`; `ScanSymbolResult` / `ScanResponse` / `V1ScanResponse` / transport `ScanResponse` → `status` (`done` | `pending_approval`), `thread_id`, `tool_call`. `POST /v1/scan/resume` + `SymbolScannerService.resume` (`resume_runner=resume_scan_graph`).
+- **Web Backend**: `review_approval.py` chỉ quản lý hàng đợi (event `pending_approval` có `thread_id`, resolution, `record_rejection`) và gọi `RemoteAiClient.scan_resume` (`ai_scan_resume`, không retry).
+- **Deps**: `langgraph-checkpoint-postgres`.
+- **Xoá `hitl_summary.py`** (+ `test_hitl_summary.py`) và field `hitl_used` / `pending_approvals_created` khỏi `AnswerQuestionResult`, `SwarmOutput`, SSE `complete`, API chat (ai + web): chat không bao giờ chạm `scan_tools` nên luôn `False` / `0`.
+- **Test**: chưa cập nhật (theo yêu cầu) — xem `implementation-plan.md` 3.7.
+
+## 2026-10-22 — SSE trong SwarmOrchestrator (gộp chat_stream_sse)
+
+- **`swarm_orchestrator.py`**: `stream()` + `async_stream_sse()`; `process()` map inline SwarmOutput (không helper module).
+- **`chat.py`**: gọi `orchestrator.async_stream_sse`.
+
+## 2026-10-22 — DBAgent HITL LangGraph (align llm-engineer-demo)
+
+- **Graph**: `scan/db_agent/hitl_graph.py` (gom state/deps/nodes + compile) — ReAct `agent` → `ToolNode(TOOLS)`, `MemorySaver`, **`interrupt_before=["tools"]`**, `start_db_hitl_turn` / `resume_db_hitl_turn`.
+- **Tool ghi**: `add_watchlist_item` (upsert watchlist sau approve); READ tools cũng dừng trước execute như demo.
+- **API**: `POST /v1/hitl/db/message`, `POST /v1/hitl/db/approve` — `status`: `done` | `pending_approval`, `tool_call`.
+- **Test**: `test_db_agent_hitl.py`.
+
+## 2026-10-22 — HITL metrics chat API + SwarmOrchestrator
+
+- **`hitl_summary.py`**: `hitl_fields_from_final()` — `hitl_used` / `pending_approvals_created` từ `pending_events`, `gate2_pending`, `gate1_action` (gate scan; khác demo `interrupt_before` tools).
+- **`run_chat_graph`**: gán metric vào `AnswerQuestionResult` → `SwarmOutput` / SSE `complete`.
+- **`swarm_orchestrator.py`**: map gọn `_swarm_output_from_result`, lỗi trả `SwarmOutput` (không `None`), sửa log/stream khi thiếu output.
+- **Test**: `test_hitl_summary.py`, `TestSwarmOrchestrator`.
+
+## 2026-10-22 — Scan supervisor agent (`scan/supervisor_agent/`)
+
+- **Agent** thay state machine rời trong `nodes.py`: `HeuristicScanSupervisorBrain` — mode **scan** pipeline tuần tự (price → news → …); mode **chat** gather chọn lọc theo `gather_request` + state (một worker/lượt).
+- **Test**: `test_scan_supervisor_agent.py`.
+
+## 2026-10-22 — Portfolio DB gather qua scan_supervisor
+
+- **Luồng graph**: `chat_supervisor` đặt `gather_request` + `portfolio_db_intent` → `scan_supervisor` → `db_agent_node` → `db_agent_result` → `chat_supervisor` → `portfolio_watch_agent` (không gọi `run_db_agent` trực tiếp trên graph).
+- **File**: `nodes.py` (chat/scan supervisor), `portfolio_watch_agent/nodes.py`, `graph.py`, `state.py`, `infra/agents/README.md`.
+- **Test**: `test_chat_supervisor_gather_db_agent_before_portfolio_watch`.
+
+## 2026-10-22 — Eval: chỉ `application/eval` + `infra/eval`
+
+- **Mục tiêu**: Hai package eval — **infra** = scorers, dataset, gate policy, cache, history, steps, `agent_eval`; **application** = `runner`, `run`, regression/CLI. Không thêm `domain/eval/`. Xóa shim `infra/eval/agent.py`; `metrics.py` trỏ `infra/eval/scorers` (bỏ vòng qua `run.py`).
+- **Shim giữ CI**: `application/eval/gate.py`, `application/eval/agent_eval.py` re-export; `python -m ai_backend.application.eval.gate` không đổi.
+- **Kiểm thử**: `test_application` (gate/steps) 6 passed; `test_module3_features` 10 passed; `test_eval` (gate/history) 9 passed.
+
+## 2026-10-22 — Phân Định Taxonomy Agent vs Node & Chuẩn Hóa Canonical DBAgent
+
+- **Mục tiêu**: Thực thi `specs/agent-node-taxonomy-refactor.md` (align `other/llm-engineer-demo`). Phân định rạch ròi Agent (Brain + ReAct decision loop + tools) vs Node (deterministic graph steps). Xóa duplicate `chat/db_agent/`, tập trung DBAgent canonical tại `scan/db_agent/`. Chuyển `portfolio_watch_agent` thành worker node ủy quyền lấy dữ liệu qua `scan.db_agent.run_db_agent`.
+- **Nội dung & Files**:
+  - **Xóa `chat/db_agent/`**: Xóa hoàn toàn thư mục `src/ai_backend/infra/agents/chat/db_agent/`. Không tái tạo.
+  - **Canonical DBAgent (`scan/db_agent/`)**:
+    - Thêm `src/ai_backend/infra/agents/scan/db_agent/__init__.py` export đầy đủ: `run_db_agent`, `read_holdings`, `read_watchlist`, `HeuristicDBBrain`, `LlmDBBrain`, `DBAgentBrain`, `DBAgentResult`, `DBState`, `TOOLS`, v.v.
+    - Cập nhật `nodes.py` hỗ trợ hàm hook `_effective_read_holdings` và `_effective_read_watchlist` cho phép mock linh hoạt cả package và module level.
+  - **`portfolio_watch_agent` (Worker Node)**:
+    - Trong `portfolio_watch_agent/nodes.py`, thay thế việc import và gọi trực tiếp `read_holdings` / `read_watchlist` từ `chat/db_agent` bằng việc gọi `scan.db_agent.run_db_agent(state_or_user_id, intent=..., watchlist_store=..., turn=...)` (Brain loop).
+    - Giữ vai trò presenter node trong Chat graph chuyên tính toán NAV, Unrealized P&L và format Markdown.
+  - **Tài liệu Taxonomy (`infra/agents/README.md`)**:
+    - Bổ sung bảng phân loại chi tiết Agent (`supervisor_agent`, `news_agent`, `eval_agent`, `db_agent`) vs Node (`price_agent`, `draw_agent` chart/diagram, `portfolio_watch_agent`, `answer_composer`, guardrails).
+    - Ghi chú rõ `portfolio_watch_node` ủy quyền (delegates) truy vấn DB cho `scan.db_agent.run_db_agent`.
+  - **Kiểm thử**:
+    - Cập nhật `test_portfolio_agent_uses_db_agent_holdings` trong `tests/unit/test_ai_http_stream.py` và `src/ai_backend/tests/test_ai_http_stream.py` trỏ vào `ai_backend.infra.agents.scan.db_agent.read_holdings`.
+    - `pytest tests/unit/test_ai_http_stream.py src/ai_backend/tests/test_application.py -q` — 35 passed (2026-10-22).
+
+---
+
+## 2026-10-22 — Slim `SwarmInput`, DBAgent READ, MinIO `chart_path`
+
+- **Mục tiêu**: Chat API chỉ `question` + `user_id` + `request_id`; `news_days` / memory window / TTL từ `common.settings`; watchlist/holdings qua `infra/agents/chat/db_agent` (READ PG); biểu đồ upload MinIO → URL công khai, xóa file tạm local sau put thành công.
+- **File chính**: `application/swarm_orchestrator.py`, `api/models/stream_models.py`, `api/routers/chat.py`, `common/transport/transport.py`, `common/storage/minio_store.py`, `infra/agents/chat/chart_agent.py`, `infra/agents/chat/db_agent/`, `infra/agents/chat/portfolio_watch_agent/nodes.py`, `tests/unit/test_ai_http_stream.py`.
+- **Kiểm tra**: `pytest tests/unit/test_ai_http_stream.py src/ai_backend/tests/test_application.py src/ai_backend/tests/test_chart.py -q` — 55 passed (2026-10-22).
+
+---
+
+## 2026-10-22 — Đổi tên `concept_rag_service` → `rag_service`
+
+- **File**: `application/rag_service.py`; class `RagService`, `RagInput`, `RagOutput`.
+- **Cập nhật**: `application/__init__.py`, `test_application.py`, `test_base.py`, `implementation-plan.md`.
+
+---
+
+## 2026-10-22 — `SwarmOutput` / `POST /v1/chat` không gửi `source_file`
+
+- **Mục tiêu**: Orchestrator và JSON chat trả `ChatResponse` không map `source_file`; SSE vẫn bổ sung trích dẫn cho web (AC-8).
+- **File**: `application/swarm_orchestrator.py`, `api/routers/chat.py` (`POST /chat`).
+
+---
+
+## 2026-10-21 — Gọn `specs/` (chỉ 4 file SDD)
+
+- **Mục tiêu**: Bỏ plan phụ; agent chỉ đọc/cập nhật bộ lõi.
+- **Giữ**: `product-spec.md`, `implementation-plan.md`, `test-plan.md`, `change-log.md`.
+- **Xóa**: `demo-aligned-layout.md`, `infra-nested-style-plan.md`, `shared-layer-checkin-alignment.md`, `refactor-plan.md`, `project-summary.md`.
+- **Cập nhật**: `AGENTS.md`, `README.md`, `.cursor/rules/superpowers-coding.mdc`.
+
+---
+
+## 2026-10-21 — Hoàn tất Shared Layer (Phases B–D) & Cleanup Deprecated eval_pipeline Shim
+
+- **Mục tiêu**: Hoàn thiện Phases B, C, D theo `specs/shared-layer-checkin-alignment.md` và dọn sạch deprecated shim `infra/eval_pipeline/` theo `specs/demo-aligned-layout.md`.
+- **Nội dung & Files**:
+  - **Phase B (settings/models)**:
+    - Thêm `src/ai_backend/shared/settings/models/`: `qdrant.py` (`QdrantSettings`), `redis.py` (`RedisSettings`), `minio.py` (`MinioSettings`), `__init__.py`.
+    - Thêm `src/web_backend/shared/settings/models/`: `minio.py` (`MinioSettings`), `__init__.py`.
+    - Refactor `AiSettings` và `WebSettings` compose các nested model `qdrant`, `redis`, `minio` đồng thời bảo toàn 100% tương thích ngược với các trường flat hiện có khi `.load()`.
+  - **Phase C (import facades trong ai_backend)**:
+    - Chuyển toàn bộ các import từ `common.logging` / `common.logging.logger` sang facade chuẩn `ai_backend.shared.logging` trong toàn bộ `src/ai_backend/**/*.py`.
+    - Mở rộng `ai_backend/shared/logging/__init__.py` re-export đầy đủ các symbols logging từ `common.logging`.
+  - **Task 3 (Gỡ bỏ deprecated eval_pipeline shim)**:
+    - Xoá hoàn toàn thư mục `src/ai_backend/infra/eval_pipeline/` (không còn bất kỳ caller nào trỏ tới shim cũ; canonical pipeline tập trung tại `src/ai_backend/application/eval/`).
+    - Cập nhật tài liệu: `AGENTS.md`, `specs/demo-aligned-layout.md`, `specs/implementation-plan.md`, `specs/infra-nested-style-plan.md`, `src/ai_backend/application/eval/README.md`.
+  - **Phase D (Tài liệu hóa)**:
+    - Đánh dấu hoàn tất toàn bộ checklist [x] trong `specs/shared-layer-checkin-alignment.md`.
+    - Cập nhật `specs/implementation-plan.md` §3.5 chuẩn hoá layout `shared/settings/`, `shared/logging/`, `shared/base/`, `shared/exceptions/`.
+    - Thêm `src/web_backend/shared/README.md` tương ứng kiến trúc với `src/ai_backend/shared/README.md`.
+- **Kiểm thử tự động**:
+  - `PYTHONPATH=src pytest src/common/tests/test_config.py src/ai_backend/tests/test_entrypoint.py src/ai_backend/tests/test_application.py -q`: **36 passed (100%)**.
+
+---
+
+## 2026-10-21 — Hoàn tất Phases 2, 2b, 3, 4: Infra Nested-Style & Clean Architecture Layout
+
+- **Mục tiêu**: Hoàn thành toàn diện các pha 2, 2b, 3, 4 theo `specs/infra-nested-style-plan.md` và `specs/demo-aligned-layout.md` cho `src/ai_backend`.
+- **Nội dung & Files**:
+  - **Phase 2 (infra/llm)**:
+    - `src/ai_backend/infra/llm/client.py`: Refactor các hàm xử lý payload sang inner nested functions (`_format_price`, `_format_diagram`, `_format_news`) tăng tính trực quan và đóng gói cục bộ.
+    - `src/ai_backend/infra/llm/structured.py`: Chuẩn hóa `call_llm_structured` sử dụng inner helper `_execute_attempt`.
+    - `src/ai_backend/infra/llm/async_client.py`: Rà soát closures và semaphore event loop.
+    - `src/ai_backend/infra/llm/providers.py`: Giữ nguyên thiết kế phẳng rõ ràng.
+    - `src/ai_backend/infra/llm/chat_stream.py`: Giữ nguyên (xử lý SSE cho Swarm chat `POST /v1/chat/stream`, độc lập với `completion.chat_stream`).
+  - **Phase 2b (infra/eval_pipeline, infra/retrieval)**:
+    - Di chuyển logic cốt lõi từ `application/eval/run.py` vào các module độc lập trong `src/ai_backend/infra/eval_pipeline/`:
+      - `dataset.py`: Quản lý nạp golden dataset, validation rules, blocked cases registry.
+      - `scorers.py`: Chấm điểm rule-based, LLM judge, task success, trajectory, scorer locks.
+      - `runner.py`: Thực thi eval từng case, build report, format text/JSON gate, cache hash.
+    - `src/ai_backend/application/eval/run.py`: Tối giản thành CLI shim mỏng + regression runner, đồng thời re-export đầy đủ các symbols (`_eval_cache_prompt_hash`, `_get_judge_system_prompt`, ...) đảm bảo 100% tương thích ngược.
+    - `src/ai_backend/application/eval/gate.py`: Gỡ bỏ hoàn toàn file shim; cập nhật callers (`scripts/eval_gate_drill.py`, `.github/workflows/eval-gate.yml`, `test_application.py`, `test_eval.py`) trỏ trực tiếp vào canonical `ai_backend.infra.eval_pipeline.gate`.
+    - `src/ai_backend/infra/retrieval/`: Chuẩn hoá thành canonical package (`concepts.py`, `answer.py`, `README.md` map sang `llm-engineer-demo/app/retrieval`); `infra/qdrant` đóng vai trò facade re-export.
+  - **Phase 3 (infra/market_data)**:
+    - Rà soát các adapter `price_source.py` và `news_source.py`, áp dụng nested helper và cấu trúc sạch sẽ.
+  - **Phase 4 (Infra Audit & Specs)**:
+    - Rà soát toàn bộ `src/ai_backend/infra/`: xác nhận không còn micro-files mồ côi ngoài cohesive subfolder packages.
+    - Cập nhật toàn bộ checklist trong `specs/infra-nested-style-plan.md` và `specs/demo-aligned-layout.md`.
+- **Kiểm thử tự động**:
+  - `PYTHONPATH=src pytest src/ai_backend/tests/test_async_client.py src/ai_backend/tests/test_module3_features.py src/ai_backend/tests/test_concept_rag.py -q`: **30/30 PASS (100%)** trong 2.29s.
+  - `python -m ai_backend.application.eval.run --self-check`: **10/10 rule ok, judge gate ok, runner 4/4 ok, report ok, regression ok, injection gate ok (PASS)**.
+  - `PYTHONPATH=src pytest src/ai_backend/tests/test_agents.py -k "test_eval_system_prompts_use_registry_not_hardcode" -q`: **1/1 PASS**.
+  - `resources/data/.vnstock/`: Đảm bảo không chỉnh sửa (giữ sạch nguyên trạng).
+
+---
+
+## 2026-10-21 — Shared layer giống checkin (`settings/`, `logging/`, …)
+
+- **Spec**: `specs/shared-layer-checkin-alignment.md` — `common/` = kernel 2 service; `{service}/shared/` = pattern checkin.
+- **File**: Tách `ai_backend/shared/settings/settings.py`, `exceptions/`; thêm `logging/`, `base/` facade; tương tự `web_backend/shared/`.
+
+---
+
+## 2026-10-21 — Eval pipeline về `application/eval/` (clean architecture)
+
+- **Lý do**: Golden eval + gate là **use-case**, không phải infra adapter.
+- **File**: `gate`, `dataset`, `runner`, `scorers` → `src/ai_backend/application/eval/`; `infra/eval_pipeline/` chỉ shim; CI/scripts import `application.eval.gate`.
+- **Spec**: `specs/demo-aligned-layout.md`.
+
+---
+
+## 2026-10-21 — Phase 2 (partial): gỡ shim `infra/llm/prompt_*`
+
+- **File**: Xóa `prompt_registry/lint/experiment.py` trong `infra/llm/`; test ai_backend + e2e eval import `infra.prompts`.
+- **Spec**: `AGENTS.md`, `implementation-plan.md` §3.4, `infra-nested-style-plan.md` Phase 0/2.
+
+---
+
+## 2026-10-21 — Clean architecture: demo modules dưới `infra/`
+
+- **Mục tiêu**: Giống `AI_Face_checkin` — prompts/eval/guardrails/… nằm **`src/ai_backend/infra/`**, không ở root service.
+- **File**: Di chuyển packages → `infra/`; xóa folder trùng ở root `ai_backend/{prompts,eval,...}`; import → `ai_backend.infra.*`.
+- **Spec**: Cập nhật `specs/demo-aligned-layout.md`.
+
+---
+
+## 2026-10-21 — Layout demo: eval, eval_pipeline, guardrails, monitoring, optimization
+
+- **Mục tiêu**: Folder học thuật song song `llm-engineer-demo/app` (eval vs eval_pipeline, optimization, observability, …). Spec: `specs/demo-aligned-layout.md`.
+- **File**: Packages `ai_backend/{eval,eval_pipeline,guardrails,monitoring,observability,optimization}/`; `eval_pipeline/gate.py` canonical; facade re-export; README từng package.
+- **Kiểm thử**: Chưa chạy full suite (policy tạm thời).
+
+---
+
+## 2026-10-21 — Layout kiểu demo: package `ai_backend/prompts/`
+
+- **Mục tiêu**: Tách prompt registry/lint/experiment khỏi `infra/llm/` — map `app/prompts/` (llm-engineer-demo). Spec: `specs/demo-aligned-layout.md`.
+- **File**: Thêm `src/ai_backend/prompts/{registry,lint,experiment}.py`; shim tại `infra/llm/prompt_*.py`; agent nodes + CI import path mới.
+- **Dữ liệu**: Không đổi — vẫn `resources/prompts/`.
+- **Kiểm thử**: `python -m ai_backend.prompts.lint resources/prompts/` — OK.
+
+---
+
+## 2026-10-21 — Infra nested-style Phase 1: gộp LLM completion cache
+
+- **Mục tiêu**: Theo `specs/infra-nested-style-plan.md` Phase 1 — tránh file helper rời; cache LLM nằm cùng `completion.py`.
+- **File**: Gộp `completion_cache.py` → helper private `_resolve_exact_cache_key`, `_on_cache_hit`, … cuối `src/ai_backend/infra/llm/completion.py`; xóa `completion_cache.py`. Thêm spec kế hoạch style infra.
+- **Kiểm thử**: `pytest src/ai_backend/tests/test_async_client.py -q` — PASS (9).
+- **Review**: Agent self-review — không đổi hành vi import public; `async_client.py` giữ nguyên.
+
+---
+
 ## 2026-10-18 — Settings Chỉ Đọc Biến Môi Trường, Bỏ config.yaml; Sửa Container AI/Web Backend
 
 - **Settings (common / web_backend / ai_backend)**: mọi trường khởi tạo `None`, chỉ đọc biến môi trường — không còn `config.yaml`, không còn chuỗi ưu tiên `ENV or yaml or mặc định`.

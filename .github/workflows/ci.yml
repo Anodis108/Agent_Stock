@@ -52,7 +52,7 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Prompt lint
-        run: python -m ai_backend.infra.llm.prompt_lint resources/prompts/
+        run: python -m ai_backend.infra.prompts.lint resources/prompts/
 
       - name: Unit tests
         run: pytest tests/ -q

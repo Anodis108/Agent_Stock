@@ -11,7 +11,6 @@ Kiểm tra:
 
 from __future__ import annotations
 
-import pytest
 
 from ai_backend.domain.guardrails.input_guardrail import (
     InputGuardrail,

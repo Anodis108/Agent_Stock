@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import random
@@ -200,62 +201,88 @@ def _chat_inprocess(
 ) -> dict[str, Any]:
     try:
         from web_backend.api.deps import get_app_deps
-        from ai_backend.infra.agents.chat.team import run_chat_graph
+        import asyncio
+
+        from ai_backend.domain.agents.graph import start_graph
     except ImportError:
         raise AiClientError("In-process chat requires backend dependencies not available in isolated AI environment")
 
     deps = get_app_deps()
     try:
-        result = run_chat_graph(
-            question,
-            price_source=deps.price_source,
-            news_source=deps.news_source,
-            history_store=deps.history_store,
-            memory_store=deps.memory_store,
-            user_id=user_id,
-            request_id=request_id,
-        )
+
+        chat_deps = {
+            "price_source": deps.price_source,
+            "news_source": deps.news_source,
+            "history_store": deps.history_store,
+            "memory_store": deps.memory_store,
+        }
+
+        async def _chat() -> Any:
+            async for kind, payload in start_graph(
+                "chat", question, chat_deps, user_id=user_id, request_id=request_id
+            ):
+                if kind == "result":
+                    return payload
+            raise RuntimeError("start_graph không yield result")
+
+        state = asyncio.run(_chat())
     except Exception as exc:  # noqa: BLE001
         raise AiClientError(f"AI in-process chat lỗi: {exc}") from exc
 
-    price_payload = None
-    if result.price is not None:
-        p = result.price
-        price_payload = {
+    from ai_backend.domain.agents.scan.state import main_item
+
+    def _format_diagram(diag_res: Any) -> dict[str, Any] | None:
+        if diag_res is None:
+            return None
+        return {
+            "mermaid": getattr(diag_res, "mermaid", None),
+            "graph_json": getattr(diag_res, "graph_json", None),
+            "format": getattr(diag_res, "format", "mermaid"),
+        }
+
+    rewritten = state["rewritten"]
+    guard = state["guardrail_result"]
+    if rewritten is not None:
+        route = str(rewritten.intent)
+    elif guard is None:
+        route = "empty"
+    elif guard.category == "greeting":
+        route = "greeting"
+    else:
+        route = "guardrail"
+    notes = state["notes"]
+    prices = state["prices"] or []
+    p = main_item(prices, state) if prices else None
+    price = (
+        None
+        if p is None
+        else {
             "symbol": p.symbol,
             "latest_close": p.latest_close,
             "prev_close": p.prev_close,
             "change_pct": p.change_pct,
             "error": p.error,
         }
-    severity = None
-    if result.eval_result is not None:
-        severity = result.eval_result.severity.model_dump(mode="json")
-
-    diag = None
-    if getattr(result, "diagram_result", None) is not None:
-        diag = {
-            "mermaid": getattr(result.diagram_result, "mermaid", None),
-            "graph_json": getattr(result.diagram_result, "graph_json", None),
-            "format": getattr(result.diagram_result, "format", "mermaid"),
-        }
-
+    )
+    news = main_item(state["news"] or [], state) if state["news"] else None
+    ev = state["eval_result"]
+    chart = state["chart_result"]
+    chart_path = chart.url if chart is not None and chart.success else None
     return {
-        "answer": result.answer,
-        "steps": list(result.steps or []),
-        "question": result.question,
-        "symbol": result.rewritten.symbol,
-        "route": str(getattr(result.routing.route, "value", result.routing.route)),
-        "error": result.error,
+        "answer": state["answer"] or "",
+        "question": state["question"] or "",
+        "symbol": rewritten.symbol if rewritten is not None else None,
+        "route": route,
+        "error": state["error"],
         "request_id": request_id,
-        "rewritten": result.rewritten.rewritten,
-        "agents_to_call": list(result.routing.agents_to_call or []),
-        "price": price_payload,
-        "news_count": len(result.news.items) if result.news else 0,
-        "severity": severity,
-        "diagram": diag,
-        "chart_path": getattr(result, "chart_path", None),
-        "chart_result": getattr(result, "chart_result", None),
+        "rewritten": rewritten.rewritten if rewritten is not None else "",
+        "agents_to_call": list(notes.keys()) if notes else [],
+        "price": price,
+        "news_count": len(news.items) if news and news.items else 0,
+        "severity": ev.severity.model_dump(mode="json") if ev is not None else None,
+        "diagram": _format_diagram(state["diagram_result"]),
+        "chart_path": chart_path,
+        "chart_result": state["chart_result"],
     }
 
 
@@ -266,26 +293,57 @@ def _scan_inprocess(
     threshold_pct: float | None,
     request_id: str | None,
 ) -> dict[str, Any]:
-    from ai_backend.infra.agents.scan.team import run_scan_graph
+    import asyncio
+
+    from ai_backend.domain.agents.graph import start_graph
     from web_backend.api.deps import get_app_deps
 
     deps = get_app_deps()
     try:
-        result = run_scan_graph(
-            symbol,
-            price_source=deps.price_source,
-            news_source=deps.news_source,
-            history_store=deps.history_store,
-            memory_store=deps.memory_store,
-            notifier=deps.notifier,
-            watchlist_store=deps.watchlist_store,
-            user_id=user_id,
-            threshold_pct=threshold_pct,
-            request_id=request_id,
-        )
+        scan_deps = {
+            "price_source": deps.price_source,
+            "news_source": deps.news_source,
+            "history_store": deps.history_store,
+            "memory_store": deps.memory_store,
+            "notifier": deps.notifier,
+            "watchlist_store": deps.watchlist_store,
+            "threshold_pct": threshold_pct,
+        }
+
+        async def _scan() -> Any:
+            async for kind, payload in start_graph(
+                "scan", symbol, scan_deps, user_id=user_id, request_id=request_id
+            ):
+                if kind == "result":
+                    return payload
+            raise RuntimeError("start_graph không yield result")
+
+        state = asyncio.run(_scan())
     except Exception as exc:  # noqa: BLE001
         raise AiClientError(f"AI in-process scan lỗi: {exc}") from exc
 
+    from ai_backend.domain.agents.scan.nodes import DEFAULT_THRESHOLD_PCT
+    from ai_backend.domain.agents.scan.state import main_item
+
+    routing = state["event_routing"]
+    route_val = routing.route if routing is not None else ""
+    symbols = state["symbols"]
+    pct = state["threshold_pct"]
+    prices = state["prices"] or []
+    p = main_item(prices, state) if prices else None
+    price = (
+        None
+        if p is None
+        else {
+            "symbol": p.symbol,
+            "latest_close": p.latest_close,
+            "prev_close": p.prev_close,
+            "change_pct": p.change_pct,
+            "error": p.error,
+        }
+    )
+    news = main_item(state["news"] or [], state) if state["news"] else None
+    news_rows = list(news.items) if news and news.items else []
     news_items = [
         {
             "title": i.title,
@@ -293,34 +351,26 @@ def _scan_inprocess(
             "published_at": i.published_at,
             "snippet": i.snippet,
         }
-        for i in (result.news.items or [])
+        for i in news_rows
     ]
-    p = result.price
+    ev = state["eval_result"]
+    alert = state["alert"]
     return {
-        "symbol": result.symbol,
-        "route": str(getattr(result.routing.route, "value", result.routing.route)),
-        "steps": list(result.steps or []),
-        "reason": result.routing.reason or "",
-        "threshold_pct": result.threshold_pct,
-        "gate1_action": result.gate1_action,
-        "gate2_pending": result.gate2_pending,
-        "error": result.error,
+        "symbol": symbols[0] if symbols else symbol,
+        "route": str(getattr(route_val, "value", route_val)),
+        "reason": routing.reason if routing is not None else "",
+        "threshold_pct": pct if pct is not None else DEFAULT_THRESHOLD_PCT,
+        "status": "pending_approval" if state["pending_tool_call"] else "done",
+        "thread_id": state["thread_id"] or "",
+        "tool_call": state["pending_tool_call"],
+        "error": state["error"],
         "request_id": request_id,
-        "price": {
-            "symbol": p.symbol,
-            "latest_close": p.latest_close,
-            "prev_close": p.prev_close,
-            "change_pct": p.change_pct,
-            "error": p.error,
-        },
+        "price": price,
         "news_count": len(news_items),
         "news": news_items,
-        "news_error": result.news.error,
-        "severity": (
-            result.severity.model_dump(mode="json") if result.severity else None
-        ),
-        "alert": (result.alert.model_dump(mode="json") if result.alert else None),
-        "pending_events": list(result.pending_events),
+        "news_error": news.error if news is not None else None,
+        "severity": ev.severity.model_dump(mode="json") if ev is not None else None,
+        "alert": alert.model_dump(mode="json") if alert is not None else None,
     }
 
 

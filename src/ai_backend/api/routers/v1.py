@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import json
-import threading
+import asyncio
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header
@@ -11,8 +10,6 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from ai_backend.infra.llm.account_snapshot import SnapshotWatchlistStore
-from ai_backend.infra.market_data.price_source import VnstockPriceSource
-from ai_backend.infra.market_data.news_source import CafefNewsSource
 from common.domain.entities import WatchlistItem
 from web_backend.api.deps import AppDeps, get_app_deps
 from web_backend.api.helpers.validation import normalize_question, normalize_symbol, validate_threshold_pct
@@ -51,8 +48,6 @@ class V1ChatRequest(BaseModel):
     question: str
     user_id: str = "default"
     request_id: str | None = None
-    watchlist: list[WatchlistSnapshot] | None = None
-    holdings: list[HoldingSnapshot] | None = None
 
 
 class V1ChatResponse(BaseModel):
@@ -80,7 +75,7 @@ class V1ScanRequest(BaseModel):
     holdings: list[HoldingSnapshot] | None = None
 
 
-def _lists_from_body(body: V1ChatRequest | V1ScanRequest):
+def _lists_from_body(body: V1ScanRequest):
     """Payload có mặt thì dùng snapshot. Không có thì AI giữ đường cũ."""
     sent = body.model_fields_set
     if "watchlist" not in sent and "holdings" not in sent:
@@ -103,8 +98,9 @@ class V1ScanResponse(BaseModel):
     steps: list[ChatStep] = Field(default_factory=list)
     reason: str = ""
     threshold_pct: float = 0.0
-    gate1_action: str | None = None
-    gate2_pending: bool = False
+    status: str = "done"  # done | pending_approval
+    thread_id: str = ""
+    tool_call: dict[str, Any] | None = None
     error: str | None = None
     request_id: str | None = None
     price: dict[str, Any] | None = None
@@ -113,18 +109,11 @@ class V1ScanResponse(BaseModel):
     news_error: str | None = None
     severity: dict[str, Any] | None = None
     alert: dict[str, Any] | None = None
-    pending_events: list[dict[str, Any]] = Field(default_factory=list)
 
 
-try:
-    from ai_backend.infra.agents.chat.team import run_chat_graph
-except ImportError:
-    run_chat_graph = None
+import asyncio
 
-try:
-    from ai_backend.infra.agents.scan.team import run_scan_graph as scan_symbol
-except ImportError:
-    scan_symbol = None
+from ai_backend.domain.agents.graph import start_graph
 
 
 @router.post("/chat", response_model=V1ChatResponse)
@@ -135,45 +124,64 @@ def v1_chat(
 ) -> V1ChatResponse:
     question = normalize_question(body.question)
     request_id = (body.request_id or x_request_id or "").strip() or None
-    watchlist_store, account_holdings = _lists_from_body(body)
-    result = run_chat_graph(
-        question,
-        price_source=deps.price_source,
-        news_source=deps.news_source,
-        history_store=deps.history_store,
-        memory_store=deps.memory_store,
-        user_id=body.user_id,
-        request_id=request_id,
-        watchlist_store=watchlist_store,
-        account_holdings=account_holdings,
-    )
-    price_payload = None
-    if result.price is not None:
-        p = result.price
-        price_payload = {
+    chat_deps = {
+        "price_source": deps.price_source,
+        "news_source": deps.news_source,
+        "history_store": deps.history_store,
+        "memory_store": deps.memory_store,
+        "watchlist_store": deps.watchlist_store,
+    }
+
+    async def _chat_result() -> Any:
+        async for kind, payload in start_graph(
+            "chat", question, chat_deps, user_id=body.user_id, request_id=request_id
+        ):
+            if kind == "result":
+                return payload
+        raise RuntimeError("start_graph không yield result")
+
+    from ai_backend.domain.agents.scan.state import main_item
+
+    state = asyncio.run(_chat_result())
+    rewritten = state["rewritten"]
+    guard = state["guardrail_result"]
+    if rewritten is not None:
+        route = str(rewritten.intent)
+    elif guard is None:
+        route = "empty"
+    elif guard.category == "greeting":
+        route = "greeting"
+    else:
+        route = "guardrail"
+    notes = state["notes"]
+    prices = state["prices"] or []
+    p = main_item(prices, state) if prices else None
+    price_payload = (
+        None
+        if p is None
+        else {
             "symbol": p.symbol,
             "latest_close": p.latest_close,
             "prev_close": p.prev_close,
             "change_pct": p.change_pct,
             "error": p.error,
         }
-    severity = None
-    if result.eval_result is not None:
-        severity = result.eval_result.severity.model_dump(mode="json")
+    )
+    news = main_item(state["news"] or [], state) if state["news"] else None
+    ev = state["eval_result"]
     return V1ChatResponse(
-        answer=result.answer,
-        steps=[ChatStep.model_validate(s) for s in (result.steps or [])],
-        question=result.question,
-        symbol=result.rewritten.symbol,
-        route=str(getattr(result.routing.route, "value", result.routing.route)),
-        error=result.error,
+        answer=state["answer"] or "",
+        question=state["question"] or "",
+        symbol=rewritten.symbol if rewritten is not None else None,
+        route=route,
+        error=state["error"],
         request_id=request_id,
-        rewritten=result.rewritten.rewritten,
-        agents_to_call=list(result.routing.agents_to_call or []),
+        rewritten=rewritten.rewritten if rewritten is not None else "",
+        agents_to_call=list(notes.keys()) if notes else [],
         price=price_payload,
-        news_count=len(result.news.items) if result.news else 0,
-        severity=severity,
-        source_file=getattr(result, "source_file", None),
+        news_count=len(news.items) if news and news.items else 0,
+        severity=ev.severity.model_dump(mode="json") if ev is not None else None,
+        source_file=state["source_file"],
     )
 
 
@@ -183,42 +191,21 @@ def v1_chat_stream(
     deps: AppDeps = Depends(get_app_deps),
     x_request_id: str | None = Header(default=None, alias="X-Request-Id"),
 ) -> StreamingResponse:
-    """SSE token và tiến trình agent. Không ghi session — web tự lưu."""
-    question = normalize_question(body.question)
+    """SSE token của câu trả lời + payload cuối. Không ghi session — web tự lưu."""
+    from ai_backend.infra.llm.chat_stream import swarm_sse
+
+    request_deps = {
+        "price_source": deps.price_source,
+        "news_source": deps.news_source,
+        "history_store": deps.history_store,
+        "memory_store": deps.memory_store,
+        "watchlist_store": deps.watchlist_store,
+    }
     request_id = (body.request_id or x_request_id or "").strip() or None
-    watchlist_store, account_holdings = _lists_from_body(body)
-    cancel = threading.Event()
-
-    def _gen():
-        from ai_backend.infra.llm.chat_stream import iter_swarm_events
-
-        events = iter_swarm_events(
-            question,
-            deps,
-            user_id=body.user_id,
-            request_id=request_id,
-            cancel_event=cancel,
-            watchlist_store=watchlist_store,
-            account_holdings=account_holdings,
-        )
-        try:
-            for event, data in events:
-                if request_id and event in ("final_answer", "complete"):
-                    data = {**data, "request_id": request_id}
-                yield f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
-        finally:
-            cancel.set()
-            if hasattr(events, "close"):
-                events.close()
-
     return StreamingResponse(
-        _gen(),
+        swarm_sse(normalize_question(body.question), request_deps, user_id=body.user_id, request_id=request_id),
         media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
     )
 
 
@@ -232,76 +219,76 @@ def v1_scan(
     threshold = validate_threshold_pct(body.threshold_pct)
     request_id = (body.request_id or x_request_id or "").strip() or None
     watchlist_store, _account_holdings = _lists_from_body(body)
-    result = scan_symbol(
-        sym,
-        price_source=deps.price_source,
-        news_source=deps.news_source,
-        history_store=deps.history_store,
-        memory_store=deps.memory_store,
-        notifier=deps.notifier,
-        user_id=body.user_id,
-        threshold_pct=threshold,
-        request_id=request_id,
-        watchlist_store=watchlist_store,
-    )
+    scan_deps = {
+        "price_source": deps.price_source,
+        "news_source": deps.news_source,
+        "history_store": deps.history_store,
+        "memory_store": deps.memory_store,
+        "notifier": deps.notifier,
+        "threshold_pct": threshold,
+        "watchlist_store": watchlist_store,
+    }
 
-    news_items = (
-        [
-            {
-                "title": i.title,
-                "url": i.url,
-                "published_at": i.published_at,
-                "snippet": i.snippet,
-            }
-            for i in result.news.items
-        ]
-        if result.news and getattr(result.news, "items", None)
-        else []
-    )
-    p = result.price
+    async def _scan_result() -> Any:
+        async for kind, payload in start_graph(
+            "scan", sym, scan_deps, user_id=body.user_id, request_id=request_id
+        ):
+            if kind == "result":
+                return payload
+        raise RuntimeError("start_graph không yield result")
+
+    from ai_backend.domain.agents.scan.nodes import DEFAULT_THRESHOLD_PCT
+    from ai_backend.domain.agents.scan.state import main_item
+
+    state = asyncio.run(_scan_result())
+    routing = state["event_routing"]
+    route_val = routing.route if routing is not None else ""
+    reason_val = routing.reason if routing is not None else ""
+    symbols = state["symbols"]
+    sym_out = symbols[0] if symbols else sym
+    pct = state["threshold_pct"]
+    threshold_out = pct if pct is not None else DEFAULT_THRESHOLD_PCT
+    status = "pending_approval" if state["pending_tool_call"] else "done"
+    prices = state["prices"] or []
+    p = main_item(prices, state) if prices else None
     price_payload = (
-        {
+        None
+        if p is None
+        else {
             "symbol": p.symbol,
             "latest_close": p.latest_close,
             "prev_close": p.prev_close,
             "change_pct": p.change_pct,
             "error": p.error,
         }
-        if p
-        else None
     )
-    routing = getattr(result, "routing", None)
-    route_val = getattr(routing, "route", getattr(result, "route", "")) if routing else getattr(result, "route", "")
-    reason_val = getattr(routing, "reason", getattr(result, "reason", "")) if routing else getattr(result, "reason", "")
-    severity = getattr(result, "severity", None)
-    if severity is None and hasattr(result, "eval_result") and result.eval_result is not None:
-        severity = getattr(result.eval_result, "severity", None)
-    if severity is not None and hasattr(severity, "model_dump"):
-        severity = severity.model_dump(mode="json")
-    alert = getattr(result, "alert", None)
-    if alert is None and hasattr(result, "synthesis_alert") and result.synthesis_alert is not None:
-        alert = result.synthesis_alert
-    if alert is not None and hasattr(alert, "model_dump"):
-        alert = alert.model_dump(mode="json")
-    pending_events = [
-        e.model_dump(mode="json") if hasattr(e, "model_dump") else e
-        for e in (getattr(result, "pending_events", []) or [])
+    news = main_item(state["news"] or [], state) if state["news"] else None
+    news_rows = list(news.items) if news and news.items else []
+    news_items = [
+        {
+            "title": i.title,
+            "url": i.url,
+            "published_at": i.published_at,
+            "snippet": i.snippet,
+        }
+        for i in news_rows
     ]
+    ev = state["eval_result"]
+    alert = state["alert"]
     return V1ScanResponse(
-        symbol=result.symbol,
+        symbol=sym_out,
         route=str(getattr(route_val, "value", route_val)),
-        steps=[ChatStep.model_validate(s) for s in (result.steps or [])],
         reason=reason_val or "",
-        threshold_pct=result.threshold_pct,
-        gate1_action=str(getattr(result.gate1_action, "value", result.gate1_action)) if result.gate1_action else None,
-        gate2_pending=getattr(result, "gate2_pending", False),
-        error=result.error,
-        request_id=getattr(result, "request_id", None) or request_id,
+        threshold_pct=threshold_out,
+        status=status,
+        thread_id=state["thread_id"] or "",
+        tool_call=state["pending_tool_call"],
+        error=state["error"],
+        request_id=request_id,
         price=price_payload,
         news_count=len(news_items),
         news=news_items,
-        news_error=getattr(result.news, "error", None) if result.news else None,
-        severity=severity,
-        alert=alert,
-        pending_events=pending_events,
+        news_error=news.error if news is not None else None,
+        severity=ev.severity.model_dump(mode="json") if ev is not None else None,
+        alert=alert.model_dump(mode="json") if alert is not None else None,
     )
