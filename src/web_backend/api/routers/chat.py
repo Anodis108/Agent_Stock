@@ -308,7 +308,7 @@ def post_chat(
                 return ChatResponse(
                     question=question,
                     rewritten=final_data.get("rewritten", question),
-                    symbol=final_data.get("symbol"),
+                    symbol=final_data.get("symbol") or [],
                     intent=final_data.get("intent", ""),
                     agents_to_call=final_data.get("agents_to_call", []),
                     route=route_str,
@@ -316,7 +316,7 @@ def post_chat(
                     answer=answer_text,
                     steps=validated_steps,
                     error=final_data.get("error"),
-                    price=final_data.get("price"),
+                    price=final_data.get("price") or [],
                     news_count=len(final_data.get("news") or []),
                     news=final_data.get("news") or [],
                     news_error=final_data.get("news_error"),
@@ -343,30 +343,42 @@ def post_chat(
             user_id=body.user_id,
         )
 
-        price_payload: dict[str, Any] | None = None
-        if getattr(result, "price", None) is not None:
-            p = result.price
-            price_payload = {
+        price_rows = getattr(result, "price", None)
+        if price_rows is None:
+            price_rows = []
+        elif not isinstance(price_rows, list):
+            price_rows = [price_rows]
+        price_payload = [
+            {
                 "symbol": p.symbol,
                 "latest_close": p.latest_close,
                 "prev_close": p.prev_close,
                 "change_pct": p.change_pct,
                 "error": p.error,
             }
+            for p in price_rows
+        ]
 
+        news_rows = getattr(result, "news", None)
+        if news_rows is None:
+            news_rows = []
+        elif not isinstance(news_rows, list):
+            news_rows = [news_rows]
         news_items: list[dict[str, Any]] = []
-        news_error: str | None = None
-        if getattr(result, "news", None) is not None:
-            news_error = result.news.error
-            news_items = [
+        news_errors = []
+        for row in news_rows:
+            if row.error:
+                news_errors.append(row.error)
+            news_items.extend(
                 {
                     "title": i.title,
                     "url": i.url,
                     "published_at": i.published_at,
                     "snippet": i.snippet,
                 }
-                for i in (result.news.items or [])
-            ]
+                for i in (row.items or [])
+            )
+        news_error = "; ".join(news_errors) or None
 
         severity = None
         if getattr(result, "eval_result", None) is not None:
@@ -393,7 +405,7 @@ def post_chat(
         return ChatResponse(
             question=result.question,
             rewritten=getattr(result.rewritten, "rewritten", ""),
-            symbol=getattr(result.rewritten, "symbol", None),
+            symbol=list(getattr(result.rewritten, "symbols", None) or []),
             intent=getattr(result.rewritten, "intent", ""),
             agents_to_call=list(getattr(result.routing, "agents_to_call", []) or []),
             route=str(getattr(result.routing.route, "value", getattr(result.routing, "route", ""))) if getattr(result, "routing", None) else "",

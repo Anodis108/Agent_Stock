@@ -15,4 +15,5 @@ class NewsAgentResult(BaseModel):
 
 
 class NewsWorkerState(WorkerState, total=False):
+    symbols: list[str]
     news: list[NewsAgentResult]

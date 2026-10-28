@@ -229,8 +229,6 @@ def _chat_inprocess(
     except Exception as exc:  # noqa: BLE001
         raise AiClientError(f"AI in-process chat lỗi: {exc}") from exc
 
-    from ai_backend.domain.agents.scan.state import main_item
-
     def _format_diagram(diag_res: Any) -> dict[str, Any] | None:
         if diag_res is None:
             return None
@@ -251,34 +249,34 @@ def _chat_inprocess(
     else:
         route = "guardrail"
     notes = state["notes"]
-    prices = state["prices"] or []
-    p = main_item(prices, state) if prices else None
-    price = (
-        None
-        if p is None
-        else {
+    symbols = list(rewritten.symbols) if rewritten is not None else list(state["symbols"] if "symbols" in state and state["symbols"] else [])
+    prices = [
+        {
             "symbol": p.symbol,
             "latest_close": p.latest_close,
             "prev_close": p.prev_close,
             "change_pct": p.change_pct,
             "error": p.error,
         }
-    )
-    news = main_item(state["news"] or [], state) if state["news"] else None
+        for p in (state["prices"] or [])
+    ]
+    news_items = []
+    for row in state["news"] or []:
+        news_items.extend(row.items or [])
     ev = state["eval_result"]
     chart = state["chart_result"]
     chart_path = chart.url if chart is not None and chart.success else None
     return {
         "answer": state["answer"] or "",
         "question": state["question"] or "",
-        "symbol": rewritten.symbol if rewritten is not None else None,
+        "symbol": symbols,
         "route": route,
         "error": state["error"],
         "request_id": request_id,
         "rewritten": rewritten.rewritten if rewritten is not None else "",
         "agents_to_call": list(notes.keys()) if notes else [],
-        "price": price,
-        "news_count": len(news.items) if news and news.items else 0,
+        "price": prices,
+        "news_count": len(news_items),
         "severity": ev.severity.model_dump(mode="json") if ev is not None else None,
         "diagram": _format_diagram(state["diagram_result"]),
         "chart_path": chart_path,

@@ -189,7 +189,7 @@ def ai_server_url():
 @pytest.fixture
 def fake_scan_runner():
     """Factory runner giả thay run_scan_graph (test double, không mạng / LLM): trả kết quả scan dựng sẵn."""
-    from ai_backend.domain.agents.scan.news_agent.state import NewsAgentResult
+    from ai_backend.domain.agents.scan.news_agent.state import NewAgentResult
     from ai_backend.domain.agents.scan.price_agent.state import PriceAgentResult
     from ai_backend.domain.agents.scan.state import ScanSymbolResult
     from common.domain.entities import EventRoute, RoutingDecision
@@ -197,12 +197,16 @@ def fake_scan_runner():
     def make(change_pct: float = -6.0, abnormal: bool = True):
         def runner(symbol, **kwargs):
             route = EventRoute.ABNORMAL if abnormal else EventRoute.NORMAL
+            syms = [symbol] if isinstance(symbol, str) else [str(s) for s in symbol]
+            ticker = syms[0] if syms else ""
             return ScanSymbolResult(
-                symbol=symbol,
-                price=PriceAgentResult(
-                    symbol=symbol, latest_close=100.0 + change_pct, prev_close=100.0, change_pct=change_pct
-                ),
-                news=NewsAgentResult(symbol=symbol, items=[]),
+                symbol=syms,
+                price=[
+                    PriceAgentResult(
+                        symbol=ticker, latest_close=100.0 + change_pct, prev_close=100.0, change_pct=change_pct
+                    )
+                ],
+                news=[NewAgentResult(symbol=ticker, items=[])],
                 routing=RoutingDecision(route=route, reason=f"giả lập {route.value}"),
                 threshold_pct=kwargs.get("threshold_pct") or 3.0,
                 steps=[

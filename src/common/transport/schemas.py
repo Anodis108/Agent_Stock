@@ -33,7 +33,7 @@ class ChatStreamResponse(CustomBaseModel):
 class ScanRequest(CustomBaseModel):
     """Yêu cầu quét mã cổ phiếu qua POST /v1/scan."""
 
-    symbol: str = Field(min_length=1)
+    symbol: list[str] = Field(min_length=1)
     user_id: str = "default"
     threshold_pct: float | None = None
     request_id: str | None = None
@@ -42,7 +42,7 @@ class ScanRequest(CustomBaseModel):
 class ScanResponse(CustomBaseModel):
     """Kết quả quét giám sát trả về từ AI Backend."""
 
-    symbol: str
+    symbol: list[str]
     route: str
     steps: list[str] = Field(default_factory=list)
     reason: str = ""

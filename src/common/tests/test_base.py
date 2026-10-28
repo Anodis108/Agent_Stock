@@ -119,12 +119,12 @@ def test_application_services_inheritance_contract():
 
     # 2. AI Backend application services
     from ai_backend.application.rag_service import RagService
-    from ai_backend.application.symbol_scanner_service import SymbolScannerService
-    from ai_backend.application.swarm_orchestrator import SwarmOrchestrator
+    from ai_backend.application.scan_service import ScanService
+    from ai_backend.application.chat_service import ChatService
 
     assert issubclass(RagService, BaseService)
     assert hasattr(RagService, "process")
-    assert issubclass(SymbolScannerService, BaseService)
-    assert hasattr(SymbolScannerService, "process")
-    assert issubclass(SwarmOrchestrator, BaseService)
-    assert hasattr(SwarmOrchestrator, "process")
+    assert issubclass(ScanService, BaseService)
+    assert hasattr(ScanService, "process")
+    assert issubclass(ChatService, BaseService)
+    assert hasattr(ChatService, "process")

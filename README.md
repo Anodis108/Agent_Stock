@@ -246,7 +246,7 @@ vn-stock-swarm/
 │   │   ├── Dockerfile                               # Build container riêng cho AI engine
 │   │   ├── main.py                                  # Entrypoint: Chỉ nghe /health, /v1/chat/stream, /v1/scan
 │   │   ├── api/                                     # helpers, models (stream, scan), routers (chat_stream, scan, health)
-│   │   ├── application/                             # swarm_orchestrator, concept_rag_service, scanner, eval/
+│   │   ├── application/                             # chat_service, scan_service, rag, eval/
 │   │   ├── domain/                                  # guardrails (input, output, greeting_fastpath)
 │   │   ├── infra/                                   # graph (LangGraph Swarm), agents (10 nodes), market_data, qdrant, llm, cache, storage, cost, monitoring
 │   │   ├── shared/                                  # settings, charts styling, exceptions

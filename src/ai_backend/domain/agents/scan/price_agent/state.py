@@ -16,4 +16,5 @@ class PriceAgentResult(BaseModel):
 
 
 class PriceWorkerState(WorkerState, total=False):
+    symbols: list[str]
     prices: list[PriceAgentResult]

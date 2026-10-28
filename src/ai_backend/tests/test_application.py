@@ -1,9 +1,9 @@
 """Unit test suite cho Phase 3.2: AI Application Layer (src/ai_backend/application/).
 
 Kiểm tra:
-1. SwarmOrchestrator: Kế thừa BaseService, Fast-path Chào hỏi, Stream SSE events, Process input/output.
+1. ChatService: Kế thừa BaseService, Fast-path Chào hỏi, Stream SSE events, Process input/output.
 2. RagService: Kế thừa BaseService, Khớp khái niệm 5 file markdown (RSI, ATO, Trần/Sàn), Trả về 'Không có trong tài liệu.' khi không tìm thấy.
-3. SymbolScannerService: Kế thừa BaseService, Quét biến động giá, Kiểm tra ngưỡng threshold_pct, Đánh giá Gate 1 HITL.
+3. ScanService: Kế thừa BaseService, Quét biến động giá, Kiểm tra ngưỡng threshold_pct, Đánh giá Gate 1 HITL.
 4. Eval Gate & Helpers: check_gates, GateResult, GATES thresholds, normalize_steps, mark_mid_run_error.
 """
 
@@ -12,16 +12,16 @@ from __future__ import annotations
 import pytest
 
 from common.base.base_service import BaseService
-from ai_backend.application.swarm_orchestrator import (
-    SwarmInput,
-    SwarmOrchestrator,
-    SwarmOutput,
+from ai_backend.application.chat_service import (
+    ChatInput,
+    ChatOutput,
+    ChatService,
 )
 from ai_backend.application.rag_service import NOT_IN_DOCS, RagInput, RagOutput, RagService
-from ai_backend.application.symbol_scanner_service import (
-    SymbolScannerInput,
-    SymbolScannerOutput,
-    SymbolScannerService,
+from ai_backend.application.scan_service import (
+    ScanInput,
+    ScanOutput,
+    ScanService,
 )
 from ai_backend.application.eval.gate import (
     GATES,
@@ -36,30 +36,30 @@ from ai_backend.infra.eval.steps import (
 
 
 # ==============================================================================
-# 1. Tests cho SwarmOrchestrator
+# 1. Tests cho ChatService
 # ==============================================================================
 
-class TestSwarmOrchestrator:
+class TestChatService:
     def test_subclass_of_base_service(self):
-        assert issubclass(SwarmOrchestrator, BaseService)
+        assert issubclass(ChatService, BaseService)
 
     def test_requires_graph_runner(self):
         with pytest.raises(RuntimeError, match="graph_runner"):
-            SwarmOrchestrator().process(SwarmInput(question="Giá HPG?"))
+            ChatService().process(ChatInput(question="Giá HPG?"))
 
     def test_standard_question_process(self, fake_chat_runner):
-        orch = SwarmOrchestrator(graph_runner=fake_chat_runner)
-        inp = SwarmInput(question="Giá HPG hiện tại thế nào?", user_id="user_test")
-        out = orch.process(inp)
+        chat = ChatService(graph_runner=fake_chat_runner)
+        inp = ChatInput(question="Giá HPG hiện tại thế nào?", user_id="user_test")
+        out = chat.process(inp)
 
-        assert isinstance(out, SwarmOutput)
+        assert isinstance(out, ChatOutput)
         assert out.question == "Giá HPG hiện tại thế nào?"
         assert len(out.answer) > 0
         assert len(out.steps) >= 1
 
     def test_streaming_general_question(self, fake_chat_runner):
-        orch = SwarmOrchestrator(graph_runner=fake_chat_runner)
-        events = list(orch.stream(question="Phân tích mã FPT", user_id="user_test"))
+        chat = ChatService(graph_runner=fake_chat_runner)
+        events = list(chat.stream(question="Phân tích mã FPT", user_id="user_test"))
         event_names = [e[0] for e in events]
 
         assert "node_start" in event_names
@@ -132,41 +132,41 @@ class TestRagService:
 
 
 # ==============================================================================
-# 3. Tests cho SymbolScannerService
+# 3. Tests cho ScanService
 # ==============================================================================
 
-class TestSymbolScannerService:
+class TestScanService:
     def test_subclass_of_base_service(self):
-        assert issubclass(SymbolScannerService, BaseService)
+        assert issubclass(ScanService, BaseService)
 
     def test_requires_graph_runner(self):
         # Không còn kết quả giả lập: thiếu graph thì báo lỗi rõ ràng
         with pytest.raises(RuntimeError, match="graph_runner"):
-            SymbolScannerService().process(SymbolScannerInput(symbol="HPG"))
+            ScanService().process(ScanInput(symbol=["HPG"]))
 
     def test_abnormal_result_is_triggered(self, fake_scan_runner):
-        scanner = SymbolScannerService(graph_runner=fake_scan_runner(change_pct=-6.0, abnormal=True))
-        out = scanner.process(SymbolScannerInput(symbol="hpg", threshold_pct=3.0))
+        scanner = ScanService(graph_runner=fake_scan_runner(change_pct=-6.0, abnormal=True))
+        out = scanner.process(ScanInput(symbol=["hpg"], threshold_pct=3.0))
 
-        assert isinstance(out, SymbolScannerOutput)
-        assert out.symbol == "HPG"
+        assert isinstance(out, ScanOutput)
+        assert out.symbol == ["HPG"]
         assert out.route == "bất thường"
         assert out.change_pct == -6.0
         assert out.triggered is True
         assert len(out.steps) >= 2
 
     def test_normal_result_is_not_triggered(self, fake_scan_runner):
-        scanner = SymbolScannerService(graph_runner=fake_scan_runner(change_pct=0.5, abnormal=False))
-        out = scanner.process(SymbolScannerInput(symbol="VNM", threshold_pct=3.0))
+        scanner = ScanService(graph_runner=fake_scan_runner(change_pct=0.5, abnormal=False))
+        out = scanner.process(ScanInput(symbol=["VNM"], threshold_pct=3.0))
 
         assert out.route == "bình thường"
         assert out.triggered is False
 
     def test_scan_helper_method(self, fake_scan_runner):
-        scanner = SymbolScannerService(graph_runner=fake_scan_runner())
-        res = scanner.scan(symbol="VCB", user_id="user_demo", threshold_pct=2.5)
+        scanner = ScanService(graph_runner=fake_scan_runner())
+        res = scanner.scan(symbol=["VCB"], user_id="user_demo", threshold_pct=2.5)
 
-        assert res.symbol == "VCB"
+        assert res.symbol == ["VCB"]
         assert res.threshold_pct == 2.5
         assert len(res.alerts) == 1
         assert res.alerts[0].symbol == "VCB"

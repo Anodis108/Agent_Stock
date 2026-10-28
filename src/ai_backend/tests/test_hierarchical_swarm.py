@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ai_backend.application.symbol_scanner_service import SymbolScannerInput, SymbolScannerService
+from ai_backend.application.scan_service import ScanInput, ScanService
 from ai_backend.domain.agents.scan.eval_agent.nodes import HeuristicEvalBrain
 from ai_backend.domain.agents.scan.nodes import HeuristicEventClassifier
 from ai_backend.domain.agents.scan.news_agent.nodes import HeuristicNewsBrain
@@ -116,7 +116,7 @@ def test_scan_normal_stops_after_classifier():
 
 def test_symbol_scanner_service_goes_through_swarm_graph():
     memory, notifier = FakeMemory(), FakeNotifier()
-    scanner = SymbolScannerService(
+    scanner = ScanService(
         graph_runner=run_scan_graph,
         price_source=FakePrice(latest=94.0),
         news_source=FakeNews(),
@@ -124,8 +124,8 @@ def test_symbol_scanner_service_goes_through_swarm_graph():
         memory_store=memory,
         notifier=notifier,
     )
-    out = scanner.process(SymbolScannerInput(symbol="fpt", threshold_pct=3.0))
-    assert out.symbol == "FPT"
+    out = scanner.process(ScanInput(symbol=["fpt"], threshold_pct=3.0))
+    assert out.symbol == ["FPT"]
     assert out.change_pct == -6.0
     assert out.steps and out.steps[0]["name"] in ("price_agent", "news_agent")
 
@@ -160,7 +160,7 @@ def test_stream_disconnect_stops_graph_before_next_worker_round():
     import threading
     import time
 
-    from ai_backend.application.swarm_orchestrator import SwarmOrchestrator
+    from ai_backend.application.chat_service import ChatService
 
     eval_calls: list[str] = []
     news_started = threading.Event()
@@ -186,14 +186,14 @@ def test_stream_disconnect_stops_graph_before_next_worker_round():
             **kwargs,
         )
 
-    orch = SwarmOrchestrator(
+    chat = ChatService(
         graph_runner=runner,
         price_source=FakePrice(latest=94.0),
         news_source=SlowNews(),
         history_store=FakeHistory(),
         memory_store=FakeMemory(),
     )
-    events = orch.stream(question="Tại sao giá FPT giảm?", user_id="")
+    events = chat.stream(question="Tại sao giá FPT giảm?", user_id="")
     for event, data in events:
         if event == "node_start" and data["node"] == "news_agent":
             break
@@ -211,10 +211,10 @@ class BoomPrice(FakePrice):
         raise AssertionError("câu chào không được gọi price_agent")
 
 
-def _greeting_orchestrator():
-    from ai_backend.application.swarm_orchestrator import SwarmOrchestrator
+def _greeting_chat():
+    from ai_backend.application.chat_service import ChatService
 
-    return SwarmOrchestrator(
+    return ChatService(
         graph_runner=run_chat_graph,
         price_source=BoomPrice(),
         news_source=FakeNews(),
@@ -225,9 +225,9 @@ def _greeting_orchestrator():
 
 def test_greeting_handled_by_greeting_node():
     """AC-6: câu chào đi qua graph: top_supervisor → guardrail_input → answer → guardrail_output, không gọi worker giá."""
-    from ai_backend.application.swarm_orchestrator import SwarmInput
+    from ai_backend.application.chat_service import ChatInput
 
-    out = _greeting_orchestrator().process(SwarmInput(question="Xin chào bạn", user_id=""))
+    out = _greeting_chat().process(ChatInput(question="Xin chào bạn", user_id=""))
     assert out.routing == "greeting"
     assert "Xin chào" in out.answer
     names = [s["name"] for s in out.steps]
@@ -243,7 +243,7 @@ def test_greeting_stream_first_token_under_1s():
     t0 = time.perf_counter()
     first_token = None
     events = []
-    for event, data in _greeting_orchestrator().stream(question="Xin chào", user_id=""):
+    for event, data in _greeting_chat().stream(question="Xin chào", user_id=""):
         if event == "token" and first_token is None:
             first_token = time.perf_counter() - t0
         events.append((event, data))

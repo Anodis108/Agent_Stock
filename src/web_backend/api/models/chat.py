@@ -32,7 +32,7 @@ class ChatStep(CustomBaseModel):
 class ChatResponse(CustomBaseModel):
     question: str
     rewritten: str = ""
-    symbol: str | None = None
+    symbol: list[str] = Field(default_factory=list)
     intent: str = ""
     agents_to_call: list[str] = Field(default_factory=list)
     route: str = ""
@@ -40,7 +40,7 @@ class ChatResponse(CustomBaseModel):
     answer: str
     steps: list[ChatStep] = Field(default_factory=list)
     error: str | None = None
-    price: dict[str, Any] | None = None
+    price: list[dict[str, Any]] = Field(default_factory=list)
     news_count: int = 0
     news: list[dict[str, Any]] = Field(default_factory=list)
     news_error: str | None = None

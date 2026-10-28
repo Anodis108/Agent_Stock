@@ -12,7 +12,7 @@ from common.base.base_model import CustomBaseModel
 
 class ScanRequest(CustomBaseModel):
     """Yêu cầu quét tín hiệu kỹ thuật gửi tới AI Backend (POST /v1/scan)."""
-    symbol: str = Field(description="Mã chứng khoán cần quét")
+    symbol: list[str] = Field(description="Các mã chứng khoán cần quét")
     user_id: str = Field(default="default", description="Mã định danh người dùng")
     threshold_pct: float | None = Field(default=None, description="Ngưỡng cảnh báo biến động %")
     request_id: str | None = Field(default=None, description="Mã tương quan yêu cầu")
@@ -33,11 +33,15 @@ class ScanAlertOut(CustomBaseModel):
     threshold_pct: float = 3.0
     triggered: bool = False
     reason: str = ""
+    status: str = "done"
+    thread_id: str = ""
+    tool_call: dict[str, Any] | None = None
+    alert: dict[str, Any] | None = None
 
 
 class ScanResponse(CustomBaseModel):
     """Kết quả phân tích và quét cảnh báo trả về từ AI Backend."""
-    symbol: str
+    symbol: list[str]
     route: str = "market"
     alerts: list[ScanAlertOut] = Field(default_factory=list)
     steps: list[dict[str, Any]] = Field(default_factory=list)

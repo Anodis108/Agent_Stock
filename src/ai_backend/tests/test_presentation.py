@@ -25,11 +25,11 @@ from ai_backend.api.models.stream_models import (
 from ai_backend.api.routers.chat import router as chat_router
 from ai_backend.api.routers.health import router as health_router
 from ai_backend.api.routers.scan import router as scan_router
-from ai_backend.application.symbol_scanner_service import SymbolScannerService
+from ai_backend.application.scan_service import ScanService
 
 
-class _MockSwarmOrchestrator:
-    """Orchestrator giả cho test presentation — request_deps cho swarm_sse."""
+class _MockChatService:
+    """Chat service giả cho test presentation — request_deps cho swarm_sse."""
 
     def request_deps(self):
         return {}
@@ -65,8 +65,8 @@ def ai_test_app(fake_scan_runner):
     def trigger_error():
         raise HTTPException(status_code=400, detail="Lỗi thử nghiệm AI")
 
-    app.state.orchestrator = _MockSwarmOrchestrator()
-    app.state.symbol_scanner_service = SymbolScannerService(graph_runner=fake_scan_runner())
+    app.state.chat_service = _MockChatService()
+    app.state.scan_service = ScanService(graph_runner=fake_scan_runner())
     yield app
 
 
@@ -118,15 +118,15 @@ def test_stream_and_scan_models_instantiation():
     assert err.event == "error"
 
     # 4. Scan models
-    scan_req = ScanRequest(symbol="MWG", threshold_pct=2.5)
-    assert scan_req.symbol == "MWG"
+    scan_req = ScanRequest(symbol=["MWG"], threshold_pct=2.5)
+    assert scan_req.symbol == ["MWG"]
 
     scan_res = ScanResponse(
-        symbol="MWG",
+        symbol=["MWG"],
         route="technical",
         alerts=[ScanAlertOut(symbol="MWG", route="technical", threshold_pct=2.5, triggered=True)],
     )
-    assert scan_res.symbol == "MWG"
+    assert scan_res.symbol == ["MWG"]
     assert len(scan_res.alerts) == 1
 
 
@@ -180,7 +180,7 @@ def test_chat_stream_sse_endpoint(client: TestClient, monkeypatch):
 def test_scan_endpoint(client: TestClient):
     """Kiểm tra endpoint POST /v1/scan trả về phân tích kỹ thuật."""
     req_body = {
-        "symbol": "FPT",
+        "symbol": ["FPT"],
         "threshold_pct": 3.0,
         "user_id": "test_user",
         "request_id": "req-scan-001",
@@ -188,7 +188,7 @@ def test_scan_endpoint(client: TestClient):
     resp = client.post("/v1/scan", json=req_body)
     assert resp.status_code == 200
     data = resp.json()
-    assert data["symbol"] == "FPT"
+    assert data["symbol"] == ["FPT"]
     assert "route" in data
     assert "alerts" in data or "steps" in data
 

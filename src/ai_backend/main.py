@@ -35,8 +35,8 @@ from ai_backend.infra.storage import (
 from ai_backend.infra.storage.pg_db import connect
 from ai_backend.infra.notify.console_notifier import ConsoleNotifier
 from ai_backend.application.concept_ingestion_service import ConceptIngestionService
-from ai_backend.application.swarm_orchestrator import SwarmOrchestrator
-from ai_backend.application.symbol_scanner_service import SymbolScannerService
+from ai_backend.application.chat_service import ChatService
+from ai_backend.application.scan_service import ScanService
 from ai_backend.infra.scheduler import start_scan_scheduler, stop_scan_scheduler
 from common.settings import settings
 
@@ -80,14 +80,14 @@ async def lifespan(app: FastAPI):
     watchlist_store = PgWatchlistStore()
 
     # Tạo một lần lúc khởi động, router lấy lại qua request.app.state
-    app.state.orchestrator = SwarmOrchestrator(
+    app.state.chat_service = ChatService(
         price_source=price_source,
         news_source=news_source,
         history_store=history_store,
         memory_store=memory_store,
         watchlist_store=watchlist_store,
     )
-    scanner = SymbolScannerService(
+    scanner = ScanService(
         price_source=price_source,
         news_source=news_source,
         history_store=history_store,
@@ -95,7 +95,7 @@ async def lifespan(app: FastAPI):
         watchlist_store=watchlist_store,
         notifier=ConsoleNotifier(memory_store),
     )
-    app.state.symbol_scanner_service = scanner
+    app.state.scan_service = scanner
     app.state.concept_ingestion_service = ConceptIngestionService(client=q_client)
 
     # 4. Job nền: quét mọi mã trong watchlist của mọi user theo chu kỳ config
@@ -104,7 +104,7 @@ async def lifespan(app: FastAPI):
         triggered = 0
         for item in items:
             try:
-                out = scanner.scan(item.symbol, user_id=item.user_id, threshold_pct=item.threshold_pct)
+                out = scanner.scan(symbol=[item.symbol], user_id=item.user_id, threshold_pct=item.threshold_pct)
                 triggered += sum(1 for a in out.alerts if a.triggered)
             except Exception as exc:
                 logger.warning(f"Quét định kỳ lỗi mã {item.symbol} (user={item.user_id}): {exc}")

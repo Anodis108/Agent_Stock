@@ -384,14 +384,14 @@ def test_ai_stream_says_not_in_the_documents_when_the_passage_is_missing():
                 },
             )
 
-    ai_app.state.orchestrator = MockSwarm()
+    ai_app.state.chat_service = MockSwarm()
     try:
         response = TestClient(ai_app).post(
             "/v1/chat/stream-sse",
             json={"question": "chứng quyền là gì", "user_id": ""},
         )
     finally:
-        del ai_app.state.orchestrator
+        del ai_app.state.chat_service
 
     assert response.status_code == 200
     final = None

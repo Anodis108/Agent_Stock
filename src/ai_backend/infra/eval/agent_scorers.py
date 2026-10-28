@@ -191,8 +191,10 @@ def steps_from_answer_result(result: Any) -> list[dict]:
                 ),
             }
         )
-    price = getattr(result, "price", None)
-    if price is not None:
+    prices = getattr(result, "price", None) or []
+    if not isinstance(prices, list):
+        prices = [prices]
+    for price in prices:
         steps.append(
             {
                 "tool": "price_agent",
@@ -204,8 +206,10 @@ def steps_from_answer_result(result: Any) -> list[dict]:
                 ),
             }
         )
-    news = getattr(result, "news", None)
-    if news is not None:
+    news_rows = getattr(result, "news", None) or []
+    if not isinstance(news_rows, list):
+        news_rows = [news_rows]
+    for news in news_rows:
         n = len(getattr(news, "items", None) or [])
         steps.append(
             {

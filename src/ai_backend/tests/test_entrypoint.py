@@ -108,10 +108,10 @@ def test_ai_main_health_endpoint():
 
 
 def test_ai_main_chat_stream_endpoint(fake_chat_runner):
-    """Kiểm tra endpoint POST /v1/chat/stream-sse phát SSE qua SwarmOrchestrator."""
-    from ai_backend.application.swarm_orchestrator import SwarmOrchestrator
+    """Kiểm tra endpoint POST /v1/chat/stream-sse phát SSE qua ChatService."""
+    from ai_backend.application.chat_service import ChatService
 
-    app.state.orchestrator = SwarmOrchestrator(graph_runner=fake_chat_runner)
+    app.state.chat_service = ChatService(graph_runner=fake_chat_runner)
     try:
         client = TestClient(app)
         payload = {
@@ -124,24 +124,24 @@ def test_ai_main_chat_stream_endpoint(fake_chat_runner):
         assert "text/event-stream" in response.headers.get("content-type", "")
         assert '"token"' in response.text or "data: [DONE]" in response.text
     finally:
-        del app.state.orchestrator
+        del app.state.chat_service
 
 
 def test_ai_main_scan_endpoint(fake_scan_runner):
     """Kiểm tra endpoint POST /v1/scan phân tích kỹ thuật."""
-    from ai_backend.application.symbol_scanner_service import SymbolScannerService
+    from ai_backend.application.scan_service import ScanService
 
-    app.state.symbol_scanner_service = SymbolScannerService(graph_runner=fake_scan_runner())
+    app.state.scan_service = ScanService(graph_runner=fake_scan_runner())
     client = TestClient(app)
     payload = {
-        "symbol": "VNM",
+        "symbol": ["VNM"],
         "user_id": "test_user",
         "threshold_pct": 3.0,
     }
     response = client.post("/v1/scan", json=payload)
     assert response.status_code == 200
     data = response.json()
-    assert data["symbol"] == "VNM"
+    assert data["symbol"] == ["VNM"]
     assert "alerts" in data
     assert "steps" in data
 

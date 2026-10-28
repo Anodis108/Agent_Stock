@@ -357,7 +357,7 @@ def evaluate_case(
             res.compose = type("C", (), {"evidence": list(state["answer_evidence"] or [])})()
             res.symbols = list(rewritten.symbols) if rewritten is not None else []
             res.sub_questions = list(rewritten.sub_questions) if rewritten is not None else []
-            res.rewritten_symbol = rewritten.symbol if rewritten is not None else None
+            res.rewritten_symbol = list(rewritten.symbols) if rewritten is not None else []
         except Exception as exc:
             return CaseAgentEvalResult(
                 case_id=case_id,
@@ -388,7 +388,8 @@ def evaluate_case(
         symbols = list(getattr(res.rewritten, "symbols", None) or [])
         sub_questions = list(getattr(res.rewritten, "sub_questions", None) or [])
     elif getattr(res, "rewritten_symbol", None):
-        symbols = [res.rewritten_symbol]
+        raw = res.rewritten_symbol
+        symbols = list(raw) if isinstance(raw, list) else [raw]
     elif getattr(res, "symbols", None):
         symbols = list(res.symbols)
 

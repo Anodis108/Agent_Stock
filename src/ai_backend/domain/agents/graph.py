@@ -108,7 +108,7 @@ async def _collect_turn_state(
                 "approval_id": pending["id"],
                 "thread_id": thread_id,
                 "gate": pending["name"],
-                "symbol": (state["symbols"] or [""])[0],
+                "symbol": pending["args"]["symbol"] if "symbol" in pending["args"] and pending["args"]["symbol"] else ", ".join(state["symbols"] or []),
                 "args": pending["args"],
                 "status": AlertStatus.PENDING_APPROVAL.value,
             },
@@ -125,7 +125,7 @@ async def start_graph(
 ) -> AsyncIterator[tuple[str, Any]]:
     """Lượt mới (demo start_conversation): yield ``token`` rồi ``result``.
 
-    ``question``: mode ``scan`` = mã CK; mode ``chat`` = câu hỏi user (message đầu vào graph).
+    ``question``: mode ``scan`` = các mã CK, cách nhau bởi dấu phẩy; mode ``chat`` = câu hỏi user.
     ``request_id`` (hoặc UUID mới) vừa là id tracing/SSE vừa là ``thread_id`` checkpointer (HITL resume).
     """
     await _ensure_checkpointer()
@@ -139,11 +139,13 @@ async def start_graph(
         request_id=request_id,
     )
     if mode == "scan":
-        sym = question.strip().upper()
-        pct = resolve_scan_threshold(sym, user_id, request_deps)
+        symbols = [s.strip().upper() for s in question.split(",") if s.strip()]
+        if not symbols:
+            raise ValueError("cần ít nhất một mã")
+        pct = resolve_scan_threshold(symbols[0], user_id, request_deps)
         initial.update(
-            task=f"Quét mã {sym}, ngưỡng biến động {pct}%",
-            symbols=[sym],
+            task=f"Quét mã {', '.join(symbols)}, ngưỡng biến động {pct}%",
+            symbols=symbols,
             threshold_pct=pct,
         )
 
@@ -186,14 +188,14 @@ async def resume_graph(
 ) -> dict[str, Any]:
     """Tiếp checkpoint sau interrupt scan_tools (demo resume_conversation)."""
     await _ensure_checkpointer()
+    config = RunnableConfig(recursion_limit=40, configurable={"thread_id": thread_id})
     app = build_graph()
-    config = RunnableConfig(configurable={"thread_id": thread_id})
     snap = await app.aget_state(config, subgraphs=True)
-    task = snap.tasks[0].state if snap.tasks else None
-    if task is None or "scan_tools" not in task.next:
-        raise ValueError(f"thread {thread_id} không có hành động chờ duyệt")
-
+    
     if not approve:
+        task = snap.tasks[0].state if snap.tasks else None
+        if task is None or "scan_tools" not in task.next:
+            raise ValueError(f"thread {thread_id} không có hành động chờ duyệt")
         call = task.values["messages"][-1].tool_calls[0]
         await app.aupdate_state(
             task.config,
@@ -208,47 +210,29 @@ async def resume_graph(
                 ]
             },
             as_node="scan_tools",
-        )
+        ) 
 
     user_id = snap.values["user_id"] or "default"
-    request_id = snap.values["request_id"]
-    trace_input = f"approve={approve}"
-
-    with trace_answer(
-        "scan_resume",
-        trace_input,
-        metadata={
-            "turn": request_id or "",
-            "user_id": user_id,
-            "thread_id": thread_id,
-        },
-    ) as trace:
-        ctx = {
-            "watchlist_store": None,
-            "concept_client": None,
-            "news_days": 7,
-            "threshold_pct": None,
-            **request_deps,
-        }
-        if "_span" in trace:
-            ctx["trace_span"] = trace["_span"]
-
-        # input None = tiếp cùng thread_id trên checkpointer (sau approve hoặc sau inject từ chối).
-        async for _ns, stream_mode, chunk in app.astream(
+    with trace_answer("scan_resume", f"approve={approve}", metadata={"thread_id": thread_id}) as trace:
+        # input None = tiếp cùng thread_id (sau approve hoặc sau inject từ chối).
+        await app.ainvoke(
             None,
             config=config,
-            context=ctx,
-            stream_mode=["updates", "custom"],
-            subgraphs=True,
-        ):
-            if stream_mode == "custom" or "__interrupt__" in chunk:
-                continue
-
+            context={
+                "news_days": 7,
+                "threshold_pct": None,
+                **request_deps,
+                "trace_span": trace["_span"] if "_span" in trace else None,
+            },
+        )
         state = await _collect_turn_state(
             app, config, request_deps, thread_id, user_id, watch_hitl=True
         )
-        pending = state["pending_tool_call"]
-        trace["output"] = state["answer"] or ({"pending_tool": pending["name"]} if pending else None)
+        trace["output"] = state["answer"] or (
+            {"status": "pending_approval", "tool_call": state["pending_tool_call"]}
+            if state["pending_tool_call"]
+            else state
+        )
         return state
 
 

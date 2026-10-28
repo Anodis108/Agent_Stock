@@ -368,7 +368,7 @@ def ai_scan(
     request_id: str | None = None,
 ) -> dict[str, Any]:
     """Gọi POST /v1/scan sang AI Backend."""
-    payload: dict[str, Any] = {"symbol": symbol, "user_id": user_id}
+    payload: dict[str, Any] = {"symbol": [symbol], "user_id": user_id}
     if threshold_pct is not None:
         payload["threshold_pct"] = threshold_pct
     if request_id:

@@ -12,8 +12,9 @@ from ai_backend.domain.agents.scan.price_agent.state import PriceWorkerState
 from ai_backend.domain.agents.scan.price_agent.tools import TOOLS, prices_from_tool_artifacts
 
 SYSTEM_PROMPT = (
-    "Bạn là worker giá cổ phiếu: lấy giá cho các mã cần trong nhiệm vụ, mỗi mã một lần. "
-    "Chỉ dùng số liệu có trong tool / ghi chú, không bịa. Xong việc thì trả lời 1-2 câu tóm tắt kết quả."
+    "Bạn là worker giá cổ phiếu: lấy giá lần lượt từng mã trong danh sách, xong mã này mới sang mã kia, "
+    "gọi đủ hết rồi mới kết thúc. Chỉ dùng số liệu có trong tool / ghi chú, không bịa. "
+    "Xong việc thì trả lời 1-2 câu tóm tắt kết quả."
 )
 
 
@@ -24,9 +25,11 @@ def _worker_llm():
 
 async def act(state: PriceWorkerState) -> dict:
     notes = "\n".join(f"[{d}] {n}" for d, n in (state["notes"] or {}).items()) or "(chưa có)"
+    syms = ", ".join(state["symbols"]) if "symbols" in state and state["symbols"] else ""
+    sym_line = f"\nCác mã (làm lần lượt): {syms}" if syms else ""
     messages = state["message_worker"] or [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": f"Nhiệm vụ: {state['task']}\n\nGhi chú từ worker đã chạy:\n{notes}"},
+        {"role": "user", "content": f"Nhiệm vụ: {state['task']}{sym_line}\n\nGhi chú từ worker đã chạy:\n{notes}"},
     ]
     response = await _worker_llm().ainvoke(messages)
     return {"message_worker": [response]}

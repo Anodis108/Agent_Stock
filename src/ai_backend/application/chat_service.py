@@ -1,10 +1,10 @@
-"""Swarm Orchestrator — use-case chat: gọi LangGraph (run_graph mode=chat) và map kết quả.
+"""Chat service — use-case chat: gọi LangGraph (start_graph mode=chat) và map kết quả.
 
 Luồng tổng quan:
-  API (chat.py) → SwarmOrchestrator.process()
+  API (chat.py) → ChatService.process()
     → start_graph (domain/agents/graph.py, mode=chat)
     → supervisor / agents (giá, tin, RAG, vẽ chart, …) → state checkpoint
-    → SwarmOutput (JSON). SSE token: infra/llm/chat_stream.swarm_sse (dùng request_deps()).
+    → ChatOutput (JSON). SSE token: infra/llm/chat_stream.swarm_sse (dùng request_deps()).
 
 Kế thừa BaseService; không chứa logic agent — chỉ inject port + cấu hình memory/news.
 """
@@ -22,29 +22,29 @@ from ai_backend.shared.logging import get_logger
 
 from ai_backend.domain.agents.graph import start_graph
 
-logger = get_logger("ai_backend.application.swarm_orchestrator")
+logger = get_logger("ai_backend.application.chat_service")
 
 
-class SwarmInput(CustomBaseModel):
-    """Input payload cho Swarm Orchestrator."""
+class ChatInput(CustomBaseModel):
+    """Input payload cho chat service."""
     question: str
     user_id: str = "default"
     request_id: str | None = None
 
 
-class SwarmOutput(CustomBaseModel):
-    """Output payload từ Swarm Orchestrator."""
+class ChatOutput(CustomBaseModel):
+    """Output payload từ chat service."""
     question: str
     answer: str
-    rewritten_symbol: str | None = None
+    rewritten_symbol: list[str] = Field(default_factory=list)
     routing: str = "general"
     steps: list[dict[str, Any]] = Field(default_factory=list)
     chart_path: str | None = None
     error: str | None = None
 
 
-class SwarmOrchestrator(BaseService):
-    """Service điều phối LangGraph Swarm Đa Tác Tử."""
+class ChatService(BaseService):
+    """Service hỏi-đáp: inject port rồi gọi graph mode=chat."""
 
     def __init__(
         self,
@@ -71,11 +71,11 @@ class SwarmOrchestrator(BaseService):
             "watchlist_store": self.watchlist_store,
         }
 
-    def process(self, inputs: SwarmInput) -> SwarmOutput:
-        """Xử lý điều phối Swarm hỏi-đáp đồng bộ."""
+    def process(self, inputs: ChatInput) -> ChatOutput:
+        """Hỏi-đáp đồng bộ qua graph mode=chat."""
         question = inputs.question.strip()
         req_id = inputs.request_id
-        logger.info(f"SwarmOrchestrator.process: q='{question[:50]}' user='{inputs.user_id}' req_id='{req_id}'")
+        logger.info(f"ChatService.process: q='{question[:50]}' user='{inputs.user_id}' req_id='{req_id}'")
 
         # Bước 1–2 — Inject port vào graph (request_deps); memory window đọc trong node (settings).
         async def _run() -> Any:
@@ -100,10 +100,10 @@ class SwarmOrchestrator(BaseService):
         chart = state["chart_result"]
         chart_path = chart.url if chart is not None and chart.success else None
 
-        return SwarmOutput(
+        return ChatOutput(
             question=question,
             answer=state["answer"] or "",
-            rewritten_symbol=rewritten.symbol if rewritten is not None else None,
+            rewritten_symbol=list(rewritten.symbols) if rewritten is not None else [],
             routing=routing,
             chart_path=chart_path,
             error=state["error"],

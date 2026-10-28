@@ -54,13 +54,13 @@ class V1ChatResponse(BaseModel):
     answer: str
     steps: list[ChatStep] = Field(default_factory=list)
     question: str = ""
-    symbol: str | None = None
+    symbol: list[str] = Field(default_factory=list)
     route: str = ""
     error: str | None = None
     request_id: str | None = None
     rewritten: str = ""
     agents_to_call: list[str] = Field(default_factory=list)
-    price: dict[str, Any] | None = None
+    price: list[dict[str, Any]] = Field(default_factory=list)
     news_count: int = 0
     severity: dict[str, Any] | None = None
     source_file: str | None = None
@@ -140,8 +140,6 @@ def v1_chat(
                 return payload
         raise RuntimeError("start_graph không yield result")
 
-    from ai_backend.domain.agents.scan.state import main_item
-
     state = asyncio.run(_chat_result())
     rewritten = state["rewritten"]
     guard = state["guardrail_result"]
@@ -154,32 +152,30 @@ def v1_chat(
     else:
         route = "guardrail"
     notes = state["notes"]
-    prices = state["prices"] or []
-    p = main_item(prices, state) if prices else None
-    price_payload = (
-        None
-        if p is None
-        else {
+    symbols = list(rewritten.symbols) if rewritten is not None else list(state["symbols"] or [])
+    prices = [
+        {
             "symbol": p.symbol,
             "latest_close": p.latest_close,
             "prev_close": p.prev_close,
             "change_pct": p.change_pct,
             "error": p.error,
         }
-    )
-    news = main_item(state["news"] or [], state) if state["news"] else None
+        for p in (state["prices"] or [])
+    ]
+    news_n = sum(len(row.items or []) for row in (state["news"] or []))
     ev = state["eval_result"]
     return V1ChatResponse(
         answer=state["answer"] or "",
         question=state["question"] or "",
-        symbol=rewritten.symbol if rewritten is not None else None,
+        symbol=symbols,
         route=route,
         error=state["error"],
         request_id=request_id,
         rewritten=rewritten.rewritten if rewritten is not None else "",
         agents_to_call=list(notes.keys()) if notes else [],
-        price=price_payload,
-        news_count=len(news.items) if news and news.items else 0,
+        price=prices,
+        news_count=news_n,
         severity=ev.severity.model_dump(mode="json") if ev is not None else None,
         source_file=state["source_file"],
     )

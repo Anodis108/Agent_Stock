@@ -19,16 +19,15 @@ from common.domain.entities import Severity, SeverityLevel
 from common.domain.indicators import analyze_technical_indicators
 
 
-def eval_result_from_tool_artifacts(message_worker: list) -> EvalAgentResult | None:
-    """Lần gọi submit_severity cuối → artifact {"eval_result": EvalAgentResult}; chưa nộp → None."""
-    results = [
+def eval_results_from_tool_artifacts(message_worker: list) -> list[EvalAgentResult]:
+    """Mỗi lần submit_severity → một EvalAgentResult, đúng thứ tự gọi."""
+    return [
         a["eval_result"]
         for m in message_worker
         if getattr(m, "type", None) == "tool"
         and (a := getattr(m, "artifact", None)) is not None
         and "eval_result" in a
     ]
-    return results[-1] if results else None
 
 
 def proposals_from_tool_artifacts(message_worker: list) -> list:

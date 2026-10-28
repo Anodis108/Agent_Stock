@@ -66,10 +66,10 @@ class ErrorEvent(CustomBaseModel):
 
 
 class ChatResponse(CustomBaseModel):
-    """Phản hồi JSON POST /v1/chat (cùng shape SwarmOutput; `source_file` không map từ orchestrator)."""
+    """Phản hồi JSON POST /v1/chat (cùng shape ChatOutput; `source_file` không map từ chat service)."""
     question: str
     answer: str
-    rewritten_symbol: str | None = None
+    rewritten_symbol: list[str] = Field(default_factory=list)
     routing: str = "general"
     steps: list[dict[str, Any]] = Field(default_factory=list)
     chart_path: str | None = None

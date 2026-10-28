@@ -9,7 +9,7 @@ from ai_backend.domain.agents.chat.draw_agent.state import DiagramAgentResult
 from ai_backend.domain.agents.multi_agent.hierarchical import HierarchicalState
 from ai_backend.domain.agents.scan.db_agent.state import DBAgentResult
 from ai_backend.domain.agents.scan.eval_agent.state import EvalAgentResult
-from ai_backend.domain.agents.scan.news_agent.state import NewsAgentResult
+from ai_backend.domain.agents.scan.news_agent.state import NewAgentResult
 from ai_backend.domain.agents.scan.price_agent.state import PriceAgentResult
 from ai_backend.domain.agents.state import AssistantState
 from common.domain.entities import RoutingDecision
@@ -43,8 +43,8 @@ class AnswerQuestionResult(BaseModel):
     rewritten: RewrittenQuestion
     routing: RoutingDecision  # route = intent; agents_to_call = worker của chat đã chạy
     answer: str
-    price: PriceAgentResult | None = None  # mã chính
-    news: NewsAgentResult | None = None
+    price: list[PriceAgentResult] = Field(default_factory=list)
+    news: list[NewAgentResult] = Field(default_factory=list)
     eval_result: EvalAgentResult | None = None
     compose: AnswerComposeResult | None = None  # evidence + vi phạm guardrail (eval chấm)
     diagram_result: DiagramAgentResult | None = None
@@ -73,7 +73,7 @@ class ChatTeamState(AssistantState, HierarchicalState, total=False):
 
     # Kết quả worker (trùng tên ScanHierarchicalState / DrawWorkerState → LangGraph truyền qua)
     prices: list[PriceAgentResult]
-    news: list[NewsAgentResult]
+    news: list[NewAgentResult]
     eval_result: EvalAgentResult | None
     db_results: DBAgentResult | None
     chart_result: Any | None  # ChartResult (url khi success)

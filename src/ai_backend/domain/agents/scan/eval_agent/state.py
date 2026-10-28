@@ -17,5 +17,7 @@ class EvalAgentResult(BaseModel):
 
 class EvalWorkerState(WorkerState, total=False):
     user_id: str  # propose_watchlist_update đọc qua InjectedState
+    symbols: list[str]
     eval_result: EvalAgentResult | None
+    eval_results: list[EvalAgentResult]
     messages: Annotated[list, add_messages]  # trùng `messages` team: đề xuất HITL update_watchlist (chờ duyệt ở scan_tools)

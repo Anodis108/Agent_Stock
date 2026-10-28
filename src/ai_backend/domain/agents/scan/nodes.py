@@ -16,7 +16,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.runtime import get_runtime
 
 from ai_backend.domain.guardrails.output_checks import strip_buy_sell
-from ai_backend.domain.agents.scan.state import ScanHierarchicalState, main_item
+from ai_backend.domain.agents.scan.state import ScanHierarchicalState
 from ai_backend.infra.llm.params import DETERMINISTIC
 from ai_backend.infra.llm.structured import call_llm_structured
 from ai_backend.infra.monitoring.tracing import trace_step
@@ -72,53 +72,91 @@ def propose_action(name: str, args: dict[str, Any]) -> AIMessage:
 # ── 3. Node LLM (không phải agent: không tool, 1 lời gọi structured output) ──
 
 
+def _row_for(items: list, sym: str):
+    return next((x for x in items or [] if (x.symbol or "").upper() == sym.upper()), None)
+
+
+def _evals(state: ScanHierarchicalState) -> list:
+    if "eval_results" in state and state["eval_results"]:
+        return list(state["eval_results"])
+    ev = state["eval_result"] if "eval_result" in state else None
+    return [ev] if ev is not None else []
+
+
+def _eval_for(state: ScanHierarchicalState, index: int):
+    """eval_results cùng thứ tự symbols; không có thì eval_result của đúng mã đầu."""
+    evals = _evals(state)
+    if index < len(evals):
+        return evals[index]
+    return None
+
+
 async def event_classifier_node(state: ScanHierarchicalState, config: RunnableConfig) -> dict:
-    """LLM phân loại biến động của mã chính (giá + tin, ngưỡng) bình thường / bất thường → event_routing."""
-    price = main_item(state["prices"], state)
-    news = main_item(state["news"], state)
-    titles = "; ".join(i.title for i in (news.items if news else [])[:10]) or "(không có tin)"
-    prompt = registry().render(
-        "event_classification",
-        version="production",
-        symbol=state["symbols"][0],
-        latest_close=f"{price.latest_close}" if price else "N/A",
-        change_pct=f"{price.change_pct}" if price else "N/A",
-        threshold_pct=f"{_threshold_from_context(state)}",
-        news_titles=titles,
-    )
-    with trace_step(get_runtime().context["trace_span"], "event_classifier", input=state["symbols"][0]) as box:
-        out = call_llm_structured([{"role": "user", "content": prompt}], ClassifierOutput, params=DETERMINISTIC)
-        routing = out.to_routing_decision()
-        box["output"] = {"route": routing.route.value, "reason": routing.reason}
-    return {"event_routing": routing, "result": f"{routing.route.value} — {routing.reason}"}
+    """LLM phân loại lần lượt từng mã (giá + tin, ngưỡng) bình thường / bất thường."""
+    routings = []
+    lines = []
+    threshold = f"{_threshold_from_context(state)}"
+    for sym in state["symbols"]:
+        price = _row_for(state["prices"], sym)
+        news = _row_for(state["news"], sym)
+        titles = "; ".join(i.title for i in (news.items if news else [])[:10]) or "(không có tin)"
+        prompt = registry().render(
+            "event_classification",
+            version="production",
+            symbol=sym,
+            latest_close=f"{price.latest_close}" if price else "N/A",
+            change_pct=f"{price.change_pct}" if price else "N/A",
+            threshold_pct=threshold,
+            news_titles=titles,
+        )
+        with trace_step(get_runtime().context["trace_span"], "event_classifier", input=sym) as box:
+            out = call_llm_structured([{"role": "user", "content": prompt}], ClassifierOutput, params=DETERMINISTIC)
+            routing = out.to_routing_decision()
+            box["output"] = {"symbol": sym, "route": routing.route.value, "reason": routing.reason}
+        routings.append(routing)
+        lines.append(f"{routing.route.value} — {routing.reason}")
+    done = {"event_routings": routings, "result": "; ".join(lines)}
+    if routings:
+        done["event_routing"] = routings[-1]
+    return done
 
 
 async def synthesis_node(state: ScanHierarchicalState, config: RunnableConfig) -> dict:
-    """LLM soạn cảnh báo cho mã chính từ đánh giá eval_agent → gửi ngay qua notifier (không HITL) + ghi ``alert`` trên state."""
-    sym = state["symbols"][0]
-    severity = state["eval_result"].severity
-    prompt = registry().render(
-        "synthesis_alert",
-        version="production",
-        symbol=sym,
-        severity_level=severity.level.value,
-        confidence=f"{severity.confidence:.2f}",
-        reasoning=severity.reasoning,
-        evidence="; ".join(severity.evidence) or "(không có evidence)",
-        preferences="(mặc định)",
-        violations="(không)",
-    )
-    with trace_step(get_runtime().context["trace_span"], "synthesis_agent", input=sym) as box:
-        out = call_llm_structured([{"role": "user", "content": prompt}], SynthesisAlertOutput, params=DETERMINISTIC)
-        alert = FinalAlert(
-            id=str(uuid.uuid4()),
+    """LLM soạn cảnh báo lần lượt từng mã đã có đánh giá → gửi ngay qua notifier + ghi ``alerts``."""
+    alerts = []
+    lines = []
+    for index, sym in enumerate(state["symbols"]):
+        ev = _eval_for(state, index)
+        if ev is None:
+            continue
+        severity = ev.severity
+        prompt = registry().render(
+            "synthesis_alert",
+            version="production",
             symbol=sym,
-            title=out.title,
-            body=strip_buy_sell(out.body),
-            severity=severity,
-            status=AlertStatus.DRAFT,
-            metadata={"user_id": state["user_id"] or "default"},
+            severity_level=severity.level.value,
+            confidence=f"{severity.confidence:.2f}",
+            reasoning=severity.reasoning,
+            evidence="; ".join(severity.evidence) or "(không có evidence)",
+            preferences="(mặc định)",
+            violations="(không)",
         )
-        get_runtime().context["notifier"].send(alert)  # cảnh báo phải tới ngay — ConsoleNotifier đặt status=SENT
-        box["output"] = {"alert_id": alert.id, "title": alert.title, "status": alert.status.value}
-    return {"alert": alert, "result": f"đã gửi cảnh báo '{alert.title}'"}
+        with trace_step(get_runtime().context["trace_span"], "synthesis_agent", input=sym) as box:
+            out = call_llm_structured([{"role": "user", "content": prompt}], SynthesisAlertOutput, params=DETERMINISTIC)
+            alert = FinalAlert(
+                id=str(uuid.uuid4()),
+                symbol=sym,
+                title=out.title,
+                body=strip_buy_sell(out.body),
+                severity=severity,
+                status=AlertStatus.DRAFT,
+                metadata={"user_id": state["user_id"] or "default"},
+            )
+            get_runtime().context["notifier"].send(alert)
+            box["output"] = {"alert_id": alert.id, "title": alert.title, "status": alert.status.value}
+        alerts.append(alert)
+        lines.append(f"đã gửi cảnh báo '{alert.title}'")
+    done = {"alerts": alerts, "result": "; ".join(lines)}
+    if alerts:
+        done["alert"] = alerts[-1]
+    return done

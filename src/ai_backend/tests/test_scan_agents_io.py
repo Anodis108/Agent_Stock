@@ -16,7 +16,7 @@ from ai_backend.domain.agents.scan.db_agent import tools as db_tools
 from ai_backend.domain.agents.scan.eval_agent import graph as eval_graph
 from ai_backend.domain.agents.scan.news_agent import graph as news_graph
 from ai_backend.domain.agents.scan.price_agent import graph as price_graph
-from ai_backend.domain.agents.scan.state import EvalAgentResult, NewsAgentResult, PriceAgentResult
+from ai_backend.domain.agents.scan.state import EvalAgentResult, NewAgentResult, PriceAgentResult
 from common.domain.entities import AlertStatus, EventRoute, Severity, SeverityLevel
 from common.domain.ports import NewsItem, PriceBar
 from common.transport.schemas import ClassifierOutput, SynthesisAlertOutput
@@ -103,7 +103,7 @@ async def test_news_agent_io(monkeypatch):
     )
 
     assert seen == {"symbol": "FPT", "query": "lợi nhuận", "days": 3}
-    assert out["news"] == [NewsAgentResult(symbol="FPT", items=[NewsItem(title="FPT lãi kỷ lục"), NewsItem(title="FPT ký hợp đồng")])]
+    assert out["news"] == [NewAgentResult(symbol="FPT", items=[NewsItem(title="FPT lãi kỷ lục"), NewsItem(title="FPT ký hợp đồng")])]
     assert out["result"] == "FPT: 2 tin — FPT lãi kỷ lục; FPT ký hợp đồng"
 
 
@@ -243,7 +243,7 @@ async def test_event_classifier_node_io(monkeypatch):
             PriceAgentResult(symbol="VNM", latest_close=60.0, prev_close=60.0, change_pct=0.0),
             PriceAgentResult(symbol="FPT", latest_close=107.2, prev_close=100.0, change_pct=7.2),
         ],
-        "news": [NewsAgentResult(symbol="FPT", items=[NewsItem(title="FPT lãi kỷ lục")])],
+        "news": [NewAgentResult(symbol="FPT", items=[NewsItem(title="FPT lãi kỷ lục")])],
     }
 
     out = await nodes.event_classifier_node(state, {})

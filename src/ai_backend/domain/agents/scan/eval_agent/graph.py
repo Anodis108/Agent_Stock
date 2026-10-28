@@ -9,12 +9,13 @@ from langgraph.prebuilt import ToolNode
 
 from ai_backend.domain.agents.multi_agent._llm import base_llm
 from ai_backend.domain.agents.scan.eval_agent.state import EvalWorkerState
-from ai_backend.domain.agents.scan.eval_agent.tools import TOOLS, eval_result_from_tool_artifacts, proposals_from_tool_artifacts
+from ai_backend.domain.agents.scan.eval_agent.tools import TOOLS, eval_results_from_tool_artifacts, proposals_from_tool_artifacts
 
 SYSTEM_PROMPT = (
-    "Bạn đánh giá mức độ nghiêm trọng biến động của mã chính: đọc chỉ báo kỹ thuật, kết hợp giá + tin trong "
-    "ghi chú, rồi nộp đánh giá bằng submit_severity. Nếu nhiệm vụ là quét cảnh báo và biến động lớn bất "
-    "thường so với ngưỡng, có thể đề xuất đổi ngưỡng / theo dõi mã liên quan bằng propose_watchlist_update. "
+    "Bạn đánh giá mức độ nghiêm trọng từng mã trong danh sách: lần lượt hết mã này rồi mới sang mã kia. "
+    "Với mỗi mã: đọc chỉ báo kỹ thuật, kết hợp giá + tin trong ghi chú, rồi nộp submit_severity cho đúng mã đó. "
+    "Xong hết mã mới kết thúc. Nếu nhiệm vụ là quét cảnh báo và biến động lớn bất thường so với ngưỡng, "
+    "có thể đề xuất đổi ngưỡng / theo dõi mã liên quan bằng propose_watchlist_update. "
     "Chỉ dùng số liệu có trong tool / ghi chú, không bịa. Xong việc thì trả lời 1-2 câu tóm tắt kết quả."
 )
 
@@ -26,9 +27,11 @@ def _worker_llm():
 
 async def act(state: EvalWorkerState) -> dict:
     notes = "\n".join(f"[{d}] {n}" for d, n in (state["notes"] or {}).items()) or "(chưa có)"
+    syms = ", ".join(state["symbols"]) if "symbols" in state and state["symbols"] else ""
+    sym_line = f"\nCác mã (làm lần lượt): {syms}" if syms else ""
     messages = state["message_worker"] or [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": f"Nhiệm vụ: {state['task']}\n\nGhi chú từ worker đã chạy:\n{notes}"},
+        {"role": "user", "content": f"Nhiệm vụ: {state['task']}{sym_line}\n\nGhi chú từ worker đã chạy:\n{notes}"},
     ]
     response = await _worker_llm().ainvoke(messages)
     return {"message_worker": [response]}
@@ -42,9 +45,11 @@ def route_tools(state: EvalWorkerState) -> str:
 def summarize(state: EvalWorkerState) -> dict:
     last = state["message_worker"][-1]
     tool_msgs = [m.content for m in state["message_worker"] if getattr(m, "type", None) == "tool"]
+    results = eval_results_from_tool_artifacts(state["message_worker"])
     return {
         "result": "\n".join(tool_msgs) if tool_msgs else last.content,
-        "eval_result": eval_result_from_tool_artifacts(state["message_worker"]),
+        "eval_result": results[-1] if results else None,
+        "eval_results": results,
         "messages": proposals_from_tool_artifacts(state["message_worker"]),
     }
 
