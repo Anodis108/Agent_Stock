@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -34,19 +34,19 @@ class ChatStep(BaseModel):
 class WatchlistSnapshot(BaseModel):
     symbol: str
     threshold_pct: float = 3.0
-    user_id: str = "default"
+    user_id: str = Field(min_length=1)
 
 
 class HoldingSnapshot(BaseModel):
     symbol: str
     quantity: float
     avg_buy_price: float
-    user_id: str = "default"
+    user_id: str = Field(min_length=1)
 
 
 class V1ChatRequest(BaseModel):
     question: str
-    user_id: str = "default"
+    user_id: str = Field(min_length=1)
     request_id: str | None = None
 
 
@@ -54,21 +54,13 @@ class V1ChatResponse(BaseModel):
     answer: str
     steps: list[ChatStep] = Field(default_factory=list)
     question: str = ""
-    symbol: list[str] = Field(default_factory=list)
-    route: str = ""
-    error: str | None = None
     request_id: str | None = None
-    rewritten: str = ""
-    agents_to_call: list[str] = Field(default_factory=list)
-    price: list[dict[str, Any]] = Field(default_factory=list)
-    news_count: int = 0
-    severity: dict[str, Any] | None = None
-    source_file: str | None = None
+    drawed_paths: list[str] = Field(default_factory=list)
 
 
 class V1ScanRequest(BaseModel):
     symbol: str
-    user_id: str = "default"
+    user_id: str = Field(min_length=1)
     threshold_pct: float | None = None
     request_id: str | None = None
     watchlist: list[WatchlistSnapshot] | None = None
@@ -84,7 +76,7 @@ def _lists_from_body(body: V1ScanRequest):
         WatchlistItem(
             symbol=row.symbol.strip().upper(),
             threshold_pct=float(row.threshold_pct),
-            user_id=(row.user_id or body.user_id or "default").strip() or "default",
+            user_id=row.user_id.strip(),
         )
         for row in (body.watchlist or [])
     ]
@@ -101,7 +93,6 @@ class V1ScanResponse(BaseModel):
     status: str = "done"  # done | pending_approval
     thread_id: str = ""
     tool_call: dict[str, Any] | None = None
-    error: str | None = None
     request_id: str | None = None
     price: dict[str, Any] | None = None
     news_count: int = 0
@@ -123,7 +114,9 @@ def v1_chat(
     x_request_id: str | None = Header(default=None, alias="X-Request-Id"),
 ) -> V1ChatResponse:
     question = normalize_question(body.question)
-    request_id = (body.request_id or x_request_id or "").strip() or None
+    request_id = (body.request_id or x_request_id or "").strip()
+    if not request_id:  # không tự tạo: web backend sinh ở biên và truyền xuống
+        raise HTTPException(status_code=400, detail="Thiếu request_id (body hoặc header X-Request-Id)")
     chat_deps = {
         "price_source": deps.price_source,
         "news_source": deps.news_source,
@@ -133,51 +126,22 @@ def v1_chat(
     }
 
     async def _chat_result() -> Any:
+        result = None
         async for kind, payload in start_graph(
             "chat", question, chat_deps, user_id=body.user_id, request_id=request_id
         ):
             if kind == "result":
-                return payload
-        raise RuntimeError("start_graph không yield result")
+                result = payload  # đọc hết generator: save_long_term_memory chạy sau result
+        if result is None:
+            raise RuntimeError("start_graph không yield result")
+        return result
 
-    state = asyncio.run(_chat_result())
-    rewritten = state["rewritten"]
-    guard = state["guardrail_result"]
-    if rewritten is not None:
-        route = str(rewritten.intent)
-    elif guard is None:
-        route = "empty"
-    elif guard.category == "greeting":
-        route = "greeting"
-    else:
-        route = "guardrail"
-    notes = state["notes"]
-    symbols = list(rewritten.symbols) if rewritten is not None else list(state["symbols"] or [])
-    prices = [
-        {
-            "symbol": p.symbol,
-            "latest_close": p.latest_close,
-            "prev_close": p.prev_close,
-            "change_pct": p.change_pct,
-            "error": p.error,
-        }
-        for p in (state["prices"] or [])
-    ]
-    news_n = sum(len(row.items or []) for row in (state["news"] or []))
-    ev = state["eval_result"]
+    final = asyncio.run(_chat_result())["final_answer"]
     return V1ChatResponse(
-        answer=state["answer"] or "",
-        question=state["question"] or "",
-        symbol=symbols,
-        route=route,
-        error=state["error"],
+        answer=final.answer,
+        question=final.question,
         request_id=request_id,
-        rewritten=rewritten.rewritten if rewritten is not None else "",
-        agents_to_call=list(notes.keys()) if notes else [],
-        price=prices,
-        news_count=news_n,
-        severity=ev.severity.model_dump(mode="json") if ev is not None else None,
-        source_file=state["source_file"],
+        drawed_paths=final.drawed_paths,
     )
 
 
@@ -197,7 +161,9 @@ def v1_chat_stream(
         "memory_store": deps.memory_store,
         "watchlist_store": deps.watchlist_store,
     }
-    request_id = (body.request_id or x_request_id or "").strip() or None
+    request_id = (body.request_id or x_request_id or "").strip()
+    if not request_id:  # không tự tạo: web backend sinh ở biên và truyền xuống
+        raise HTTPException(status_code=400, detail="Thiếu request_id (body hoặc header X-Request-Id)")
     return StreamingResponse(
         swarm_sse(normalize_question(body.question), request_deps, user_id=body.user_id, request_id=request_id),
         media_type="text/event-stream",
@@ -213,7 +179,9 @@ def v1_scan(
 ) -> V1ScanResponse:
     sym = normalize_symbol(body.symbol)
     threshold = validate_threshold_pct(body.threshold_pct)
-    request_id = (body.request_id or x_request_id or "").strip() or None
+    request_id = (body.request_id or x_request_id or "").strip()
+    if not request_id:  # không tự tạo: web backend sinh ở biên và truyền xuống
+        raise HTTPException(status_code=400, detail="Thiếu request_id (body hoặc header X-Request-Id)")
     watchlist_store, _account_holdings = _lists_from_body(body)
     scan_deps = {
         "price_source": deps.price_source,
@@ -279,7 +247,6 @@ def v1_scan(
         status=status,
         thread_id=state["thread_id"] or "",
         tool_call=state["pending_tool_call"],
-        error=state["error"],
         request_id=request_id,
         price=price_payload,
         news_count=len(news_items),

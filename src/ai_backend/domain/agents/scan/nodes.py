@@ -35,7 +35,7 @@ def resolve_scan_threshold(sym: str, user_id: str | None, deps: dict) -> float:
         store = deps["watchlist_store"]
         if store is not None:
             try:
-                item = store.get(user_id or "default", sym)
+                item = store.get(user_id, sym)
                 threshold = item.threshold_pct if item else None
             except Exception:  # noqa: BLE001
                 pass
@@ -150,7 +150,7 @@ async def synthesis_node(state: ScanHierarchicalState, config: RunnableConfig) -
                 body=strip_buy_sell(out.body),
                 severity=severity,
                 status=AlertStatus.DRAFT,
-                metadata={"user_id": state["user_id"] or "default"},
+                metadata={"user_id": state["user_id"]},
             )
             get_runtime().context["notifier"].send(alert)
             box["output"] = {"alert_id": alert.id, "title": alert.title, "status": alert.status.value}

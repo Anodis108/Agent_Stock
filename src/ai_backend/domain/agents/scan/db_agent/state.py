@@ -10,7 +10,7 @@ from ai_backend.domain.agents.multi_agent.hierarchical import WorkerState
 
 
 class DBAgentResult(BaseModel):
-    user_id: str = "default"
+    user_id: str
     holdings: list[dict[str, Any]] = Field(default_factory=list)
     watchlist: list[dict[str, Any]] = Field(default_factory=list)
     error: str | None = None

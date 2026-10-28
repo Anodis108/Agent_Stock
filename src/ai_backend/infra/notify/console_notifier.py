@@ -12,7 +12,7 @@ _logger = get_logger(__name__)
 class ConsoleNotifier:
     """Gửi cảnh báo: log console + append_alert_event (status sent)."""
 
-    def __init__(self, memory: MemoryStore, user_id: str = "default"):
+    def __init__(self, memory: MemoryStore, user_id: str):
         self._memory = memory
         self._user_id = user_id
 

@@ -81,7 +81,7 @@ class PortfolioSummary:
 
 
 class PortfolioInput(CustomBaseModel):
-    user_id: str = "default"
+    user_id: str
     action: str = "summary"  # "summary" | "add" | "delete" | "settings"
     symbol: str | None = None
     quantity: int | None = None
@@ -122,7 +122,7 @@ class PortfolioService(BaseService):
 
     def process(self, inputs: PortfolioInput) -> PortfolioOutput:
         """Xử lý use-case chính theo chuẩn BaseService."""
-        user_id = inputs.user_id or "default"
+        user_id = inputs.user_id
 
         if inputs.action == "add" and inputs.symbol and inputs.quantity and inputs.buy_price:
             self.add_holding(
@@ -152,7 +152,7 @@ class PortfolioService(BaseService):
             message="Thành công",
         )
 
-    def get_portfolio_summary(self, user_id: str = "default") -> PortfolioSummary:
+    def get_portfolio_summary(self, user_id: str) -> PortfolioSummary:
         """Lấy tổng quan danh mục và chi tiết P&L cho user_id."""
         holdings = self.holdings_repo.list_by_user(user_id) if hasattr(self.holdings_repo, "list_by_user") else []
         items: list[PortfolioItemSummary] = []
@@ -230,7 +230,8 @@ class PortfolioService(BaseService):
         purchase_date: str | None = None,
         buy_date: str | None = None,
         notes: str | None = None,
-        user_id: str = "default",
+        *,
+        user_id: str,
         buy_price: float | None = None,
         **kwargs: Any,
     ) -> Any:
@@ -244,19 +245,19 @@ class PortfolioService(BaseService):
             purchase_date=date,
         )
 
-    def delete_holding(self, holding_id: str | int, user_id: str = "default") -> bool:
+    def delete_holding(self, holding_id: str | int, user_id: str) -> bool:
         hid = str(holding_id)
         existing = self.holdings_repo.get(hid)
         if existing is None or str(getattr(existing, "user_id", "")) != user_id:
             return False
-        return self.holdings_repo.delete(hid)
+        return self.holdings_repo.delete(hid, user_id)
 
-    def get_user_settings(self, user_id: str = "default") -> Any:
+    def get_user_settings(self, user_id: str) -> Any:
         return self.user_settings_repo.get(user_id)
 
     def update_user_settings(
         self,
-        user_id: str = "default",
+        user_id: str,
         alert_threshold_pct: float | None = None,
         risk_profile: str | None = None,
     ) -> Any:
@@ -265,6 +266,6 @@ class PortfolioService(BaseService):
         return self.user_settings_repo.get(user_id)
 
     def update_alert_threshold(
-        self, threshold_pct: float, user_id: str = "default"
+        self, threshold_pct: float, user_id: str
     ) -> Any:
         return self.user_settings_repo.set_threshold(user_id, threshold_pct)

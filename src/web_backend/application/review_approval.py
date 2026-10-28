@@ -34,7 +34,7 @@ class ReviewResult:
 
 def list_pending_approvals(
     memory_store: MemoryStore,
-    user_id: str = "default",
+    user_id: str,
     *,
     limit: int = 50,
 ) -> list[dict[str, Any]]:
@@ -101,7 +101,7 @@ def approve_pending(
     *,
     memory_store: MemoryStore,
     resume: ResumeFn,
-    user_id: str = "default",
+    user_id: str,
 ) -> ReviewResult:
     return _review(approval_id, True, "", memory_store=memory_store, resume=resume, user_id=user_id)
 
@@ -112,7 +112,7 @@ def reject_pending(
     *,
     memory_store: MemoryStore,
     resume: ResumeFn,
-    user_id: str = "default",
+    user_id: str,
 ) -> ReviewResult:
     why = (reason or "").strip()
     if not why:

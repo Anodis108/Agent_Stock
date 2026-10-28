@@ -10,6 +10,8 @@ Các tiêu chí đánh giá cốt lõi:
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 import asyncio
 import json
 import re
@@ -87,7 +89,7 @@ def score_routing(
     actual_set = {a.lower().strip() for a in actual_agents if a}
 
     if slice_type in ("injection", "out_of_scope", "disclaimer", "portfolio", "watchlist"):
-        if not actual_set or actual_set <= {"portfolio", "watchlist", "portfolio_watch", "guardrail", "guardrails"}:
+        if not actual_set or actual_set <= {"portfolio", "watchlist", "portfolio_report", "guardrail", "guardrails"}:
             return 1.0, 1.0, 1.0
         return 0.5, 0.5, 0.5
 
@@ -336,28 +338,29 @@ def evaluate_case(
             }
 
             async def _run() -> Any:
-                async for kind, payload in start_graph("chat", question, req, user_id="eval_user"):
+                result = None
+                async for kind, payload in start_graph("chat", question, req, user_id="eval_user", request_id=f"eval-{uuid4().hex}"):  # eval = điểm vào riêng → sinh request_id ở đây
                     if kind == "result":
-                        return payload
-                raise RuntimeError("start_graph không yield result")
+                        result = payload  # đọc hết generator: save_long_term_memory chạy sau result
+                if result is None:
+                    raise RuntimeError("start_graph không yield result")
+                return result
 
             state = asyncio.run(_run())
-            notes = state["notes"]
-            agents_called = list(notes.keys()) if notes else []
+            final, eval_data = state["final_answer"], state["eval_data"]
+            agents_called = eval_data.agents_called
 
             class _GraphEvalView:
                 pass
 
             res = _GraphEvalView()
-            res.answer = state["answer"] or ""
-            rewritten = state["rewritten"]
+            res.answer = final.answer
+            rewritten = eval_data.rewritten
             res.rewritten = rewritten
             res.routing = type("R", (), {"agents_to_call": agents_called})()
             res.actual_agents = agents_called
-            res.compose = type("C", (), {"evidence": list(state["answer_evidence"] or [])})()
-            res.symbols = list(rewritten.symbols) if rewritten is not None else []
-            res.sub_questions = list(rewritten.sub_questions) if rewritten is not None else []
-            res.rewritten_symbol = list(rewritten.symbols) if rewritten is not None else []
+            res.compose = None
+            res.evidence = eval_data.evidence
         except Exception as exc:
             return CaseAgentEvalResult(
                 case_id=case_id,

@@ -6,24 +6,22 @@ preventing spurious ticker extraction (TRA, NAV, XEM).
 
 from __future__ import annotations
 
-import sqlite3
-import pytest
 
-from backend.agents.portfolio_watch import run_portfolio_watch
-from backend.agents.supervisor_agent.nodes import (
+from ai_backend.domain.agents.chat.nodes.portfolio import run_portfolio_report
+from ai_backend.domain.agents.chat.chat_supervisor_agent.nodes import (
     HeuristicRewriteBrain,
     HeuristicSupervisorBrain,
     _extract_symbols,
 )
-from backend.database.connection import init_db
-from backend.database.repositories import (
+from web_backend.infra.database.connection import get_connection
+from web_backend.infra.database.repositories import (
     PortfolioHoldingRepository,
     UserSettingsRepository,
 )
-from backend.domain.entities import WatchlistItem
-from backend.domain.ports import PriceBar, PriceQuote, PriceSourcePort
-from backend.graph.chat import run_chat_graph
-from backend.infra.storage.watchlist_store import SqliteWatchlistStore
+from common.domain.entities import WatchlistItem
+from common.domain.ports import PriceBar, PriceQuote, PriceSourcePort
+from ai_backend.domain.agents.chat.graph import run_chat_graph
+from ai_backend.infra.storage.watchlist_store import PgWatchlistStore
 
 
 class MockPriceSource(PriceSourcePort):
@@ -75,16 +73,6 @@ class DummyMemoryStore:
         pass
 
 
-@pytest.fixture
-def test_db_path(tmp_path):
-    db_file = tmp_path / "test_portfolio.db"
-    conn = sqlite3.connect(str(db_file))
-    conn.row_factory = sqlite3.Row
-    init_db(conn)
-    conn.close()
-    return str(db_file)
-
-
 # ==============================================================================
 # 1. Unit Tests: Ticker stopword filtering for Vietnamese phrases
 # ==============================================================================
@@ -106,7 +94,7 @@ def test_no_spurious_tickers_in_portfolio_queries():
 # ==============================================================================
 
 def test_supervisor_routes_portfolio_intent():
-    """Supervisor correctly identifies portfolio intent and routes to portfolio_watch."""
+    """Supervisor correctly identifies portfolio intent and routes to portfolio_report."""
     rewriter = HeuristicRewriteBrain()
     supervisor = HeuristicSupervisorBrain()
 
@@ -115,11 +103,11 @@ def test_supervisor_routes_portfolio_intent():
     assert rw.symbols == []
 
     decision = supervisor.route(rw)
-    assert "portfolio_watch" in decision.agents_to_call
+    assert "portfolio_report" in decision.agents_to_call
 
 
 def test_supervisor_routes_watchlist_intent():
-    """Supervisor correctly identifies watchlist intent and routes to portfolio_watch."""
+    """Supervisor correctly identifies watchlist intent and routes to portfolio_report."""
     rewriter = HeuristicRewriteBrain()
     supervisor = HeuristicSupervisorBrain()
 
@@ -128,23 +116,56 @@ def test_supervisor_routes_watchlist_intent():
     assert rw.symbols == []
 
     decision = supervisor.route(rw)
-    assert "portfolio_watch" in decision.agents_to_call
+    assert "portfolio_report" in decision.agents_to_call
+
+
+def test_chat_supervisor_gather_db_agent_before_portfolio_report():
+    """Portfolio/watchlist: chat_supervisor nhờ scan_supervisor chạy db_agent trước portfolio_report."""
+    from ai_backend.domain.agents.chat.chat_supervisor_agent.nodes import chat_supervisor_node
+
+    rewriter = HeuristicRewriteBrain()
+    supervisor = HeuristicSupervisorBrain()
+    rw = rewriter.rewrite("Danh mục của tôi lãi hay lỗ?", [])
+    routing = supervisor.route(rw)
+
+    first = chat_supervisor_node(
+        {
+            "question": rw.original,
+            "rewritten": rw,
+            "routing": routing,
+            "completed": [],
+        },
+        None,
+    )
+    assert first["next"] == ["scan_supervisor"]
+    assert "db_agent" in first["gather_request"]
+    assert first["portfolio_db_intent"] in ("portfolio", "all")
+
+    after_db = chat_supervisor_node(
+        {
+            "question": rw.original,
+            "rewritten": rw,
+            "routing": routing,
+            "completed": ["db_agent"],
+            "db_agent_result": object(),
+        },
+        None,
+    )
+    assert after_db["next"] == ["portfolio_report"]
+    assert "db_agent" not in (after_db["gather_request"] or [])
 
 
 # ==============================================================================
 # 3. PortfolioWatchAgent Unit Tests (Empty & Populated States, Isolation)
 # ==============================================================================
 
-def test_portfolio_watch_empty(test_db_path, monkeypatch):
+def test_portfolio_report_empty(pg_schema):
     """When a user has no holdings, returns a clean informative markdown message."""
-    from backend.shared.settings import settings
-    monkeypatch.setenv("SQLITE_PATH", test_db_path)
-    monkeypatch.setattr(settings, "sqlite_path", test_db_path)
 
-    store = SqliteWatchlistStore(test_db_path)
+    store = PgWatchlistStore(pg_schema)
     price_source = MockPriceSource()
 
-    res = run_portfolio_watch(
+    res = run_portfolio_report(
         user_id="user_empty",
         intent="all",
         price_source=price_source,
@@ -157,15 +178,11 @@ def test_portfolio_watch_empty(test_db_path, monkeypatch):
     assert "nên bán" not in res.formatted_markdown.lower()
 
 
-def test_portfolio_watch_with_data_and_multi_tenant(test_db_path, monkeypatch):
+def test_portfolio_report_with_data_and_multi_tenant(pg_schema):
     """Verifies holdings & watchlist calculation and strict multi-tenant isolation."""
-    from backend.shared.settings import settings
-    monkeypatch.setenv("SQLITE_PATH", test_db_path)
-    monkeypatch.setattr(settings, "sqlite_path", test_db_path)
 
     # 1. Thiết lập dữ liệu cho user_a: 1000 FPT giá 100.0, Watchlist FPT ±3%
-    conn = sqlite3.connect(test_db_path)
-    conn.row_factory = sqlite3.Row
+    conn = get_connection()
     h_repo = PortfolioHoldingRepository(conn)
     u_repo = UserSettingsRepository(conn)
     h_repo.create("FPT", 1000, 100.0, user_id="user_a")
@@ -173,12 +190,11 @@ def test_portfolio_watch_with_data_and_multi_tenant(test_db_path, monkeypatch):
     conn.commit()
     conn.close()
 
-    store = SqliteWatchlistStore(test_db_path)
+    store = PgWatchlistStore(pg_schema)
     store.upsert(WatchlistItem(user_id="user_a", symbol="FPT", threshold_pct=3.0))
 
     # 2. Thiết lập dữ liệu cho user_b: 500 VNM giá 80.0, Watchlist VNM ±5%
-    conn = sqlite3.connect(test_db_path)
-    conn.row_factory = sqlite3.Row
+    conn = get_connection()
     h_repo = PortfolioHoldingRepository(conn)
     h_repo.create("VNM", 500, 80.0, user_id="user_b")
     conn.commit()
@@ -188,7 +204,7 @@ def test_portfolio_watch_with_data_and_multi_tenant(test_db_path, monkeypatch):
     price_source = MockPriceSource({"FPT": 125.0, "VNM": 75.0})
 
     # 3. Kiểm tra user_a
-    res_a = run_portfolio_watch(
+    res_a = run_portfolio_report(
         user_id="user_a",
         intent="all",
         price_source=price_source,
@@ -203,7 +219,7 @@ def test_portfolio_watch_with_data_and_multi_tenant(test_db_path, monkeypatch):
     assert "±3.0%" in res_a.formatted_markdown
 
     # 4. Kiểm tra user_b
-    res_b = run_portfolio_watch(
+    res_b = run_portfolio_report(
         user_id="user_b",
         intent="all",
         price_source=price_source,
@@ -220,21 +236,17 @@ def test_portfolio_watch_with_data_and_multi_tenant(test_db_path, monkeypatch):
 # 4. End-to-End Chat Graph Integration Tests (Golden v6 cases)
 # ==============================================================================
 
-def test_chat_graph_portfolio_01_end_to_end(test_db_path, monkeypatch):
+def test_chat_graph_portfolio_01_end_to_end(pg_schema):
     """portfolio_01: 'Danh mục đầu tư của tôi đang lãi hay lỗ như thế nào?' -> returns formatted P&L."""
-    from backend.shared.settings import settings
-    monkeypatch.setenv("SQLITE_PATH", test_db_path)
-    monkeypatch.setattr(settings, "sqlite_path", test_db_path)
 
-    conn = sqlite3.connect(test_db_path)
-    conn.row_factory = sqlite3.Row
+    conn = get_connection()
     h_repo = PortfolioHoldingRepository(conn)
     h_repo.create("HPG", 2000, 25.0, user_id="default")
     conn.commit()
     conn.close()
 
     price_source = MockPriceSource({"HPG": 28.0})
-    store = SqliteWatchlistStore(test_db_path)
+    store = PgWatchlistStore(pg_schema)
 
     result = run_chat_graph(
         question="Danh mục đầu tư của tôi đang lãi hay lỗ như thế nào?",
@@ -245,21 +257,18 @@ def test_chat_graph_portfolio_01_end_to_end(test_db_path, monkeypatch):
         watchlist_store=store,
         user_id="default",
     )
-    assert result.routing.route == "portfolio" or "portfolio_watch" in result.routing.agents_to_call
+    assert result.routing.route == "portfolio" or "portfolio_report" in result.routing.agents_to_call
     assert "HPG" in result.answer
     assert "NAV" in result.answer or "Lãi/Lỗ" in result.answer
     assert "nên mua" not in result.answer.lower()
     assert "nên bán" not in result.answer.lower()
 
 
-def test_chat_graph_portfolio_02_no_fake_tra_nav_ticker(test_db_path, monkeypatch):
+def test_chat_graph_portfolio_02_no_fake_tra_nav_ticker(pg_schema):
     """portfolio_02: 'Kiểm tra hiệu suất P&L và tổng giá trị NAV của danh mục hiện tại' -> zero fake TRA/NAV lookups."""
-    from backend.shared.settings import settings
-    monkeypatch.setenv("SQLITE_PATH", test_db_path)
-    monkeypatch.setattr(settings, "sqlite_path", test_db_path)
 
     price_source = MockPriceSource()
-    store = SqliteWatchlistStore(test_db_path)
+    store = PgWatchlistStore(pg_schema)
 
     result = run_chat_graph(
         question="Kiểm tra hiệu suất P&L và tổng giá trị NAV của danh mục hiện tại",
@@ -277,13 +286,10 @@ def test_chat_graph_portfolio_02_no_fake_tra_nav_ticker(test_db_path, monkeypatc
     assert "nên bán" not in result.answer.lower()
 
 
-def test_chat_graph_watchlist_01_and_02_end_to_end(test_db_path, monkeypatch):
+def test_chat_graph_watchlist_01_and_02_end_to_end(pg_schema):
     """watchlist_01 and watchlist_02: returns watchlist and thresholds without fake XEM ticker."""
-    from backend.shared.settings import settings
-    monkeypatch.setenv("SQLITE_PATH", test_db_path)
-    monkeypatch.setattr(settings, "sqlite_path", test_db_path)
 
-    store = SqliteWatchlistStore(test_db_path)
+    store = PgWatchlistStore(pg_schema)
     store.upsert(WatchlistItem(user_id="default", symbol="FPT", threshold_pct=3.0))
     store.upsert(WatchlistItem(user_id="default", symbol="MWG", threshold_pct=4.5))
 

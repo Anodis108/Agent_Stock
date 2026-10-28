@@ -101,7 +101,7 @@ def load_account_snapshot(user_id: str) -> dict[str, list[dict]]:
         get_app_deps = lambda: None
         watchlist_store = None
 
-    uid = (user_id or "default").strip() or "default"
+    uid = user_id.strip()
     watchlist: list[dict] = []
     if watchlist_store is not None and hasattr(watchlist_store, "list_items"):
         watchlist = [
@@ -134,8 +134,8 @@ class SnapshotWatchlistStore:
     def __init__(self, items: list[WatchlistItem]):
         self._items = list(items)
 
-    def list_items(self, user_id: str = "default") -> list[WatchlistItem]:
-        uid = (user_id or "default").strip() or "default"
+    def list_items(self, user_id: str) -> list[WatchlistItem]:
+        uid = user_id.strip()
         return [item for item in self._items if item.user_id == uid]
 
     def get(self, user_id: str, symbol: str) -> WatchlistItem | None:

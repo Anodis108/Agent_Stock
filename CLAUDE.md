@@ -6,6 +6,8 @@
 - Tránh trừu tượng hóa (abstraction) không cần thiết khi task không yêu cầu.
 - Không bao giờ dùng `.get(...)` trên dict / state / context — code luôn đảm bảo key tồn tại, truy cập thẳng `x["key"]` (key có thể chưa được node nào ghi thì khởi tạo mặc định ở điểm vào, vd. `None`).
   Ngoại lệ — dữ liệu ngoài code kiểm soát vẫn dùng `.get`: biến môi trường, header HTTP, JSON từ LLM / dataset eval / YAML prompt, payload Qdrant / Redis, dữ liệu vnstock, contextvar có thể rỗng, và chuỗi key thay thế kiểu `h.get("symbol") or h.get("ticker")`.
+- Không bao giờ tự tạo / fix cứng định danh (`user_id`, `request_id`, `thread_id`, `session_id`, …): không mặc định `"default"`, không `x or "default"`, không tự sinh UUID giữa đường. Định danh phải lấy đúng giá trị được truyền vào; thiếu / rỗng → báo lỗi request (HTTP 400/422, hoặc raise ở tầng trong). Tham số định danh luôn bắt buộc (không có giá trị mặc định).
+  Ngoại lệ: `request_id` chỉ được sinh 1 lần ở điểm vào hệ thống rồi truyền xuyên suốt — web backend (CorrelationIdMiddleware, khi frontend chưa gửi), job quét định kỳ, eval; AI backend không tự sinh; khoá chính khi tạo bản ghi mới (message / session / holding …), tên file ảnh, tool_call id, correlation id của middleware được tự sinh.
 
 # CLAUDE.md
 

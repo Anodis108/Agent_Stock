@@ -199,8 +199,8 @@ def _attach_account_lists(payload: dict[str, Any], user_id: str) -> None:
 def stream_remote_sse(
     *,
     question: str,
-    user_id: str = "default",
-    request_id: str | None = None,
+    user_id: str,
+    request_id: str,
     watchlist: list[str] | None = None,
     holdings: list[dict[str, Any]] | None = None,
     cancel_event: threading.Event | None = None,
@@ -211,17 +211,14 @@ def stream_remote_sse(
 
     Yields từng tuple (event_name, data_dict). Tự động đóng connection khi client ngắt.
     """
-    payload: dict[str, Any] = {"question": question, "user_id": user_id}
-    if request_id:
-        payload["request_id"] = request_id
+    payload: dict[str, Any] = {"question": question, "user_id": user_id, "request_id": request_id}
 
     body = json.dumps(payload).encode("utf-8")
     headers = {
         "Content-Type": "application/json",
         "Accept": "text/event-stream",
+        "X-Request-Id": request_id,
     }
-    if request_id:
-        headers["X-Request-Id"] = request_id
 
     req = urllib.request.Request(
         f"{_ai_base()}/v1/chat/stream-sse",
@@ -350,29 +347,25 @@ iter_remote_chat_events = stream_remote_sse
 def ai_chat(
     *,
     question: str,
-    user_id: str = "default",
-    request_id: str | None = None,
+    user_id: str,
+    request_id: str,
 ) -> dict[str, Any]:
     """Gọi POST /v1/chat sang AI Backend."""
-    payload: dict[str, Any] = {"question": question, "user_id": user_id}
-    if request_id:
-        payload["request_id"] = request_id
+    payload: dict[str, Any] = {"question": question, "user_id": user_id, "request_id": request_id}
     return post_json("/v1/chat", payload, request_id=request_id)
 
 
 def ai_scan(
     *,
     symbol: str,
-    user_id: str = "default",
+    user_id: str,
+    request_id: str,
     threshold_pct: float | None = None,
-    request_id: str | None = None,
 ) -> dict[str, Any]:
     """Gọi POST /v1/scan sang AI Backend."""
-    payload: dict[str, Any] = {"symbol": [symbol], "user_id": user_id}
+    payload: dict[str, Any] = {"symbol": [symbol], "user_id": user_id, "request_id": request_id}
     if threshold_pct is not None:
         payload["threshold_pct"] = threshold_pct
-    if request_id:
-        payload["request_id"] = request_id
     _attach_account_lists(payload, user_id)
     return post_json("/v1/scan", payload, request_id=request_id)
 
@@ -382,7 +375,7 @@ def ai_scan_resume(
     thread_id: str,
     approve: bool,
     reason: str = "",
-    user_id: str = "default",
+    user_id: str,
 ) -> dict[str, Any]:
     """Gọi POST /v1/scan/resume — duyệt / từ chối hành động scan đang chờ (HITL).
 

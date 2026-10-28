@@ -13,7 +13,7 @@ class WatchlistItemOut(CustomBaseModel):
     symbol: str
     threshold_pct: float
     alert_threshold_pct: float | None = None
-    user_id: str = "default"
+    user_id: str = Field(min_length=1)
 
     def model_post_init(self, __context: Any) -> None:
         if self.alert_threshold_pct is None:
@@ -33,10 +33,10 @@ class CreateWatchlistRequest(CustomBaseModel):
     alert_threshold_pct: float | None = Field(
         default=None, description="Ngưỡng cảnh báo biến động %"
     )
-    user_id: str = "default"
+    user_id: str = Field(min_length=1)
 
 
 class UpdateWatchlistRequest(CustomBaseModel):
     threshold_pct: float | None = None
     alert_threshold_pct: float | None = None
-    user_id: str = "default"
+    user_id: str = Field(min_length=1)

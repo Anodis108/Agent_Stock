@@ -1,7 +1,7 @@
 """Node riêng của team chat (agent = subgraph make_agent_graph ở graph.py — tool + state ở <agent>/).
 
   1. Điểm vào team — guardrail_input (+ route_after_guardrail), rewrite_question (LLM → task cho chat_supervisor)
-  2. Worker node    — scan_team (nhờ team scan thu thập dữ liệu), portfolio_watch (bảng NAV / watchlist), concept_retrieval (RAG)
+  2. Worker node    — scan_team (nhờ team scan thu thập dữ liệu), portfolio_report (bảng NAV / watchlist), concept_retrieval (RAG)
                       → ghi `result` cho notes như agent
   3. Memory dài hạn — recall_memory (rewrite_question gọi) / store_memory (save_long_term_memory gọi) — hàm, không phải node
   4. Trả lời        — answer (final_answer: task + notes, stream) → save_long_term_memory
@@ -20,9 +20,9 @@ from langgraph.config import get_stream_writer
 from langgraph.runtime import get_runtime
 
 from ai_backend.domain.guardrails import check_input_guardrail
-from ai_backend.domain.agents.chat.state import ChatTeamState, RewrittenQuestion
+from ai_backend.domain.agents.chat.state import AnswerEvalData, AnswerQuestionResult, ChatTeamState, RewrittenQuestion, ScanResult
 from ai_backend.domain.agents.scan.graph import build_graph as build_scan_graph
-from ai_backend.infra.llm.completion import chat_stream
+from ai_backend.infra.llm.completion import chat_parsed, chat_stream
 from ai_backend.infra.llm.params import DETERMINISTIC
 from ai_backend.infra.llm.structured import call_llm_structured
 from ai_backend.infra.monitoring.tracing import trace_step, trace_stream
@@ -31,7 +31,7 @@ from ai_backend.infra.storage.long_term_memory import recall_long_term, save_to_
 from ai_backend.shared.logging import get_logger
 from common.settings import settings
 from common.domain.entities import WatchlistItem
-from common.transport.schemas import MemoryFact, RewriteOutput
+from common.transport.schemas import MemoryFact
 
 _logger = get_logger(__name__)
 
@@ -48,8 +48,11 @@ def guardrail_input_node(state: ChatTeamState, config: RunnableConfig) -> dict:
     res = check_input_guardrail(q)
     with trace_step(get_runtime().context["trace_span"], "guardrail_input", input=q) as box:
         box["output"] = {"is_safe": res.is_safe, "category": res.category, "reason": res.reason}
-    # rewritten / db_results: node sau đọc thẳng state[...] kể cả khi rewrite / db_agent không chạy
-    return {"question": q, "guardrail_result": res, "rewritten": None, "db_results": None}
+    # Khởi tạo field node sau đọc thẳng state[...] kể cả khi rewrite / worker không chạy (answer dựng final_answer)
+    return {
+        "question": q, "guardrail_result": res, "rewritten": None, "scan_result": None, "task": "", "notes": {},
+        "drawed": [],
+    }
 
 
 def route_after_guardrail(state: ChatTeamState) -> str:
@@ -58,50 +61,51 @@ def route_after_guardrail(state: ChatTeamState) -> str:
     return "answer" if res and (not res.is_safe or res.category == "greeting") else "rewrite_question"
 
 
+_REWRITE_SYSTEM = (
+    "1) Viết lại câu hỏi mới nhất của người dùng thành MỘT câu hỏi đầy đủ, tự hiểu được: thay đại từ / chỗ lược bỏ "
+    "bằng thông tin trong hội thoại trước (nếu có). Giữ nguyên ý định và thuật ngữ (mã cổ phiếu, điều luật, khái niệm…).\n"
+    "2) Nếu câu hỏi gồm nhiều ý, chia thành 2-4 câu hỏi con đơn giản, mỗi câu trả lời độc lập được; "
+    "câu hỏi đã đơn giản thì trả về chính nó trong danh sách 1 phần tử."
+)
+
+
 async def rewrite_node(state: ChatTeamState, config: RunnableConfig) -> dict:
-    """LLM viết lại câu hỏi (phân giải đại từ từ hội thoại ngắn hạn, trích mã) → rewritten + symbols + task cho chat_supervisor.
+    """LLM viết lại + decompose câu hỏi (như query-rewrite + decompose_query demo, gộp 1 lời gọi structured output)
+    — phân giải đại từ từ hội thoại ngắn hạn → task cho chat_supervisor.
 
     Chỉ chạy khi guardrail cho qua → đọc hội thoại + recall memory dài hạn ở đây (câu bị chặn / chào không cần).
     """
-    from ai_backend.infra.cache.exact import llm_cache_scope
     from ai_backend.infra.cache.semantic import set_semantic_question
-
     from ai_backend.infra.storage.memory_store import apply_sliding_window_with_ttl_eviction
 
     q = state["question"] or ""
-    uid = str(state["user_id"] or "").strip()
     memory_store = get_runtime().context["memory_store"]
     limit, ttl = settings.memory_short_term_window, settings.memory_short_term_ttl_minutes
-    conversation = memory_store.list_conversation(uid, limit=limit, ttl_minutes=ttl) if memory_store else []
+    conversation = memory_store.list_conversation(state["user_id"], limit=limit, ttl_minutes=ttl) if memory_store else []
     conversation = apply_sliding_window_with_ttl_eviction(conversation, limit=limit, ttl_minutes=ttl)
-    memories = recall_memory(uid, q)
-    prompt = registry().render("rewrite_question", question=q, conversation=json.dumps(conversation, ensure_ascii=False))
+    memories = recall_memory(state["user_id"], q)
+    messages = [
+        {"role": "system", "content": _REWRITE_SYSTEM},
+        {"role": "user", "content": f"Hội thoại trước:\n{json.dumps(conversation, ensure_ascii=False)}\n\nCâu hỏi mới: {q}"},
+    ]
     with trace_step(get_runtime().context["trace_span"], "rewrite_question", input=q) as box:
         try:
-            with llm_cache_scope(prompt_name="rewrite_question", prompt_version="production", normalized_question=q):
-                out = call_llm_structured(
-                    [{"role": "user", "content": prompt}], RewriteOutput, params=DETERMINISTIC, max_retries=1
-                )
+            out = chat_parsed(messages, RewrittenQuestion, DETERMINISTIC)
         except Exception as exc:  # noqa: BLE001 — LLM lỗi: giữ nguyên câu hỏi
             _logger.warning("rewrite_question: LLM lỗi (%s) → giữ câu gốc", exc)
-            out = RewriteOutput(rewritten=q)
-        symbols = list(dict.fromkeys(s.upper() for s in [out.symbol, *out.symbols] if s))
-        rewritten = RewrittenQuestion(
-            original=q,
-            rewritten=out.rewritten or q,
-            intent=out.intent,
-            symbols=symbols,
-            sub_questions=out.sub_questions or [q],
-        )
-        set_semantic_question(rewritten.rewritten)
-        box["output"] = {"rewritten": rewritten.rewritten, "symbols": symbols, "intent": rewritten.intent}
+            out = RewrittenQuestion(rewritten=q, sub_questions=[q])
+        rewritten = out.rewritten.strip() or q
+        out = RewrittenQuestion(rewritten=rewritten, sub_questions=out.sub_questions[:4] or [rewritten])
+        set_semantic_question(rewritten)
+        box["output"] = out.model_dump()
 
+    sub_lines = "".join(f"\n- {s}" for s in out.sub_questions) if len(out.sub_questions) > 1 else ""
     task = (
-        f"Câu hỏi người dùng: {rewritten.rewritten}\n"
-        f"Mã cổ phiếu: {', '.join(symbols) or '(không có)'}\n"
-        f"Ghi nhớ dài hạn về người dùng: {'; '.join(memories) or '(không có)'}"
+        f"Câu hỏi người dùng: {rewritten}"
+        + (f"\nCác câu hỏi con:{sub_lines}" if sub_lines else "")
+        + f"\nGhi nhớ dài hạn về người dùng: {'; '.join(memories) or '(không có)'}"
     )
-    return {"rewritten": rewritten, "symbols": symbols, "memories": memories, "task": task, "notes": {}}
+    return {"rewritten": out, "task": task, "notes": {}}
 
 
 # ── 2. Worker node (không phải agent: không tool, không vòng LLM) ────────────
@@ -113,13 +117,17 @@ async def scan_team_node(state: ChatTeamState, config: RunnableConfig) -> dict:
     Bọc trong node (không nhúng thẳng): chat chỉ nhận dữ liệu + tóm tắt `result`, không biết worker bên trong scan.
     """
     task = f"Thu thập dữ liệu để trả lời câu hỏi (KHÔNG quét cảnh báo, không soạn cảnh báo).\n{state['task']}"
-    out = await build_scan_graph().ainvoke({"prices": [], "news": [], "eval_result": None, **state, "task": task, "notes": {}}, config)
-    update = {k: out[k] for k in ("prices", "news", "eval_result", "db_results", "error") if k in out}
+    out = await build_scan_graph().ainvoke(
+        {"prices": [], "news": [], "eval_result": None, "symbols": [], **state, "task": task, "notes": {}}, config
+    )  # symbols rỗng: worker scan tự đọc mã trong task
+    update = {
+        "scan_result": ScanResult(db_results=out["db_results"] if "db_results" in out else None),
+    }
     update["result"] = "\n".join(f"[{w}] {n}" for w, n in (out["notes"] or {}).items()) or "(không thu thập được dữ liệu)"
     return update
 
 
-def portfolio_watch_node(state: ChatTeamState, config: RunnableConfig) -> dict:
+def portfolio_report_node(state: ChatTeamState, config: RunnableConfig) -> dict:
     """db_results (scan_team / db_agent đã đọc) → bảng NAV / P&L danh mục + watchlist (markdown answer trả thẳng)."""
 
     def holdings_summary(holdings: list[dict[str, Any]], price_source: Any) -> dict[str, Any]:
@@ -198,47 +206,35 @@ def portfolio_watch_node(state: ChatTeamState, config: RunnableConfig) -> dict:
         lines.append(f"\n*Tổng cộng: **{len(items)}** mã trong danh sách theo dõi.*")
         return "\n".join(lines)
 
-    user_id = state["user_id"] or "default"
-    db = state["db_results"]
-    with trace_step(get_runtime().context["trace_span"], "portfolio_watch", input=user_id) as box:
+    user_id = state["user_id"]
+    db = state["scan_result"].db_results if state["scan_result"] else None
+    with trace_step(get_runtime().context["trace_span"], "portfolio_report", input=user_id) as box:
         summary, watchlist, parts = None, [], []
         error = db.error if db else "chưa có dữ liệu DB (scan_team / db_agent chưa chạy)"
         if db:
             summary = holdings_summary(db.holdings, get_runtime().context["price_source"])
             watchlist = [
                 WatchlistItem(
-                    user_id=str(w["user_id"] or user_id),
+                    user_id=str(w["user_id"]),
                     symbol=str(w["symbol"]).strip().upper(),
                     threshold_pct=float(w["threshold_pct"]),
                 )
                 for w in db.watchlist
             ]
             parts = [format_portfolio_markdown(summary, user_id), format_watchlist_markdown(watchlist, user_id)]
-        result = {
-            "user_id": user_id,
-            "intent": "all",
-            "summary": summary,
-            "watchlist": watchlist,
-            "markdown": "\n\n---\n\n".join(parts) or error or "Không có dữ liệu.",
-            "error": error,
-        }
+        markdown = "\n\n---\n\n".join(parts) or error or "Không có dữ liệu."
         box["output"] = {"nav": summary["total_nav"] if summary else None, "watchlist_count": len(watchlist), "error": error}
-    note = error or f"đã lập bảng danh mục (NAV {summary['total_nav']:,.0f} VND) + watchlist {len(watchlist)} mã"
-    return {"portfolio_watch_result": result, "result": note}
+    return {"result": markdown}  # bảng NAV / P&L + watchlist → notes → answer
 
 
 def concept_retrieval_node(state: ChatTeamState, config: RunnableConfig) -> dict:
-    """Lấy đoạn giải thích khái niệm từ Qdrant (kèm source_file); answer trả lời bằng đoạn này."""
+    """Lấy đoạn giải thích khái niệm từ Qdrant; answer trả lời bằng đoạn này."""
     from ai_backend.infra.qdrant.answer import NOT_IN_DOCS, answer_concept
     from ai_backend.infra.storage.long_term_memory import get_qdrant_client
 
     client = get_runtime().context["concept_client"] or get_qdrant_client()
-    if client is None:
-        found_answer, source_file = NOT_IN_DOCS, None
-    else:
-        found = answer_concept(state["question"] or "", client=client)
-        found_answer, source_file = found.answer, found.source_file
-    return {"concept_answer": found_answer, "source_file": source_file, "result": found_answer[:500]}
+    found_answer = NOT_IN_DOCS if client is None else answer_concept(state["question"] or "", client=client).answer
+    return {"result": found_answer}
 
 
 # ── 3. Memory dài hạn (không phải node: rewrite_question / save_long_term_memory gọi) ──
@@ -311,24 +307,32 @@ def answer_node(state: ChatTeamState, config: RunnableConfig) -> dict:
 
     with trace_step(get_runtime().context["trace_span"], "answer", input={"task": state["task"][:200], "notes": list(state["notes"])}) as box:
         text = ""
-        
+
         for token in trace_stream("answer_stream", state["task"], chat_stream(messages, DETERMINISTIC)):
             text += token
             writer(token)
         text = _sanitize(text.strip())
-        
+
         box["output"] = text[:500]
 
-    return {"answer": text, "answer_kind": "final_answer"}
+    final = AnswerQuestionResult(
+        question=state["question"] or "",
+        answer=text,
+        drawed_paths=state["drawed"],
+    )
+    eval_data = AnswerEvalData(
+        rewritten=state["rewritten"], agents_called=list(state["notes"]), evidence=list(state["notes"].values())
+    )
+    return {"final_answer": final, "eval_data": eval_data}
 
 
 def save_long_term_memory_node(state: ChatTeamState, config: RunnableConfig) -> dict:
     """Cuối lượt: ghi hội thoại ngắn hạn; câu đã qua rewrite (không bị chặn / chào) → lưu sự thật đáng nhớ dài hạn."""
-    uid, question, answer = str(state["user_id"] or "").strip(), state["question"] or "", state["answer"] or ""
+    question, answer = state["question"] or "", state["final_answer"].answer
     memory_store = get_runtime().context["memory_store"]
     if memory_store:
-        memory_store.append_conversation(uid, "user", question)
-        memory_store.append_conversation(uid, "assistant", answer)
+        memory_store.append_conversation(state["user_id"], "user", question)
+        memory_store.append_conversation(state["user_id"], "assistant", answer)
     if state["rewritten"]:
-        store_memory(uid, question, answer)
+        store_memory(state["user_id"], question, answer)
     return {"messages": [AIMessage(content=answer)]}  # trả lời cuối → AssistantState.messages của graph gốc

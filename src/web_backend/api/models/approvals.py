@@ -11,14 +11,14 @@ from common.base.base_model import CustomBaseModel
 
 class ApproveRequest(CustomBaseModel):
     approval_id: str | None = None
-    user_id: str = "default"
+    user_id: str = Field(min_length=1)
     note: str | None = None
 
 
 class RejectRequest(CustomBaseModel):
     approval_id: str | None = None
     reason: str = Field(default="", description="Lý do reject")
-    user_id: str = "default"
+    user_id: str = Field(min_length=1)
 
 
 class ReviewResponse(CustomBaseModel):

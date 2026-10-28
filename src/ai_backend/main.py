@@ -13,6 +13,8 @@ Cả hai nhánh chạy chung MỘT graph (domain/agents/graph.py).
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from uuid import uuid4
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -104,7 +106,13 @@ async def lifespan(app: FastAPI):
         triggered = 0
         for item in items:
             try:
-                out = scanner.scan(symbol=[item.symbol], user_id=item.user_id, threshold_pct=item.threshold_pct)
+                # Job nền là điểm vào riêng (không qua web) → sinh request_id 1 lần ở đây, truyền xuyên suốt
+                out = scanner.scan(
+                    symbol=[item.symbol],
+                    user_id=item.user_id,
+                    request_id=f"scan-job-{uuid4().hex}",
+                    threshold_pct=item.threshold_pct,
+                )
                 triggered += sum(1 for a in out.alerts if a.triggered)
             except Exception as exc:
                 logger.warning(f"Quét định kỳ lỗi mã {item.symbol} (user={item.user_id}): {exc}")

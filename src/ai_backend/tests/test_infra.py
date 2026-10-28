@@ -26,7 +26,7 @@ from ai_backend.infra.storage.memory_store import PgMemoryStore
 from ai_backend.infra.storage.watchlist_store import PgWatchlistStore
 from ai_backend.domain.agents.scan.price_agent import run_price_agent, PriceAgentResult
 from ai_backend.domain.agents.scan.eval_agent import run_eval_agent
-from ai_backend.domain.agents.chat.nodes.portfolio import run_portfolio_watch
+from ai_backend.domain.agents.chat.nodes.portfolio import run_portfolio_report
 from common.domain.entities import WatchlistItem
 
 
@@ -147,13 +147,13 @@ class TestWorkerAgentsInfrastructure:
         assert res.severity is not None
         assert res.severity.level is not None
 
-    def test_portfolio_watch_in_memory(self, offline_prices):
+    def test_portfolio_report_in_memory(self, offline_prices):
         ps = offline_prices
         holdings = [
             {"symbol": "HPG", "quantity": 1000, "avg_buy_price": 28.0},
             {"symbol": "FPT", "quantity": 500, "avg_buy_price": 125.0},
         ]
-        res = run_portfolio_watch(
+        res = run_portfolio_report(
             user_id="user_test",
             intent="portfolio",
             price_source=ps,

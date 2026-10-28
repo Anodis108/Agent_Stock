@@ -130,4 +130,3 @@ def build_graph():
     return graph.compile(interrupt_before=["scan_tools"])
 
 
-_build_graph = build_graph

@@ -5,6 +5,8 @@ Chạy full golden qua luồng production (`run_graph` mode=chat).
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 import asyncio
 import os
 import time
@@ -190,14 +192,17 @@ def make_answer_fn(
         }
 
         async def _run() -> Any:
-            async for kind, payload in start_graph("chat", question, req, user_id=user_id):
+            result = None
+            async for kind, payload in start_graph("chat", question, req, user_id=user_id, request_id=f"eval-{uuid4().hex}"):  # eval = điểm vào riêng → sinh request_id ở đây
                 if kind == "result":
-                    return payload
-            raise RuntimeError("start_graph không yield result")
+                    result = payload  # đọc hết generator: save_long_term_memory chạy sau result
+            if result is None:
+                raise RuntimeError("start_graph không yield result")
+            return result
 
-        result = asyncio.run(_run())
-        _answer.last_steps = steps_from_answer_result(result)  # type: ignore[attr-defined]
-        return result.answer or ""
+        final = asyncio.run(_run())["final_answer"]
+        _answer.last_steps = steps_from_answer_result(final)  # type: ignore[attr-defined]
+        return final.answer or ""
 
     _answer.last_steps = []  # type: ignore[attr-defined]
     return _answer

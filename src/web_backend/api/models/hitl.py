@@ -19,7 +19,7 @@ class FeedbackCreateRequest(CustomBaseModel):
     reason: str | None = None
     question: str | None = None
     answer: str | None = None
-    user_id: str = "default"
+    user_id: str = Field(min_length=1)
     trace_data: str | None = None
 
 

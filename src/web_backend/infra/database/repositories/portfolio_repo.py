@@ -40,7 +40,7 @@ class PortfolioHoldingRepository:
         symbol: str,
         quantity: float,
         avg_buy_price: float,
-        user_id: str = "default",
+        user_id: str,
         purchase_date: str | None = None,
         holding_id: str | None = None,
     ) -> PortfolioHoldingRecord:
@@ -89,7 +89,7 @@ class PortfolioHoldingRepository:
             updated_at=row["updated_at"],
         )
 
-    def list_by_user(self, user_id: str = "default") -> list[PortfolioHoldingRecord]:
+    def list_by_user(self, user_id: str) -> list[PortfolioHoldingRecord]:
         cursor = self.conn.execute(
             """
             SELECT id, user_id, symbol, quantity, avg_buy_price, purchase_date, created_at, updated_at
@@ -139,17 +139,11 @@ class PortfolioHoldingRepository:
         self.conn.commit()
         return cursor.rowcount > 0
 
-    def delete(self, holding_id: str, user_id: str | None = None) -> bool:
-        if user_id:
-            cursor = self.conn.execute(
-                "DELETE FROM portfolio_holdings WHERE id = ? AND user_id = ?",
-                (holding_id, user_id),
-            )
-        else:
-            cursor = self.conn.execute(
-                "DELETE FROM portfolio_holdings WHERE id = ?",
-                (holding_id,),
-            )
+    def delete(self, holding_id: str, user_id: str) -> bool:
+        cursor = self.conn.execute(
+            "DELETE FROM portfolio_holdings WHERE id = ? AND user_id = ?",
+            (holding_id, user_id),
+        )
         self.conn.commit()
         return cursor.rowcount > 0
 
@@ -158,7 +152,7 @@ class UserSettingsRepository:
     def __init__(self, conn: Any) -> None:
         self.conn = conn
 
-    def get(self, user_id: str = "default") -> UserSettingsRecord:
+    def get(self, user_id: str) -> UserSettingsRecord:
         cursor = self.conn.execute(
             "SELECT user_id, alert_threshold_pct, updated_at FROM user_settings WHERE user_id = ?",
             (user_id,),

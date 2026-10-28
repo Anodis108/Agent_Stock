@@ -1,18 +1,21 @@
 """Tool worker draw_agent — LLM tự chọn loại biểu đồ / số phiên (không heuristic theo từ khoá).
 
-- draw_price_chart: biểu đồ giá Matplotlib (infra/charts/price_chart.py) → artifact {"chart_result"}.
-- draw_diagram: sơ đồ Mermaid (prompt `diagram_plan`, 1 lời gọi structured output) → artifact {"diagram_result"}.
+- draw_price_chart: biểu đồ giá Matplotlib (infra/charts/price_chart.py, tự lưu MinIO) → artifact {"drawed"}.
+- draw_diagram: sơ đồ Mermaid (prompt `diagram_plan`) → render PNG (mermaid.ink) → lưu MinIO → artifact {"drawed"}.
 """
 
 from __future__ import annotations
 
 from typing import Literal
+from uuid import uuid4
 
+from langchain_core.runnables.graph_mermaid import draw_mermaid_png
 from langchain_core.tools import tool
 from langgraph.runtime import get_runtime
 
 from ai_backend.infra.charts.price_chart import run_chart_agent
-from ai_backend.domain.agents.chat.draw_agent.state import DiagramAgentResult
+from ai_backend.infra.storage.chart_store import get_chart_store
+from ai_backend.shared.charts import get_charts_dir
 from ai_backend.infra.llm.params import DETERMINISTIC
 from ai_backend.infra.llm.structured import call_llm_structured
 from ai_backend.infra.prompts import registry
@@ -54,8 +57,8 @@ def draw_price_chart(
         limit_sessions=sessions,
     )
     if not result.success:
-        return f"Không vẽ được biểu đồ: {result.error}", {"chart_result": result}
-    return f"Đã vẽ biểu đồ: {result.url}", {"chart_result": result}
+        return f"Không vẽ được biểu đồ: {result.error}", {"drawed": []}
+    return f"Đã vẽ biểu đồ: {result.url}", {"drawed": [result.url]}
 
 
 @tool(response_format="content_and_artifact")
@@ -63,13 +66,19 @@ def draw_diagram(question: str, symbol: str = ""):
     """Vẽ sơ đồ Mermaid (quy trình, cơ cấu, mối quan hệ) theo `question` của người dùng; `symbol` là mã liên quan nếu có."""
     prompt = registry().render("diagram_plan", symbol=symbol.strip().upper(), question=question)
     plan = call_llm_structured([{"role": "user", "content": prompt}], DiagramPlanOutput, params=DETERMINISTIC, max_retries=1)
-    diagram = DiagramAgentResult(
-        placeholder=f"```mermaid\n{plan.mermaid}\n```",
-        mermaid=plan.mermaid,
-        graph_json=plan.to_graph_json(),
-        format=plan.format,
-    )
-    return diagram.placeholder, {"diagram_result": diagram}
+    try:
+        png = draw_mermaid_png(mermaid_syntax=plan.mermaid)  # API mermaid.ink
+    except Exception as exc:  # noqa: BLE001 — trả lỗi cho LLM thay vì crash
+        _logger.warning("draw_diagram: render PNG lỗi (%s)", exc)
+        return f"Không vẽ được sơ đồ: {exc}", {"drawed": []}
+    name = f"diagram_{uuid4().hex[:12]}.png"
+    store = get_chart_store()
+    if store is not None:
+        url = store.put(name, png)
+    else:  # CHART_BACKEND=local
+        (get_charts_dir() / name).write_bytes(png)
+        url = f"/charts/{name}"
+    return f"Đã vẽ sơ đồ: {url}", {"drawed": [url]}
 
 
 TOOLS = [draw_price_chart, draw_diagram]

@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from ai_backend.domain.agents.multi_agent.hierarchical import HierarchicalState
 from ai_backend.domain.agents.scan.db_agent.state import DBAgentResult
 from ai_backend.domain.agents.scan.eval_agent.state import EvalAgentResult
-from ai_backend.domain.agents.scan.news_agent.state import NewAgentResult
+from ai_backend.domain.agents.scan.news_agent.state import NewsAgentResult
 from ai_backend.domain.agents.scan.price_agent.state import PriceAgentResult
 from ai_backend.domain.agents.state import AssistantState
 from common.domain.entities import FinalAlert, RoutingDecision
@@ -18,7 +18,7 @@ from common.domain.entities import FinalAlert, RoutingDecision
 __all__ = [
     "DBAgentResult",
     "EvalAgentResult",
-    "NewAgentResult",
+    "NewsAgentResult",
     "PriceAgentResult",
     "ScanHierarchicalState",
     "ScanSymbolResult",
@@ -31,7 +31,7 @@ class ScanSymbolResult(BaseModel):
 
     symbol: list[str]
     price: list[PriceAgentResult] = Field(default_factory=list)
-    news: list[NewAgentResult] = Field(default_factory=list)
+    news: list[NewsAgentResult] = Field(default_factory=list)
     routing: Any
     threshold_pct: float
     severity: Any | None = None
@@ -44,7 +44,7 @@ class ScanSymbolResult(BaseModel):
 
 
 def main_item(items: list, state: dict[str, Any]) -> Any:
-    """Phần tử (PriceAgentResult / NewAgentResult) của mã chính symbols[0]; không có thì phần tử đầu."""
+    """Phần tử (PriceAgentResult / NewsAgentResult) của mã chính symbols[0]; không có thì phần tử đầu."""
     main = (state.get("symbols") or [""])[0].upper()
     return next((x for x in items if (x.symbol or "").upper() == main), items[0] if items else None)
 
@@ -59,16 +59,15 @@ class ScanHierarchicalState(AssistantState, HierarchicalState, total=False):
     # HierarchicalState (hierarchical.py): task, result, notes, next_agent (+ final_answer, scan không dùng).
 
     completed_workers: Annotated[list[str], operator.add]  # worker đã chạy xong (đồng bộ ngược sang chat)
-    error: str | None
     symbols: list[str]  # cả danh sách mã của lượt, nhận từ ScanService
     event_routings: list[RoutingDecision]  # cùng thứ tự với symbols
     alerts: list[FinalAlert]
     eval_results: list[EvalAgentResult]
     threshold_pct: float  # optional trong lượt quét — ngưỡng nằm trong ``task``; API fill lúc kết thúc
     prices: list[PriceAgentResult]
-    news: list[NewAgentResult]
+    news: list[NewsAgentResult]
     eval_result: EvalAgentResult | None
-    db_results: DBAgentResult | None  # holdings + watchlist (chat → portfolio_watch)
+    db_results: DBAgentResult | None  # holdings + watchlist (chat → portfolio_report)
     
     event_routing: RoutingDecision  # kết quả event_classifier (normal / abnormal)
     alert: FinalAlert | None

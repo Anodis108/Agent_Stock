@@ -73,7 +73,7 @@ Kế hoạch kiểm thử toàn diện được thiết kế theo phương pháp
   9. `test_chart_store.py`: Kiểm tra tải lên MinIO bucket và lưu trữ cục bộ file ảnh biểu đồ nến kỹ thuật.
   10. `test_prompt_rollback.py`: Kiểm tra cơ chế quản lý phiên bản Prompt Registry và rollback alias `production.txt`.
   11. `test_agents.py`: Kiểm tra thực thi độc lập và phối hợp của 10 Worker Agents (`PriceAgent`, `NewsAgent`, `EvalAgent`,...).
-  12. `test_portfolio_watch_agent.py`: Kiểm tra Agent phân tích danh mục đầu tư và watchlist.
+  12. `test_portfolio_report_agent.py`: Kiểm tra Agent phân tích danh mục đầu tư và watchlist.
   13. `test_chart.py`: Kiểm tra quy trình tự động vẽ đồ thị nến Matplotlib kết hợp đường SMA.
   14. `test_monitoring.py`: Kiểm tra Langfuse tracing spans, token & cost tracking, và che giấu thông tin nhạy cảm PII.
   15. `test_module3_features.py`: Kiểm tra các tính năng resilience, retry backoff, circuit breaker.

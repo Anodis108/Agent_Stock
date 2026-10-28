@@ -12,7 +12,7 @@
 
 ## DBAgent scope (MVP)
 
-- Location: `src/ai_backend/infra/agents/chat/db_agent/` (nodes + schemas; wired from `portfolio_watch_agent` or supervisor when intent portfolio/watchlist).
+- Location: `src/ai_backend/infra/agents/chat/db_agent/` (nodes + schemas; wired from `portfolio_report_agent` or supervisor when intent portfolio/watchlist).
 - READ-only tools/repos: `list_watchlist(user_id)`, `list_holdings(user_id)` via existing PG/repos (same data as web DB), no LLM free SQL in MVP.
 - Do not break scan cron (`PgWatchlistStore` on AI for scheduled scan).
 
@@ -23,7 +23,7 @@
 
 ## Files likely touched
 
-- `swarm_orchestrator.py`, `chat.py` router, `stream_models.py`, `common/transport/transport.py`, `v1.py`, `chart_agent.py`, `minio_store.py`, `portfolio_watch_agent/nodes.py`, graph/workflow wiring, tests under `ai_backend/tests`, `tests/e2e`, `web_backend` if any.
+- `swarm_orchestrator.py`, `chat.py` router, `stream_models.py`, `common/transport/transport.py`, `v1.py`, `chart_agent.py`, `minio_store.py`, `portfolio_report_agent/nodes.py`, graph/workflow wiring, tests under `ai_backend/tests`, `tests/e2e`, `web_backend` if any.
 
 ## SDD
 

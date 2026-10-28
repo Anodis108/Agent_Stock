@@ -43,7 +43,7 @@ class HoldingCalculationResult(CustomBaseModel):
 class PortfolioCalculationResult(CustomBaseModel):
     """Tổng quan danh mục đầu tư và phân bổ tỷ trọng."""
 
-    user_id: str = "default"
+    user_id: str
     total_nav: float = 0.0
     total_cost: float = 0.0
     total_unrealized_pnl: float = 0.0
@@ -144,7 +144,7 @@ class PortfolioCalculator:
     def calculate_portfolio_summary(
         cls,
         holdings_data: list[Any],
-        user_id: str = "default",
+        user_id: str,
     ) -> PortfolioCalculationResult:
         """Tổng hợp toàn bộ danh mục, tính toán tổng NAV, P&L và tỷ trọng danh mục."""
         items: list[HoldingCalculationResult] = []

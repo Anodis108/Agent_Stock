@@ -569,7 +569,7 @@ def test_v1_chat_forwards_lists_and_does_not_touch_sessions(monkeypatch):
 
 
 def test_portfolio_agent_uses_db_agent_holdings(monkeypatch):
-    from ai_backend.domain.agents.chat.nodes.portfolio import run_portfolio_watch
+    from ai_backend.domain.agents.chat.nodes.portfolio import run_portfolio_report
 
     monkeypatch.setattr(
         "ai_backend.domain.agents.scan.db_agent.read_holdings",
@@ -587,7 +587,7 @@ def test_portfolio_agent_uses_db_agent_holdings(monkeypatch):
             latest_close=70.0, error=None
         )
     )
-    result = run_portfolio_watch(
+    result = run_portfolio_report(
         user_id="user_a",
         intent="portfolio",
         price_source=price,

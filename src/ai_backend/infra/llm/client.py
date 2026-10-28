@@ -197,7 +197,7 @@ def _chat_inprocess(
     *,
     question: str,
     user_id: str,
-    request_id: str | None,
+    request_id: str,
 ) -> dict[str, Any]:
     try:
         from web_backend.api.deps import get_app_deps
@@ -218,69 +218,25 @@ def _chat_inprocess(
         }
 
         async def _chat() -> Any:
+            result = None
             async for kind, payload in start_graph(
                 "chat", question, chat_deps, user_id=user_id, request_id=request_id
             ):
                 if kind == "result":
-                    return payload
-            raise RuntimeError("start_graph không yield result")
+                    result = payload  # đọc hết generator: save_long_term_memory chạy sau result
+            if result is None:
+                raise RuntimeError("start_graph không yield result")
+            return result
 
-        state = asyncio.run(_chat())
+        final = asyncio.run(_chat())["final_answer"]
     except Exception as exc:  # noqa: BLE001
         raise AiClientError(f"AI in-process chat lỗi: {exc}") from exc
 
-    def _format_diagram(diag_res: Any) -> dict[str, Any] | None:
-        if diag_res is None:
-            return None
-        return {
-            "mermaid": getattr(diag_res, "mermaid", None),
-            "graph_json": getattr(diag_res, "graph_json", None),
-            "format": getattr(diag_res, "format", "mermaid"),
-        }
-
-    rewritten = state["rewritten"]
-    guard = state["guardrail_result"]
-    if rewritten is not None:
-        route = str(rewritten.intent)
-    elif guard is None:
-        route = "empty"
-    elif guard.category == "greeting":
-        route = "greeting"
-    else:
-        route = "guardrail"
-    notes = state["notes"]
-    symbols = list(rewritten.symbols) if rewritten is not None else list(state["symbols"] if "symbols" in state and state["symbols"] else [])
-    prices = [
-        {
-            "symbol": p.symbol,
-            "latest_close": p.latest_close,
-            "prev_close": p.prev_close,
-            "change_pct": p.change_pct,
-            "error": p.error,
-        }
-        for p in (state["prices"] or [])
-    ]
-    news_items = []
-    for row in state["news"] or []:
-        news_items.extend(row.items or [])
-    ev = state["eval_result"]
-    chart = state["chart_result"]
-    chart_path = chart.url if chart is not None and chart.success else None
     return {
-        "answer": state["answer"] or "",
-        "question": state["question"] or "",
-        "symbol": symbols,
-        "route": route,
-        "error": state["error"],
+        "answer": final.answer,
+        "question": final.question,
         "request_id": request_id,
-        "rewritten": rewritten.rewritten if rewritten is not None else "",
-        "agents_to_call": list(notes.keys()) if notes else [],
-        "price": prices,
-        "news_count": len(news_items),
-        "severity": ev.severity.model_dump(mode="json") if ev is not None else None,
-        "diagram": _format_diagram(state["diagram_result"]),
-        "chart_path": chart_path,
-        "chart_result": state["chart_result"],
+        "drawed_paths": final.drawed_paths,
     }
 
 
@@ -289,7 +245,7 @@ def _scan_inprocess(
     symbol: str,
     user_id: str,
     threshold_pct: float | None,
-    request_id: str | None,
+    request_id: str,
 ) -> dict[str, Any]:
     import asyncio
 
@@ -361,7 +317,6 @@ def _scan_inprocess(
         "status": "pending_approval" if state["pending_tool_call"] else "done",
         "thread_id": state["thread_id"] or "",
         "tool_call": state["pending_tool_call"],
-        "error": state["error"],
         "request_id": request_id,
         "price": price,
         "news_count": len(news_items),
@@ -375,14 +330,12 @@ def _scan_inprocess(
 def ai_chat(
     *,
     question: str,
-    user_id: str = "default",
-    request_id: str | None = None,
+    user_id: str,
+    request_id: str,
 ) -> dict[str, Any]:
     """Thực thi câu hỏi chat với AI Swarm (in-process hoặc qua HTTP proxy)."""
     if _use_http():
-        payload: dict[str, Any] = {"question": question, "user_id": user_id}
-        if request_id:
-            payload["request_id"] = request_id
+        payload: dict[str, Any] = {"question": question, "user_id": user_id, "request_id": request_id}
         return _post_json("/v1/chat", payload, request_id=request_id)
     return _chat_inprocess(
         question=question, user_id=user_id, request_id=request_id
@@ -392,17 +345,15 @@ def ai_chat(
 def ai_scan(
     *,
     symbol: str,
-    user_id: str = "default",
+    user_id: str,
+    request_id: str,
     threshold_pct: float | None = None,
-    request_id: str | None = None,
 ) -> dict[str, Any]:
     """Thực thi quét giám sát mã cổ phiếu với AI Swarm."""
     if _use_http():
-        payload: dict[str, Any] = {"symbol": symbol, "user_id": user_id}
+        payload: dict[str, Any] = {"symbol": symbol, "user_id": user_id, "request_id": request_id}
         if threshold_pct is not None:
             payload["threshold_pct"] = threshold_pct
-        if request_id:
-            payload["request_id"] = request_id
         return _post_json("/v1/scan", payload, request_id=request_id)
     return _scan_inprocess(
         symbol=symbol,

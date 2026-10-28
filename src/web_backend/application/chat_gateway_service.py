@@ -26,7 +26,8 @@ from web_backend.infra.database.repositories import MessageRepository, SessionRe
 
 class ChatGatewayInput(CustomBaseModel):
     question: str
-    user_id: str = "default"
+    user_id: str
+    request_id: str  # router web lấy từ CorrelationIdMiddleware (sinh 1 lần ở biên)
     session_id: str | None = None
 
 
@@ -132,17 +133,15 @@ class ChatGatewayService(AsyncBaseService):
             for event, data in stream_remote_sse(
                 question=q,
                 user_id=inputs.user_id,
+                request_id=inputs.request_id,
                 cancel_event=cancel,
                 is_disconnected=is_disconnected,
             ):
                 if event in ("final_answer", "complete") and not saved:
                     answer_text = str(data.get("answer") or "")
-                    chart_path = data.get("chart_path")
-                    trace_data = json.dumps(
-                        {"steps": data.get("steps") or [], "route": data.get("route") or ""},
-                        ensure_ascii=False,
-                    )
-                    message_id = self._save_assistant_message(sid, answer_text, chart_path, trace_data)
+                    drawed_paths = data.get("drawed_paths") or []
+                    chart_path = json.dumps(drawed_paths) if drawed_paths else None  # cột chart_path lưu JSON list
+                    message_id = self._save_assistant_message(sid, answer_text, chart_path)
                     saved = True
 
                 data = {**data, "session_id": sid, "message_id": message_id}

@@ -14,9 +14,9 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.graph import END, START, StateGraph
 
-from ai_backend.domain.agents.chat.graph import __build_graph as build_chat_graph
+from ai_backend.domain.agents.chat.graph import _build_graph as build_chat_graph
 from ai_backend.domain.agents.nodes import route_from_top, top_supervisor_node
-from ai_backend.domain.agents.scan.graph import _build_graph as build_scan_graph
+from ai_backend.domain.agents.scan.graph import build_graph as build_scan_graph
 from ai_backend.domain.agents.scan.nodes import resolve_scan_threshold
 from ai_backend.domain.agents.state import AssistantState
 from ai_backend.infra.monitoring.tracing import trace_answer
@@ -120,11 +120,13 @@ async def start_graph(
     mode: Literal["chat", "scan"],
     question: str,
     request_deps: dict[str, Any],
-    user_id: str = "default",
-    request_id: str | None = None,
+    user_id: str,
+    request_id: str,
 ) -> AsyncIterator[tuple[str, Any]]:
     """Lượt mới (demo start_conversation): yield ``token`` rồi ``result``.
 
+    Chat: ``result`` = {final_answer, eval_data} yield ngay khi node answer xong (UI hiển thị luôn), graph vẫn chạy
+    tiếp save_long_term_memory → caller phải đọc hết generator (không return ở ``result``) để lượt chạy trọn.
     ``question``: mode ``scan`` = các mã CK, cách nhau bởi dấu phẩy; mode ``chat`` = câu hỏi user.
     ``request_id`` (hoặc UUID mới) vừa là id tracing/SSE vừa là ``thread_id`` checkpointer (HITL resume).
     """
@@ -150,29 +152,37 @@ async def start_graph(
         )
 
     with trace_answer(name=mode, question=question, metadata={"thread_id": request_id}) as trace:
+        # get_runtime().context của node: port (request_deps) + trace_span — như resume_graph
+        context = {
+            "news_days": 7,
+            "threshold_pct": None,
+            "concept_client": None,
+            **request_deps,
+            "trace_span": trace["_span"] if "_span" in trace else None,
+        }
         if mode == "chat":
             # top_supervisor → chat_team → guardrail_input | rewrite_question → chat_supervisor ⇄
-            # scan_team | draw_agent | portfolio_watch | concept_retrieval → answer → save_long_term_memory
+            # scan_team | draw_agent | portfolio_report | concept_retrieval → answer → save_long_term_memory
             async for _ns, stream_mode, chunk in app.astream(
                 initial,
                 config=config,
+                context=context,
                 stream_mode=["updates", "custom"],
                 subgraphs=True,
             ):
                 if stream_mode == "custom":
                     yield "token", chunk  # chat_team.answer_node
-                    continue
-                if "__interrupt__" in chunk:
-                    continue
-        else:
-            # top_supervisor → scan_team → scan_supervisor ⇄ price_agent | news_agent | db_agent |
-            # event_classifier_node | eval_agent | synthesis_node; interrupt_before scan_tools (HITL)
-            await app.ainvoke(initial, config=config)
+                elif "answer" in chunk:  # answer xong → trả kết quả trước, save_long_term_memory chạy sau
+                    final = chunk["answer"]["final_answer"]
+                    trace["output"] = final.answer
+                    yield "result", {"final_answer": final, "eval_data": chunk["answer"]["eval_data"]}
+            return
 
-        state = await _collect_turn_state(
-            app, config, request_deps, request_id, user_id, watch_hitl=mode == "scan"
-        )
-        trace["output"] = state["answer"] or (
+        # top_supervisor → scan_team → scan_supervisor ⇄ price_agent | news_agent | db_agent |
+        # event_classifier_node | eval_agent | synthesis_node; interrupt_before scan_tools (HITL)
+        await app.ainvoke(initial, config=config, context=context)
+        state = await _collect_turn_state(app, config, request_deps, request_id, user_id, watch_hitl=True)
+        trace["output"] = (
             {"status": "pending_approval", "tool_call": state["pending_tool_call"]}
             if state["pending_tool_call"]
             else state
@@ -212,7 +222,7 @@ async def resume_graph(
             as_node="scan_tools",
         ) 
 
-    user_id = snap.values["user_id"] or "default"
+    user_id = snap.values["user_id"]
     with trace_answer("scan_resume", f"approve={approve}", metadata={"thread_id": thread_id}) as trace:
         # input None = tiếp cùng thread_id (sau approve hoặc sau inject từ chối).
         await app.ainvoke(
@@ -228,7 +238,7 @@ async def resume_graph(
         state = await _collect_turn_state(
             app, config, request_deps, thread_id, user_id, watch_hitl=True
         )
-        trace["output"] = state["answer"] or (
+        trace["output"] = (
             {"status": "pending_approval", "tool_call": state["pending_tool_call"]}
             if state["pending_tool_call"]
             else state
@@ -236,10 +246,18 @@ async def resume_graph(
         return state
 
 
-def save_graph_visualization(path: str = "resources/docs/agent_graph.png") -> str:
+def save_graph_visualization(path: str = "resources/docs/agent_graph.png", width: int = 4000) -> str:
+    """Vẽ PNG qua mermaid.ink với `width` lớn (draw_mermaid_png mặc định ~1900px nên ảnh mờ); lỗi → ghi .mmd."""
+    import base64
+
+    import requests
+
     graph = build_graph().get_graph(xray=1)
     try:
-        png_bytes = graph.draw_mermaid_png()
+        encoded = base64.b64encode(graph.draw_mermaid().encode("utf8")).decode("ascii")
+        resp = requests.get(f"https://mermaid.ink/img/{encoded}?type=png&bgColor=!white&width={width}", timeout=60)
+        resp.raise_for_status()
+        png_bytes = resp.content
         with open(path, "wb") as f:
             f.write(png_bytes)
         return path

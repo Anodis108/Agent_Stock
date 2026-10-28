@@ -11,7 +11,7 @@ from common.base.base_model import CustomBaseModel
 
 class ChatRequest(CustomBaseModel):
     question: str = Field(description="Câu hỏi tự do của người dùng")
-    user_id: str = Field(default="default", description="Mã định danh người dùng")
+    user_id: str = Field(min_length=1, description="Mã định danh người dùng")
     session_id: str | None = Field(default=None, description="Mã phiên đối thoại (nếu có)")
 
 
@@ -31,21 +31,9 @@ class ChatStep(CustomBaseModel):
 
 class ChatResponse(CustomBaseModel):
     question: str
-    rewritten: str = ""
-    symbol: list[str] = Field(default_factory=list)
-    intent: str = ""
-    agents_to_call: list[str] = Field(default_factory=list)
-    route: str = ""
-    reason: str = ""
     answer: str
     steps: list[ChatStep] = Field(default_factory=list)
     error: str | None = None
-    price: list[dict[str, Any]] = Field(default_factory=list)
-    news_count: int = 0
-    news: list[dict[str, Any]] = Field(default_factory=list)
-    news_error: str | None = None
-    severity: dict[str, Any] | None = None
-    chart_path: str | None = None
-    source_file: str | None = None
+    drawed_paths: list[str] = Field(default_factory=list)
     session_id: str | None = None
     message_id: str | None = None

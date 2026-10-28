@@ -106,7 +106,7 @@ class PgMemoryStore:
     def _conn(self) -> Any:
         return connect(self._schema)
 
-    def read_preferences(self, user_id: str = "default") -> dict[str, Any]:
+    def read_preferences(self, user_id: str) -> dict[str, Any]:
         with self._conn() as conn:
             row = conn.execute(
                 "SELECT data_json FROM preferences WHERE user_id = ?",

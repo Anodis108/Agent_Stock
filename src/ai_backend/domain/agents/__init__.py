@@ -2,7 +2,7 @@
 
 Bố cục:
   chat/          — team hỏi-đáp: graph.py (CHAT_WORKERS, chat_supervisor LLM, chat_result), nodes.py (guardrail_input, rewrite,
-                   scan_team, portfolio_watch, concept_retrieval, memory, answer → save_long_term_memory), state.py; draw_agent/
+                   scan_team, portfolio_report, concept_retrieval, memory, answer → save_long_term_memory), state.py; draw_agent/
   scan/          — team quét cảnh báo (kiêm gather cho chat): graph.py wire supervisor + build_* từ <agent>/graph.py,
                    nodes.py (scan_input, HITL), tools.py (scan_tools + tool nộp kết quả), state.py; <agent>/tools.py
   nodes.py       — top_supervisor (tầng 1) + LLM dùng chung

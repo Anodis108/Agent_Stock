@@ -17,7 +17,7 @@ Tuân thủ kiến trúc Agent vs Node (align `other/llm-engineer-demo`):
 | `db_agent` (`scan/db_agent/`) | **Agent** | Tầng 3 (Canonical DBAgent): Brain (LLM/Heuristic) + ReAct loop chọn READ tool (`read_holdings` vs `read_watchlist`) theo `user_id` và `intent` |
 | `price_agent` (`scan/price_agent/`) | **Node** (Worker) | Fetch báo giá thị trường và lịch sử kỹ thuật tuần tự (deterministic) |
 | `draw_agent` (`chat/draw_agent/`) | **Agent** (Worker) | ReAct worker (`nodes.py`, `tools.py`): `draw_price_chart` → `chart.py` (Matplotlib, không LLM), `draw_diagram` → `diagram.py` (Mermaid, 1 lời gọi LLM) |
-| `portfolio_watch` (`chat/nodes/core.py` + `chat/nodes/portfolio.py`) | **Node** | NAV/P&L + Markdown từ `db_agent_result`; deterministic, không ReAct |
+| `portfolio_report` (`chat/nodes/core.py` + `chat/nodes/portfolio.py`) | **Node** | NAV/P&L + Markdown từ `db_agent_result`; deterministic, không ReAct |
 | `answer` / `guardrail_output` (`chat/nodes/core.py` + `chat/nodes/answer.py`) | **Node** | Soạn câu trả lời (draft / check / fallback an toàn) |
 | `guardrail_input` / `guardrail_output` | **Node** | Kiểm tra an toàn dữ liệu vào/ra |
 | `rewrite_question` / `concept_retrieval` | **Node** | Viết lại câu hỏi và truy xuất kiến thức RAG |
@@ -44,10 +44,10 @@ Tuân thủ kiến trúc Agent vs Node (align `other/llm-engineer-demo`):
 | `steps.py` | `target_symbols` / `run_per_symbol` / dựng `steps[]` cho UI (deps theo request: `get_runtime().context`) |
 
 Worker (tầng 3) nằm cùng agent/node của nó: graph node `price_agent_node`, `news_agent_node`, `eval_agent_node`,
-`portfolio_watch_node` ở `chat/nodes/core.py` (logic `run_portfolio_watch` ở `chat/nodes/portfolio.py`); `draw_agent_node` / `chart_node` ở `chat/draw_agent/nodes.py`.
+`portfolio_report_node` ở `chat/nodes/core.py` (logic `run_portfolio_report` ở `chat/nodes/portfolio.py`); `draw_agent_node` / `chart_node` ở `chat/draw_agent/nodes.py`.
 
 > [!NOTE]
-> READ DB (holdings/watchlist): **`chat_supervisor` → `scan_supervisor` → `db_agent_node` → `chat_supervisor` → `portfolio_watch`** (state: `gather_request`, `portfolio_db_intent`, `db_agent_result`).
+> READ DB (holdings/watchlist): **`chat_supervisor` → `scan_supervisor` → `db_agent_node` → `chat_supervisor` → `portfolio_report`** (state: `gather_request`, `portfolio_db_intent`, `db_agent_result`).
 > `run_db_agent()` trực tiếp chỉ dùng off-graph / unit test.
 
 `chat/__init__.py` và `scan/__init__.py` cố ý không import `graph.py` / `nodes.py` (tránh vòng import với `state.py`) —
@@ -57,7 +57,7 @@ Luồng chính:
 
 ```
 top_supervisor ─┬─ guardrail_input ─┬─ (vi phạm / chào) ───────────────────────────────┐
-                │                   └─ rewrite_question → chat_supervisor ⇄ eval / draw / portfolio_watch
+                │                   └─ rewrite_question → chat_supervisor ⇄ eval / draw / portfolio_report
                 │                                         ⇄ scan_supervisor ⇄ price / news / db_agent (gather) │
                 │                                         → concept_retrieval ─────────────┤
                 │                                         → ─────────────────────────────── answer ⇄ guardrail_output → END

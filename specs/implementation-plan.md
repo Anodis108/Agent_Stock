@@ -113,7 +113,7 @@ Kế hoạch tái cấu trúc hệ thống theo phương pháp **Spec-Driven Dev
   - *Kiểm tra*: `python -c "from ai_backend.domain.guardrails.input_guardrail import InputGuardrail"`
 - [x] **3.4. AI Infrastructure Layer (`infra/`)**:
   - `infra/agents/`: StateGraph điều phối LangGraph Swarm (`workflow.py`, `state.py`, `steps.py`).
-  - `infra/agents/`: Toàn bộ 10 Agent Nodes (`supervisor_agent`, `price_agent`, `news_agent`, `eval_agent`, `chart_agent.py`, `diagram_agent`, `event_classifier`, `portfolio_watch_agent`, `synthesis_agent`, `answer_composer`).
+  - `infra/agents/`: Toàn bộ 10 Agent Nodes (`supervisor_agent`, `price_agent`, `news_agent`, `eval_agent`, `chart_agent.py`, `diagram_agent`, `event_classifier`, `portfolio_report_agent`, `synthesis_agent`, `answer_composer`).
   - `infra/market_data/`: `price_source.py` (Vnstock với offline fallback), `news_source.py` (CafeF / Vnstock).
   - `infra/qdrant/`: `concepts.py` (client nạp 5 file markdown), `answer.py` (semantic retrieval).
   - `infra/prompts/`: registry, lint, experiment (YAML: `resources/prompts/`).
@@ -148,7 +148,7 @@ Kế hoạch tái cấu trúc hệ thống theo phương pháp **Spec-Driven Dev
     - `src/ai_backend/tests/test_chart_store.py`
     - `src/ai_backend/tests/test_prompt_rollback.py`
     - `src/ai_backend/tests/test_agents.py`
-    - `src/ai_backend/tests/test_portfolio_watch_agent.py`
+    - `src/ai_backend/tests/test_portfolio_report_agent.py`
     - `src/ai_backend/tests/test_chart.py`
     - `src/ai_backend/tests/test_monitoring.py`
     - `src/ai_backend/tests/test_module3_features.py`

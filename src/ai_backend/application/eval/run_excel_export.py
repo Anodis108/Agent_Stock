@@ -118,7 +118,7 @@ def extract_observations(steps: list[dict], case_output: str) -> str:
             elif out.get("error"):
                 chart_info = f"Lỗi biểu đồ: {out.get('error')}"
 
-        elif name == "portfolio_watch":
+        elif name == "portfolio_report":
             nav = out.get("nav")
             wl_cnt = out.get("watchlist_count")
             p_parts = []

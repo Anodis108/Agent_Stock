@@ -1,5 +1,5 @@
 # Golden dataset v5 for Portfolio Watch (40 cases chuẩn hóa theo Phase 10)
-dataset: portfolio_watch
+dataset: portfolio_report
 version: 5
 changelog: "v5: Mở rộng đúng 40 cases (12 lookup, 8 comparison, 6 explain_why, 4 charting_diagram, 3 session_memory, 4 out_of_scope, 3 injection) theo specs/implementation-plan.md và specs/test-plan.md"
 cases:

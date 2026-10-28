@@ -30,7 +30,7 @@ class ReviewApprovalInput(CustomBaseModel):
     action: str = "approve"  # "approve" | "reject" | "list"
     reason: str | None = None
     note: str | None = None
-    user_id: str = "default"
+    user_id: str
     limit: int = 50
 
 
@@ -58,7 +58,7 @@ class ReviewApprovalService(BaseService):
 
     def process(self, inputs: ReviewApprovalInput) -> ReviewApprovalOutput:
         """Thực thi nghiệp vụ phê duyệt theo chuẩn BaseService."""
-        user_id = inputs.user_id or "default"
+        user_id = inputs.user_id
 
         if inputs.action == "list":
             items = self.list_pending(user_id=user_id, limit=inputs.limit)
@@ -76,14 +76,14 @@ class ReviewApprovalService(BaseService):
         # Mặc định action == "approve"
         return self.approve(inputs.approval_id, note=inputs.note, user_id=user_id)
 
-    def list_pending(self, user_id: str = "default", limit: int = 50) -> list[dict[str, Any]]:
+    def list_pending(self, user_id: str, limit: int = 50) -> list[dict[str, Any]]:
         """Lấy danh sách các bản ghi đang chờ duyệt."""
         if list_pending_approvals is not None and self.memory_store is not None:
             return list_pending_approvals(self.memory_store, user_id=user_id, limit=limit)
         return []
 
     def approve(
-        self, approval_id: str, note: str | None = None, user_id: str = "default"
+        self, approval_id: str, note: str | None = None, *, user_id: str
     ) -> ReviewApprovalOutput:
         """Phê duyệt một yêu cầu chờ duyệt."""
         aid = approval_id.strip()
@@ -113,7 +113,7 @@ class ReviewApprovalService(BaseService):
         )
 
     def reject(
-        self, approval_id: str, reason: str, user_id: str = "default"
+        self, approval_id: str, reason: str, user_id: str
     ) -> ReviewApprovalOutput:
         """Từ chối một yêu cầu chờ duyệt."""
         aid = approval_id.strip()

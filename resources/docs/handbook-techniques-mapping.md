@@ -55,14 +55,14 @@ Mức độ: ✅ đã dùng thực sự · 🟡 dùng một phần / biến th�
 | **B3 Long-term memory (vector, theo user_id)** | ✅ | `recall_memory`, `store_memory`, `_extract_long_term_fact` ([supervisor_agent/nodes.py](src/backend/agents/supervisor_agent/nodes.py)); `save_to_long_term`, `recall_long_term` ([long_term_memory.py](src/backend/infra/storage/long_term_memory.py)); prompt [memory_fact](resources/prompts/memory_fact/) | Fact extraction bằng LLM, fallback heuristic |
 | **B3 Context compression / context rot** | 🟡 | Chỉ cắt window + TTL; Composer chỉ nhận evidence tóm tắt (`_price_summary`, `_news_summary`) | Không có summarization/compaction |
 | **B4 Tool design (atomic, schema rõ, idempotent)** | ✅ | Ports/Protocol: [domain/ports.py](src/backend/domain/ports.py); adapter: `VnstockPriceSource` ([price_source.py](src/backend/infra/market_data/price_source.py)), `CafefNewsSource`, `VnstockNewsSource`, `MultiSourceNewsSource` ([news_source.py](src/backend/infra/market_data/news_source.py)); `validate_symbol` | Có TTL cache, fallback offline |
-| **B4 Tool selection (mỗi agent ≤ 5 tool, route tới chuyên gia)** | ✅ | Supervisor chọn `agents_to_call` ∈ {price, news, eval, chart, diagram, portfolio_watch} | |
+| **B4 Tool selection (mỗi agent ≤ 5 tool, route tới chuyên gia)** | ✅ | Supervisor chọn `agents_to_call` ∈ {price, news, eval, chart, diagram, portfolio_report} | |
 | **B4 Tool security** | 🟡 | `validate_symbol`, chặn mã nước ngoài ở guardrail, cô lập dữ liệu theo `user_id` ([api/deps.py](src/backend/api/deps.py) `get_current_user_id`) | |
 | **B4 MCP** | ❌ | — | |
 | **B5 Agent eval: task success, trajectory** | ✅ | `evaluate_task_success`, `evaluate_trajectory` ([infra/eval/agent_scorers.py](src/backend/infra/eval/agent_scorers.py)); `score_routing`, `score_query_decomposition`, `score_groundedness` ([eval/agent_eval.py](src/backend/eval/agent_eval.py)); prompts `eval_task_success`, `eval_trajectory` | Báo cáo: [resources/eval/agent_eval_report.md](resources/eval/agent_eval_report.md) |
 | **B5 Observability (trace từng node)** | ✅ | `agent_span` bọc mỗi node; `build_steps_from_chunks` ([graph/steps.py](src/backend/graph/steps.py)); sự kiện `node_start/node_finish` qua `emit_agent_event` → Live Agent Graph trên UI | |
 | **B6 Multi-agent: Supervisor pattern** | ✅ | `supervisor_node` + `workers_node` ([graph/chat.py](src/backend/graph/chat.py)); `LlmSupervisorBrain` ([supervisor_agent/nodes.py](src/backend/agents/supervisor_agent/nodes.py)); prompt [supervisor_routing](resources/prompts/supervisor_routing/) | |
 | **B6 Chạy worker song song** | ✅ | `ThreadPoolExecutor` trong `workers_node` ([chat.py](src/backend/graph/chat.py)) và `_node_fetch` ([scan.py](src/backend/graph/scan.py)) | |
-| **B6 Chuyên gia hoá agent** | ✅ | `price_agent`, `news_agent`, `eval_agent`, `event_classifier`, `synthesis_agent`, `chart_agent.py`, `diagram_agent`, `portfolio_watch_agent`, `answer_composer` trong [src/backend/agents/](src/backend/agents/) | |
+| **B6 Chuyên gia hoá agent** | ✅ | `price_agent`, `news_agent`, `eval_agent`, `event_classifier`, `synthesis_agent`, `chart_agent.py`, `diagram_agent`, `portfolio_report_agent`, `answer_composer` trong [src/backend/agents/](src/backend/agents/) | |
 
 ---
 
@@ -112,7 +112,7 @@ Mức độ: ✅ đã dùng thực sự · 🟡 dùng một phần / biến th�
 | Chỉ báo kỹ thuật RSI / SMA / Golden-Death Cross | [domain/indicators.py](src/backend/domain/indicators.py) |
 | Biểu đồ nến/so sánh bằng Matplotlib | [agents/chart_agent.py](src/backend/agents/chart_agent.py) |
 | Quét định kỳ (cron) | [infra/scheduler/cron.py](src/backend/infra/scheduler/cron.py) |
-| Multi-tenant portfolio (P&L, NAV theo `user_id`) | [application/portfolio_service.py](src/backend/application/portfolio_service.py), [agents/portfolio_watch_agent/](src/backend/agents/portfolio_watch_agent/) |
+| Multi-tenant portfolio (P&L, NAV theo `user_id`) | [application/portfolio_service.py](src/backend/application/portfolio_service.py), [agents/portfolio_report_agent/](src/backend/agents/portfolio_report_agent/) |
 | Spec-Driven Development | [specs/](specs/) |
 
 ---

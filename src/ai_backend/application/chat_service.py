@@ -28,19 +28,16 @@ logger = get_logger("ai_backend.application.chat_service")
 class ChatInput(CustomBaseModel):
     """Input payload cho chat service."""
     question: str
-    user_id: str = "default"
-    request_id: str | None = None
+    user_id: str
+    request_id: str
 
 
 class ChatOutput(CustomBaseModel):
     """Output payload từ chat service."""
     question: str
     answer: str
-    rewritten_symbol: list[str] = Field(default_factory=list)
-    routing: str = "general"
     steps: list[dict[str, Any]] = Field(default_factory=list)
-    chart_path: str | None = None
-    error: str | None = None
+    drawed_paths: list[str] = Field(default_factory=list)
 
 
 class ChatService(BaseService):
@@ -79,32 +76,19 @@ class ChatService(BaseService):
 
         # Bước 1–2 — Inject port vào graph (request_deps); memory window đọc trong node (settings).
         async def _run() -> Any:
+            result = None
             async for kind, payload in start_graph(
                 "chat", question, self.request_deps(), user_id=inputs.user_id, request_id=req_id
             ):
                 if kind == "result":
-                    return payload
-            raise RuntimeError("start_graph không yield result")
+                    result = payload  # đọc hết generator: save_long_term_memory chạy sau result
+            if result is None:
+                raise RuntimeError("start_graph không yield result")
+            return result
 
-        state = asyncio.run(_run())
-        rewritten = state["rewritten"]
-        guard = state["guardrail_result"]
-        if rewritten is not None:
-            routing = str(rewritten.intent)
-        elif guard is None:
-            routing = "empty"
-        elif guard.category == "greeting":
-            routing = "greeting"
-        else:
-            routing = "guardrail"
-        chart = state["chart_result"]
-        chart_path = chart.url if chart is not None and chart.success else None
-
+        final = asyncio.run(_run())["final_answer"]
         return ChatOutput(
             question=question,
-            answer=state["answer"] or "",
-            rewritten_symbol=list(rewritten.symbols) if rewritten is not None else [],
-            routing=routing,
-            chart_path=chart_path,
-            error=state["error"],
+            answer=final.answer,
+            drawed_paths=final.drawed_paths,
         )

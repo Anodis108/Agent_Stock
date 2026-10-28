@@ -70,9 +70,9 @@ def db_results_from_tool_artifacts(message_worker: list) -> DBAgentResult | None
 
 
 @tool(response_format="content_and_artifact")
-def read_user_portfolio(user_id: Annotated[str, InjectedState("user_id")] = "default"):
+def read_user_portfolio(user_id: Annotated[str, InjectedState("user_id")]):
     """Đọc danh mục nắm giữ (mã, số lượng, giá vốn) VÀ watchlist (mã, ngưỡng cảnh báo %) của người dùng hiện tại."""
-    result = DBAgentResult(user_id=user_id or "default")
+    result = DBAgentResult(user_id=user_id)
     try:
         result.holdings = read_holdings(result.user_id)
         result.watchlist = read_watchlist(result.user_id)

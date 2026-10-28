@@ -19,7 +19,7 @@ graph TD;
 	chat_team\3achat_supervisor(chat_supervisor)
 	chat_team\3ascan_team(scan_team)
 	chat_team\3adraw_agent(draw_agent)
-	chat_team\3aportfolio_watch(portfolio_watch)
+	chat_team\3aportfolio_report(portfolio_report)
 	chat_team\3aconcept_retrieval(concept_retrieval)
 	chat_team\3aanswer(answer)
 	chat_team\3aguardrail_output(guardrail_output)
@@ -29,7 +29,7 @@ graph TD;
 	chat_team\3achat_supervisor -.-> chat_team\3aanswer;
 	chat_team\3achat_supervisor -.-> chat_team\3aconcept_retrieval;
 	chat_team\3achat_supervisor -.-> chat_team\3adraw_agent;
-	chat_team\3achat_supervisor -.-> chat_team\3aportfolio_watch;
+	chat_team\3achat_supervisor -.-> chat_team\3aportfolio_report;
 	chat_team\3achat_supervisor -.-> chat_team\3ascan_team;
 	chat_team\3aconcept_retrieval --> chat_team\3aanswer;
 	chat_team\3adraw_agent --> chat_team\3achat_supervisor;
@@ -37,7 +37,7 @@ graph TD;
 	chat_team\3aguardrail_input -.-> chat_team\3arewrite_question;
 	chat_team\3aguardrail_output -.-> chat_team\3a__end__;
 	chat_team\3aguardrail_output -.-> chat_team\3aanswer;
-	chat_team\3aportfolio_watch --> chat_team\3achat_supervisor;
+	chat_team\3aportfolio_report --> chat_team\3achat_supervisor;
 	chat_team\3arewrite_question --> chat_team\3achat_supervisor;
 	chat_team\3ascan_team --> chat_team\3achat_supervisor;
 	end

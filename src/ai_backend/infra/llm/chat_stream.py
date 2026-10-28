@@ -19,61 +19,11 @@ from ai_backend.domain.agents.graph import start_graph
 
 def swarm_public_payload(state: dict[str, Any], *, started: float) -> dict[str, Any]:
     """Payload final SSE từ state checkpoint (``start_graph`` yield ``result``)."""
-    rewritten = state["rewritten"]
-    guard = state["guardrail_result"]
-    if rewritten is not None:
-        route = str(rewritten.intent)
-    elif guard is None:
-        route = "empty"
-    elif guard.category == "greeting":
-        route = "greeting"
-    else:
-        route = "guardrail"
-
-    notes = state["notes"]
-    agents_to_call = list(notes.keys()) if notes else []
-    symbols = list(rewritten.symbols) if rewritten is not None else list(state["symbols"] if "symbols" in state and state["symbols"] else [])
-    prices = [
-        {
-            "symbol": p.symbol,
-            "latest_close": p.latest_close,
-            "prev_close": p.prev_close,
-            "change_pct": p.change_pct,
-            "error": p.error,
-        }
-        for p in (state["prices"] or [])
-    ]
-    news_items = []
-    news_errors = []
-    for row in state["news"] or []:
-        if row.error:
-            news_errors.append(row.error)
-        news_items.extend(
-            {"title": i.title, "url": i.url, "published_at": i.published_at, "snippet": i.snippet}
-            for i in (row.items or [])
-        )
-    ev = state["eval_result"]
-    severity = ev.severity.model_dump(mode="json") if ev is not None else None
-    chart = state["chart_result"]
-    chart_path = chart.url if chart is not None and chart.success else None
-
+    final = state["final_answer"]
     return {
-        "question": state["question"] or "",
-        "rewritten": rewritten.rewritten if rewritten is not None else "",
-        "symbol": symbols,
-        "intent": rewritten.intent if rewritten is not None else "",
-        "agents_to_call": agents_to_call,
-        "route": route,
-        "reason": "",
-        "answer": state["answer"] or "",
-        "error": state["error"],
-        "price": prices,
-        "news_count": len(news_items),
-        "news": news_items,
-        "news_error": "; ".join(news_errors) or None,
-        "severity": severity,
-        "chart_path": chart_path,
-        "source_file": state["source_file"],
+        "question": final.question,
+        "answer": final.answer,
+        "drawed_paths": final.drawed_paths,
         "total_duration_s": round(time.perf_counter() - started, 3),
     }
 
@@ -96,8 +46,8 @@ async def swarm_sse(
     question: str,
     request_deps: dict[str, Any],
     *,
-    user_id: str = "default",
-    request_id: str | None = None,
+    user_id: str,
+    request_id: str,
 ) -> AsyncIterator[str]:
     """Chạy start_graph (mode=chat) và yield SSE demo-format. Client đóng → generator huỷ, graph dừng theo."""
     started = time.perf_counter()

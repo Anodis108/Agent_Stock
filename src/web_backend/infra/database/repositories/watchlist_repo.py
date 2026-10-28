@@ -16,7 +16,7 @@ class WatchlistRecord:
     symbol: str
     threshold_pct: float
     updated_at: str
-    user_id: str = "default"
+    user_id: str
 
 
 class WatchlistRepository:
@@ -27,7 +27,8 @@ class WatchlistRepository:
         self,
         symbol: Any = None,
         threshold_pct: float = 3.0,
-        user_id: str = "default",
+        *,
+        user_id: str,
         item: Any = None,
     ) -> WatchlistRecord:
         target = item if item is not None else symbol
@@ -53,7 +54,7 @@ class WatchlistRepository:
         self.conn.commit()
         return WatchlistRecord(symbol=sym, threshold_pct=float(threshold_pct), updated_at=now, user_id=user_id)
 
-    def get(self, symbol: str, user_id: str = "default") -> WatchlistRecord | None:
+    def get(self, symbol: str, user_id: str) -> WatchlistRecord | None:
         row = self.conn.execute(
             "SELECT symbol, threshold_pct, updated_at, user_id FROM watchlist WHERE (symbol = ? AND user_id = ?) OR (symbol = ? AND user_id = ?)",
             (symbol.strip().upper(), user_id, user_id.strip().upper(), symbol),
@@ -67,7 +68,7 @@ class WatchlistRepository:
             user_id=row["user_id"],
         )
 
-    def list_all(self, user_id: str | None = "default") -> list[WatchlistRecord]:
+    def list_all(self, user_id: str | None) -> list[WatchlistRecord]:
         if user_id:
             cursor = self.conn.execute(
                 "SELECT symbol, threshold_pct, updated_at, user_id FROM watchlist WHERE user_id = ? ORDER BY symbol ASC",
@@ -87,10 +88,10 @@ class WatchlistRepository:
             for row in cursor.fetchall()
         ]
 
-    def list_items(self, user_id: str = "default") -> list[WatchlistRecord]:
+    def list_items(self, user_id: str) -> list[WatchlistRecord]:
         return self.list_all(user_id)
 
-    def delete(self, symbol: str, user_id: str = "default") -> bool:
+    def delete(self, symbol: str, user_id: str) -> bool:
         cursor = self.conn.execute(
             "DELETE FROM watchlist WHERE (symbol = ? AND user_id = ?) OR (symbol = ? AND user_id = ?)",
             (symbol.strip().upper(), user_id, user_id.strip().upper(), symbol),

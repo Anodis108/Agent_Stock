@@ -18,7 +18,7 @@ class WatchlistSnapshot(CustomBaseModel):
     """Ảnh chụp nhanh danh mục theo dõi được gửi từ Web Backend."""
     symbol: str
     threshold_pct: float = 3.0
-    user_id: str = "default"
+    user_id: str = Field(min_length=1)
 
 
 class HoldingSnapshot(CustomBaseModel):
@@ -26,15 +26,15 @@ class HoldingSnapshot(CustomBaseModel):
     symbol: str
     quantity: float
     avg_buy_price: float
-    user_id: str = "default"
+    user_id: str = Field(min_length=1)
 
 
 class ChatStreamRequest(CustomBaseModel):
     """Yêu cầu stream hội thoại gửi tới AI Backend (POST /v1/chat/stream)."""
     question: str = Field(description="Nội dung câu hỏi của người dùng")
-    user_id: str = Field(default="default", description="Mã định danh người dùng")
+    user_id: str = Field(min_length=1, description="Mã định danh người dùng")
     session_id: str | None = Field(default=None, description="Mã phiên hội thoại")
-    request_id: str | None = Field(default=None, description="Mã tương quan yêu cầu")
+    request_id: str = Field(min_length=1, description="Mã tương quan yêu cầu (web backend sinh ở biên)")
 
 
 class TokenEvent(CustomBaseModel):
@@ -66,12 +66,8 @@ class ErrorEvent(CustomBaseModel):
 
 
 class ChatResponse(CustomBaseModel):
-    """Phản hồi JSON POST /v1/chat (cùng shape ChatOutput; `source_file` không map từ chat service)."""
+    """Phản hồi JSON POST /v1/chat (cùng shape ChatOutput)."""
     question: str
     answer: str
-    rewritten_symbol: list[str] = Field(default_factory=list)
-    routing: str = "general"
     steps: list[dict[str, Any]] = Field(default_factory=list)
-    chart_path: str | None = None
-    source_file: str | None = Field(default=None, description="Không dùng trên JSON chat; giữ cho schema tương thích")
-    error: str | None = None
+    drawed_paths: list[str] = Field(default_factory=list)

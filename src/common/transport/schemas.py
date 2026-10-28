@@ -17,8 +17,8 @@ class ChatStreamRequest(CustomBaseModel):
     """Yêu cầu gửi sang AI Backend qua POST /v1/chat/stream."""
 
     question: str = Field(min_length=1)
-    user_id: str = "default"
-    request_id: str | None = None
+    user_id: str = Field(min_length=1)
+    request_id: str = Field(min_length=1)
     watchlist: list[str] = Field(default_factory=list)
     holdings: list[dict[str, Any]] = Field(default_factory=list)
 
@@ -34,9 +34,9 @@ class ScanRequest(CustomBaseModel):
     """Yêu cầu quét mã cổ phiếu qua POST /v1/scan."""
 
     symbol: list[str] = Field(min_length=1)
-    user_id: str = "default"
+    user_id: str = Field(min_length=1)
     threshold_pct: float | None = None
-    request_id: str | None = None
+    request_id: str = Field(min_length=1)
 
 
 class ScanResponse(CustomBaseModel):

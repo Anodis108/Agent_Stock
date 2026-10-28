@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from starlette.concurrency import iterate_in_threadpool
 
-from common.logging.logger import get_logger
+from common.logging.logger import correlation_id_ctx, get_logger
 from common.transport.transport import stream_remote_sse
 from web_backend.api.deps import AppDeps, get_app_deps
 from web_backend.api.helpers.validation import normalize_question, title_from_question
@@ -43,18 +43,23 @@ def _get_chat_answer_fn() -> Any:
     if mod is None:
         return None
 
-    def answer(question: str, *, user_id: str = "default", **request_deps: Any) -> Any:
+    def answer(question: str, *, user_id: str, request_id: str, **request_deps: Any) -> Any:
         import asyncio
 
         from ai_backend.domain.agents.graph import start_graph
 
         async def _run() -> Any:
-            async for kind, payload in start_graph("chat", question, request_deps, user_id=user_id):
+            result = None
+            async for kind, payload in start_graph(
+                "chat", question, request_deps, user_id=user_id, request_id=request_id
+            ):
                 if kind == "result":
-                    return payload
-            raise RuntimeError("start_graph không yield result")
+                    result = payload  # đọc hết generator: save_long_term_memory chạy sau result
+            if result is None:
+                raise RuntimeError("start_graph không yield result")
+            return result
 
-        return asyncio.run(_run())
+        return asyncio.run(_run())["final_answer"]
 
     return answer
 
@@ -71,9 +76,7 @@ def _format_stream_payload(result: Any, t_start: float) -> dict[str, Any]:
         "steps": [s.model_dump() if hasattr(s, "model_dump") else s for s in (getattr(result, "steps", None) or [])]
         if hasattr(getattr(result, "steps", None), "__iter__")
         else [],
-        "route": str(getattr(getattr(result, "routing", None), "route", "") or ""),
-        "chart_path": getattr(result, "chart_path", None),
-        "source_file": getattr(result, "source_file", None),
+        "drawed_paths": list(getattr(result, "drawed_paths", None) or []),
     }
 
 
@@ -110,24 +113,14 @@ def _prepare_stream_session(body: ChatRequest) -> tuple[str, str]:
 
 def _save_stream_assistant(session_id: str, data: dict[str, Any]) -> str | None:
     """Lưu câu trả lời sau khi AI gửi final_answer hoặc complete."""
-    chart_path = data.get("chart_path")
-    trace_data = None
-    if data.get("steps") or data.get("route"):
-        trace_data = json.dumps(
-            {
-                "steps": data.get("steps") or [],
-                "route": data.get("route") or "",
-            },
-            ensure_ascii=False,
-        )
+    drawed_paths = data.get("drawed_paths") or []
     conn = get_connection()
     try:
         msg = MessageRepository(conn).create(
             session_id=session_id,
             role="assistant",
             content=str(data.get("answer") or ""),
-            chart_path=chart_path if isinstance(chart_path, str) else None,
-            trace_data=trace_data,
+            chart_path=json.dumps(drawed_paths) if drawed_paths else None,  # cột chart_path lưu JSON list drawed_paths
         )
         return msg.id
     finally:
@@ -137,6 +130,7 @@ def _save_stream_assistant(session_id: str, data: dict[str, Any]) -> str | None:
 def _proxy_ai_chat_stream(
     body: ChatRequest,
     *,
+    request_id: str,
     cancel_event: threading.Event | None = None,
 ):
     """Ủy thác cho AI microservice stream SSE, web lưu session và tin nhắn."""
@@ -147,7 +141,8 @@ def _proxy_ai_chat_stream(
     try:
         for event, data in stream_remote_sse(
             question=question,
-            user_id=body.user_id or "default",
+            user_id=body.user_id,
+            request_id=request_id,
             cancel_event=cancel,
         ):
             if event in ("final_answer", "complete"):
@@ -166,7 +161,7 @@ def _proxy_ai_chat_stream(
         cancel.set()
 
 
-async def stream_chat_generator_async(body: ChatRequest, deps: AppDeps) -> AsyncIterator[str]:
+async def stream_chat_generator_async(body: ChatRequest, deps: AppDeps, request_id: str) -> AsyncIterator[str]:
     """SSE token câu trả lời + `complete` (đã lưu hội thoại). Client ngắt kết nối → generator bị huỷ, graph dừng theo."""
     try:
         from common.transport import _use_http
@@ -177,7 +172,7 @@ async def stream_chat_generator_async(body: ChatRequest, deps: AppDeps) -> Async
     if use_http:
         cancel = threading.Event()
         try:
-            async for chunk in iterate_in_threadpool(_proxy_ai_chat_stream(body, cancel_event=cancel)):
+            async for chunk in iterate_in_threadpool(_proxy_ai_chat_stream(body, request_id=request_id, cancel_event=cancel)):
                 yield chunk
         finally:
             cancel.set()
@@ -200,18 +195,18 @@ async def stream_chat_generator_async(body: ChatRequest, deps: AppDeps) -> Async
         "memory_store": deps.memory_store,
     }
     try:
-        result = None
+        done = False
         async for kind, payload in graph_mod.start_graph(
-            "chat", question, request_deps, user_id=body.user_id or "default"
+            "chat", question, request_deps, user_id=body.user_id, request_id=request_id
         ):
-            if kind == "result":
-                result = payload
-        if result is None:
+            if kind == "result":  # answer xong → gửi complete ngay; graph chạy tiếp save_long_term_memory
+                payload = _format_stream_payload(payload, t_start)
+                payload["message_id"] = _save_stream_assistant(session_id, payload)
+                payload["session_id"] = session_id
+                yield sse("complete", payload)
+                done = True
+        if not done:
             raise RuntimeError("start_graph không yield result")
-        payload = _format_stream_payload(result, t_start)
-        payload["message_id"] = _save_stream_assistant(session_id, payload)
-        payload["session_id"] = session_id
-        yield sse("complete", payload)
     except Exception as exc:  # noqa: BLE001 — báo lỗi cho client thay vì cắt stream
         yield sse("error", {"error": str(exc)})
 
@@ -224,11 +219,12 @@ def post_chat(
     body: ChatRequest,
     deps: AppDeps = Depends(get_app_deps),
 ) -> Any:
+    request_id = correlation_id_ctx.get()  # CorrelationIdMiddleware sinh 1 lần ở biên web → truyền xuống AI
     accept_header = (request.headers.get("accept") or "").lower()
     is_stream = "text/event-stream" in accept_header or request.query_params.get("stream") == "true"
     if is_stream:
         return StreamingResponse(
-            stream_chat_generator_async(body, deps),
+            stream_chat_generator_async(body, deps, request_id),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -277,25 +273,21 @@ def post_chat(
                 final_data: dict[str, Any] = {}
                 for event, data in stream_remote_sse(
                     question=question,
-                    user_id=body.user_id or "default",
+                    user_id=body.user_id,
+                    request_id=request_id,
                 ):
                     if event in ("final_answer", "complete"):
                         final_data.update(data)
 
                 answer_text = str(final_data.get("answer") or "")
-                chart_path = final_data.get("chart_path")
+                drawed_paths = final_data.get("drawed_paths") or []
                 steps_list = final_data.get("steps") or []
-                route_str = str(final_data.get("route") or "")
-                trace_data = None
-                if steps_list or route_str:
-                    trace_data = json.dumps({"steps": steps_list, "route": route_str}, ensure_ascii=False)
 
                 assistant_msg = m_repo.create(
                     session_id=session_id,
                     role="assistant",
                     content=answer_text,
-                    chart_path=chart_path if isinstance(chart_path, str) else None,
-                    trace_data=trace_data,
+                    chart_path=json.dumps(drawed_paths) if drawed_paths else None,
                 )
 
                 validated_steps = []
@@ -307,29 +299,16 @@ def post_chat(
 
                 return ChatResponse(
                     question=question,
-                    rewritten=final_data.get("rewritten", question),
-                    symbol=final_data.get("symbol") or [],
-                    intent=final_data.get("intent", ""),
-                    agents_to_call=final_data.get("agents_to_call", []),
-                    route=route_str,
-                    reason=final_data.get("reason", ""),
                     answer=answer_text,
                     steps=validated_steps,
                     error=final_data.get("error"),
-                    price=final_data.get("price") or [],
-                    news_count=len(final_data.get("news") or []),
-                    news=final_data.get("news") or [],
-                    news_error=final_data.get("news_error"),
-                    severity=final_data.get("severity"),
-                    chart_path=chart_path,
+                    drawed_paths=drawed_paths,
                     session_id=session_id,
                     message_id=assistant_msg.id,
-                    source_file=final_data.get("source_file"),
                 )
 
             return ChatResponse(
                 question=question,
-                rewritten=question,
                 answer="Hệ thống chat chưa được cấu hình.",
                 session_id=session_id,
             )
@@ -341,87 +320,26 @@ def post_chat(
             history_store=deps.history_store,
             memory_store=deps.memory_store,
             user_id=body.user_id,
+            request_id=request_id,
         )
 
-        price_rows = getattr(result, "price", None)
-        if price_rows is None:
-            price_rows = []
-        elif not isinstance(price_rows, list):
-            price_rows = [price_rows]
-        price_payload = [
-            {
-                "symbol": p.symbol,
-                "latest_close": p.latest_close,
-                "prev_close": p.prev_close,
-                "change_pct": p.change_pct,
-                "error": p.error,
-            }
-            for p in price_rows
-        ]
-
-        news_rows = getattr(result, "news", None)
-        if news_rows is None:
-            news_rows = []
-        elif not isinstance(news_rows, list):
-            news_rows = [news_rows]
-        news_items: list[dict[str, Any]] = []
-        news_errors = []
-        for row in news_rows:
-            if row.error:
-                news_errors.append(row.error)
-            news_items.extend(
-                {
-                    "title": i.title,
-                    "url": i.url,
-                    "published_at": i.published_at,
-                    "snippet": i.snippet,
-                }
-                for i in (row.items or [])
-            )
-        news_error = "; ".join(news_errors) or None
-
-        severity = None
-        if getattr(result, "eval_result", None) is not None:
-            severity = result.eval_result.severity.model_dump(mode="json")
-
-        chart_path = getattr(result, "chart_path", None)
-        trace_data = None
-        if getattr(result, "steps", None) or getattr(result, "routing", None):
-            trace_dict = {
-                "steps": [s.model_dump() if hasattr(s, "model_dump") else s for s in (result.steps or [])] if hasattr(result.steps, "__iter__") else [],
-                "route": str(getattr(result.routing.route, "value", result.routing.route)) if getattr(result, "routing", None) else "",
-            }
-            trace_data = json.dumps(trace_dict, ensure_ascii=False)
+        drawed_paths = list(getattr(result, "drawed_paths", None) or [])
 
         # 3. Lưu tin nhắn trợ lý trả lời
         assistant_msg = m_repo.create(
             session_id=session_id,
             role="assistant",
             content=result.answer or "",
-            chart_path=chart_path,
-            trace_data=trace_data,
+            chart_path=json.dumps(drawed_paths) if drawed_paths else None,
         )
 
         return ChatResponse(
             question=result.question,
-            rewritten=getattr(result.rewritten, "rewritten", ""),
-            symbol=list(getattr(result.rewritten, "symbols", None) or []),
-            intent=getattr(result.rewritten, "intent", ""),
-            agents_to_call=list(getattr(result.routing, "agents_to_call", []) or []),
-            route=str(getattr(result.routing.route, "value", getattr(result.routing, "route", ""))) if getattr(result, "routing", None) else "",
-            reason=getattr(result.routing, "reason", "") or "",
             answer=result.answer,
-            steps=[ChatStep.model_validate(s) for s in (result.steps or [])],
             error=getattr(result, "error", None),
-            price=price_payload,
-            news_count=len(news_items),
-            news=news_items,
-            news_error=news_error,
-            severity=severity,
-            chart_path=chart_path,
+            drawed_paths=drawed_paths,
             session_id=session_id,
             message_id=assistant_msg.id,
-            source_file=getattr(result, "source_file", None),
         )
     finally:
         conn.close()
@@ -437,7 +355,7 @@ async def post_chat_stream(
 ) -> StreamingResponse:
     """Endpoint Server-Sent Events (SSE) phát token câu trả lời."""
     return StreamingResponse(
-        stream_chat_generator_async(body, deps),
+        stream_chat_generator_async(body, deps, correlation_id_ctx.get()),  # đọc trước khi stream (contextvar reset sau dispatch)
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

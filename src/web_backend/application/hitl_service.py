@@ -68,7 +68,7 @@ class HitlFeedbackInput(CustomBaseModel):
     question: str | None = None
     answer: str | None = None
     feedback_text: str | None = None
-    user_id: str = "default"
+    user_id: str
 
 
 class HitlFeedbackOutput(CustomBaseModel):

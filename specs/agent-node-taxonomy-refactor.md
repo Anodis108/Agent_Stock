@@ -7,7 +7,7 @@
 ## Target state
 1. **Remove** `infra/agents/chat/db_agent/` entirely (duplicate, không phải agent thật).
 2. **Canonical DBAgent**: `infra/agents/scan/db_agent/` (cùng cấp `news_agent`, `price_agent`) — giữ `run_db_agent` + Brain + READ tools.
-3. **portfolio_watch_agent** (chat): đổi thành **node** — gọi `scan.db_agent.run_db_agent(user_id, intent=...)` rồi format NAV/watchlist; không gọi `read_holdings` trực tiếp từ chat/db.
+3. **portfolio_report_agent** (chat): đổi thành **node** — gọi `scan.db_agent.run_db_agent(user_id, intent=...)` rồi format NAV/watchlist; không gọi `read_holdings` trực tiếp từ chat/db.
 4. Optional: `db_agent_node` trong graph (chat path khi intent portfolio/watchlist) nếu supervisor đã route — mirror `news_agent_node` pattern.
 5. Update `infra/agents/README.md` bảng agent vs node (price = worker node; news/eval/db = agent; chart trong draw = node helpers).
 6. Fix imports/tests (`test_portfolio_agent_uses_db_agent_holdings` → patch `scan.db_agent...`).

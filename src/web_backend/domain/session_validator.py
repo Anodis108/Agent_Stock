@@ -59,17 +59,13 @@ class SessionValidator:
 
     @staticmethod
     def validate_user_id(user_id: str | None) -> SessionValidationResult:
-        """Xác thực định danh người dùng.
-        
-        Mặc định 'default' nếu không cung cấp.
+        """Xác thực định danh người dùng — bắt buộc, thiếu / rỗng → không hợp lệ (không tự gán).
+
         Hỗ trợ các tài khoản mẫu đa người dùng (multi-tenant): default, user_a, user_b,...
         """
-        if user_id is None:
-            return SessionValidationResult(is_valid=True, clean_value="default")
-
-        uid = user_id.strip()
+        uid = (user_id or "").strip()
         if not uid:
-            return SessionValidationResult(is_valid=True, clean_value="default")
+            return SessionValidationResult(is_valid=False, error_message="Thiếu định danh người dùng (user_id).")
 
         if "\0" in uid or ".." in uid or "/" in uid or "\\" in uid:
             return SessionValidationResult(

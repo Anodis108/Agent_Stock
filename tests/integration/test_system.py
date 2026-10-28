@@ -24,7 +24,7 @@ FE = ROOT / "src" / "frontend"
 if not FE.is_dir():
     FE = ROOT / "frontend"
 if not FE.is_dir():
-    FE = ROOT / "src" / "portfolio_watch" / "frontend"
+    FE = ROOT / "src" / "portfolio_report" / "frontend"
 
 
 # ==============================================================================

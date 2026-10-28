@@ -87,7 +87,7 @@ def post_approve(
     deps: AppDeps = Depends(get_app_deps),
 ) -> ReviewResponse:
     aid = normalize_approval_id(approval_id)
-    user_id = (body.user_id if body and body.user_id != "default" else current_user) or "default"
+    user_id = body.user_id if body else current_user
     if approve_pending is not None:
         # Duyệt → AI Backend resume graph scan, scan_tools chạy tool (gửi cảnh báo / cập nhật watchlist)
         result = approve_pending(
@@ -113,7 +113,7 @@ def post_reject(
 ) -> ReviewResponse:
     aid = normalize_approval_id(approval_id)
     reason = normalize_reject_reason(body.reason)
-    user_id = (body.user_id if body.user_id != "default" else current_user) or "default"
+    user_id = body.user_id
 
     if reject_pending is not None:
         # Từ chối → AI Backend resume graph, bỏ qua tool (ToolMessage báo từ chối)

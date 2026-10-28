@@ -45,7 +45,7 @@ def _to_out(item: Any) -> WatchlistItemOut:
         symbol=item.symbol,
         threshold_pct=float(item.threshold_pct),
         alert_threshold_pct=float(getattr(item, "alert_threshold_pct", item.threshold_pct)),
-        user_id=getattr(item, "user_id", "default"),
+        user_id=item.user_id,
     )
 
 
@@ -92,7 +92,7 @@ def post_watchlist(
     thr = validate_threshold_pct(raw_thr)
     if thr is None:
         thr = float(settings.default_alert_threshold_pct) if settings else 3.0
-    effective_user = body.user_id if body.user_id != "default" else current_user
+    effective_user = body.user_id
 
     if hasattr(deps, "watchlist_store") and deps.watchlist_store is not None:
         store = deps.watchlist_store
@@ -132,7 +132,7 @@ def update_watchlist(
     deps: AppDeps = Depends(get_app_deps),
 ) -> WatchlistItemOut:
     sym = normalize_symbol(symbol)
-    user_id = body.user_id if body.user_id != "default" else current_user
+    user_id = body.user_id
 
     raw_thr = body.alert_threshold_pct if body.alert_threshold_pct is not None else body.threshold_pct
     thr = validate_threshold_pct(raw_thr, required=True)

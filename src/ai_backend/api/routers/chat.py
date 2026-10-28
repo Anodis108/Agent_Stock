@@ -16,20 +16,17 @@ router = APIRouter(prefix="/v1", tags=["ai-stream"])
 def chat(body: ChatStreamRequest, request: Request) -> ChatResponse:
     """Chạy toàn bộ Swarm rồi trả về câu trả lời hoàn chỉnh trong một response JSON."""
     chat_service: ChatService = request.app.state.chat_service
-    inp = ChatInput(
+    input = ChatInput(
         question=body.question.strip(),
         user_id=body.user_id,
         request_id=body.request_id,
     )
-    output = chat_service.process(inp)
+    output = chat_service.process(input)
     return ChatResponse(
         question=output.question,
         answer=output.answer,
-        rewritten_symbol=output.rewritten_symbol,
-        routing=output.routing,
         steps=output.steps,
-        chart_path=output.chart_path,
-        error=output.error,
+        drawed_paths=output.drawed_paths,
     )
 
 

@@ -75,8 +75,8 @@ def submit_severity(
 def propose_watchlist_update(
     symbol: str,
     threshold_pct: float,
+    user_id: Annotated[str, InjectedState("user_id")],
     related_symbols: list[str] | None = None,
-    user_id: Annotated[str, InjectedState("user_id")] = "default",
 ):
     """Đề xuất đổi ngưỡng cảnh báo cho mã và/hoặc theo dõi thêm mã liên quan — CHỈ khi nhiệm vụ là quét cảnh báo.
     Không thực hiện ngay: tạo yêu cầu chờ người dùng duyệt."""

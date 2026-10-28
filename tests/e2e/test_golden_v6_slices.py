@@ -298,7 +298,7 @@ def test_golden_v6_dataset_coverage_all_20_cases():
     assert dataset_path.is_file(), f"Tệp Golden dataset không tồn tại: {dataset_path}"
 
     payload = yaml.safe_load(dataset_path.read_text(encoding="utf-8"))
-    assert payload.get("dataset") == "portfolio_watch"
+    assert payload.get("dataset") == "portfolio_report"
     assert str(payload.get("version")) == "6"
 
     cases = payload.get("cases", [])

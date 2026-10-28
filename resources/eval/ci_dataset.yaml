@@ -1,6 +1,6 @@
 # CI/CD dataset (~20 cases) — Dành cho kiểm chuẩn tự động trên CI/CD Pipeline
 # Case definitions lấy từ extended_dataset.yaml qua case_ids (single source of truth).
-dataset: portfolio_watch
+dataset: portfolio_report
 version: ci_subset
 source: extended_dataset.yaml
 changelog: >-

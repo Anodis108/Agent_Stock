@@ -252,7 +252,7 @@ vn-stock-swarm/
 │   │   ├── shared/                                  # settings, charts styling, exceptions
 │   │   └── tests/                                   # [TEST CỦA MICROSERVICE AI]
 │   │       ├── test_greeting_fastpath.py, test_guardrails.py, test_concept_rag.py, test_ai_http_stream.py...
-│   │       └── test_agents.py, test_portfolio_watch_agent.py, test_chart.py, test_monitoring.py...
+│   │       └── test_agents.py, test_portfolio_report_agent.py, test_chart.py, test_monitoring.py...
 │   │
 │   ├── frontend/                                    # Giao diện Web App (HTML5, Vanilla CSS, SSE JS)
 │   └── deploy/                                      # Dockerfile, Docker Compose, Nginx conf, release.ps1, publish.ps1
@@ -294,7 +294,7 @@ uvicorn ai_backend.main:app --app-dir src --host 127.0.0.1 --port 8001 --reload
 
 Secret cần điền trong `.env` (mẫu tên biến ở `.env.example`):
 
-- `DATABASE_URL`: chuỗi nối PostgreSQL. Mẫu `postgresql://portfolio:portfolio@localhost:5432/portfolio_watch`. App đọc biến này, không ghép host từ file yaml.
+- `DATABASE_URL`: chuỗi nối PostgreSQL. Mẫu `postgresql://portfolio:portfolio@localhost:5432/portfolio_report`. App đọc biến này, không ghép host từ file yaml.
 - `OPENAI_API_KEYS`: bắt buộc để gọi model. Nhiều key cách nhau bằng dấu phẩy.
 - `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`: tùy chọn, để ghi trace.
 - `QDRANT_API_KEY`: tùy chọn.

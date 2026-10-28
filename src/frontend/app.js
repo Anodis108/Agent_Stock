@@ -208,7 +208,7 @@
     if (lower.indexOf("guardrail") >= 0 || lower.indexOf("gate") >= 0) return "guardrail";
     if (lower.indexOf("rewrite") >= 0) return "rewrite";
     if (lower.indexOf("supervisor") >= 0) return "supervisor";
-    if (lower.indexOf("portfolio") >= 0 || lower.indexOf("watchlist") >= 0) return "portfolio_watch";
+    if (lower.indexOf("portfolio") >= 0 || lower.indexOf("watchlist") >= 0) return "portfolio_report";
     if (lower.indexOf("price") >= 0) return "price_agent";
     if (lower.indexOf("news") >= 0) return "news_agent";
     if (lower.indexOf("indicator") >= 0) return "indicator_engine";
@@ -307,8 +307,8 @@
     "evalagent": "[System Prompt: EvalAgent / Risk Assessment]\n- Đánh giá mức độ rủi ro (none/low/medium/high) kết hợp từ biến động giá, chỉ báo kỹ thuật và tin tức.\n- Phát hiện bất thường (giá tăng/giảm mạnh vượt ngưỡng) và đề xuất cảnh báo danh mục.",
 
     // 9. PortfolioWatchAgent
-    "portfolio_watch": "[Node: portfolio_watch]\n- Quản lý danh mục đầu tư (Holdings), tính giá vốn, thị giá hiện tại, Unrealized P&L (VND & %) và tổng NAV theo từng user_id.\n- Quản lý danh sách theo dõi (Watchlist) và ngưỡng cảnh báo biến động (alert_threshold_pct).\n- Đảm bảo phản hồi khách quan, không đưa ra khuyến nghị mua bán.",
-    "portfoliowatch": "[Node: portfolio_watch]\n- Quản lý danh mục đầu tư (Holdings), tính giá vốn, thị giá hiện tại, Unrealized P&L (VND & %) và tổng NAV theo từng user_id.\n- Quản lý danh sách theo dõi (Watchlist) và ngưỡng cảnh báo biến động (alert_threshold_pct).\n- Đảm bảo phản hồi khách quan, không đưa ra khuyến nghị mua bán.",
+    "portfolio_report": "[Node: portfolio_report]\n- Quản lý danh mục đầu tư (Holdings), tính giá vốn, thị giá hiện tại, Unrealized P&L (VND & %) và tổng NAV theo từng user_id.\n- Quản lý danh sách theo dõi (Watchlist) và ngưỡng cảnh báo biến động (alert_threshold_pct).\n- Đảm bảo phản hồi khách quan, không đưa ra khuyến nghị mua bán.",
+    "portfolioreport": "[Node: portfolio_report]\n- Quản lý danh mục đầu tư (Holdings), tính giá vốn, thị giá hiện tại, Unrealized P&L (VND & %) và tổng NAV theo từng user_id.\n- Quản lý danh sách theo dõi (Watchlist) và ngưỡng cảnh báo biến động (alert_threshold_pct).\n- Đảm bảo phản hồi khách quan, không đưa ra khuyến nghị mua bán.",
 
     // 10. Answer + Output Guardrail
     "guardrail_output": "[Output Guardrail]\n- Cấm khuyên mua/bán chắc chắn.\n- Số liệu phải khớp evidence; vi phạm thì yêu cầu Answer soạn lại, hết lượt thì viết lại an toàn kèm miễn trừ trách nhiệm.",
@@ -479,7 +479,7 @@
       if (indList.length) {
         outContent += "\n\n📊 Chỉ báo kỹ thuật (Technical Indicators):\n" + indList.join("\n");
       }
-    } else if (canonicalId === "portfolio_watch" && step.output && typeof step.output === "object") {
+    } else if (canonicalId === "portfolio_report" && step.output && typeof step.output === "object") {
       var pwList = [];
       if (step.output.total_nav != null) pwList.push("  - Tổng NAV: " + Number(step.output.total_nav).toLocaleString("vi-VN") + " VND");
       if (step.output.watchlist_count != null) pwList.push("  - Số mã Watchlist: " + step.output.watchlist_count + " mã");
@@ -1185,7 +1185,7 @@
       }
 
       msgs.forEach(function (m) {
-        appendChat(m.role, m.content, null, m.chart_path, m.id, sessionId, m.source_file);
+        appendChat(m.role, m.content, parseDrawedPaths(m.chart_path), m.id, sessionId);
       });
     } catch (err) {
       if (box) {
@@ -1599,14 +1599,19 @@
     return text;
   }
 
-  function conceptSourceName(value) {
-    if (!value || typeof value !== "string") return "";
-    var base = value.split(/[/\\]/).pop().trim();
-    if (!/^[A-Za-z0-9][A-Za-z0-9_.-]{0,80}\.md$/.test(base)) return "";
-    return base;
+  // Cột messages.chart_path lưu JSON list drawed_paths (bản ghi cũ: 1 đường dẫn chuỗi)
+  function parseDrawedPaths(raw) {
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw;
+    try {
+      var parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [String(raw)];
+    } catch (_e) {
+      return [String(raw)];
+    }
   }
 
-  function appendChat(role, text, diagram, chartPath, messageId, sessionId, sourceFile) {
+  function appendChat(role, text, drawedPaths, messageId, sessionId) {
     var box = document.getElementById("chat-messages");
     if (!box) return;
     removeThinking();
@@ -1631,13 +1636,11 @@
     body.className = "msg-body";
     
     var cleanText = text || "";
-    var diagramCode = diagram && diagram.mermaid ? diagram.mermaid : null;
-    
+    var diagramCode = null;
+
     var mermaidMatch = cleanText.match(/```mermaid\n([\s\S]*?)```/);
     if (mermaidMatch) {
-      if (!diagramCode) {
-        diagramCode = mermaidMatch[1];
-      }
+      diagramCode = mermaidMatch[1];
       cleanText = cleanText.replace(/```mermaid\n[\s\S]*?```/, "").trim();
     }
     
@@ -1665,14 +1668,6 @@
       body.appendChild(textNode);
     }
 
-    var sourceName = role === "assistant" ? conceptSourceName(sourceFile) : "";
-    if (sourceName) {
-      var sourceNode = document.createElement("p");
-      sourceNode.className = "msg-source";
-      sourceNode.textContent = "Nguồn: " + sourceName;
-      body.appendChild(sourceNode);
-    }
-
     if (diagramCode && role === "assistant") {
       var diagramPanel = document.createElement("div");
       diagramPanel.className = "diagram-panel mermaid-diagram";
@@ -1680,14 +1675,12 @@
       renderMermaidInElement(diagramPanel, diagramCode);
     }
 
-    // Chart image rendering (nếu backend trả riêng chartPath mà chưa nhúng trong cleanText)
-    if (chartPath && role === "assistant") {
+    // Ảnh biểu đồ / sơ đồ (drawed_paths trên MinIO) chưa nhúng trong cleanText
+    (role === "assistant" ? drawedPaths || [] : []).forEach(function (chartPath) {
       var normChartPath = normalizeChartUrl(chartPath);
       var alreadyRendered = cleanText && (
         cleanText.indexOf(normChartPath) !== -1 ||
-        cleanText.indexOf(chartPath) !== -1 ||
-        cleanText.indexOf("@@@IMAGE") !== -1 ||
-        (cleanText.indexOf("/charts") !== -1 && cleanText.indexOf("![") !== -1)
+        cleanText.indexOf(chartPath) !== -1
       );
       if (!alreadyRendered) {
         var chartContainer = document.createElement("div");
@@ -1714,7 +1707,7 @@
         chartContainer.appendChild(hint);
         body.appendChild(chartContainer);
       }
-    }
+    });
 
     // HITL Answer Evaluation & Feedback Toolbar (Phase 6)
     if (role === "assistant") {
@@ -1821,12 +1814,10 @@
         }
 
         var finalAnswer = data.answer || streamedText || "(không có câu trả lời cuối từ Backend)";
-        var diagram = data.diagram || null;
-        var chartPath = data.chart_path || null;
         var messageId = data.message_id || null;
         var sid = data.session_id || currentSessionId;
 
-        appendChat("assistant", finalAnswer, diagram, chartPath, messageId, sid, data.source_file);
+        appendChat("assistant", finalAnswer, data.drawed_paths || [], messageId, sid);
 
         if (data.session_id) {
           currentSessionId = data.session_id;
@@ -1890,12 +1881,10 @@
         var fallbackData = await api("POST", "/chat", chatPayload);
         removeThinking();
         var answer = extractFinalAnswer(fallbackData);
-        var diagram = fallbackData.diagram || (fallbackData.result && fallbackData.result.diagram);
-        var chartPath = fallbackData.chart_path || (fallbackData.result && fallbackData.result.chart_path);
+        var drawedPaths = fallbackData.drawed_paths || (fallbackData.result && fallbackData.result.drawed_paths) || [];
         var messageId = fallbackData.message_id || (fallbackData.result && fallbackData.result.message_id);
         var sid = fallbackData.session_id || currentSessionId;
-        var sourceFile = fallbackData.source_file || (fallbackData.result && fallbackData.result.source_file);
-        appendChat("assistant", answer || "(không có câu trả lời cuối từ Backend)", diagram, chartPath, messageId, sid, sourceFile);
+        appendChat("assistant", answer || "(không có câu trả lời cuối từ Backend)", drawedPaths, messageId, sid);
         if (fallbackData && fallbackData.session_id) currentSessionId = fallbackData.session_id;
         loadSessions(false).catch(function () {});
         await applyTimelineFromBackend(fallbackData);

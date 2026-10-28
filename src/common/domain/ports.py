@@ -82,7 +82,7 @@ class IDatabase(Protocol):
 
 
 class WatchlistStore(Protocol):
-    def list_items(self, user_id: str = "default") -> list[WatchlistItem]:
+    def list_items(self, user_id: str) -> list[WatchlistItem]:
         ...
 
     def get(self, user_id: str, symbol: str) -> WatchlistItem | None:
@@ -102,7 +102,7 @@ class PriceHistoryStore(Protocol):
 
 
 class MemoryStore(Protocol):
-    def read_preferences(self, user_id: str = "default") -> dict[str, Any]:
+    def read_preferences(self, user_id: str) -> dict[str, Any]:
         ...
 
     def write_preferences(self, user_id: str, preferences: dict[str, Any]) -> None:

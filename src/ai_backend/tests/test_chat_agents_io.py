@@ -44,7 +44,7 @@ def _noop_trace(*_a, **_k):
     yield box
 
 
-def test_portfolio_watch_io(monkeypatch):
+def test_portfolio_report_io(monkeypatch):
     monkeypatch.setattr(nodes, "trace_step", _noop_trace)
     monkeypatch.setattr(
         nodes,
@@ -76,12 +76,12 @@ def test_portfolio_watch_io(monkeypatch):
         ),
     }
 
-    out = nodes.portfolio_watch_node(state, {})
+    out = nodes.portfolio_report_node(state, {})
 
-    assert out["portfolio_watch_result"]["user_id"] == "u1"
-    assert out["portfolio_watch_result"]["summary"]["total_nav"] > 0
-    assert "FPT" in out["portfolio_watch_result"]["markdown"]
-    assert "VNM" in out["portfolio_watch_result"]["markdown"]
+    assert out["portfolio_report_result"]["user_id"] == "u1"
+    assert out["portfolio_report_result"]["summary"]["total_nav"] > 0
+    assert "FPT" in out["portfolio_report_result"]["markdown"]
+    assert "VNM" in out["portfolio_report_result"]["markdown"]
     assert "NAV" in out["result"]
 
 

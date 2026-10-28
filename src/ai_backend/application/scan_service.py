@@ -27,9 +27,9 @@ DEFAULT_THRESHOLD_PCT = 3.0
 class ScanInput(CustomBaseModel):
     """Input payload cho scan service."""
     symbol: list[str]
-    user_id: str = "default"
+    user_id: str
     threshold_pct: float = DEFAULT_THRESHOLD_PCT
-    request_id: str | None = None
+    request_id: str
 
 
 class ScanOutput(CustomBaseModel):
@@ -48,7 +48,6 @@ class ScanOutput(CustomBaseModel):
     severity: dict[str, Any] | None = None
     alert: dict[str, Any] | None = None
     news_count: int = 0
-    error: str | None = None
     request_id: str | None = None
 
 
@@ -57,7 +56,7 @@ class ScanResumeInput(CustomBaseModel):
     thread_id: str
     approve: bool
     reason: str = ""
-    user_id: str = "default"
+    user_id: str
 
 
 class ScanResumeOutput(CustomBaseModel):
@@ -68,7 +67,6 @@ class ScanResumeOutput(CustomBaseModel):
     tool_call: dict[str, Any] | None = None
     alert: dict[str, Any] | None = None
     steps: list[dict[str, Any]] = Field(default_factory=list)
-    error: str | None = None
 
 
 def _symbol_view(state: dict[str, Any], sym: str, index: int) -> dict[str, Any]:
@@ -106,7 +104,6 @@ def _symbol_view(state: dict[str, Any], sym: str, index: int) -> dict[str, Any]:
         "severity": ev.severity.model_dump(mode="json") if ev is not None else None,
         "alert": alert.model_dump(mode="json") if alert is not None else None,
         "news_count": len(news.items) if news is not None and news.items else 0,
-        "error": state["error"] if "error" in state else None,
     }
 
 
@@ -190,7 +187,6 @@ class ScanService(BaseService):
             severity=one["severity"] if one else None,
             alert=one["alert"] if one else None,
             news_count=sum(r["news_count"] for r in rows),
-            error="; ".join(r["error"] for r in rows if r["error"]) or None,
             request_id=inputs.request_id,
         )
 
@@ -218,15 +214,14 @@ class ScanService(BaseService):
             thread_id=state["thread_id"] or "",
             tool_call=state["pending_tool_call"],
             alert=alert.model_dump(mode="json") if alert is not None else None,
-            error=state["error"],
         )
 
     def scan(
         self,
         symbol: list[str],
-        user_id: str = "default",
+        user_id: str,
+        request_id: str,
         threshold_pct: float = DEFAULT_THRESHOLD_PCT,
-        request_id: str | None = None,
     ) -> Any:
         """Helper gọi từ API router trả về đối tượng tương thích ScanResponse."""
         from ai_backend.api.models.scan_models import ScanAlertOut, ScanResponse
@@ -242,7 +237,6 @@ class ScanService(BaseService):
             status=out.status,
             thread_id=out.thread_id,
             tool_call=out.tool_call,
-            error=out.error,
             request_id=out.request_id,
             alerts=[ScanAlertOut(**a) for a in out.alerts],
             steps=out.steps,

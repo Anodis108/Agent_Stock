@@ -6,8 +6,8 @@ from typing import Any
 
 from fastapi import APIRouter, Depends
 
-from common.logging.logger import get_logger
-from web_backend.api.deps import AppDeps, get_app_deps
+from common.logging.logger import correlation_id_ctx, get_logger
+from web_backend.api.deps import AppDeps, get_app_deps, get_current_user_id
 from web_backend.api.helpers.validation import normalize_symbol
 from web_backend.api.models.scan import ScanRequest, ScanResponse
 
@@ -29,6 +29,7 @@ from web_backend.infra.ai_client.remote_ai_client import RemoteAiClient
 def post_scan(
     body: ScanRequest,
     deps: AppDeps = Depends(get_app_deps),
+    user_id: str = Depends(get_current_user_id),
 ) -> ScanResponse:
     cleaned_symbols = [normalize_symbol(s) for s in body.symbols if s.strip()]
     client = RemoteAiClient()
@@ -36,7 +37,8 @@ def post_scan(
 
     for s in (cleaned_symbols or []):
         try:
-            res = client.scan(symbol=s, threshold_pct=body.threshold_pct)
+            # request_id: CorrelationIdMiddleware sinh 1 lần ở biên web
+            res = client.scan(symbol=s, user_id=user_id, request_id=correlation_id_ctx.get(), threshold_pct=body.threshold_pct)
             if res.get("alert"):
                 alerts.append(res["alert"])
             elif res.get("alerts"):

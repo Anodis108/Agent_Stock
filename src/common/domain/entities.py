@@ -35,7 +35,7 @@ class AlertStatus(str, Enum):
 class User(CustomBaseModel):
     """Thực thể người dùng trong hệ thống đa tài khoản."""
 
-    user_id: str = "default"
+    user_id: str
     username: str = "Default User"
     risk_profile: str = "moderate"
     alert_threshold_pct: float = 3.0
@@ -44,7 +44,7 @@ class User(CustomBaseModel):
 class Holding(CustomBaseModel):
     """Thực thể cổ phiếu nắm giữ trong danh mục đầu tư."""
 
-    user_id: str = "default"
+    user_id: str
     ticker: str = Field(min_length=1)
     shares: int = Field(ge=0)
     buy_price: float = Field(ge=0.0)
@@ -60,7 +60,7 @@ class WatchlistItem(CustomBaseModel):
 
     symbol: str = Field(min_length=1)
     threshold_pct: float = Field(ge=0, description="Ngưỡng % biến động để cảnh báo")
-    user_id: str = "default"
+    user_id: str
     created_at: str | None = None
 
 

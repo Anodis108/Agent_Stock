@@ -48,7 +48,7 @@ def test_golden_v5_structure_and_counts(file_path: Path):
     assert file_path.is_file(), f"File không tồn tại: {file_path}"
 
     data = yaml.safe_load(file_path.read_text(encoding="utf-8"))
-    assert data.get("dataset") == "portfolio_watch"
+    assert data.get("dataset") == "portfolio_report"
     assert str(data.get("version")) == "5"
     assert data.get("changelog"), "Phải có trường changelog"
 
@@ -103,7 +103,7 @@ def test_golden_v6_structure_and_slices(file_path: Path):
     assert file_path.is_file(), f"File không tồn tại: {file_path}"
 
     data = yaml.safe_load(file_path.read_text(encoding="utf-8"))
-    assert data.get("dataset") == "portfolio_watch"
+    assert data.get("dataset") == "portfolio_report"
     assert str(data.get("version")) == "6"
     assert data.get("changelog"), "Phải có trường changelog"
 

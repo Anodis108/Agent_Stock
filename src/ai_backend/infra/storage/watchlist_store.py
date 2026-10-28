@@ -13,7 +13,7 @@ class PgWatchlistStore:
     def _conn(self) -> Any:
         return connect(self._schema)
 
-    def list_items(self, user_id: str = "default") -> list[WatchlistItem]:
+    def list_items(self, user_id: str) -> list[WatchlistItem]:
         with self._conn() as conn:
             rows = conn.execute(
                 "SELECT user_id, symbol, threshold_pct FROM watchlist "

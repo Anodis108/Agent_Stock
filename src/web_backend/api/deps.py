@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import Header, Query
+from fastapi import Header, HTTPException, Query
 
 from dataclasses import dataclass
 from typing import Any
@@ -59,10 +59,11 @@ def get_current_user_id(
     x_user_id: str | None = Header(default=None, alias="X-User-ID"),
     user_id: str | None = Query(default=None),
 ) -> str:
-    """Xác định user_id hiện tại từ HTTP Header X-User-ID hoặc query param user_id."""
-    raw = x_user_id or user_id or "default"
-    cleaned = raw.strip()
-    return cleaned if cleaned else "default"
+    """user_id hiện tại từ HTTP Header X-User-ID hoặc query param user_id — bắt buộc, thiếu → 400 (không tự gán)."""
+    cleaned = (x_user_id or user_id or "").strip()
+    if not cleaned:
+        raise HTTPException(status_code=400, detail="Thiếu user_id (header X-User-ID hoặc query user_id)")
+    return cleaned
 
 
 __all__ = [

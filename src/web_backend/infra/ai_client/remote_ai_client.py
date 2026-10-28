@@ -55,21 +55,14 @@ class RemoteAiClient:
         *,
         question: str,
         session_id: str | None = None,
-        user_id: str = "default",
-        request_id: str | None = None,
+        user_id: str,
+        request_id: str,
         is_disconnected: Callable[[], bool] | None = None,
     ) -> Iterator[tuple[str, dict[str, Any]]]:
         """Stream SSE các sự kiện từ AI Backend (/v1/chat/stream-sse)."""
-        payload: dict[str, Any] = {
-            "question": question,
-            "user_id": user_id,
-        }
-        if session_id:
-            payload["session_id"] = session_id
-
         return stream_remote_sse(
-            path="/v1/chat/stream-sse",
-            payload=payload,
+            question=question,
+            user_id=user_id,
             request_id=request_id,
             is_disconnected=is_disconnected,
         )
@@ -78,19 +71,18 @@ class RemoteAiClient:
         self,
         *,
         question: str,
-        user_id: str = "default",
+        user_id: str,
+        request_id: str,
         session_id: str | None = None,
-        request_id: str | None = None,
     ) -> dict[str, Any]:
         """Gửi yêu cầu hỏi đáp trực tiếp (POST /v1/chat)."""
         payload: dict[str, Any] = {
             "question": question,
             "user_id": user_id,
+            "request_id": request_id,
         }
         if session_id:
             payload["session_id"] = session_id
-        if request_id:
-            payload["request_id"] = request_id
 
         return post_json("/v1/chat", payload, request_id=request_id)
 
@@ -98,9 +90,9 @@ class RemoteAiClient:
         self,
         *,
         symbol: str,
-        user_id: str = "default",
+        user_id: str,
+        request_id: str,
         threshold_pct: float | None = None,
-        request_id: str | None = None,
     ) -> dict[str, Any]:
         """Kích hoạt quét tín hiệu kỹ thuật từ AI Backend (POST /v1/scan)."""
         return ai_scan(
@@ -115,7 +107,8 @@ class RemoteAiClient:
         thread_id: str,
         approve: bool,
         reason: str = "",
-        user_id: str = "default",
+        *,
+        user_id: str,
     ) -> dict[str, Any]:
         """Duyệt / từ chối hành động scan đang chờ rồi resume graph (POST /v1/scan/resume)."""
         return ai_scan_resume(thread_id=thread_id, approve=approve, reason=reason, user_id=user_id)
