@@ -25,7 +25,7 @@ from ai_backend.domain.agents.scan.graph import build_graph as build_scan_graph
 from ai_backend.infra.llm.completion import chat_parsed, chat_stream
 from ai_backend.infra.llm.params import DETERMINISTIC
 from ai_backend.infra.llm.structured import call_llm_structured
-from ai_backend.infra.monitoring.tracing import trace_step, trace_stream
+from ai_backend.infra.monitoring.tracing import _current, current_span, trace_step, trace_stream
 from ai_backend.infra.prompts import registry
 from ai_backend.infra.storage.long_term_memory import recall_long_term, save_to_long_term
 from ai_backend.shared.logging import get_logger
@@ -46,7 +46,7 @@ def guardrail_input_node(state: ChatTeamState, config: RunnableConfig) -> dict:
     clear_semantic_question()  # đầu lượt: xoá câu hỏi semantic cache của lượt trước
     q = str(state["messages"][-1].content)
     res = check_input_guardrail(q)
-    with trace_step(get_runtime().context["trace_span"], "guardrail_input", input=q) as box:
+    with trace_step(current_span(), "guardrail_input", input=q, as_type="guardrail") as box:
         box["output"] = {"is_safe": res.is_safe, "category": res.category, "reason": res.reason}
     # Khởi tạo field node sau đọc thẳng state[...] kể cả khi rewrite / worker không chạy (answer dựng final_answer)
     return {
@@ -88,7 +88,7 @@ async def rewrite_node(state: ChatTeamState, config: RunnableConfig) -> dict:
         {"role": "system", "content": _REWRITE_SYSTEM},
         {"role": "user", "content": f"Hội thoại trước:\n{json.dumps(conversation, ensure_ascii=False)}\n\nCâu hỏi mới: {q}"},
     ]
-    with trace_step(get_runtime().context["trace_span"], "rewrite_question", input=q) as box:
+    with trace_step(current_span(), "rewrite_question", input=q, as_type="generation") as box:
         try:
             out = chat_parsed(messages, RewrittenQuestion, DETERMINISTIC)
         except Exception as exc:  # noqa: BLE001 — LLM lỗi: giữ nguyên câu hỏi
@@ -117,13 +117,20 @@ async def scan_team_node(state: ChatTeamState, config: RunnableConfig) -> dict:
     Bọc trong node (không nhúng thẳng): chat chỉ nhận dữ liệu + tóm tắt `result`, không biết worker bên trong scan.
     """
     task = f"Thu thập dữ liệu để trả lời câu hỏi (KHÔNG quét cảnh báo, không soạn cảnh báo).\n{state['task']}"
-    out = await build_scan_graph().ainvoke(
-        {"prices": [], "news": [], "eval_result": None, "symbols": [], **state, "task": task, "notes": {}}, config
-    )  # symbols rỗng: worker scan tự đọc mã trong task
-    update = {
-        "scan_result": ScanResult(db_results=out["db_results"] if "db_results" in out else None),
-    }
-    update["result"] = "\n".join(f"[{w}] {n}" for w, n in (out["notes"] or {}).items()) or "(không thu thập được dữ liệu)"
+    with trace_step(current_span(), "scan_team", input={"task": task}, as_type="agent") as box:
+        token = _current.set(box["_span"]) if box.get("_span") else None
+        try:
+            out = await build_scan_graph().ainvoke(
+                {"prices": [], "news": [], "eval_result": None, "symbols": [], **state, "task": task, "notes": {}}, config
+            )  # symbols rỗng: worker scan tự đọc mã trong task
+            update = {
+                "scan_result": ScanResult(db_results=out["db_results"] if "db_results" in out else None),
+            }
+            update["result"] = "\n".join(f"[{w}] {n}" for w, n in (out["notes"] or {}).items()) or "(không thu thập được dữ liệu)"
+            box["output"] = (update["result"] or "")[:500]
+        finally:
+            if token is not None:
+                _current.reset(token)
     return update
 
 
@@ -208,7 +215,7 @@ def portfolio_report_node(state: ChatTeamState, config: RunnableConfig) -> dict:
 
     user_id = state["user_id"]
     db = state["scan_result"].db_results if state["scan_result"] else None
-    with trace_step(get_runtime().context["trace_span"], "portfolio_report", input=user_id) as box:
+    with trace_step(current_span(), "portfolio_report", input=user_id, as_type="chain") as box:
         summary, watchlist, parts = None, [], []
         error = db.error if db else "chưa có dữ liệu DB (scan_team / db_agent chưa chạy)"
         if db:
@@ -232,8 +239,10 @@ def concept_retrieval_node(state: ChatTeamState, config: RunnableConfig) -> dict
     from ai_backend.infra.qdrant.answer import NOT_IN_DOCS, answer_concept
     from ai_backend.infra.storage.long_term_memory import get_qdrant_client
 
-    client = get_runtime().context["concept_client"] or get_qdrant_client()
-    found_answer = NOT_IN_DOCS if client is None else answer_concept(state["question"] or "", client=client).answer
+    with trace_step(current_span(), "concept_retrieval", input=state.get("question"), as_type="retriever") as box:
+        client = get_runtime().context["concept_client"] or get_qdrant_client()
+        found_answer = NOT_IN_DOCS if client is None else answer_concept(state["question"] or "", client=client).answer
+        box["output"] = (found_answer or "")[:500]
     return {"result": found_answer}
 
 
@@ -305,15 +314,18 @@ def answer_node(state: ChatTeamState, config: RunnableConfig) -> dict:
         {"role": "user", "content": f"Nhiệm vụ: {state['task']}\n\nGhi chú:\n{notes_text}"},
     ]
 
-    with trace_step(get_runtime().context["trace_span"], "answer", input={"task": state["task"][:200], "notes": list(state["notes"])}) as box:
-        text = ""
-
-        for token in trace_stream("answer_stream", state["task"], chat_stream(messages, DETERMINISTIC)):
-            text += token
-            writer(token)
-        text = _sanitize(text.strip())
-
-        box["output"] = text[:500]
+    with trace_step(current_span(), "answer", input={"task": state["task"][:200], "notes": list(state["notes"])}, as_type="generation") as box:
+        token = _current.set(box["_span"]) if box.get("_span") else None
+        try:
+            text = ""
+            for tok in trace_stream("answer_stream", state["task"], chat_stream(messages, DETERMINISTIC), parent=box.get("_span")):
+                text += tok
+                writer(tok)
+            text = _sanitize(text.strip())
+            box["output"] = text[:500]
+        finally:
+            if token is not None:
+                _current.reset(token)
 
     final = AnswerQuestionResult(
         question=state["question"] or "",
@@ -328,11 +340,13 @@ def answer_node(state: ChatTeamState, config: RunnableConfig) -> dict:
 
 def save_long_term_memory_node(state: ChatTeamState, config: RunnableConfig) -> dict:
     """Cuối lượt: ghi hội thoại ngắn hạn; câu đã qua rewrite (không bị chặn / chào) → lưu sự thật đáng nhớ dài hạn."""
-    question, answer = state["question"] or "", state["final_answer"].answer
-    memory_store = get_runtime().context["memory_store"]
-    if memory_store:
-        memory_store.append_conversation(state["user_id"], "user", question)
-        memory_store.append_conversation(state["user_id"], "assistant", answer)
-    if state["rewritten"]:
-        store_memory(state["user_id"], question, answer)
+    with trace_step(current_span(), "save_long_term_memory", input=state.get("question"), as_type="chain") as box:
+        question, answer = state["question"] or "", state["final_answer"].answer
+        memory_store = get_runtime().context["memory_store"]
+        if memory_store:
+            memory_store.append_conversation(state["user_id"], "user", question)
+            memory_store.append_conversation(state["user_id"], "assistant", answer)
+        if state["rewritten"]:
+            store_memory(state["user_id"], question, answer)
+        box["output"] = {"saved_long_term": bool(state["rewritten"])}
     return {"messages": [AIMessage(content=answer)]}  # trả lời cuối → AssistantState.messages của graph gốc

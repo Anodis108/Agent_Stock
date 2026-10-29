@@ -12,7 +12,6 @@ from functools import lru_cache
 from typing import Any
 
 from langgraph.graph import END, START, StateGraph
-from langgraph.runtime import get_runtime
 from pydantic import BaseModel, Field
 
 from ai_backend.domain.agents.chat.draw_agent.graph import build_draw_agent
@@ -28,10 +27,24 @@ from ai_backend.domain.agents.chat.nodes import (
 )
 from ai_backend.domain.agents.chat.state import ChatTeamState
 from ai_backend.domain.agents.multi_agent._llm import base_llm
-from ai_backend.infra.monitoring.tracing import trace_step
+from ai_backend.infra.monitoring.tracing import _current, current_span, trace_step
 
 # ── Team chat theo multi_agent/hierarchical.py ───────────────────────────────────────────────────
 # chat_supervisor (LLM: task + notes → next_agent) → <worker> → collect → chat_supervisor; 'done' → answer.
+
+
+async def draw_agent_node(state: dict, config=None) -> dict:
+    with trace_step(current_span(), "draw_agent", input={"task": state.get("task")}, as_type="agent") as box:
+        token = _current.set(box["_span"]) if box.get("_span") else None
+        try:
+            out = await build_draw_agent().ainvoke(state, config) if config is not None else await build_draw_agent().ainvoke(state)
+            if out.get("result") is not None:
+                box["output"] = str(out["result"])[:500]
+            return out
+        finally:
+            if token is not None:
+                _current.reset(token)
+
 
 # Tên worker cho supervisor routing + collect
 CHAT_WORKERS = [
@@ -58,21 +71,34 @@ class _RoutingDecision(BaseModel):
 
 
 def _make_collect_node(worker: str):
-    """Ghi kết quả worker vào notes + completed_workers (supervisor đọc để không gọi lại)."""
+    """Ghi kết quả worker vào notes + completed_workers; span `<worker>_collect`."""
 
     def collect(state: dict) -> dict[str, Any]:
-        return {"notes": {**state["notes"], worker: state["result"] or ""}, "completed_workers": [worker]}
+        with trace_step(current_span(), f"{worker}_collect", input={"result": (state.get("result") or "")[:300]}, as_type="chain") as box:
+            notes = {**state["notes"], worker: state["result"] or ""}
+            box["output"] = {"notes_key": worker}
+            return {"notes": notes, "completed_workers": [worker]}
 
     return collect
+
 
 def _make_route_supervisor(worker_domains: list[str]):
     def route_supervisor(state: ChatTeamState) -> str:
         return state["next_agent"] if state["next_agent"] in worker_domains else "final_answer"
+
     return route_supervisor
+
 
 def _make_supervisor_node(name: str, system_prompt: str, worker_domains: list[str]):
     async def supervisor_node(state: dict) -> dict[str, Any]:
-        with trace_step(get_runtime().context["trace_span"], name, input={"task": state["task"], "notes": state["notes"]}):
+        round_n = len(state.get("completed_workers") or []) + 1
+        with trace_step(
+            current_span(),
+            name,
+            input={"task": state["task"], "notes": state["notes"]},
+            metadata={"round": round_n},
+            as_type="generation",
+        ) as box:
             notes_text = "\n".join(f"[{d}] {n}" for d, n in state["notes"].items()) or "(chưa có)"
             prompt = f"Nhiệm vụ: {state['task']}\n\nGhi chú từ worker đã chạy:\n{notes_text}"
 
@@ -80,6 +106,7 @@ def _make_supervisor_node(name: str, system_prompt: str, worker_domains: list[st
                 [{"role": "system", "content": system_prompt}, {"role": "user", "content": prompt}]
             )
             next_agent = decision.next_agent if decision.next_agent in [*worker_domains, "done"] else "done"
+            box["output"] = {"next_agent": next_agent, "round": round_n}
         return {"next_agent": next_agent}
 
     return supervisor_node
@@ -95,7 +122,7 @@ def _build_graph():
     graph.add_node("answer", answer_node)
     graph.add_node("save_long_term_memory", save_long_term_memory_node)
 
-    graph.add_node("draw_agent", build_draw_agent())
+    graph.add_node("draw_agent", draw_agent_node)
 
     graph.add_node("scan_team", scan_team_node)
     graph.add_node("portfolio_report", portfolio_report_node)
@@ -115,6 +142,3 @@ def _build_graph():
     graph.add_edge("answer", "save_long_term_memory")
     graph.add_edge("save_long_term_memory", END)
     return graph.compile()
-
-
-

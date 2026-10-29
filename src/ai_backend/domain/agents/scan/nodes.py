@@ -19,7 +19,7 @@ from ai_backend.domain.guardrails.output_checks import strip_buy_sell
 from ai_backend.domain.agents.scan.state import ScanHierarchicalState
 from ai_backend.infra.llm.params import DETERMINISTIC
 from ai_backend.infra.llm.structured import call_llm_structured
-from ai_backend.infra.monitoring.tracing import trace_step
+from ai_backend.infra.monitoring.tracing import current_span, trace_step
 from ai_backend.infra.prompts import registry
 from common.domain.entities import AlertStatus, FinalAlert
 from common.transport.schemas import ClassifierOutput, SynthesisAlertOutput
@@ -109,7 +109,7 @@ async def event_classifier_node(state: ScanHierarchicalState, config: RunnableCo
             threshold_pct=threshold,
             news_titles=titles,
         )
-        with trace_step(get_runtime().context["trace_span"], "event_classifier", input=sym) as box:
+        with trace_step(current_span(), "event_classifier", input=sym, as_type="generation") as box:
             out = call_llm_structured([{"role": "user", "content": prompt}], ClassifierOutput, params=DETERMINISTIC)
             routing = out.to_routing_decision()
             box["output"] = {"symbol": sym, "route": routing.route.value, "reason": routing.reason}
@@ -141,7 +141,7 @@ async def synthesis_node(state: ScanHierarchicalState, config: RunnableConfig) -
             preferences="(mặc định)",
             violations="(không)",
         )
-        with trace_step(get_runtime().context["trace_span"], "synthesis_agent", input=sym) as box:
+        with trace_step(current_span(), "synthesis_agent", input=sym, as_type="generation") as box:
             out = call_llm_structured([{"role": "user", "content": prompt}], SynthesisAlertOutput, params=DETERMINISTIC)
             alert = FinalAlert(
                 id=str(uuid.uuid4()),

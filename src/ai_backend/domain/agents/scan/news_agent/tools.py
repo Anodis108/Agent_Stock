@@ -8,7 +8,7 @@ from langchain_core.tools import tool
 from langgraph.runtime import get_runtime
 
 from ai_backend.domain.agents.scan.news_agent.state import NewsAgentResult
-from ai_backend.infra.monitoring.tracing import trace_step
+from ai_backend.infra.monitoring.tracing import current_span, trace_step
 
 
 def news_from_tool_artifacts(message_worker: list) -> list[NewsAgentResult]:
@@ -28,7 +28,7 @@ def get_stock_news(symbol: str, query: str = ""):
     """Lấy tin tức doanh nghiệp mới nhất của MỘT mã cổ phiếu; `query` (tuỳ chọn) để lọc chủ đề (vd: "lợi nhuận")."""
     sym = symbol.strip().upper()
     deps = get_runtime().context
-    with trace_step(deps["trace_span"], "news_agent.fetch_news", input={"symbol": sym, "query": query}) as box:
+    with trace_step(current_span(), "news_agent.fetch_news", input={"symbol": sym, "query": query}, as_type="tool") as box:
         try:
             items = deps["news_source"].fetch_news(sym, query=query or sym, days=deps["news_days"]) or []
             n = NewsAgentResult(symbol=sym, items=items)

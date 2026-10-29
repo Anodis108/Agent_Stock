@@ -8,7 +8,7 @@ from langchain_core.tools import tool
 from langgraph.runtime import get_runtime
 
 from ai_backend.domain.agents.scan.price_agent.state import PriceAgentResult
-from ai_backend.infra.monitoring.tracing import trace_step
+from ai_backend.infra.monitoring.tracing import current_span, trace_step
 
 
 def prices_from_tool_artifacts(message_worker: list) -> list[PriceAgentResult]:
@@ -27,7 +27,7 @@ def prices_from_tool_artifacts(message_worker: list) -> list[PriceAgentResult]:
 def get_stock_price(symbol: str):
     """Lấy giá đóng cửa mới nhất, giá phiên trước và % thay đổi của MỘT mã cổ phiếu (vd: FPT)."""
     sym = symbol.strip().upper()
-    with trace_step(get_runtime().context["trace_span"], "price_agent.fetch_quote", input={"symbol": sym}) as box:
+    with trace_step(current_span(), "price_agent.fetch_quote", input={"symbol": sym}, as_type="tool") as box:
         try:
             q = get_runtime().context["price_source"].fetch_latest_close(sym)
             change = (q.latest_close - q.prev_close) / q.prev_close * 100 if q.latest_close and q.prev_close else None
