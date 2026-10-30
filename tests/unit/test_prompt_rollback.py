@@ -85,7 +85,7 @@ def test_rollback_refuses_when_already_oldest(tmp_path: Path):
 
 
 def test_rollback_keeps_lint_clean(tmp_path: Path):
-    from backend.infra.llm.prompt_lint import lint_prompts_dir
+    from ai_backend.infra.prompts.lint import lint_prompts_dir
 
     prompt_dir = _write_prompt(
         tmp_path,

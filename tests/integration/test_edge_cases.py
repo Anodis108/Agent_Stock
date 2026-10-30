@@ -3,7 +3,7 @@
 Covers:
 1. Unknown / non-existent ticker (e.g. XYZ) -> graceful polite message & suggestions.
 2. Empty portfolio state -> clear guidance to add the first stock (both Web UI and Chat).
-3. LLM failure -> Provider Cascade (Ollama / vLLM) and Heuristic Fallback engine.
+3. LLM failure -> Heuristic Fallback engine.
 """
 
 from __future__ import annotations
@@ -20,9 +20,6 @@ from backend.agents.answer_composer.nodes import (
 from backend.agents.price_agent.nodes import run_price_agent
 from backend.domain.ports import PriceQuote
 from backend.graph.chat import build_chat_graph
-from backend.infra.llm.providers import call_with_backend_fallback, resolve_backend_chain
-
-
 def test_edge_case_unknown_ticker_xyz_price_and_composer(monkeypatch):
     """Mã không tồn tại (VD: XYZ): Thông báo không tìm thấy mã và gợi ý tra cứu mã VN30."""
     mock_price_source = MagicMock()
@@ -89,37 +86,6 @@ def test_edge_case_empty_portfolio_chat_guidance():
     assert "Bước 1" in ans
     assert "Bước 2" in ans
     assert "Bước 3" in ans
-
-
-def test_edge_case_llm_provider_cascade_resolution(monkeypatch):
-    """Khi primary backend là openai và không có config tùy biến, tự động cascade sang ollama, vllm."""
-    from backend.shared.settings import settings
-
-    monkeypatch.setattr(settings, "llm_backend", "openai")
-    monkeypatch.setattr(settings, "llm_fallback_backends", "")
-
-    chain = resolve_backend_chain()
-    assert chain[0] == "openai"
-    assert "ollama" in chain
-    assert "vllm" in chain
-
-
-def test_edge_case_llm_fallback_cascade_execution():
-    """Khi primary provider lỗi, call_with_backend_fallback thử provider tiếp theo."""
-    attempts = []
-
-    def mock_backend_fn(backend_name: str | None):
-        attempts.append(backend_name)
-        if backend_name == "openai" or backend_name is None:
-            raise ConnectionError("OpenAI API unreachable")
-        if backend_name == "ollama":
-            return "SUCCESS_FROM_OLLAMA"
-        return "SUCCESS"
-
-    with patch("backend.infra.llm.providers.resolve_backend_chain", return_value=["openai", "ollama", "vllm"]):
-        result = call_with_backend_fallback(mock_backend_fn)
-        assert result == "SUCCESS_FROM_OLLAMA"
-        assert attempts == [None, "ollama"]
 
 
 def test_edge_case_all_llm_providers_fail_triggers_heuristic_fallback():

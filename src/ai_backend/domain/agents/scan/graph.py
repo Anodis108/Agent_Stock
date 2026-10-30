@@ -17,7 +17,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode
 from pydantic import BaseModel, Field
 
-from ai_backend.domain.agents.multi_agent._llm import base_llm
+from ai_backend.infra.llm.client import base_llm
 from ai_backend.domain.agents.scan.db_agent.graph import build_db_agent
 from ai_backend.domain.agents.scan.eval_agent.graph import build_eval_agent
 from ai_backend.domain.agents.scan.news_agent.graph import build_news_agent

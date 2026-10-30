@@ -61,7 +61,7 @@ def test_http_transport_proxies_chat_stream(client: TestClient, monkeypatch):
 
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
     monkeypatch.setattr(
-        "ai_backend.infra.llm.account_snapshot.load_account_snapshot",
+        "ai_backend.infra.session.account_snapshot.load_account_snapshot",
         lambda user_id: {
             "watchlist": [
                 {"symbol": "HPG", "threshold_pct": 3.0, "user_id": user_id}
@@ -273,7 +273,7 @@ def test_ui_chat_post_only_forwards_ai_sse(client: TestClient, monkeypatch):
 def test_http_stream_connection_error_is_sse_event(client: TestClient, monkeypatch):
     monkeypatch.setenv("AI_TRANSPORT", "http")
     monkeypatch.setattr(
-        "ai_backend.infra.llm.account_snapshot.load_account_snapshot",
+        "ai_backend.infra.session.account_snapshot.load_account_snapshot",
         lambda user_id: {"watchlist": [], "holdings": []},
     )
 
@@ -289,8 +289,8 @@ def test_http_stream_connection_error_is_sse_event(client: TestClient, monkeypat
 
 
 def test_ai_service_chat_stream_endpoint(monkeypatch):
-    from ai_backend.infra.llm.service import app as ai_app
-    from ai_backend.infra.llm import chat_stream
+    from ai_backend.main import app as ai_app
+    from ai_backend.application import chat_service as chat_stream
 
     def fake_events(*_args, **_kwargs):
         yield ("token", {"delta": "z"})
@@ -306,7 +306,7 @@ def test_ai_service_chat_stream_endpoint(monkeypatch):
 
 
 def test_iter_swarm_events_has_no_session_fields(monkeypatch):
-    from ai_backend.infra.llm import chat_stream
+    from ai_backend.application import chat_service as chat_stream
 
     def fake_answer(*_args, **kwargs):
         kwargs["event_callback"]("token", {"delta": "ab"})
@@ -360,7 +360,7 @@ def test_http_chat_and_scan_carry_lists_only_when_needed(monkeypatch):
     monkeypatch.setenv("AI_TRANSPORT", "http")
     monkeypatch.setenv("AI_BASE_URL", "http://ai.test:8001")
     monkeypatch.setattr(
-        "ai_backend.infra.llm.account_snapshot.load_account_snapshot",
+        "ai_backend.infra.session.account_snapshot.load_account_snapshot",
         _snapshot,
     )
     seen: list[tuple[str, dict]] = []
@@ -387,7 +387,7 @@ def test_http_chat_and_scan_carry_lists_only_when_needed(monkeypatch):
 
 
 def test_concept_questions_omit_watchlist_and_holdings(monkeypatch):
-    from ai_backend.infra.llm.account_snapshot import (
+    from ai_backend.infra.session.account_snapshot import (
         is_concept_question,
         question_needs_account_lists,
     )
@@ -419,7 +419,7 @@ def test_concept_questions_omit_watchlist_and_holdings(monkeypatch):
     monkeypatch.setenv("AI_TRANSPORT", "http")
     monkeypatch.setenv("AI_BASE_URL", "http://ai.test:8001")
     monkeypatch.setattr(
-        "ai_backend.infra.llm.account_snapshot.load_account_snapshot",
+        "ai_backend.infra.session.account_snapshot.load_account_snapshot",
         _snapshot,
     )
     seen: list[dict] = []
@@ -438,134 +438,6 @@ def test_concept_questions_omit_watchlist_and_holdings(monkeypatch):
     for payload in seen:
         assert "watchlist" not in payload
         assert "holdings" not in payload
-
-
-def test_v1_scan_uses_watchlist_from_body(monkeypatch):
-    from ai_backend.infra.llm.service import app as ai_app
-    from ai_backend.api.routers import v1 as ai_routes
-    from web_backend.api.deps import get_app_deps
-
-    class BoomStore:
-        def get(self, *_args, **_kwargs):
-            raise AssertionError("AI không được SELECT watchlist")
-
-        def list_items(self, *_args, **_kwargs):
-            raise AssertionError("AI không được SELECT watchlist")
-
-    captured: dict[str, object] = {}
-
-    def fake_scan(symbol, **kwargs):
-        captured["store"] = kwargs["watchlist_store"]
-        item = kwargs["watchlist_store"].get(kwargs["user_id"], symbol)
-        return SimpleNamespace(
-            symbol=symbol,
-            routing=SimpleNamespace(route="bình thường", reason="ok"),
-            steps=[],
-            threshold_pct=item.threshold_pct,
-            gate1_action=None,
-            gate2_pending=False,
-            error=None,
-            price=SimpleNamespace(
-                symbol=symbol,
-                latest_close=1,
-                prev_close=1,
-                change_pct=0,
-                error=None,
-            ),
-            news=SimpleNamespace(items=[], error=None),
-            severity=None,
-            alert=None,
-            pending_events=[],
-        )
-
-    monkeypatch.setattr(ai_routes, "scan_symbol", fake_scan)
-    ai_app.dependency_overrides[get_app_deps] = lambda: SimpleNamespace(
-        price_source=None,
-        news_source=None,
-        history_store=None,
-        memory_store=None,
-        notifier=None,
-        watchlist_store=BoomStore(),
-    )
-    try:
-        resp = TestClient(ai_app).post(
-            "/v1/scan",
-            json={
-                "symbol": "HPG",
-                "user_id": "user_a",
-                "watchlist": [
-                    {"symbol": "HPG", "threshold_pct": 4.5, "user_id": "user_a"}
-                ],
-                "holdings": [
-                    {
-                        "symbol": "FPT",
-                        "quantity": 2,
-                        "avg_buy_price": 90,
-                        "user_id": "user_a",
-                    }
-                ],
-            },
-        )
-    finally:
-        ai_app.dependency_overrides.clear()
-
-    assert resp.status_code == 200
-    assert resp.json()["threshold_pct"] == 4.5
-    assert captured["store"].__class__.__name__ == "SnapshotWatchlistStore"
-
-
-def test_v1_chat_forwards_lists_and_does_not_touch_sessions(monkeypatch):
-    from pathlib import Path
-
-    from ai_backend.infra.llm.service import app as ai_app
-    from ai_backend.api.routers import v1 as ai_routes
-    from web_backend.api.deps import get_app_deps
-
-    seen: dict[str, object] = {}
-
-    def fake_answer(question, **kwargs):
-        seen["watchlist_store"] = kwargs["watchlist_store"]
-        seen["kwargs"] = kwargs
-        return SimpleNamespace(
-            answer="ok",
-            steps=[],
-            question=question,
-            rewritten=SimpleNamespace(symbol="FPT", rewritten=question),
-            routing=SimpleNamespace(route="price_lookup", agents_to_call=[]),
-            error=None,
-            price=None,
-            eval_result=None,
-            news=None,
-        )
-
-    monkeypatch.setattr(ai_routes, "run_chat_graph", fake_answer)
-    ai_app.dependency_overrides[get_app_deps] = lambda: SimpleNamespace(
-        price_source=None,
-        news_source=None,
-        history_store=None,
-        memory_store=None,
-        watchlist_store=None,
-    )
-    try:
-        resp = TestClient(ai_app).post(
-            "/v1/chat",
-            json={
-                "question": "Danh mục của tôi",
-                "user_id": "user_a",
-            },
-        )
-    finally:
-        ai_app.dependency_overrides.clear()
-
-    assert resp.status_code == 200
-    assert seen["kwargs"]["account_holdings"] is None
-    assert seen["watchlist_store"] is None
-    routes_path = Path(__file__).resolve().parents[1] / "api" / "routers" / "v1.py"
-    if not routes_path.exists():
-        routes_path = Path(__file__).resolve().parents[2] / "src" / "ai_backend" / "api" / "routers" / "v1.py"
-    text = routes_path.read_text(encoding="utf-8")
-    assert "SessionRepository" not in text
-    assert "FROM sessions" not in text
 
 
 def test_portfolio_agent_uses_db_agent_holdings(monkeypatch):
@@ -604,7 +476,7 @@ def test_closing_the_chat_stream_stops_the_pipeline(monkeypatch):
     from web_backend.api.routers.chat import ChatRequest, stream_chat_generator
     import ai_backend.domain.agents.chat.graph as answer_mod
     from ai_backend.domain.agents.events import StreamCancelledError, check_stream_cancelled
-    from ai_backend.infra.llm import chat_stream
+    from ai_backend.application import chat_service as chat_stream
     import common.transport.transport as transport
 
 

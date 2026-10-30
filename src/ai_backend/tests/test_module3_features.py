@@ -10,7 +10,6 @@ from ai_backend.infra.eval.eval_cache import get_cached, prompt_hash_from_messag
 from ai_backend.application.eval.run import eval_one_case
 from ai_backend.infra.cost.tracker import BudgetExceededError, check_budget_or_raise, reset_cost_tracker
 from ai_backend.infra.prompts import pick_prompt_version
-from ai_backend.infra.llm.providers import resolve_backend_chain, resolve_model_chain
 from common.settings import settings
 
 
@@ -39,16 +38,6 @@ def test_prompt_registry_accepts_v1_alias():
     assert p.version == 1
 
 
-def test_resolve_model_chain_dedupes():
-    chain = resolve_model_chain("gpt-4o-mini")
-    assert chain[0] == "gpt-4o-mini"
-
-
-def test_resolve_backend_chain_includes_primary():
-    chain = resolve_backend_chain()
-    assert chain[0] == settings.llm_backend.strip().lower()
-
-
 def test_eval_cache_roundtrip(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "eval_cache_enabled", True)
     monkeypatch.setattr(settings, "eval_cache_dir", str(tmp_path))
@@ -72,6 +61,7 @@ def test_chat_cache_respects_model_param(monkeypatch):
         set_llm_cache_context,
     )
     from ai_backend.infra.cache.semantic import get_semantic_cache
+    from ai_backend.infra.cache.tiered import chat_cached
     from ai_backend.infra.llm import completion as completion_mod
 
     get_exact_cache().clear()
@@ -93,7 +83,10 @@ def test_chat_cache_respects_model_param(monkeypatch):
     fake_client = MagicMock()
     fake_client.chat.completions.create = fake_create
     monkeypatch.setattr(completion_mod, "get_client", lambda: fake_client)
-    monkeypatch.setattr(completion_mod, "retry_with_backoff", lambda fn, **kw: fn())
+    monkeypatch.setattr(
+        "ai_backend.infra.llm.resilience.retry_with_backoff",
+        lambda fn, **kw: fn(),
+    )
     monkeypatch.setenv("EXACT_CACHE_ENABLED", "true")
     monkeypatch.setenv("SEMANTIC_CACHE_ENABLED", "false")
 
@@ -105,13 +98,13 @@ def test_chat_cache_respects_model_param(monkeypatch):
     )
     heavy = "gpt-4o"
     light = settings.llm_model
-    first = completion_mod.chat(messages, model=heavy)
+    first = chat_cached(messages, model=heavy)
     assert first == f"ans-{heavy}"
     assert calls == [heavy]
-    second = completion_mod.chat(messages, model=heavy)
+    second = chat_cached(messages, model=heavy)
     assert second == f"ans-{heavy}"
     assert len(calls) == 1  # cache hit — không gọi API lần 2
-    third = completion_mod.chat(messages, model=light)
+    third = chat_cached(messages, model=light)
     assert third == f"ans-{light}"
     assert len(calls) == 2  # model khác → cache miss
     clear_llm_cache_context()

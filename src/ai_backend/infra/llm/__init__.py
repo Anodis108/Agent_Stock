@@ -1,18 +1,5 @@
-from __future__ import annotations
+"""LLM infra — cùng layout với llm-engineer-demo/app/llm + extension vn-stock.
 
-from ai_backend.infra.llm.client import get_client, mark_current_key_limited
-from ai_backend.infra.prompts import (
-    Prompt,
-    PromptRegistry,
-    registry,
-    resolve_prompts_dir,
-)
-
-__all__ = [
-    "get_client",
-    "mark_current_key_limited",
-    "Prompt",
-    "PromptRegistry",
-    "registry",
-    "resolve_prompts_dir",
-]
+Demo: backends, client, params, resilience, completion, async_client.
+Thêm: client.base_llm (LangChain); cache/budget trong completion.
+"""

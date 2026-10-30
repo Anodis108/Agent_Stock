@@ -169,8 +169,7 @@ def test_stream_cache_hit_does_not_write_trace(mock_enabled, mock_get_langfuse, 
         normalize_question,
         set_llm_cache_context,
     )
-    from backend.infra.llm.completion import chat_stream
-    from backend.infra.llm.providers import resolve_model_chain
+    from ai_backend.infra.cache.tiered import chat_stream_cached as chat_stream
     from backend.infra.monitoring.tracing import (
         _should_trace_turn,
         agent_span,
@@ -188,7 +187,7 @@ def test_stream_cache_hit_does_not_write_trace(mock_enabled, mock_get_langfuse, 
     monkeypatch.setenv("EXACT_CACHE_ENABLED", "true")
     get_exact_cache().clear()
     question = "Giá FPT hôm nay?"
-    model = resolve_model_chain(None)[0]
+    model = settings.llm_model
     set_llm_cache_context(
         prompt_name="answer_compose",
         prompt_version="production",

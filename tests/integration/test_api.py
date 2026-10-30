@@ -161,7 +161,7 @@ def test_ui_stream_receives_async_tokens_before_complete(client: TestClient, mon
     from backend.api.routers import chat as chat_router
     from backend.application.answer_question import AnswerQuestionResult
     from backend.domain.entities.models import RoutingDecision
-    from backend.infra.llm import async_client
+    from ai_backend.infra.llm import async_client
     from backend.shared.settings import settings
 
     class _Delta:
@@ -203,13 +203,12 @@ def test_ui_stream_receives_async_tokens_before_complete(client: TestClient, mon
     fake_client.chat = type("Chat", (), {"completions": completions})()
 
     monkeypatch.setattr(settings, "llm_max_concurrency", 1)
-    async_client.reset_async_semaphore_for_tests()
     monkeypatch.setattr(
-        "backend.infra.llm.completion.get_async_client",
+        "ai_backend.infra.llm.async_client.get_async_client",
         lambda backend_name=None: fake_client,
     )
     monkeypatch.setattr(
-        "backend.infra.llm.completion.get_client",
+        "ai_backend.infra.llm.completion.get_client",
         lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("chat_stream gọi SDK sync")),
     )
 
@@ -387,7 +386,7 @@ def test_ngrok_hop_receives_async_tokens_before_complete(monkeypatch):
     from backend.api.routers import chat as chat_router
     from backend.application.answer_question import AnswerQuestionResult
     from backend.domain.entities.models import RoutingDecision
-    from backend.infra.llm import async_client
+    from ai_backend.infra.llm import async_client
     from backend.main import app as main_app
     from backend.shared.settings import settings
 
@@ -421,13 +420,12 @@ def test_ngrok_hop_receives_async_tokens_before_complete(monkeypatch):
     fake_client = type("Fake", (), {})()
     fake_client.chat = type("Chat", (), {"completions": _Completions()})()
     monkeypatch.setattr(settings, "llm_max_concurrency", 1)
-    async_client.reset_async_semaphore_for_tests()
     monkeypatch.setattr(
-        "backend.infra.llm.completion.get_async_client",
+        "ai_backend.infra.llm.async_client.get_async_client",
         lambda backend_name=None: fake_client,
     )
     monkeypatch.setattr(
-        "backend.infra.llm.completion.get_client",
+        "ai_backend.infra.llm.completion.get_client",
         lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("chat_stream gọi SDK sync")),
     )
 

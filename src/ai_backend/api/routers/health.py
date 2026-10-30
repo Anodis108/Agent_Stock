@@ -33,11 +33,14 @@ def health_check() -> dict[str, Any]:
     except Exception:
         pass
 
+    from ai_backend.infra.llm.async_client import semaphore_state
+
     return {
         "status": "ok",
         "service": "ai_backend",
         "port": 8001,
         "swarm": "ready",
+        "llm_async_semaphore": semaphore_state(),
         "dependencies": {
             "database": db_mode,
             "qdrant": qdrant_status,

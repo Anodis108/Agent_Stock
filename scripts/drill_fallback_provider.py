@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Drill: kiểm tra fallback provider chain (Module III Bài 7)."""
+"""Drill: in cấu hình LLM backend (fallback provider cascade đã gỡ khỏi infra/llm)."""
 
 from __future__ import annotations
 
@@ -11,20 +11,17 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from ai_backend.infra.llm.providers import resolve_backend_chain  # noqa: E402
 from common.settings.config import settings  # noqa: E402
 
 
 def main() -> int:
-    chain = resolve_backend_chain()
-    print(f"Primary backend: {settings.llm_backend}")
-    print(f"Fallback chain:  {chain}")
-    if len(chain) < 2 and settings.llm_fallback_backends.strip():
-        print("WARN: LLM_FALLBACK_BACKENDS set but chain has only 1 entry")
-    if len(chain) >= 2:
-        print("OK: fallback configured")
-        return 0
-    print("INFO: no fallback backends — set LLM_FALLBACK_BACKENDS=ollama,openai")
+    print(f"LLM backend: {settings.llm_backend}")
+    print(f"LLM model:   {settings.llm_model}")
+    if settings.llm_fallback_backends.strip():
+        print(
+            "NOTE: LLM_FALLBACK_BACKENDS is set but no longer used by completion — "
+            "chỉ một backend như llm-engineer-demo."
+        )
     return 0
 
 

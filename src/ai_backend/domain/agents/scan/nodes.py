@@ -18,7 +18,7 @@ from langgraph.runtime import get_runtime
 from ai_backend.domain.guardrails.output_checks import strip_buy_sell
 from ai_backend.domain.agents.scan.state import ScanHierarchicalState
 from ai_backend.infra.llm.params import DETERMINISTIC
-from ai_backend.infra.llm.structured import call_llm_structured
+from ai_backend.infra.cache.tiered import chat_parsed_cached
 from ai_backend.infra.monitoring.tracing import current_span, trace_step
 from ai_backend.infra.prompts import registry
 from common.domain.entities import AlertStatus, FinalAlert
@@ -110,7 +110,7 @@ async def event_classifier_node(state: ScanHierarchicalState, config: RunnableCo
             news_titles=titles,
         )
         with trace_step(current_span(), "event_classifier", input=sym, as_type="generation") as box:
-            out = call_llm_structured([{"role": "user", "content": prompt}], ClassifierOutput, params=DETERMINISTIC)
+            out = chat_parsed_cached([{"role": "user", "content": prompt}], ClassifierOutput, DETERMINISTIC)
             routing = out.to_routing_decision()
             box["output"] = {"symbol": sym, "route": routing.route.value, "reason": routing.reason}
         routings.append(routing)
@@ -142,7 +142,7 @@ async def synthesis_node(state: ScanHierarchicalState, config: RunnableConfig) -
             violations="(không)",
         )
         with trace_step(current_span(), "synthesis_agent", input=sym, as_type="generation") as box:
-            out = call_llm_structured([{"role": "user", "content": prompt}], SynthesisAlertOutput, params=DETERMINISTIC)
+            out = chat_parsed_cached([{"role": "user", "content": prompt}], SynthesisAlertOutput, DETERMINISTIC)
             alert = FinalAlert(
                 id=str(uuid.uuid4()),
                 symbol=sym,

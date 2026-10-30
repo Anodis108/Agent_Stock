@@ -1,44 +1,69 @@
-"""Chat completion — text, stream, parsed, tools (thin layer on OpenAI SDK)."""
+"""Chat completion — Bài 1, Section 1 (Chat Completions) + 5 (Function Calling) + 6 (Streaming).
+
+Lớp mỏng trên OpenAI SDK gom 4 cách gọi model mà Bài 1 dạy:
+  - chat()            : gọi cơ bản, trả text.
+  - chat_stream()     : streaming, yield từng token.
+  - chat_parsed()     : structured output với Pydantic (Section 4).
+  - chat_with_tools() : function calling, trả về tool_calls để code thực thi (Section 5).
+
+Mọi lời gọi đều bọc trong retry_with_backoff + key rotation (Section 6).
+
+vn-stock: kiểm tra budget trước mỗi lời gọi; `model` có thể override settings.
+Cache và ghi usage không nằm ở đây — caller dùng `infra.cache.tiered` (giống demo:
+route/script bọc quanh `chat` / `chat_with_usage`, không nhét vào hàm chat).
+`chat_stream` = SDK sync như demo (LangGraph sync node). Async stream → `async_client.astream_chat`.
+Agent structured output → `chat_parsed()` (giống demo). LangGraph ReAct → `client.base_llm()`.
+"""
 
 from __future__ import annotations
 
 from collections.abc import Iterator
-from typing import Any, TypeVar
+from typing import TypeVar
 
+from openai.types import CompletionUsage
 from openai.types.chat import ChatCompletion, ChatCompletionMessageParam
 from pydantic import BaseModel
 
 from ai_backend.infra.cost.tracker import check_budget_or_raise
-from ai_backend.infra.llm.async_client import iter_sync_astream
 from ai_backend.infra.llm.client import get_client, mark_current_key_limited
 from ai_backend.infra.llm.params import GenerationParams
-from ai_backend.infra.llm.providers import (
-    call_with_backend_fallback,
-    call_with_model_cascade,
-    resolve_model_chain,
-)
 from ai_backend.infra.llm.resilience import retry_with_backoff
 from common.settings import settings
 
 TModel = TypeVar("TModel", bound=BaseModel)
+
 Messages = list[ChatCompletionMessageParam]
 
 
-def _record_usage(response: Any, *, model: str) -> None:
-    if not hasattr(response, "usage") or not response.usage:
-        return
-    try:
-        from ai_backend.infra.cost.tracker import record_completion_usage
+def _resolved_model(model: str | None) -> str:
+    return (model or settings.llm_model).strip() or settings.llm_model
 
-        record_completion_usage(
-            model=model,
-            prompt_tokens=response.usage.prompt_tokens or 0,
-            completion_tokens=response.usage.completion_tokens or 0,
-            total_tokens=response.usage.total_tokens,
-            cache_hit=False,
+
+def chat_with_usage(
+    messages: Messages,
+    params: GenerationParams | None = None,
+    *,
+    model: str | None = None,
+) -> tuple[str, CompletionUsage | None]:
+    """Như chat(), nhưng trả kèm usage thật để caller ghi cost (demo: cascade / cost replay)."""
+    params = params or GenerationParams()
+    check_budget_or_raise()
+    resolved_model = _resolved_model(model)
+    client = get_client()
+
+    def _call() -> ChatCompletion:
+        return client.chat.completions.create(
+            model=resolved_model,
+            messages=messages,
+            **params.to_openai_kwargs(),
         )
-    except Exception:
-        pass
+
+    response = retry_with_backoff(
+        _call,
+        max_retries=settings.llm_max_retries,
+        on_rate_limit=lambda: mark_current_key_limited(client),
+    )
+    return response.choices[0].message.content or "", response.usage
 
 
 def chat(
@@ -47,46 +72,12 @@ def chat(
     *,
     model: str | None = None,
 ) -> str:
-    params = params or GenerationParams()
-    check_budget_or_raise()
-    models = resolve_model_chain(model)
-    primary_model = models[0]
-    cached = _try_tiered_cache_get(primary_model)
-    if cached is not None:
-        _on_cache_hit(primary_model)
-        return cached
+    """Gọi chat completion cơ bản, trả về nội dung text của assistant.
 
-    cache_key, cache = _resolve_exact_cache_key(primary_model)
-    from ai_backend.infra.llm.semaphore import llm_semaphore_slot
-
-    def _call_one(resolved_model: str, backend_name: str | None) -> str:
-        client = get_client() if backend_name is None else get_client(backend_name)
-
-        def _call() -> ChatCompletion:
-            return client.chat.completions.create(
-                model=resolved_model,
-                messages=messages,
-                **params.to_openai_kwargs(),
-            )
-
-        with llm_semaphore_slot():
-            response = retry_with_backoff(
-                _call,
-                max_retries=settings.llm_max_retries,
-                on_rate_limit=lambda: mark_current_key_limited(client),
-            )
-        content = response.choices[0].message.content or ""
-        _record_usage(response, model=resolved_model)
-        return content
-
-    content = call_with_model_cascade(
-        models,
-        lambda resolved: call_with_backend_fallback(
-            lambda backend: _call_one(resolved, backend)
-        ),
-    )
-    _store_tiered_cache(cache_key, cache, content)
-    return content
+    Section 1: chat.completions.create(messages) -> assistant message.
+    """
+    text, _usage = chat_with_usage(messages, params, model=model)
+    return text
 
 
 def chat_stream(
@@ -95,28 +86,70 @@ def chat_stream(
     *,
     model: str | None = None,
 ) -> Iterator[str]:
-    """Streaming — yield từng token (AsyncOpenAI qua iter_sync_astream)."""
+    """Streaming — yield từng đoạn token ngay khi model sinh ra (Section 6).
+
+    Lưu ý: stream không retry giữa chừng (một khi đã bắt đầu nhận token).
+    Backoff chỉ áp dụng cho bước khởi tạo stream.
+    """
     params = params or GenerationParams()
     check_budget_or_raise()
-    resolved_model = resolve_model_chain(model)[0]
-    cache_key, cache = _resolve_exact_cache_key(resolved_model)
-    if cache_key is not None and cache is not None:
-        cached = cache.get(cache_key)
-        if cached is not None:
-            _on_cache_hit(resolved_model)
-            yield cached
-            return
 
-    collected: list[str] = []
-    completed: list[bool] = []
-    for token in iter_sync_astream(
-        messages, params, model=model, stream_completed=completed
-    ):
-        collected.append(token)
-        yield token
+    resolved_model = _resolved_model(model)
+    client = get_client()
 
-    if completed and cache_key is not None and cache is not None:
-        cache.set(cache_key, "".join(collected))
+    def _open():
+        return client.chat.completions.create(
+            model=resolved_model,
+            messages=messages,
+            stream=True,
+            **params.to_openai_kwargs(),
+        )
+
+    stream = retry_with_backoff(
+        _open,
+        max_retries=settings.llm_max_retries,
+        on_rate_limit=lambda: mark_current_key_limited(client),
+    )
+
+    for chunk in stream:
+        if not chunk.choices:
+            continue
+        delta = chunk.choices[0].delta.content
+        if delta:
+            yield delta
+
+
+def chat_parsed_with_usage(
+    messages: Messages,
+    schema: type[TModel],
+    params: GenerationParams | None = None,
+    *,
+    model: str | None = None,
+) -> tuple[TModel, CompletionUsage | None]:
+    """Như chat_parsed(), nhưng trả kèm usage để caller ghi cost."""
+    params = params or GenerationParams()
+    check_budget_or_raise()
+
+    resolved_model = _resolved_model(model)
+    client = get_client()
+
+    def _call() -> ChatCompletion:
+        return client.chat.completions.parse(
+            model=resolved_model,
+            messages=messages,
+            response_format=schema,
+            **params.to_openai_kwargs(),
+        )
+
+    completion = retry_with_backoff(
+        _call,
+        max_retries=settings.llm_max_retries,
+        on_rate_limit=lambda: mark_current_key_limited(client),
+    )
+    parsed = completion.choices[0].message.parsed
+    if parsed is None:
+        raise ValueError("Model không trả về output khớp schema.")
+    return parsed, completion.usage
 
 
 def chat_parsed(
@@ -126,49 +159,12 @@ def chat_parsed(
     *,
     model: str | None = None,
 ) -> TModel:
-    params = params or GenerationParams()
-    check_budget_or_raise()
-    models = resolve_model_chain(model)
-    primary_model = models[0]
-    cache_key, cache = _resolve_exact_cache_key(primary_model)
-    if cache_key is not None and cache is not None:
-        hit = cache.get(cache_key)
-        if hit is not None:
-            _record_cache_hit_cost(model=primary_model)
-            return schema.model_validate_json(hit)
+    """Structured output — ép model trả về đúng schema Pydantic (Section 4).
 
-    from ai_backend.infra.llm.semaphore import llm_semaphore_slot
-
-    def _call_one(resolved_model: str, backend_name: str | None) -> TModel:
-        client = get_client() if backend_name is None else get_client(backend_name)
-
-        def _call():
-            return client.chat.completions.parse(
-                model=resolved_model,
-                messages=messages,
-                response_format=schema,
-                **params.to_openai_kwargs(),
-            )
-
-        with llm_semaphore_slot():
-            completion = retry_with_backoff(
-                _call,
-                max_retries=settings.llm_max_retries,
-                on_rate_limit=lambda: mark_current_key_limited(client),
-            )
-        _record_usage(completion, model=resolved_model)
-        parsed = completion.choices[0].message.parsed
-        if parsed is None:
-            raise ValueError("Model không trả về output khớp schema.")
-        _store_tiered_cache(cache_key, cache, parsed.model_dump_json())
-        return parsed
-
-    return call_with_model_cascade(
-        models,
-        lambda resolved: call_with_backend_fallback(
-            lambda backend: _call_one(resolved, backend)
-        ),
-    )
+    Dùng client.chat.completions.parse() (đã ra khỏi beta).
+    """
+    parsed, _usage = chat_parsed_with_usage(messages, schema, params, model=model)
+    return parsed
 
 
 def chat_with_tools(
@@ -178,9 +174,15 @@ def chat_with_tools(
     *,
     model: str | None = None,
 ) -> ChatCompletion:
+    """Function calling — trả về response thô để code kiểm tra tool_calls (Section 5).
+
+    Trả nguyên ChatCompletion (không rút gọn về text) vì caller cần đọc
+    finish_reason và message.tool_calls để quyết định thực thi function nào.
+    """
     params = params or GenerationParams()
     check_budget_or_raise()
-    resolved_model = resolve_model_chain(model)[0]
+
+    resolved_model = _resolved_model(model)
     client = get_client()
 
     def _call() -> ChatCompletion:
@@ -191,85 +193,8 @@ def chat_with_tools(
             **params.to_openai_kwargs(),
         )
 
-    response = retry_with_backoff(
+    return retry_with_backoff(
         _call,
         max_retries=settings.llm_max_retries,
         on_rate_limit=lambda: mark_current_key_limited(client),
     )
-    _record_usage(response, model=resolved_model)
-    return response
-
-
-# --- Exact / semantic cache (cùng file, không tách completion_cache.py) ---
-
-
-def _resolve_exact_cache_key(model: str) -> tuple[str, Any] | tuple[None, None]:
-    from ai_backend.infra.cache.exact import (
-        get_exact_cache,
-        get_llm_cache_context,
-        is_exact_cache_enabled,
-        normalize_question,
-    )
-
-    if not is_exact_cache_enabled():
-        return None, None
-    ctx = get_llm_cache_context()
-    prompt_name = ctx.get("prompt_name")
-    normalized_q = ctx.get("normalized_question")
-    if not prompt_name or normalized_q is None:
-        return None, None
-    prompt_version = str(ctx.get("prompt_version") or "production")
-    cache = get_exact_cache()
-    key = cache.make_key(
-        prompt_name,
-        prompt_version,
-        model,
-        normalize_question(str(normalized_q)),
-    )
-    return key, cache
-
-
-def _record_cache_hit_cost(*, model: str) -> None:
-    try:
-        from ai_backend.infra.cost.tracker import record_completion_usage
-
-        record_completion_usage(
-            model=model,
-            prompt_tokens=0,
-            completion_tokens=0,
-            total_tokens=0,
-            cache_hit=True,
-        )
-    except Exception:
-        pass
-
-
-def _try_tiered_cache_get(model: str) -> str | None:
-    cache_key, cache = _resolve_exact_cache_key(model)
-    if cache_key is not None and cache is not None:
-        hit = cache.get(cache_key)
-        if hit is not None:
-            return hit
-    try:
-        from ai_backend.infra.cache.semantic import try_semantic_cache_get
-
-        return try_semantic_cache_get()
-    except Exception:
-        return None
-
-
-def _store_tiered_cache(cache_key: str | None, cache: Any, content: str) -> None:
-    if cache_key is not None and cache is not None:
-        cache.set(cache_key, content)
-    try:
-        from ai_backend.infra.cache.semantic import store_semantic_cache_entry
-
-        store_semantic_cache_entry(content)
-    except Exception:
-        pass
-
-
-def _on_cache_hit(model: str) -> None:
-    _record_cache_hit_cost(model=model)
-
-

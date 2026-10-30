@@ -110,7 +110,7 @@ def test_answer_io(monkeypatch):
     monkeypatch.setattr(nodes, "get_stream_writer", lambda: (lambda _t: None))
     monkeypatch.setattr(nodes, "trace_step", _noop_trace)
     monkeypatch.setattr(nodes, "trace_stream", lambda _n, _q, it: it)
-    monkeypatch.setattr(nodes, "chat_stream", lambda messages, params: iter(tokens))
+    monkeypatch.setattr(nodes, "chat_stream_cached", lambda messages, params: iter(tokens))
     monkeypatch.setattr(nodes, "get_runtime", lambda: SimpleNamespace(context={"trace_span": None}))
 
     out = nodes.answer_node({"task": "Giá FPT?", "notes": {"price_agent": "FPT +5%"}}, {})

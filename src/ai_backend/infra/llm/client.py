@@ -1,23 +1,29 @@
-"""OpenAI client factory & AI Swarm transport client — hỗ trợ openai / ollama / vllm và in-process / HTTP transport."""
+"""OpenAI client factory — Bài 1 (Section 1 + 6) + Buổi 2 (Local Serving).
+
+Bọc việc tạo client vào một chỗ. Phần còn lại của app chỉ gọi `get_client()`
+mà không cần biết đang nói chuyện với OpenAI Cloud hay model local.
+
+Bài 1 — NGUYÊN TẮC BẢO MẬT: key đọc từ env qua settings, KHÔNG hardcode/commit.
+Buổi 2 — LOCAL SERVING: chọn backend qua LLM_BACKEND. Ollama/vLLM cũng dùng
+OpenAI-compatible API nên chỉ khác `base_url` + `api_key` (key giả cho local).
+Key rotation chỉ áp dụng khi backend cần key thật (OpenAI Cloud).
+
+Module II — `base_llm()` trả LangChain `ChatOpenAI` cho ToolNode / bind_tools (Bài 2–6).
+Text thuần, structured, stream không qua LangChain → dùng `completion.*` (OpenAI SDK).
+"""
 
 from __future__ import annotations
 
-import asyncio
-import json
-import os
-import random
-import socket
-import time
-import urllib.error
-import urllib.request
 from typing import Any
 
 from openai import OpenAI
+import httpx
 
 from ai_backend.infra.llm.backends import get_backend
 from ai_backend.infra.llm.resilience import RotatingKeyPool
 from common.settings import settings
 
+# Lazy: chỉ tạo pool khi backend cần key thật.
 _pool: RotatingKeyPool | None = None
 
 
@@ -29,335 +35,61 @@ def _get_pool() -> RotatingKeyPool:
 
 
 def _resolve_base_url(default_base_url: str) -> str | None:
+    """LLM_BASE_URL (nếu đặt) > mặc định backend > None (SDK → OpenAI Cloud)."""
     if settings.llm_base_url:
         return settings.llm_base_url
     return default_base_url or None
 
 
-def get_client(backend_name: str | None = None) -> OpenAI:
-    name = (backend_name or settings.llm_backend).strip().lower()
+def _api_key_for_backend(backend_name: str) -> str:
+    backend = get_backend(backend_name)
+    if backend.requires_real_key:
+        return _get_pool().get_key()
+    return backend.dummy_key
+
+
+def get_client() -> OpenAI:
+    """Trả về OpenAI client trỏ tới backend đang cấu hình.
+
+    - openai: key kế tiếp trong pool (round-robin).
+    - ollama/vllm: key giả, không cần pool.
+    """
+    name = settings.llm_backend.strip().lower()
     backend = get_backend(name)
     base_url = _resolve_base_url(backend.default_base_url)
-    api_key = _get_pool().get_key() if backend.requires_real_key else backend.dummy_key
-    return OpenAI(api_key=api_key, base_url=base_url)
+    api_key = _api_key_for_backend(name)
+    http_client = httpx.Client(trust_env=False)
+    return OpenAI(api_key=api_key, base_url=base_url, http_client=http_client)
 
 
 def mark_current_key_limited(client: OpenAI, cooldown_seconds: float = 60.0) -> None:
+    """Đưa key của `client` vào cooldown sau khi gặp 429.
+
+    No-op với backend local (không dùng key thật nên không có gì để cooldown).
+    """
     backend = get_backend(settings.llm_backend)
     if backend.requires_real_key and client.api_key:
         _get_pool().mark_limited(client.api_key, cooldown_seconds)
 
 
-# ==============================================================================
-# AI Swarm Runtime Client (In-Process & HTTP Proxy)
-# ==============================================================================
+def base_llm():
+    """Client LangChain chưa bind tool — cùng backend/settings với `get_client()`.
 
-def _ai_base() -> str:
-    return os.environ.get("AI_BASE_URL", "http://127.0.0.1:8001").rstrip("/")
+    Không cache: mỗi lần gọi lấy key mới từ pool (khớp rotation SDK path).
+    ReAct: `.bind_tools()`, `.ainvoke()`, `.with_structured_output()`.
+    """
+    from langchain_openai import ChatOpenAI
 
-
-def _default_timeout() -> float:
-    raw = os.environ.get("AI_HTTP_TIMEOUT", "60")
-    try:
-        val = float(raw)
-    except ValueError:
-        return 60.0
-    return val if val > 0 else 60.0
-
-
-def _use_http() -> bool:
-    return os.environ.get("AI_TRANSPORT", "inprocess").strip().lower() == "http"
-
-
-class AiClientError(RuntimeError):
-    """Ngoại lệ khi gọi AI Swarm qua HTTP hoặc in-process."""
-
-
-def _is_timeout(exc: BaseException) -> bool:
-    if isinstance(exc, (TimeoutError, socket.timeout)):
-        return True
-    if isinstance(exc, urllib.error.URLError):
-        reason = exc.reason
-        if isinstance(reason, (TimeoutError, socket.timeout)):
-            return True
-        return "timed out" in str(reason).lower()
-    return "timed out" in str(exc).lower()
-
-
-def _is_rate_limited(exc: BaseException) -> bool:
-    if isinstance(exc, urllib.error.HTTPError) and exc.code == 429:
-        return True
-    msg = str(exc).lower()
-    return "429" in msg or "rate limit" in msg or "too many requests" in msg
-
-
-def _retry_delay(attempt: int) -> float:
-    return (2**attempt) + random.uniform(0, 1)
-
-
-def _post_json_once(
-    path: str,
-    payload: dict[str, Any],
-    *,
-    timeout: float | None = None,
-    request_id: str | None = None,
-) -> dict[str, Any]:
-    url = f"{_ai_base()}{path}"
-    body = json.dumps(payload).encode("utf-8")
-    headers = {
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-    }
-    if request_id:
-        headers["X-Request-Id"] = request_id
-    req = urllib.request.Request(
-        url,
-        data=body,
-        headers=headers,
-        method="POST",
-    )
-    to = _default_timeout() if timeout is None else timeout
-    try:
-        with urllib.request.urlopen(req, timeout=to) as resp:
-            raw = resp.read().decode("utf-8", errors="replace")
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")
-        raise AiClientError(f"AI HTTP {exc.code}: {detail or exc.reason}") from exc
-    except urllib.error.URLError as exc:
-        if _is_timeout(exc):
-            raise AiClientError("AI timeout") from exc
-        raise AiClientError(f"AI không kết nối được: {exc.reason}") from exc
-    except TimeoutError as exc:
-        raise AiClientError("AI timeout") from exc
-    except socket.timeout as exc:
-        raise AiClientError("AI timeout") from exc
-
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise AiClientError("AI trả JSON không hợp lệ") from exc
-    if not isinstance(data, dict):
-        raise AiClientError("AI response không phải object")
-    return data
-
-
-def _post_json(
-    path: str,
-    payload: dict[str, Any],
-    *,
-    timeout: float | None = None,
-    request_id: str | None = None,
-    max_retries: int | None = None,
-) -> dict[str, Any]:
-    """POST JSON với retry exponential backoff + jitter cho 429/timeout."""
-    retries = max_retries
-    if retries is None:
-        raw = os.environ.get("AI_HTTP_MAX_RETRIES", "3")
-        try:
-            retries = max(1, int(raw))
-        except ValueError:
-            retries = 3
-
-    last_exc: BaseException | None = None
-    for attempt in range(retries):
-        try:
-            return _post_json_once(
-                path,
-                payload,
-                timeout=timeout,
-                request_id=request_id,
-            )
-        except AiClientError as exc:
-            last_exc = exc
-            if attempt >= retries - 1:
-                raise
-            if _is_rate_limited(exc) or _is_timeout(exc):
-                time.sleep(_retry_delay(attempt))
-                continue
-            raise
-        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, socket.timeout) as exc:
-            last_exc = exc
-            if attempt >= retries - 1:
-                if isinstance(exc, urllib.error.HTTPError):
-                    detail = exc.read().decode("utf-8", errors="replace")
-                    raise AiClientError(f"AI HTTP {exc.code}: {detail or exc.reason}") from exc
-                if _is_timeout(exc):
-                    raise AiClientError("AI timeout") from exc
-                raise AiClientError(f"AI không kết nối được: {exc}") from exc
-            if _is_rate_limited(exc) or _is_timeout(exc):
-                time.sleep(_retry_delay(attempt))
-                continue
-            raise AiClientError(str(exc)) from exc
-    if last_exc is not None:
-        raise AiClientError(str(last_exc)) from last_exc
-    raise AiClientError("AI HTTP retry exhausted")
-
-
-def _chat_inprocess(
-    *,
-    question: str,
-    user_id: str,
-    request_id: str,
-) -> dict[str, Any]:
-    try:
-        from web_backend.api.deps import get_app_deps
-        import asyncio
-
-        from ai_backend.domain.agents.graph import start_graph
-    except ImportError:
-        raise AiClientError("In-process chat requires backend dependencies not available in isolated AI environment")
-
-    deps = get_app_deps()
-    try:
-
-        chat_deps = {
-            "price_source": deps.price_source,
-            "news_source": deps.news_source,
-            "history_store": deps.history_store,
-            "memory_store": deps.memory_store,
-        }
-
-        async def _chat() -> Any:
-            result = None
-            async for kind, payload in start_graph(
-                "chat", question, chat_deps, user_id=user_id, request_id=request_id
-            ):
-                if kind == "result":
-                    result = payload  # đọc hết generator: save_long_term_memory chạy sau result
-            if result is None:
-                raise RuntimeError("start_graph không yield result")
-            return result
-
-        final = asyncio.run(_chat())["final_answer"]
-    except Exception as exc:  # noqa: BLE001
-        raise AiClientError(f"AI in-process chat lỗi: {exc}") from exc
-
-    return {
-        "answer": final.answer,
-        "question": final.question,
-        "request_id": request_id,
-        "drawed_paths": final.drawed_paths,
-    }
-
-
-def _scan_inprocess(
-    *,
-    symbol: str,
-    user_id: str,
-    threshold_pct: float | None,
-    request_id: str,
-) -> dict[str, Any]:
-    import asyncio
-
-    from ai_backend.domain.agents.graph import start_graph
-    from web_backend.api.deps import get_app_deps
-
-    deps = get_app_deps()
-    try:
-        scan_deps = {
-            "price_source": deps.price_source,
-            "news_source": deps.news_source,
-            "history_store": deps.history_store,
-            "memory_store": deps.memory_store,
-            "notifier": deps.notifier,
-            "watchlist_store": deps.watchlist_store,
-            "threshold_pct": threshold_pct,
-        }
-
-        async def _scan() -> Any:
-            async for kind, payload in start_graph(
-                "scan", symbol, scan_deps, user_id=user_id, request_id=request_id
-            ):
-                if kind == "result":
-                    return payload
-            raise RuntimeError("start_graph không yield result")
-
-        state = asyncio.run(_scan())
-    except Exception as exc:  # noqa: BLE001
-        raise AiClientError(f"AI in-process scan lỗi: {exc}") from exc
-
-    from ai_backend.domain.agents.scan.nodes import DEFAULT_THRESHOLD_PCT
-    from ai_backend.domain.agents.scan.state import main_item
-
-    routing = state["event_routing"]
-    route_val = routing.route if routing is not None else ""
-    symbols = state["symbols"]
-    pct = state["threshold_pct"]
-    prices = state["prices"] or []
-    p = main_item(prices, state) if prices else None
-    price = (
-        None
-        if p is None
-        else {
-            "symbol": p.symbol,
-            "latest_close": p.latest_close,
-            "prev_close": p.prev_close,
-            "change_pct": p.change_pct,
-            "error": p.error,
-        }
-    )
-    news = main_item(state["news"] or [], state) if state["news"] else None
-    news_rows = list(news.items) if news and news.items else []
-    news_items = [
-        {
-            "title": i.title,
-            "url": i.url,
-            "published_at": i.published_at,
-            "snippet": i.snippet,
-        }
-        for i in news_rows
-    ]
-    ev = state["eval_result"]
-    alert = state["alert"]
-    return {
-        "symbol": symbols[0] if symbols else symbol,
-        "route": str(getattr(route_val, "value", route_val)),
-        "reason": routing.reason if routing is not None else "",
-        "threshold_pct": pct if pct is not None else DEFAULT_THRESHOLD_PCT,
-        "status": "pending_approval" if state["pending_tool_call"] else "done",
-        "thread_id": state["thread_id"] or "",
-        "tool_call": state["pending_tool_call"],
-        "request_id": request_id,
-        "price": price,
-        "news_count": len(news_items),
-        "news": news_items,
-        "news_error": news.error if news is not None else None,
-        "severity": ev.severity.model_dump(mode="json") if ev is not None else None,
-        "alert": alert.model_dump(mode="json") if alert is not None else None,
-    }
-
-
-def ai_chat(
-    *,
-    question: str,
-    user_id: str,
-    request_id: str,
-) -> dict[str, Any]:
-    """Thực thi câu hỏi chat với AI Swarm (in-process hoặc qua HTTP proxy)."""
-    if _use_http():
-        payload: dict[str, Any] = {"question": question, "user_id": user_id, "request_id": request_id}
-        return _post_json("/v1/chat", payload, request_id=request_id)
-    return _chat_inprocess(
-        question=question, user_id=user_id, request_id=request_id
+    name = settings.llm_backend.strip().lower()
+    backend = get_backend(name)
+    return ChatOpenAI(
+        model=settings.llm_model,
+        temperature=settings.llm_temperature,
+        api_key=_api_key_for_backend(name),
+        base_url=_resolve_base_url(backend.default_base_url),
     )
 
 
-def ai_scan(
-    *,
-    symbol: str,
-    user_id: str,
-    request_id: str,
-    threshold_pct: float | None = None,
-) -> dict[str, Any]:
-    """Thực thi quét giám sát mã cổ phiếu với AI Swarm."""
-    if _use_http():
-        payload: dict[str, Any] = {"symbol": symbol, "user_id": user_id, "request_id": request_id}
-        if threshold_pct is not None:
-            payload["threshold_pct"] = threshold_pct
-        return _post_json("/v1/scan", payload, request_id=request_id)
-    return _scan_inprocess(
-        symbol=symbol,
-        user_id=user_id,
-        threshold_pct=threshold_pct,
-        request_id=request_id,
-    )
+def bind_tools_llm(tools: list[Any]):
+    """ReAct worker: base_llm + tool binding (tránh lặp _worker_llm trong từng graph)."""
+    return base_llm().bind_tools(tools)

@@ -471,7 +471,7 @@ def test_chat_graph_fpt_price_history_chart_10_sessions():
 
 def test_supervisor_routing_prompt_registry_includes_chart():
     """Kiểm tra Prompt Registry supervisor_routing render đúng worker chart và diagram."""
-    from backend.infra.llm.prompt_registry import registry
+    from ai_backend.infra.prompts import registry
 
     prompt = registry().render(
         "supervisor_routing",

@@ -17,7 +17,7 @@ from ai_backend.infra.charts.price_chart import run_chart_agent
 from ai_backend.infra.storage.chart_store import get_chart_store
 from ai_backend.shared.charts import get_charts_dir
 from ai_backend.infra.llm.params import DETERMINISTIC
-from ai_backend.infra.llm.structured import call_llm_structured
+from ai_backend.infra.cache.tiered import chat_parsed_cached
 from ai_backend.infra.prompts import registry
 from ai_backend.shared.logging import get_logger
 from common.transport.schemas import DiagramPlanOutput
@@ -65,7 +65,7 @@ def draw_price_chart(
 def draw_diagram(question: str, symbol: str = ""):
     """Vẽ sơ đồ Mermaid (quy trình, cơ cấu, mối quan hệ) theo `question` của người dùng; `symbol` là mã liên quan nếu có."""
     prompt = registry().render("diagram_plan", symbol=symbol.strip().upper(), question=question)
-    plan = call_llm_structured([{"role": "user", "content": prompt}], DiagramPlanOutput, params=DETERMINISTIC, max_retries=1)
+    plan = chat_parsed_cached([{"role": "user", "content": prompt}], DiagramPlanOutput, DETERMINISTIC)
     try:
         png = draw_mermaid_png(mermaid_syntax=plan.mermaid)  # API mermaid.ink
     except Exception as exc:  # noqa: BLE001 — trả lỗi cho LLM thay vì crash

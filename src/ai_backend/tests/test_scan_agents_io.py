@@ -234,8 +234,12 @@ async def test_event_classifier_node_io(monkeypatch):
         seen["prompt"] = messages[0]["content"]
         return ClassifierOutput(route="bất thường", reason="tăng 7% vượt ngưỡng")
 
-    monkeypatch.setattr(nodes, "call_llm_structured", fake_llm)
-    monkeypatch.setattr(nodes, "get_runtime", lambda: SimpleNamespace(context={"trace_span": None}))
+    monkeypatch.setattr(nodes, "chat_parsed_cached", fake_llm)
+    monkeypatch.setattr(
+        nodes,
+        "get_runtime",
+        lambda: SimpleNamespace(context={"trace_span": None, "threshold_pct": 3.0}),
+    )
     state = {
         "symbols": ["FPT"],
         "threshold_pct": 3.0,
@@ -258,7 +262,7 @@ async def test_event_classifier_node_io(monkeypatch):
 
 async def test_synthesis_node_io(monkeypatch):
     monkeypatch.setattr(
-        nodes, "call_llm_structured",
+        nodes, "chat_parsed_cached",
         lambda messages, schema, params: SynthesisAlertOutput(title="FPT biến động mạnh", body="FPT tăng 7.2% kèm tin lãi kỷ lục."),
     )
     sent = []

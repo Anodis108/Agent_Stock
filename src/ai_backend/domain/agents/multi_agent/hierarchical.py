@@ -46,7 +46,7 @@ from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 from pydantic import BaseModel, Field
 
-from ._llm import base_llm
+from ai_backend.infra.llm.client import base_llm, bind_tools_llm
 
 # ── Worker: state RIÊNG, không chia sẻ với Supervisor hay worker khác ────────
 
@@ -77,7 +77,7 @@ def _make_worker_graph(domain: str, worker_tools: list[str]):
 
     @lru_cache(maxsize=1)
     def _worker_llm():
-        return base_llm().bind_tools(worker_tools)
+        return bind_tools_llm(worker_tools)
 
     async def act(state: WorkerState) -> dict:
         messages = state["message_worker"] or [
@@ -126,7 +126,7 @@ def make_agent_graph(domain: str, worker_tools: list, system_prompt: str, worker
 
     @lru_cache(maxsize=1)
     def _worker_llm():
-        return base_llm().bind_tools(worker_tools)
+        return bind_tools_llm(worker_tools)
 
     async def act(state: WorkerState) -> dict:
         notes = "\n".join(f"[{d}] {n}" for d, n in (state["notes"] or {}).items()) or "(chưa có)"

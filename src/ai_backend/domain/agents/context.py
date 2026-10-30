@@ -6,14 +6,14 @@ Các chiến lược quản lý context window cho agent chạy dài:
   - Tool-output compression (Section 3): nén kết quả tool trước khi vào context.
   - Context-usage estimate + nguyên tắc 40-60% (Section 4): compact CHỦ ĐỘNG.
 
-Mọi lời gọi LLM ở đây dùng native completion.chat (app/llm, Buổi 1) — KHÔNG
-qua LangChain, khác agent_node (bắt buộc dùng ChatOpenAI vì ToolNode). Summarize/
-compress là tác vụ text→text thuần, không cần tool binding, nên giữ native được.
+Mọi lời gọi LLM ở đây dùng `infra.cache.tiered.chat_cached` (OpenAI SDK bên dưới;
+cache và usage ở caller — KHÔNG LangChain). ReAct subgraph dùng
+`infra.llm.client.base_llm()` (ToolNode). Summarize/compress là text→text thuần.
 """
 
 from __future__ import annotations
 
-from ai_backend.infra.llm import completion
+from ai_backend.infra.cache.tiered import chat_cached
 from ai_backend.infra.llm.params import GenerationParams
 
 # Ước lượng thô 1 token ≈ 4 ký tự (đủ để áp nguyên tắc 40-60%, không cần tokenizer thật).
@@ -92,7 +92,7 @@ def summarize_text(old_messages: list) -> str:
         "(tên, số liệu, quyết định đã chốt, task đang làm dở):\n\n"
         + format_messages(old_messages)
     )
-    return completion.chat(
+    return chat_cached(
         [{"role": "user", "content": prompt}], GenerationParams(temperature=0.0)
     )
 
@@ -141,7 +141,7 @@ def compress_tool_result(raw_result: str, query: str, max_tokens: int = 300) -> 
         f"Kết quả thô: {raw_result[:4000]}\n\n"
         "Thông tin liên quan (ngắn gọn):"
     )
-    return completion.chat(
+    return chat_cached(
         [{"role": "user", "content": prompt}], GenerationParams(temperature=0.0)
     )
 

@@ -26,7 +26,7 @@ from ai_backend.domain.agents.chat.nodes import (
     scan_team_node,
 )
 from ai_backend.domain.agents.chat.state import ChatTeamState
-from ai_backend.domain.agents.multi_agent._llm import base_llm
+from ai_backend.infra.llm.client import base_llm
 from ai_backend.infra.monitoring.tracing import _current, current_span, trace_step
 
 # ── Team chat theo multi_agent/hierarchical.py ───────────────────────────────────────────────────

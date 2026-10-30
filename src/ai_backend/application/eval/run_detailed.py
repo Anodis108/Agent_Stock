@@ -144,7 +144,9 @@ _tracker = TokenTracker()
 
 # Hook completion functions to track tokens
 _original_chat = completion_mod.chat
+_original_chat_with_usage = completion_mod.chat_with_usage
 _original_chat_parsed = completion_mod.chat_parsed
+_original_chat_parsed_with_usage = completion_mod.chat_parsed_with_usage
 _original_chat_with_tools = completion_mod.chat_with_tools
 
 
@@ -240,15 +242,28 @@ def _hooked_chat_with_tools(messages, tools, params=None):
     return completion
 
 
+def _hooked_chat_with_usage(messages, params=None, *, model=None):
+    """tiered.chat_cached gọi hàm này. Usage đã ghi vào TokenTracker — trả None để không ghi đúp cost tracker."""
+    return _hooked_chat(messages, params), None
+
+
+def _hooked_chat_parsed_with_usage(messages, schema, params=None, *, model=None):
+    return _hooked_chat_parsed(messages, schema, params), None
+
+
 def install_completion_hooks():
     completion_mod.chat = _hooked_chat
+    completion_mod.chat_with_usage = _hooked_chat_with_usage
     completion_mod.chat_parsed = _hooked_chat_parsed
+    completion_mod.chat_parsed_with_usage = _hooked_chat_parsed_with_usage
     completion_mod.chat_with_tools = _hooked_chat_with_tools
 
 
 def uninstall_completion_hooks():
     completion_mod.chat = _original_chat
+    completion_mod.chat_with_usage = _original_chat_with_usage
     completion_mod.chat_parsed = _original_chat_parsed
+    completion_mod.chat_parsed_with_usage = _original_chat_parsed_with_usage
     completion_mod.chat_with_tools = _original_chat_with_tools
 
 

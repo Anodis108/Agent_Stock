@@ -1,37 +1,38 @@
-"""SSE wire format cho swarm_sse (demo: token + [DONE])."""
+"""SSE wire format cho ChatService.stream_sse (demo: token + [DONE])."""
 
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 import pytest
 
-from ai_backend.infra.llm import chat_stream as mod
+from ai_backend.application import chat_service as mod
 
 
-async def _fake_start_graph(*_args, **_kwargs):
+async def _fake_run_chat_graph(*_args, **_kwargs):
     yield "token", "Hel"
     yield "token", "lo"
     yield "result", {
-        "question": "hi",
-        "rewritten": None,
-        "answer": "Hello",
-        "error": None,
-        "prices": [],
-        "news": [],
-        "eval_result": None,
-        "chart_result": None,
-        "source_file": None,
-        "notes": {},
-        "guardrail_result": None,
+        "final_answer": SimpleNamespace(
+            question="hi",
+            answer="Hello",
+            drawed_paths=[],
+        ),
     }
 
 
 @pytest.mark.asyncio
 async def test_swarm_sse_demo_format(monkeypatch):
-    monkeypatch.setattr(mod, "start_graph", _fake_start_graph)
+    svc = mod.ChatService()
 
-    chunks = [c async for c in mod.swarm_sse("hi", {}, user_id="u1", request_id="r1")]
+    async def _fake(self, question, *, user_id, request_id, request_deps=None):
+        async for item in _fake_run_chat_graph():
+            yield item
+
+    monkeypatch.setattr(mod.ChatService, "_run_chat_graph", _fake)
+
+    chunks = [c async for c in svc.stream_sse("hi", user_id="u1", request_id="r1")]
     body = "".join(chunks)
     assert 'data: {"token": "Hel"}' in body
     assert 'data: {"token": "lo"}' in body

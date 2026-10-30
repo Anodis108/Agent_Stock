@@ -22,9 +22,8 @@ from langgraph.runtime import get_runtime
 from ai_backend.domain.guardrails import check_input_guardrail
 from ai_backend.domain.agents.chat.state import AnswerEvalData, AnswerQuestionResult, ChatTeamState, RewrittenQuestion, ScanResult
 from ai_backend.domain.agents.scan.graph import build_graph as build_scan_graph
-from ai_backend.infra.llm.completion import chat_parsed, chat_stream
+from ai_backend.infra.cache.tiered import chat_parsed_cached, chat_stream_cached
 from ai_backend.infra.llm.params import DETERMINISTIC
-from ai_backend.infra.llm.structured import call_llm_structured
 from ai_backend.infra.monitoring.tracing import _current, current_span, trace_step, trace_stream
 from ai_backend.infra.prompts import registry
 from ai_backend.infra.storage.long_term_memory import recall_long_term, save_to_long_term
@@ -90,7 +89,7 @@ async def rewrite_node(state: ChatTeamState, config: RunnableConfig) -> dict:
     ]
     with trace_step(current_span(), "rewrite_question", input=q, as_type="generation") as box:
         try:
-            out = chat_parsed(messages, RewrittenQuestion, DETERMINISTIC)
+            out = chat_parsed_cached(messages, RewrittenQuestion, DETERMINISTIC)
         except Exception as exc:  # noqa: BLE001 — LLM lỗi: giữ nguyên câu hỏi
             _logger.warning("rewrite_question: LLM lỗi (%s) → giữ câu gốc", exc)
             out = RewrittenQuestion(rewritten=q, sub_questions=[q])
@@ -265,7 +264,7 @@ def store_memory(user_id: str, question: str, answer: str) -> None:
         return
     try:
         prompt = registry().render("memory_fact", question=question, answer=answer)
-        fact = call_llm_structured([{"role": "user", "content": prompt}], MemoryFact, params=DETERMINISTIC, max_retries=1)
+        fact = chat_parsed_cached([{"role": "user", "content": prompt}], MemoryFact, DETERMINISTIC)
         if fact.worth_saving and fact.fact.strip():
             save_to_long_term(user_id, fact.fact.strip())
     except Exception as exc:  # noqa: BLE001
@@ -318,7 +317,7 @@ def answer_node(state: ChatTeamState, config: RunnableConfig) -> dict:
         token = _current.set(box["_span"]) if box.get("_span") else None
         try:
             text = ""
-            for tok in trace_stream("answer_stream", state["task"], chat_stream(messages, DETERMINISTIC), parent=box.get("_span")):
+            for tok in trace_stream("answer_stream", state["task"], chat_stream_cached(messages, DETERMINISTIC), parent=box.get("_span")):
                 text += tok
                 writer(tok)
             text = _sanitize(text.strip())

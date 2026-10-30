@@ -36,11 +36,6 @@ from backend.domain.entities import EventRoute, Severity, SeverityLevel
 from backend.domain.guardrails.output_checks import check_output
 from backend.graph.chat import compile_chat_graph, run_chat_graph
 from backend.graph.scan import compile_scan_graph
-from backend.infra.llm.structured import (
-    call_llm_structured,
-    extract_json_str,
-    parse_structured,
-)
 from backend.infra.market_data import CafefNewsSource, VnstockPriceSource
 from backend.infra.monitoring.tracing import agent_span, trace_request, reset_client_for_tests
 
@@ -198,29 +193,6 @@ def test_eval_severity_schema_validation():
     assert out.confidence == 0.85
 
 
-def test_json_extractor_handles_markdown_codeblocks():
-    """Kiểm tra hàm extract_json_str bóc tách JSON chính xác từ phản hồi có chứa ```json."""
-    raw = 'Here is the response:\n```json\n{"rewritten": "FPT", "symbol": "FPT", "symbols": ["FPT"], "intent": "price_lookup"}\n```'
-    extracted = extract_json_str(raw)
-    parsed = parse_structured(extracted, RewriteOutput)
-    assert parsed.symbol == "FPT"
-
-
-def test_call_llm_structured_retry_on_parse_error():
-    """Kiểm tra cơ chế retry của call_llm_structured khi LLM trả JSON sai cú pháp ở lần đầu."""
-    calls = []
-
-    def fake_chat(messages, params=None):
-        calls.append(1)
-        if len(calls) == 1:
-            return "not a valid json"
-        return json.dumps({"agents_to_call": ["price"], "reason": "tra cứu giá"})
-
-    res = call_llm_structured([], SupervisorOutput, chat_fn=fake_chat, max_retries=2)
-    assert res.agents_to_call == ["price"]
-    assert len(calls) == 2
-
-
 # ==============================================================================
 # 4. Tracing & Agent Span Tests
 # ==============================================================================
@@ -300,7 +272,7 @@ def test_agent_span_captures_input_and_output(monkeypatch):
 
 def test_all_production_llm_prompts_load_from_registry():
     """Mọi prompt LLM production phải có trong resources/prompts/ — không hardcode."""
-    from backend.infra.llm.prompt_registry import PRODUCTION_LLM_PROMPT_NAMES, registry
+    from ai_backend.infra.prompts import PRODUCTION_LLM_PROMPT_NAMES, registry
 
     reg = registry()
     for name in PRODUCTION_LLM_PROMPT_NAMES:
@@ -319,7 +291,7 @@ def test_eval_system_prompts_use_registry_not_hardcode():
         _get_task_success_system_prompt,
         _get_trajectory_system_prompt,
     )
-    from backend.infra.llm.prompt_registry import get_system_prompt
+    from ai_backend.infra.prompts import get_system_prompt
 
     assert _get_judge_system_prompt() == get_system_prompt("eval_judge")
     assert _get_task_success_system_prompt() == get_system_prompt("eval_task_success")
@@ -329,7 +301,7 @@ def test_eval_system_prompts_use_registry_not_hardcode():
 
 def test_phase2_prompt_v2_load_metadata_and_render():
     """Phase 2: answer_compose và rewrite_question có v2 đầy đủ metadata; render không thiếu biến."""
-    from backend.infra.llm.prompt_registry import registry
+    from ai_backend.infra.prompts import registry
 
     reg = registry()
     required_meta = ("name", "model", "owner", "created", "changelog")
@@ -367,7 +339,7 @@ def test_phase2_prompt_v2_load_metadata_and_render():
 
 def test_phase2_production_still_points_to_v1():
     """Phase 2: production.txt chưa promote v2 — production vẫn dùng template v1."""
-    from backend.infra.llm.prompt_registry import registry
+    from ai_backend.infra.prompts import registry
 
     reg = registry()
     for name in ("answer_compose", "rewrite_question"):
@@ -407,7 +379,8 @@ def test_exact_cache_hit_on_repeat_question(monkeypatch):
     )
     from backend.infra.cache.semantic import get_semantic_cache
     from backend.infra.cost.tracker import get_cost_tracker, reset_cost_tracker
-    from backend.infra.llm import completion as completion_mod
+    from ai_backend.infra.cache.tiered import chat_cached
+    from ai_backend.infra.llm import completion as completion_mod
 
     get_exact_cache().clear()
     get_semantic_cache().clear()
@@ -429,8 +402,11 @@ def test_exact_cache_hit_on_repeat_question(monkeypatch):
     fake_client = MagicMock()
     fake_client.chat.completions.create = fake_create
     monkeypatch.setattr(completion_mod, "get_client", lambda: fake_client)
-    monkeypatch.setattr("backend.infra.llm.client.get_client", lambda: fake_client)
-    monkeypatch.setattr(completion_mod, "retry_with_backoff", lambda fn, **kw: fn())
+    monkeypatch.setattr("ai_backend.infra.llm.client.get_client", lambda: fake_client)
+    monkeypatch.setattr(
+        "ai_backend.infra.llm.resilience.retry_with_backoff",
+        lambda fn, **kw: fn(),
+    )
     monkeypatch.setenv("EXACT_CACHE_ENABLED", "true")
 
     messages = [{"role": "user", "content": "test"}]
@@ -439,8 +415,8 @@ def test_exact_cache_hit_on_repeat_question(monkeypatch):
         prompt_version="production",
         normalized_question="Giá FPT hôm nay?",
     )
-    assert completion_mod.chat(messages) == "cached answer"
-    assert completion_mod.chat(messages) == "cached answer"
+    assert chat_cached(messages) == "cached answer"
+    assert chat_cached(messages) == "cached answer"
     clear_llm_cache_context()
 
     assert len(calls) == 1
@@ -457,7 +433,8 @@ def test_exact_cache_miss_on_prompt_version_bump(monkeypatch):
         set_llm_cache_context,
     )
     from backend.infra.cache.semantic import get_semantic_cache
-    from backend.infra.llm import completion as completion_mod
+    from ai_backend.infra.cache.tiered import chat_cached
+    from ai_backend.infra.llm import completion as completion_mod
 
     get_exact_cache().clear()
     get_semantic_cache().clear()
@@ -478,8 +455,11 @@ def test_exact_cache_miss_on_prompt_version_bump(monkeypatch):
     fake_client = MagicMock()
     fake_client.chat.completions.create = fake_create
     monkeypatch.setattr(completion_mod, "get_client", lambda: fake_client)
-    monkeypatch.setattr("backend.infra.llm.client.get_client", lambda: fake_client)
-    monkeypatch.setattr(completion_mod, "retry_with_backoff", lambda fn, **kw: fn())
+    monkeypatch.setattr("ai_backend.infra.llm.client.get_client", lambda: fake_client)
+    monkeypatch.setattr(
+        "ai_backend.infra.llm.resilience.retry_with_backoff",
+        lambda fn, **kw: fn(),
+    )
     monkeypatch.setenv("EXACT_CACHE_ENABLED", "true")
 
     messages = [{"role": "user", "content": "test"}]
@@ -488,13 +468,13 @@ def test_exact_cache_miss_on_prompt_version_bump(monkeypatch):
         prompt_version="production",
         normalized_question="Giá FPT?",
     )
-    first = completion_mod.chat(messages)
+    first = chat_cached(messages)
     set_llm_cache_context(
         prompt_name="answer_compose",
         prompt_version="2",
         normalized_question="Giá FPT?",
     )
-    second = completion_mod.chat(messages)
+    second = chat_cached(messages)
     clear_llm_cache_context()
 
     assert len(calls) == 2
@@ -563,7 +543,8 @@ def test_semantic_cache_hit_paraphrase(monkeypatch):
         set_llm_cache_context,
     )
     from backend.infra.cache.semantic import get_semantic_cache, set_semantic_question
-    from backend.infra.llm import completion as completion_mod
+    from ai_backend.infra.cache.tiered import chat_cached
+    from ai_backend.infra.llm import completion as completion_mod
 
     shared_vec = [1.0] + [0.0] * 255
     monkeypatch.setattr(
@@ -590,8 +571,11 @@ def test_semantic_cache_hit_paraphrase(monkeypatch):
     fake_client = MagicMock()
     fake_client.chat.completions.create = fake_create
     monkeypatch.setattr(completion_mod, "get_client", lambda: fake_client)
-    monkeypatch.setattr("backend.infra.llm.client.get_client", lambda: fake_client)
-    monkeypatch.setattr(completion_mod, "retry_with_backoff", lambda fn, **kw: fn())
+    monkeypatch.setattr("ai_backend.infra.llm.client.get_client", lambda: fake_client)
+    monkeypatch.setattr(
+        "ai_backend.infra.llm.resilience.retry_with_backoff",
+        lambda fn, **kw: fn(),
+    )
     monkeypatch.setenv("EXACT_CACHE_ENABLED", "true")
     monkeypatch.setenv("SEMANTIC_CACHE_ENABLED", "true")
 
@@ -602,7 +586,7 @@ def test_semantic_cache_hit_paraphrase(monkeypatch):
         normalized_question="tin tuc ve fpt",
     )
     set_semantic_question("tin tuc ve fpt")
-    completion_mod.chat(messages)
+    chat_cached(messages)
 
     set_llm_cache_context(
         prompt_name="answer_compose",
@@ -610,7 +594,7 @@ def test_semantic_cache_hit_paraphrase(monkeypatch):
         normalized_question="tin fpt",
     )
     set_semantic_question("tin fpt")
-    out = completion_mod.chat(messages)
+    out = chat_cached(messages)
     clear_llm_cache_context()
 
     assert out == "tin fpt answer"

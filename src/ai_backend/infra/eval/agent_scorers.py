@@ -11,7 +11,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from ai_backend.infra.llm.completion import chat_parsed
+from ai_backend.infra.cache.tiered import chat_parsed_cached
 from ai_backend.infra.llm.params import DETERMINISTIC
 from common.settings import settings
 
@@ -80,7 +80,7 @@ def evaluate_task_success(
         {"role": "system", "content": _get_task_success_system_prompt()},
         {"role": "user", "content": "\n\n".join(parts)},
     ]
-    parse = chat_parsed_fn or chat_parsed
+    parse = chat_parsed_fn or chat_parsed_cached
     prev = settings.llm_model
     settings.llm_model = JUDGE_MODEL
     try:
@@ -112,7 +112,7 @@ def evaluate_trajectory(
             "content": f"Nhiệm vụ: {task}\n\nChuỗi hành động:\n{formatted}",
         },
     ]
-    parse = chat_parsed_fn or chat_parsed
+    parse = chat_parsed_fn or chat_parsed_cached
     prev = settings.llm_model
     settings.llm_model = JUDGE_MODEL
     try:

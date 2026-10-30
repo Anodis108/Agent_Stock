@@ -7,7 +7,6 @@ from fastapi.responses import StreamingResponse
 
 from ai_backend.api.models.stream_models import ChatResponse, ChatStreamRequest
 from ai_backend.application.chat_service import ChatInput, ChatService
-from ai_backend.infra.llm.chat_stream import swarm_sse
 
 router = APIRouter(prefix="/v1", tags=["ai-stream"])
 
@@ -35,7 +34,11 @@ def stream_chat(body: ChatStreamRequest, request: Request) -> StreamingResponse:
     """Tiếp nhận câu hỏi, chạy LangGraph Swarm và stream token SSE về Web Backend."""
     chat_service: ChatService = request.app.state.chat_service
     return StreamingResponse(
-        swarm_sse(body.question.strip(), chat_service.request_deps(), user_id=body.user_id, request_id=body.request_id),
+        chat_service.stream_sse(
+            body.question.strip(),
+            user_id=body.user_id,
+            request_id=body.request_id,
+        ),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
     )

@@ -65,7 +65,7 @@ def _get_chat_answer_fn() -> Any:
 
 
 def _format_stream_payload(result: Any, t_start: float) -> dict[str, Any]:
-    mod = sys.modules.get("ai_backend.infra.llm.chat_stream")
+    mod = sys.modules.get("ai_backend.application.chat_service")
     if mod is not None and hasattr(mod, "swarm_public_payload"):
         try:
             return mod.swarm_public_payload(result, started=t_start)

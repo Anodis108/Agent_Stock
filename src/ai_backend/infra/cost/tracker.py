@@ -179,7 +179,7 @@ def record_completion_usage(
     prompt_version: str | None = None,
     cache_hit: bool | None = None,
 ) -> None:
-    """Hook từ completion layer — merge context vars + explicit overrides."""
+    """Ghi usage một lời gọi LLM. Caller (cache tiered, cascade, …) gọi — không gọi từ chat()."""
     ctx = get_cost_context()
     record_cost(
         feature=feature or str(ctx.get("feature") or "llm"),
@@ -190,3 +190,33 @@ def record_completion_usage(
         completion_tokens=completion_tokens,
         total_tokens=total_tokens,
     )
+
+
+def record_response_usage(usage: Any, *, model: str) -> None:
+    """Ghi token từ object usage của SDK. Thiếu usage hoặc tracker lỗi thì bỏ qua."""
+    if usage is None:
+        return
+    try:
+        record_completion_usage(
+            model=model,
+            prompt_tokens=usage.prompt_tokens or 0,
+            completion_tokens=usage.completion_tokens or 0,
+            total_tokens=usage.total_tokens,
+            cache_hit=False,
+        )
+    except Exception:
+        pass
+
+
+def record_cache_hit(*, model: str) -> None:
+    """Cache hit: 0 token, đánh dấu cache_hit để thống kê không tính tiền model."""
+    try:
+        record_completion_usage(
+            model=model,
+            prompt_tokens=0,
+            completion_tokens=0,
+            total_tokens=0,
+            cache_hit=True,
+        )
+    except Exception:
+        pass

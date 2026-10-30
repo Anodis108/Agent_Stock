@@ -31,11 +31,6 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from ai_backend.infra.eval.history import get_git_sha  # noqa: E402
-from ai_backend.infra.llm.semaphore import (  # noqa: E402
-    get_llm_semaphore_limit,
-    llm_semaphore_slot,
-    reset_llm_semaphore_for_tests,
-)
 from common.settings.config import settings  # noqa: E402
 
 REPORT_MD = ROOT / "resources" / "eval" / "sse_benchmark.md"
@@ -57,7 +52,7 @@ def run_semaphore_benchmark(
     job_ms: float,
 ) -> dict:
     settings.llm_max_concurrency = semaphore
-    reset_llm_semaphore_for_tests()
+    slot = threading.Semaphore(semaphore)
 
     latencies: list[float] = []
     active = 0
@@ -67,7 +62,8 @@ def run_semaphore_benchmark(
     def job() -> float:
         nonlocal active, peak_active
         t0 = time.perf_counter()
-        with llm_semaphore_slot():
+        slot.acquire()
+        try:
             with lock:
                 active += 1
                 peak_active = max(peak_active, active)
@@ -76,6 +72,8 @@ def run_semaphore_benchmark(
             finally:
                 with lock:
                     active -= 1
+        finally:
+            slot.release()
         return time.perf_counter() - t0
 
     t_wall0 = time.perf_counter()
@@ -86,7 +84,7 @@ def run_semaphore_benchmark(
     wall_sec = time.perf_counter() - t_wall0
 
     return {
-        "llm_semaphore": get_llm_semaphore_limit(),
+        "llm_semaphore": semaphore,
         "requests": requests,
         "job_ms": job_ms,
         "wall_sec": round(wall_sec, 3),

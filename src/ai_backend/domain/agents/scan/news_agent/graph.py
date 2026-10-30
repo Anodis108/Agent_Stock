@@ -7,7 +7,7 @@ from functools import lru_cache
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode
 
-from ai_backend.domain.agents.multi_agent._llm import base_llm
+from ai_backend.infra.llm.client import bind_tools_llm
 from ai_backend.domain.agents.scan.news_agent.state import NewsWorkerState
 from ai_backend.domain.agents.scan.news_agent.tools import TOOLS, news_from_tool_artifacts
 from ai_backend.infra.monitoring.tracing import _current, current_span, trace_step
@@ -19,9 +19,8 @@ SYSTEM_PROMPT = (
 )
 
 
-@lru_cache(maxsize=1)
 def _worker_llm():
-    return base_llm().bind_tools(TOOLS)
+    return bind_tools_llm(TOOLS)
 
 
 async def act(state: NewsWorkerState) -> dict:

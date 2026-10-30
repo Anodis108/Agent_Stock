@@ -116,7 +116,7 @@ def build_real_deps(schema: str) -> AppDeps:
         news_source=CafefNewsSource(),
         history_store=PgPriceHistoryStore(schema),
         memory_store=memory,
-        notifier=ConsoleNotifier(memory),
+        notifier=ConsoleNotifier(memory, user_id="default"),
         watchlist_store=PgWatchlistStore(schema),
         holdings_repo=PortfolioHoldingRepository(conn),
         user_settings_repo=UserSettingsRepository(conn),

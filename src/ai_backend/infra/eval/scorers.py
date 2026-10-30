@@ -16,7 +16,7 @@ from ai_backend.infra.eval.agent_scorers import (
     evaluate_task_success,
     evaluate_trajectory,
 )
-from ai_backend.infra.llm.completion import chat_parsed
+from ai_backend.infra.cache.tiered import chat_parsed_cached
 from ai_backend.infra.llm.params import DETERMINISTIC
 from ai_backend.infra.prompts import get_system_prompt
 from common.settings import settings
@@ -168,7 +168,7 @@ def score_llm_judge(
         {"role": "system", "content": _get_judge_system_prompt()},
         {"role": "user", "content": "\n\n".join(parts)},
     ]
-    parse = chat_parsed_fn or chat_parsed
+    parse = chat_parsed_fn or chat_parsed_cached
     prev_model = settings.llm_model
     settings.llm_model = JUDGE_MODEL
     try:

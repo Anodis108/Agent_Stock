@@ -2,6 +2,7 @@
 
 - **Superpowers:** Mọi task sửa/viết code trong repo này → tuân `.cursor/rules/superpowers-coding.mdc` và plugin skill `using-superpowers` (announce skill trước khi implement).
 - Viết code đơn giản, ngắn gọn, dễ đọc.
+- **Code tường minh:** ưu tiên viết logic tại chỗ gọi (call site) để dễ đọc / kiểm soát. Không bọc đường tắt / helper mờ (`wrap_*`, facade kiểu `traced` tự lấy cha ngầm) khi caller có thể truyền tham số / mở `with` tường minh. Helper chỉ giữ khi thật sự tái sử dụng rõ ràng và không che luồng điều khiển.
 - Không tách hàm nhỏ lẻ khi không cần thiết — giữ logic liền mạch trong một hàm nếu nó không quá dài hoặc phức tạp.
 - Tránh trừu tượng hóa (abstraction) không cần thiết khi task không yêu cầu.
 - Không bao giờ dùng `.get(...)` trên dict / state / context — code luôn đảm bảo key tồn tại, truy cập thẳng `x["key"]` (key có thể chưa được node nào ghi thì khởi tạo mặc định ở điểm vào, vd. `None`).

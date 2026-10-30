@@ -186,7 +186,7 @@ def _format_stream_error(exc: BaseException) -> str:
 
 def _attach_account_lists(payload: dict[str, Any], user_id: str) -> None:
     try:
-        from ai_backend.infra.llm.account_snapshot import load_account_snapshot
+        from ai_backend.infra.session.account_snapshot import load_account_snapshot
     except ImportError:
         return
     snapshot = load_account_snapshot(user_id)

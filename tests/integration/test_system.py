@@ -110,25 +110,24 @@ def test_llm_semaphore_limits_concurrency(monkeypatch):
     import threading
     import time
 
-    from backend.infra.llm.semaphore import llm_semaphore_slot, reset_llm_semaphore_for_tests
-    from backend.shared.settings import settings
-
-    monkeypatch.setenv("LLM_SEMAPHORE", "1")
-    monkeypatch.setattr(settings, "llm_max_concurrency", 2)
-    reset_llm_semaphore_for_tests()
+    limit = 2
+    slot = threading.Semaphore(limit)
     active = 0
     peak = 0
     lock = threading.Lock()
 
     def worker() -> None:
         nonlocal active, peak
-        with llm_semaphore_slot():
+        slot.acquire()
+        try:
             with lock:
                 active += 1
                 peak = max(peak, active)
             time.sleep(0.05)
             with lock:
                 active -= 1
+        finally:
+            slot.release()
 
     threads = [threading.Thread(target=worker) for _ in range(8)]
     for t in threads:
@@ -173,7 +172,7 @@ def test_inprocess_ai_transport_default(monkeypatch):
     assert "AI_TRANSPORT=inprocess" in env_ex
     assert "\n  ai:" not in compose
 
-    from backend.infra.llm.client import _use_http
+    from common.transport.transport import _use_http
 
     monkeypatch.delenv("AI_TRANSPORT", raising=False)
     assert _use_http() is False

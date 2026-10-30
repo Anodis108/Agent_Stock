@@ -161,7 +161,7 @@ def test_chat_stream_sse_endpoint(client: TestClient, monkeypatch):
             source_file=None,
         )
 
-    monkeypatch.setattr("ai_backend.infra.llm.chat_stream.start_graph", _fake_start_graph)
+    monkeypatch.setattr("ai_backend.domain.agents.graph.start_graph", _fake_start_graph)
 
     req_body = {
         "question": "Phân tích giá cổ phiếu FPT",

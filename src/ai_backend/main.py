@@ -95,7 +95,7 @@ async def lifespan(app: FastAPI):
         history_store=history_store,
         memory_store=memory_store,
         watchlist_store=watchlist_store,
-        notifier=ConsoleNotifier(memory_store),
+        notifier=ConsoleNotifier(memory_store, user_id="default"),
     )
     app.state.scan_service = scanner
     app.state.concept_ingestion_service = ConceptIngestionService(client=q_client)

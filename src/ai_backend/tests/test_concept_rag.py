@@ -269,7 +269,7 @@ def test_supervisor_sends_rsi_definition_to_retrieval_and_symbol_to_indicator():
     assert result.source_file == "rsi-va-sma.md"
     assert "RSI" in result.answer
     assert result.eval_result is None
-    from ai_backend.infra.llm.chat_stream import swarm_public_payload
+    from ai_backend.application.chat_service import swarm_public_payload
 
     published = swarm_public_payload(result, started=0)
     assert published["source_file"] == "rsi-va-sma.md"
