@@ -11,12 +11,7 @@ from ai_backend.domain.agents.chat.draw_agent.state import DrawWorkerState
 from ai_backend.domain.agents.chat.draw_agent.tools import TOOLS
 from ai_backend.infra.llm.client import bind_tools_llm
 from ai_backend.infra.monitoring.tracing import _current, current_span, trace_step
-
-SYSTEM_PROMPT = (
-    "Bạn là worker vẽ: biểu đồ giá cho các mã trong nhiệm vụ bằng draw_price_chart (tự chọn chart_type, số phiên "
-    "theo yêu cầu), sơ đồ quy trình / quan hệ bằng draw_diagram. Chỉ vẽ đúng thứ người dùng yêu cầu. "
-    "Chỉ dùng số liệu có trong tool / ghi chú, không bịa. Xong việc thì trả lời 1-2 câu tóm tắt kết quả."
-)
+from ai_backend.infra.prompts import get_system_prompt
 
 
 def _worker_llm():
@@ -27,7 +22,7 @@ async def act(state: DrawWorkerState) -> dict:
     with trace_step(current_span(), "act", as_type="generation"):
         notes = "\n".join(f"[{d}] {n}" for d, n in (state["notes"] or {}).items()) or "(chưa có)"
         messages = state["message_worker"] or [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": get_system_prompt("draw_agent")},
             {"role": "user", "content": f"Nhiệm vụ: {state['task']}\n\nGhi chú từ worker đã chạy:\n{notes}"},
         ]
         response = await _worker_llm().ainvoke(messages)

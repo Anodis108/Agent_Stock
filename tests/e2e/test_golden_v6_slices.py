@@ -14,12 +14,11 @@ Bao phủ 8 lát cắt thị trường:
 from __future__ import annotations
 
 from typing import Any
-import pytest
 
+from ai_backend.domain.agents.chat.graph import run_chat_graph
 from ai_backend.domain.guardrails.input_guardrail import check_input_guardrail
 from common.domain.entities import WatchlistItem
-from common.domain.ports import PriceBar, PriceQuote, NewsItem
-from ai_backend.domain.agents.chat.graph import run_chat_graph
+from common.domain.ports import NewsItem, PriceBar, PriceQuote
 
 
 class MockPriceSource:
@@ -290,8 +289,9 @@ def test_golden_v6_chart_e2e_answer():
 
 def test_golden_v6_dataset_coverage_all_20_cases():
     """AC-1: Kiểm tra Golden Dataset v6 định nghĩa đủ 20 test cases trên 10 lát cắt chuẩn."""
-    import yaml
     from pathlib import Path
+
+    import yaml
 
     root = Path(__file__).resolve().parents[2] if Path(__file__).resolve().parent.name in ("unit", "integration", "e2e") else Path(__file__).resolve().parents[1]
     dataset_path = root / "resources" / "eval" / "golden_dataset.yaml"

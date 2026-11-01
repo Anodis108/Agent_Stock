@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 from ai_backend.application.scan_service import ScanInput, ScanService
-from ai_backend.domain.agents.scan.eval_agent.nodes import HeuristicEvalBrain
-from ai_backend.domain.agents.scan.nodes import HeuristicEventClassifier
-from ai_backend.domain.agents.scan.news_agent.nodes import HeuristicNewsBrain
-from ai_backend.domain.agents.chat.chat_supervisor_agent.nodes import HeuristicRewriteBrain, HeuristicSupervisorBrain
-from ai_backend.domain.agents.scan.synthesis import HeuristicAlertComposer
+from ai_backend.domain.agents.chat.chat_supervisor_agent.nodes import (
+    HeuristicRewriteBrain,
+    HeuristicSupervisorBrain,
+)
 from ai_backend.domain.agents.chat.graph import run_chat_graph
-from ai_backend.domain.agents.scan.nodes import is_abnormal
+from ai_backend.domain.agents.scan.eval_agent.nodes import HeuristicEvalBrain
 from ai_backend.domain.agents.scan.graph import run_scan_graph
+from ai_backend.domain.agents.scan.news_agent.nodes import HeuristicNewsBrain
+from ai_backend.domain.agents.scan.nodes import HeuristicEventClassifier, is_abnormal
+from ai_backend.domain.agents.scan.synthesis import HeuristicAlertComposer
 from common.domain.entities import EventRoute
 from common.domain.ports import NewsItem, PriceBar, PriceQuote
 

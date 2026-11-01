@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import sqlite3
-import pytest
 
+import pytest
 from backend.database.connection import init_db
 from backend.database.repositories import (
     PortfolioHoldingRepository,
@@ -12,9 +12,7 @@ from backend.database.repositories import (
 )
 from backend.domain.ports import PriceBar, PriceQuote, PriceSourcePort
 from backend.services.portfolio_service import (
-    PortfolioItemSummary,
     PortfolioService,
-    PortfolioSummary,
 )
 
 
@@ -140,7 +138,7 @@ def test_portfolio_multi_tenant_isolation(in_memory_db):
     user_b = "investor_bob"
 
     # Alice mua SSI
-    h_alice = service.add_holding("SSI", quantity=1000, avg_buy_price=30.0, user_id=user_a)
+    service.add_holding("SSI", quantity=1000, avg_buy_price=30.0, user_id=user_a)
     # Bob mua TCB
     h_bob = service.add_holding("TCB", quantity=2000, avg_buy_price=22.0, user_id=user_b)
 

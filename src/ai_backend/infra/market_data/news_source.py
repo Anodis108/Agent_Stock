@@ -8,6 +8,7 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta
 from html import unescape
+from typing import Any
 
 from common.domain.ports import NewsItem
 

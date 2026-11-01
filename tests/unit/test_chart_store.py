@@ -9,7 +9,6 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-
 from backend.agents.chart_agent import _save_and_encode_fig
 from backend.infra.storage.chart_store import (
     ChartObjectStore,

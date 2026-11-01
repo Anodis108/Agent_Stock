@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-import pytest
+
 from fastapi.testclient import TestClient
 
 from web_backend.main import app as product_app
@@ -270,8 +270,8 @@ def test_frontend_single_origin_api_wiring():
 
 def test_phase2_frontend_static_serving_and_mime_types():
     """Phase 2.1: Kiểm tra FastAPI mount tĩnh Frontend và trả về đúng MIME types."""
-    from fastapi.testclient import TestClient
     from backend.main import app
+    from fastapi.testclient import TestClient
 
     client = TestClient(app)
 
@@ -301,8 +301,8 @@ def test_phase2_frontend_static_serving_and_mime_types():
 
 def test_phase2_user_switcher_wiring_and_tenant_isolation():
     """Phase 2.2: Kiểm tra User Switcher UI và tính cô lập dữ liệu giữa user_a và user_b."""
-    from fastapi.testclient import TestClient
     from backend.main import app
+    from fastapi.testclient import TestClient
 
     html = (FE / "index.html").read_text(encoding="utf-8")
     js = (FE / "app.js").read_text(encoding="utf-8")
@@ -347,10 +347,11 @@ def test_phase2_user_switcher_wiring_and_tenant_isolation():
 
 def test_phase2_chat_markdown_rendering():
     """Phase 2.3: Kiểm tra Khung Chat và Trình Kết Xuất Markdown (bảng, in đậm, code, chart image, XSS)."""
-    import subprocess
     import shutil
-    from fastapi.testclient import TestClient
+    import subprocess
+
     from backend.main import app
+    from fastapi.testclient import TestClient
 
     html = (FE / "index.html").read_text(encoding="utf-8")
     js = (FE / "app.js").read_text(encoding="utf-8")
@@ -436,10 +437,11 @@ print("RSI: 68")
 
 def test_phase2_live_agent_graph_and_node_inspector():
     """Phase 2.4: Kiểm tra Đồ thị mạng lưới Live Agent Graph (9 nodes canonical, highlight, inspector, prompts)."""
-    import subprocess
     import shutil
-    from fastapi.testclient import TestClient
+    import subprocess
+
     from backend.main import app
+    from fastapi.testclient import TestClient
 
     html = (FE / "index.html").read_text(encoding="utf-8")
     js = (FE / "app.js").read_text(encoding="utf-8")
@@ -543,8 +545,8 @@ def test_phase2_live_agent_graph_and_node_inspector():
 
 def test_phase2_portfolio_pnl_table_and_summary_cards():
     """Phase 2.5: Kiểm tra Bảng hiển thị Danh mục & P&L, 3 thẻ tóm tắt NAV/PnL và API CRUD."""
-    from fastapi.testclient import TestClient
     from backend.main import app
+    from fastapi.testclient import TestClient
 
     html = (FE / "index.html").read_text(encoding="utf-8")
     css = (FE / "style.css").read_text(encoding="utf-8")
@@ -689,7 +691,6 @@ def test_smoke_answer_validation():
 
 def test_smoke_health_with_mock(monkeypatch):
     """run_smoke health pass với mock HTTP."""
-    import io
     import json
     import sys
     import urllib.request
@@ -781,8 +782,8 @@ def test_phase4_portfolio_api_integration():
     2. Hỗ trợ thêm vị thế qua POST /api/v1/portfolio/holdings và xóa vị thế qua DELETE /api/v1/portfolio/holdings/{id}.
     3. Giá trị NAV và P&L được cập nhật tức thì và cô lập hoàn toàn giữa các user.
     """
-    from fastapi.testclient import TestClient
     from backend.main import app
+    from fastapi.testclient import TestClient
 
     js_text = (FE / "app.js").read_text(encoding="utf-8")
 
@@ -851,7 +852,7 @@ def test_phase4_portfolio_api_integration():
         )
         assert add_hpg.status_code == 201
         hpg_holding = add_hpg.json()
-        hpg_id = hpg_holding["id"]
+        hpg_holding["id"]
         assert hpg_holding["symbol"] == "HPG"
         assert hpg_holding["quantity"] == 2000
 
@@ -910,8 +911,9 @@ def test_phase4_watchlist_api_integration():
     3. Cô lập đa người dùng (Multi-tenant) qua header X-User-ID.
     """
     import uuid
-    from fastapi.testclient import TestClient
+
     from backend.main import app
+    from fastapi.testclient import TestClient
 
     js_text = (FE / "app.js").read_text(encoding="utf-8")
 
@@ -1006,8 +1008,9 @@ def test_phase4_market_matrix_api_integration():
     """
     import shutil
     import subprocess
-    from fastapi.testclient import TestClient
+
     from backend.main import app
+    from fastapi.testclient import TestClient
 
     html_text = (FE / "index.html").read_text(encoding="utf-8")
     js_text = (FE / "app.js").read_text(encoding="utf-8")
@@ -1117,8 +1120,9 @@ def test_phase4_end_to_end_integration_chat_and_portfolio_pnl():
     """
     import json
     import uuid
-    from fastapi.testclient import TestClient
+
     from backend.main import app
+    from fastapi.testclient import TestClient
 
     client = TestClient(app)
     uid = uuid.uuid4().hex[:8]
@@ -1190,7 +1194,7 @@ def test_phase4_end_to_end_integration_chat_and_portfolio_pnl():
     assert fpt_holding["symbol"] == "FPT"
     assert fpt_holding["quantity"] == 1000
     assert fpt_holding["avg_buy_price"] == 110.0
-    fpt_id = fpt_holding["id"]
+    fpt_holding["id"]
 
     # 2.3 Thêm vị thế mua 500 cổ phiếu VNM giá vốn 70,000 VND (70.0 nghìn đồng)
     res_vnm = client.post(

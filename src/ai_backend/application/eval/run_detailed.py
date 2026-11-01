@@ -33,6 +33,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+
 def _find_project_root() -> Path:
     p = Path(__file__).resolve().parent
     for _ in range(5):
@@ -50,6 +51,7 @@ if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
 from openai.types.chat import ChatCompletion
+from pydantic import BaseModel
 
 from ai_backend.application.eval.run import (
     GOLDEN_V4_PATH,
@@ -64,7 +66,6 @@ from ai_backend.application.eval.run import (
 from ai_backend.infra.llm import completion as completion_mod
 from ai_backend.infra.llm.params import GenerationParams
 from common.settings import settings
-from pydantic import BaseModel
 
 # Pricing per 1M tokens (USD)
 MODEL_PRICING = {
@@ -318,7 +319,7 @@ class CachedNewsSource:
             res = self.inner.fetch_news(symbol, query=query, days=days)
             self.cache[key] = res
             return res
-        except (Exception, SystemExit) as exc:
+        except (Exception, SystemExit):
             return []
 
 
@@ -348,10 +349,10 @@ def run_detailed_evaluation(
     out_md = output_md_path or (ROOT / "resources" / "eval" / def_md_name)
     out_json = output_json_path or (ROOT / "resources" / "eval" / def_json_name)
 
-    print(f"\n========================================================")
+    print("\n========================================================")
     print(f"  BẮT ĐẦU ĐÁNH GIÁ DATASET: {p.name}")
     print(f"  Thời gian: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"========================================================\n")
+    print("========================================================\n")
 
     deps = get_app_deps()
     cached_price = CachedPriceSource(deps.price_source)
@@ -398,11 +399,11 @@ def run_detailed_evaluation(
                 user_id=f"eval-{cid}",
             )
 
-            def tracked_answer_fn(q: str) -> str:
+            def tracked_answer_fn(q: str, _fn=fn) -> str:
                 _tracker.active_stage = "app"
-                out = fn(q)
+                out = _fn(q)
                 _tracker.mark_first_token()
-                tracked_answer_fn.last_steps = getattr(fn, "last_steps", [])
+                tracked_answer_fn.last_steps = getattr(_fn, "last_steps", [])
                 return out
 
             tracked_answer_fn.last_steps = []
@@ -522,14 +523,14 @@ def run_detailed_evaluation(
     avg_ttft = sum(c.get("ttft_s", 0) for c in detailed_results) / total_cases if total_cases > 0 else 0.0
     avg_latency = total_duration / total_cases if total_cases > 0 else 0.0
 
-    print(f"\n========================================================")
+    print("\n========================================================")
     print(f"  HOÀN THÀNH ĐÁNH GIÁ DATASET ({total_cases} CASES)")
     print(f"  Kết quả: {passed_count}/{total_cases} Passed ({pass_rate:.1f}%)")
     print(f"  Rule Pass Rate: {rule_rate*100:.1f}% | Injection Blocked: {inj_rate*100:.1f}% | Out-of-scope Refused: {oos_rate*100:.1f}%")
     print(f"  Tổng Tokens: {total_tokens_all:,} (App: {total_app_tokens:,}, Judge: {total_judge_tokens:,})")
     print(f"  Tổng Chi Phí: ${total_cost_usd_all:.4f} USD (~ {total_cost_vnd_all:,.0f} VND)")
     print(f"  Thời Gian: {total_duration:.1f}s (TTFT TB: {avg_ttft:.2f}s, E2E TB: {avg_latency:.2f}s)")
-    print(f"========================================================\n")
+    print("========================================================\n")
 
     # Generate Markdown Table Report
     md_content = generate_markdown_report(
@@ -654,12 +655,12 @@ def generate_markdown_report(
 
     lines = [
         f"# Báo Cáo Đánh Giá Chất Lượng Agent: {dataset_name}",
-        f"",
+        "",
         f"- **Thời gian chạy**: `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`",
         f"- **Model chính**: `{settings.llm_model}` | **LLM Judge**: `gpt-4o-mini`",
         f"- **Tổng số ca kiểm thử**: **{total_cases}**",
         f"- **Kết quả tổng thể**: **{passed_cases}/{total_cases} Passed ({pass_rate:.1f}%)**",
-        f"- **Tỷ lệ đạt chuẩn (Compliance Gate)**:",
+        "- **Tỷ lệ đạt chuẩn (Compliance Gate)**:",
         f"  - **Rule Pass Rate**: **{rule_rate:.1%}** ({rule_passed}/{total_cases})",
         f"  - **Prompt Injection Blocked**: **{inj_rate:.1%}** ({inj_blocked}/{len(inj_cases) if inj_cases else 0})",
         f"  - **Out-of-scope Refused**: **{oos_rate:.1%}** ({oos_refused}/{len(oos_cases) if oos_cases else 0})",
@@ -667,13 +668,13 @@ def generate_markdown_report(
         f"- **Tổng Token tiêu thụ**: **{total_tokens:,} tokens** (Prompt: {total_prompt:,}, Completion: {total_completion:,} | App: {total_app_tokens:,}, Judge: {total_judge_tokens:,})",
         f"- **Tổng chi phí ước tính**: **${total_cost_usd:.4f} USD** (~ **{total_cost_vnd:,.0f} VNĐ**)",
         f"- **Tổng thời gian thực thi**: **{total_duration:.1f}s**" if total_cases > 0 else "- **Tổng thời gian thực thi**: 0s",
-        f"",
-        f"---",
-        f"",
-        f"## 1. Tổng Hợp Theo Từng Slice (Phân Nhóm)",
-        f"",
-        f"| Slice | Số Case | Passed | Failed | Pass Rate |",
-        f"| :--- | :---: | :---: | :---: | :---: |",
+        "",
+        "---",
+        "",
+        "## 1. Tổng Hợp Theo Từng Slice (Phân Nhóm)",
+        "",
+        "| Slice | Số Case | Passed | Failed | Pass Rate |",
+        "| :--- | :---: | :---: | :---: | :---: |",
     ]
 
     for s in report.by_slice:
@@ -681,13 +682,13 @@ def generate_markdown_report(
         lines.append(f"| **{s.slice_type}** | {s.total} | {s.passed} | {s.total - s.passed} | **{rate_str}** |")
 
     lines.extend([
-        f"",
-        f"---",
-        f"",
+        "",
+        "---",
+        "",
         f"## 2. Bảng Chi Tiết Toàn Bộ {total_cases} Test Cases",
-        f"",
-        f"| STT | Case ID | Slice | Câu Hỏi | Pipeline Trace Agent | Tokens (P/C/Tot) | Độ Trễ (TTFT/E2E) | Chi Phí (VNĐ) | Kết Quả | Chi Tiết / Lý Do |",
-        f"| :---: | :--- | :--- | :--- | :--- | :---: | :---: | :---: | :---: | :--- |",
+        "",
+        "| STT | Case ID | Slice | Câu Hỏi | Pipeline Trace Agent | Tokens (P/C/Tot) | Độ Trễ (TTFT/E2E) | Chi Phí (VNĐ) | Kết Quả | Chi Tiết / Lý Do |",
+        "| :---: | :--- | :--- | :--- | :--- | :---: | :---: | :---: | :---: | :--- |",
     ])
 
     for c in detailed_results:
@@ -733,11 +734,11 @@ def generate_markdown_report(
         )
 
     lines.extend([
-        f"",
-        f"---",
-        f"",
-        f"## 3. Bảng Phân Tích Câu Hỏi & Câu Trả Lời Chi Tiết",
-        f"",
+        "",
+        "---",
+        "",
+        "## 3. Bảng Phân Tích Câu Hỏi & Câu Trả Lời Chi Tiết",
+        "",
     ])
 
     for c in detailed_results:
@@ -749,14 +750,14 @@ def generate_markdown_report(
             f"- **Pipeline Trace**: `{c['pipeline_trace']}`",
             f"- **Độ trễ phản hồi**: TTFT={c.get('ttft_s', 0):.2f}s | End-to-end={c.get('latency_s', 0):.2f}s",
             f"- **Token & Chi phí**: {c['tokens']['total_tokens']} tokens ({c['tokens'].get('prompt_tokens', 0)} prompt + {c['tokens'].get('completion_tokens', 0)} completion | {c['tokens']['app_tokens']} app + {c['tokens']['judge_tokens']} judge) | **{c['cost']['vnd']:,.0f} VNĐ** (${c['cost']['usd']:.5f})",
-            f"- **Câu trả lời thực tế**:",
-            f"```text",
+            "- **Câu trả lời thực tế**:",
+            "```text",
             f"{c['answer']}",
-            f"```",
+            "```",
         ])
         if not c["passed"]:
             lines.extend([
-                f"- **Lý do không đạt**:",
+                "- **Lý do không đạt**:",
                 f"  - Rule-based: Missing={c['scoring']['rule_based']['missing']}, Forbidden={c['scoring']['rule_based']['forbidden_found']}",
                 f"  - LLM-Judge: {json.dumps(c['scoring']['llm_judge'].get('score'), ensure_ascii=False) if isinstance(c['scoring']['llm_judge'], dict) and not c['scoring']['llm_judge'].get('skipped') else 'Skipped'}",
             ])

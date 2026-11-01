@@ -7,8 +7,8 @@ preventing spurious ticker extraction (TRA, NAV, XEM).
 from __future__ import annotations
 
 import sqlite3
-import pytest
 
+import pytest
 from backend.agents.portfolio_report import run_portfolio_report
 from backend.agents.supervisor_agent.nodes import (
     HeuristicRewriteBrain,

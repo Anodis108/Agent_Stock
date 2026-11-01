@@ -1,10 +1,14 @@
 <#
 .SYNOPSIS
-    VN Stock Swarm — Cloudflare Tunnel Publishing Script (PowerShell)
+    VN Stock Swarm — public HTTPS (Cloudflare Tunnel) — Module III, Bài 5.
 .DESCRIPTION
-    Khoi chay Cloudflare Tunnel (cloudflared) de mo mot URL HTTPS cong khai ra Internet
-    tro truc tiep vao Nginx cong 80 cuc bo (127.0.0.1:80), khong can mo port modem,
-    khong can mua ten mien, trien khai thuan cuc bo tren may tram Windows.
+    Tương ứng mục đích "có URL HTTPS công khai" của demo deploy.sh + certbot
+    trên GCE, nhưng KHÔNG dựng VM GCP: tunnel từ máy local ra Internet.
+
+    Trỏ vào nginx :80 (src/deploy/nginx.conf) — TLS chấm dứt ở Cloudflare.
+    Không mở port modem, không mua domain.
+
+    Chạy sau khi stack local đã up (release.ps1 up) và nginx listen 80.
 #>
 
 [CmdletBinding()]

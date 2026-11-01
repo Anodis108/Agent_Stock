@@ -2,15 +2,11 @@
 
 from __future__ import annotations
 
-import pytest
-
+from common.database import PgConn
 from common.domain.ports import PriceBar, PriceQuote
 from web_backend.application.portfolio_service import (
-    PortfolioItemSummary,
     PortfolioService,
-    PortfolioSummary,
 )
-from common.database import PgConn
 from web_backend.infra.database.repositories import (
     PortfolioHoldingRepository,
     UserSettingsRepository,

@@ -19,12 +19,9 @@ alias_router = APIRouter(prefix="/api/sessions", tags=["sessions-alias"])
 
 from web_backend.infra.database.connection import get_connection
 from web_backend.infra.database.repositories import (
-    MessageRecord,
     MessageRepository,
-    SessionRecord,
     SessionRepository,
 )
-
 
 
 def _to_session_out(s: Any) -> SessionOut:

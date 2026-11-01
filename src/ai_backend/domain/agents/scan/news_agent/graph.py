@@ -7,16 +7,11 @@ from functools import lru_cache
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode
 
-from ai_backend.infra.llm.client import bind_tools_llm
 from ai_backend.domain.agents.scan.news_agent.state import NewsWorkerState
 from ai_backend.domain.agents.scan.news_agent.tools import TOOLS, news_from_tool_artifacts
+from ai_backend.infra.llm.client import bind_tools_llm
 from ai_backend.infra.monitoring.tracing import _current, current_span, trace_step
-
-SYSTEM_PROMPT = (
-    "Bạn là worker tin tức: lấy tin lần lượt từng mã trong danh sách, xong mã này mới sang mã kia, "
-    "gọi đủ hết rồi mới kết thúc. Chỉ dùng số liệu có trong tool / ghi chú, không bịa. "
-    "Xong việc thì trả lời 1-2 câu tóm tắt kết quả."
-)
+from ai_backend.infra.prompts import get_system_prompt
 
 
 def _worker_llm():
@@ -29,7 +24,7 @@ async def act(state: NewsWorkerState) -> dict:
         syms = ", ".join(state["symbols"]) if "symbols" in state and state["symbols"] else ""
         sym_line = f"\nCác mã (làm lần lượt): {syms}" if syms else ""
         messages = state["message_worker"] or [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": get_system_prompt("news_agent")},
             {"role": "user", "content": f"Nhiệm vụ: {state['task']}{sym_line}\n\nGhi chú từ worker đã chạy:\n{notes}"},
         ]
         response = await _worker_llm().ainvoke(messages)

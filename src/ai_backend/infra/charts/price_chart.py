@@ -4,20 +4,22 @@ from __future__ import annotations
 
 import base64
 import io
+from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 from uuid import uuid4
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
+from pydantic import BaseModel
 
 from ai_backend.shared.charts import get_charts_dir
 from common.domain.ports import PriceBar
-from pydantic import BaseModel
 
 
 class ChartResult(BaseModel):

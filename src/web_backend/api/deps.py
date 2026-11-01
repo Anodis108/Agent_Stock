@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from fastapi import Header, HTTPException, Query
-
 from dataclasses import dataclass
 from typing import Any
+
+from fastapi import Header, HTTPException, Query
 
 
 @dataclass

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import yaml
@@ -26,37 +25,48 @@ def test_ci_workflow_exists():
 
     assert "defaults" not in data or data["defaults"]["run"].get("working-directory") in (".", None)
 
-    job = data["jobs"]["test"]
-    assert job.get("env", {}).get("PYTHONPATH") == "src"
+    # Bài 6: check rẻ trước (checks) → tests needs: checks
+    assert "checks" in data["jobs"]
+    assert "tests" in data["jobs"]
+    assert data["jobs"]["tests"].get("needs") == "checks" or data["jobs"]["tests"].get("needs") == ["checks"]
 
-    step_runs = [s.get("run", "") for s in job["steps"] if "run" in s]
-    assert any("pip install" in r for r in step_runs)
-    assert any("prompt_lint" in r for r in step_runs)
-    assert any("pytest" in r for r in step_runs)
+    assert data.get("env", {}).get("PYTHONPATH") == "src"
+
+    checks_runs = [s.get("run", "") for s in data["jobs"]["checks"]["steps"] if "run" in s]
+    tests_runs = [s.get("run", "") for s in data["jobs"]["tests"]["steps"] if "run" in s]
+    assert any("requirements-dev.txt" in r for r in checks_runs)
+    assert any("prompts.lint" in r for r in checks_runs)
+    assert any("ruff check" in r for r in checks_runs)
+    assert any("python -m pytest" in r for r in tests_runs)
 
 
 def test_eval_gate_workflow_exists():
     data = _load_workflow("eval-gate.yml")
     on_key = "on" if "on" in data else True
     assert "pull_request" in data[on_key]
+    assert "schedule" in data[on_key]
 
     paths = data[on_key]["pull_request"]["paths"]
     assert "resources/prompts/**" in paths
-    assert "src/backend/**" in paths
+    assert "src/ai_backend/**" in paths
     assert "resources/eval/**" in paths
+    assert "src/backend/**" not in paths
 
-    job = data["jobs"]["eval_gate"]
-    assert job.get("env", {}).get("PYTHONPATH") == "src"
-    assert job.get("env", {}).get("LLM_MODEL") == "gpt-4o-mini"
+    assert data.get("env", {}).get("PYTHONPATH") == "src"
+    assert data.get("env", {}).get("LLM_MODEL") == "gpt-4o-mini"
 
+    assert "eval-subset" in data["jobs"]
+    assert "eval-full-nightly" in data["jobs"]
+
+    job = data["jobs"]["eval-subset"]
     steps = job["steps"]
     cache_step = next((s for s in steps if s.get("uses") and "actions/cache" in s["uses"]), None)
     assert cache_step is not None
     assert "resources/prompts" in cache_step["with"]["key"]
 
     step_runs = [s.get("run", "") for s in steps if "run" in s]
-    assert any("backend.eval.run" in r and "--subset" in r for r in step_runs)
-    assert any("backend.eval.gate" in r and "pr_report.json" in r for r in step_runs)
+    assert any("scripts.eval_pipeline" in r and "--subset" in r for r in step_runs)
+    assert any("pr_report.json" in r for r in step_runs)
 
     comment_step = next(
         (s for s in steps if s.get("uses") and "github-script" in s["uses"]),
@@ -64,21 +74,38 @@ def test_eval_gate_workflow_exists():
     )
     assert comment_step is not None
 
+    nightly_runs = [
+        s.get("run", "") for s in data["jobs"]["eval-full-nightly"]["steps"] if "run" in s
+    ]
+    assert any("scripts.eval_pipeline" in r and "--subset" not in r for r in nightly_runs)
 
-def test_cd_workflow_exists():
-    data = _load_workflow("cd.yml")
+
+def test_deploy_workflow_exists():
+    """deploy.yml = MVP runner (mặc định), giống demo deploy.yml."""
+    data = _load_workflow("deploy.yml")
     on_key = "on" if "on" in data else True
-    assert "push" in data[on_key]
+    assert "workflow_run" in data[on_key]
     assert "workflow_dispatch" in data[on_key]
 
-    assert "defaults" not in data or data["defaults"]["run"].get("working-directory") in (".", None)
-
     job = data["jobs"]["deploy"]
-
     step_runs = [s.get("run", "") for s in job["steps"] if "run" in s]
     assert any("docker compose build" in r for r in step_runs)
-    assert any("src/deploy/smoke.py" in r or "deploy/smoke.py" in r for r in step_runs)
+    assert any("src/deploy/smoke.py" in r for r in step_runs)
     assert any("Rolling back" in r or "rollback" in r.lower() for r in step_runs)
+
+
+def test_cd_workflow_exists():
+    """cd.yml = SSH production, tắt trừ ENABLE_SSH_DEPLOY (giống demo cd.yml)."""
+    data = _load_workflow("cd.yml")
+    on_key = "on" if "on" in data else True
+    assert "workflow_run" in data[on_key]
+    assert "workflow_dispatch" in data[on_key]
+
+    job = data["jobs"]["deploy"]
+    assert "ENABLE_SSH_DEPLOY" in (job.get("if") or "")
+    step_runs = [s.get("run", "") for s in job["steps"] if "run" in s]
+    assert any("release.sh" in r for r in step_runs)
+    assert (REPO_ROOT / "src" / "deploy" / "release.sh").is_file()
 
 
 def test_legacy_subfolder_removed():

@@ -5,12 +5,16 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
-
 from backend.eval.eval_cache import get_cached, prompt_hash_from_messages, set_cached
 from backend.eval.run import eval_one_case
-from backend.infra.cost.tracker import BudgetExceededError, check_budget_or_raise, reset_cost_tracker
-from ai_backend.infra.prompts.experiment import pick_prompt_version
+from backend.infra.cost.tracker import (
+    BudgetExceededError,
+    check_budget_or_raise,
+    reset_cost_tracker,
+)
 from backend.shared.settings import settings
+
+from ai_backend.infra.prompts.experiment import pick_prompt_version
 
 
 def test_pick_prompt_version_sticky_bucket():
@@ -48,7 +52,7 @@ def test_eval_cache_roundtrip(tmp_path, monkeypatch):
     hit = get_cached("case-1", ph)
     assert hit is not None
     assert hit["output"] == "FPT 100k"
-    path = tmp_path / f"{ph[:8]}.json"
+    tmp_path / f"{ph[:8]}.json"
     # key is hashed — just verify file exists
     assert any(tmp_path.glob("*.json"))
 
@@ -61,6 +65,7 @@ def test_chat_cache_respects_model_param(monkeypatch):
         set_llm_cache_context,
     )
     from backend.infra.cache.semantic import get_semantic_cache
+
     from ai_backend.infra.cache.tiered import chat_cached
     from ai_backend.infra.llm import completion as completion_mod
 

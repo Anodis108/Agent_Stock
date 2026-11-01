@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
 from common.domain.indicators import (
-    IndicatorSummary,
     analyze_technical_indicators,
     calculate_rsi,
     calculate_sma,

@@ -209,3 +209,15 @@ Kế hoạch tái cấu trúc hệ thống theo phương pháp **Spec-Driven Dev
   - Kiểm tra `src/deploy/release.ps1` (`up`, `smoke`, `rollback`, `status`).
   - Kiểm tra `src/deploy/publish.ps1` (Cloudflare Tunnel).
   - *Kiểm tra*: `pytest tests/integration/test_system.py -k "nginx or release or publish" -q`
+
+---
+
+## Phase 7: M3-B1 Prompt Management (git registry)
+
+Chi tiết thiết kế: [`specs/m3-b1-prompt-management.md`](m3-b1-prompt-management.md).
+
+- [x] **7.1. Cập nhật YAML lõi** — `rewrite_question`, `answer_compose`, `chat_supervisor`, `scan_supervisor` khớp hardcode đang chạy; mỗi folder có `production.txt`.
+- [x] **7.2. Tạo YAML worker** — `price_agent`, `news_agent`, `eval_agent`, `db_agent`, `draw_agent` (`v1.yaml` + `production.txt`).
+- [x] **7.3. Wire call sites** — bỏ hardcode trong `chat/nodes.py`, `chat/graph.py`, `scan/graph.py`, 5 worker `graph.py`, `multi_agent/hierarchical.py`; dùng `get_system_prompt` / registry.
+- [x] **7.4. Xoá orphan** — `resources/prompts/{supervisor_routing,news_agent_react,eval_severity}/`; cập nhật `PRODUCTION_LLM_PROMPT_NAMES` + README + test trỏ tên cũ.
+- [x] **7.5. Verify** — `python -m ai_backend.infra.prompts.lint resources/prompts/`; self-check registry + rollback; ghi `specs/change-log.md`.

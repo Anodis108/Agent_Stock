@@ -5,7 +5,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 from web_backend.api.helpers.exception_handler import register_exception_handlers
-from web_backend.api.helpers.middlewares import CorrelationIdMiddleware, register_middlewares
+from web_backend.api.helpers.middlewares import register_middlewares
 from web_backend.api.helpers.validation import (
     normalize_approval_id,
     normalize_question,
@@ -14,14 +14,11 @@ from web_backend.api.helpers.validation import (
     title_from_question,
     validate_threshold_pct,
 )
-from web_backend.api.models.approvals import ApproveRequest, RejectRequest, ReviewResponse
-from web_backend.api.models.chat import ChatRequest, ChatResponse, ChatStep
-from web_backend.api.models.hitl import FeedbackCreateRequest, FeedbackOut
-from web_backend.api.models.market import MarketMatrixItemOut, MarketSessionOut
-from web_backend.api.models.portfolio import CreateHoldingRequest, HoldingOut, UserSettingsOut
-from web_backend.api.models.scan import ScanRequest, ScanResponse
-from web_backend.api.models.sessions import CreateSessionRequest, MessageOut, SessionOut
-from web_backend.api.models.watchlist import CreateWatchlistRequest, WatchlistItemOut
+from web_backend.api.models.chat import ChatRequest
+from web_backend.api.models.hitl import FeedbackCreateRequest
+from web_backend.api.models.portfolio import CreateHoldingRequest
+from web_backend.api.models.sessions import CreateSessionRequest
+from web_backend.api.models.watchlist import CreateWatchlistRequest
 from web_backend.api.routers import (
     approvals,
     chat,

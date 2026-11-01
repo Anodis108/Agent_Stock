@@ -171,11 +171,11 @@ def test_web_entry_forwards_ui_sse(monkeypatch, pg_schema):
 
 def test_web_entry_sends_account_lists_only_for_live_questions(monkeypatch, pg_schema):
     """Chat HTTP chỉ gửi question + user_id; danh mục do DBAgent đọc trong AI."""
-    from web_backend.api.deps import clear_deps_cache, get_app_deps, set_app_deps
-    from web_backend.main import app as web_app
-    from web_backend.api.routers import watchlist as watchlist_routes
     from ai_backend.infra.storage.watchlist_store import PgWatchlistStore
     from common.domain.entities import WatchlistItem
+    from web_backend.api.deps import clear_deps_cache, get_app_deps, set_app_deps
+    from web_backend.api.routers import watchlist as watchlist_routes
+    from web_backend.main import app as web_app
 
     monkeypatch.setenv("AI_TRANSPORT", "http")
     monkeypatch.setenv("AI_BASE_URL", "http://ai.test:8001")
@@ -289,8 +289,8 @@ def test_http_stream_connection_error_is_sse_event(client: TestClient, monkeypat
 
 
 def test_ai_service_chat_stream_endpoint(monkeypatch):
-    from ai_backend.main import app as ai_app
     from ai_backend.application import chat_service as chat_stream
+    from ai_backend.main import app as ai_app
 
     def fake_events(*_args, **_kwargs):
         yield ("token", {"delta": "z"})
@@ -473,11 +473,11 @@ def test_closing_the_chat_stream_stops_the_pipeline(monkeypatch):
     import threading
     import time
 
-    from web_backend.api.routers.chat import ChatRequest, stream_chat_generator
     import ai_backend.domain.agents.chat.graph as answer_mod
-    from ai_backend.domain.agents.events import StreamCancelledError, check_stream_cancelled
-    from ai_backend.application import chat_service as chat_stream
     import common.transport.transport as transport
+    from ai_backend.application import chat_service as chat_stream
+    from ai_backend.domain.agents.events import StreamCancelledError, check_stream_cancelled
+    from web_backend.api.routers.chat import ChatRequest, stream_chat_generator
 
 
     started = threading.Event()

@@ -20,7 +20,13 @@ from ai_backend.domain.agents.graph import start_graph
 from ai_backend.shared.logging import get_logger
 from common.base.base_model import CustomBaseModel
 from common.base.base_service import BaseService
-from common.domain.ports import MemoryStore, NewsSource, PriceHistoryStore, PriceSource, WatchlistStore
+from common.domain.ports import (
+    MemoryStore,
+    NewsSource,
+    PriceHistoryStore,
+    PriceSource,
+    WatchlistStore,
+)
 
 logger = get_logger("ai_backend.application.chat_service")
 

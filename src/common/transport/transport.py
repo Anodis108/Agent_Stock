@@ -106,7 +106,7 @@ def post_json_once(
         if _is_timeout(exc):
             raise AiClientError("AI timeout") from exc
         raise AiClientError(f"AI không kết nối được: {exc.reason}") from exc
-    except (TimeoutError, socket.timeout) as exc:
+    except TimeoutError as exc:
         raise AiClientError("AI timeout") from exc
 
     try:
@@ -152,7 +152,7 @@ def post_json(
                 time.sleep(_retry_delay(attempt))
                 continue
             raise
-        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, socket.timeout) as exc:
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as exc:
             last_exc = exc
             if attempt >= retries - 1:
                 if isinstance(exc, urllib.error.HTTPError):

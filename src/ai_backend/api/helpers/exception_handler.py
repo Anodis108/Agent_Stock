@@ -68,9 +68,9 @@ def register_ai_exception_handlers(app: FastAPI) -> None:
             "correlation_id": cid,
         }
         if hasattr(exc, "category"):
-            content["category"] = getattr(exc, "category")
+            content["category"] = exc.category
         if hasattr(exc, "detail") and exc.detail:
-            content["detail"] = getattr(exc, "detail")
+            content["detail"] = exc.detail
         return JSONResponse(status_code=exc.status_code, content=content)
 
     @app.exception_handler(Exception)

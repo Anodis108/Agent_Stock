@@ -13,37 +13,37 @@ Exports entity records and repository classes:
 from __future__ import annotations
 
 from web_backend.infra.database.repositories.hitl_repo import (
+    HITLEvalRepo,
     HITLEvaluationRecord,
     HITLEvaluationRepository,
-    HITLEvalRepo,
 )
 from web_backend.infra.database.repositories.market_history_repo import (
     MarketHistoryRecord,
-    MarketHistoryRepository,
     MarketHistoryRepo,
+    MarketHistoryRepository,
 )
 from web_backend.infra.database.repositories.message_repo import (
     MessageRecord,
-    MessageRepository,
     MessageRepo,
+    MessageRepository,
 )
 from web_backend.infra.database.repositories.portfolio_repo import (
     PortfolioHoldingRecord,
     PortfolioHoldingRepository,
     PortfolioRepo,
     UserSettingsRecord,
-    UserSettingsRepository,
     UserSettingsRepo,
+    UserSettingsRepository,
 )
 from web_backend.infra.database.repositories.session_repo import (
     SessionRecord,
-    SessionRepository,
     SessionRepo,
+    SessionRepository,
 )
 from web_backend.infra.database.repositories.watchlist_repo import (
     WatchlistRecord,
-    WatchlistRepository,
     WatchlistRepo,
+    WatchlistRepository,
 )
 
 __all__ = [

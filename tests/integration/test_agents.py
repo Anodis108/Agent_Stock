@@ -9,36 +9,28 @@ Tập trung kiểm tra:
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
-from pydantic import ValidationError
-
 from backend.agents import answer_composer, synthesis_agent
 from backend.agents.eval_agent.nodes import HeuristicEvalBrain
 from backend.agents.eval_agent.schemas import EvalSeverityOutput
 from backend.agents.event_classifier import classify_event
-from backend.agents.event_classifier.schemas import ClassifierOutput
 from backend.agents.news_agent import run_news_agent
-from backend.agents.news_agent.schemas import NewsAgentResult, NewsReactOutput
+from backend.agents.news_agent.schemas import NewsAgentResult
 from backend.agents.price_agent import PriceAgentResult, run_price_agent
 from backend.agents.supervisor_agent.nodes import (
     HeuristicRewriteBrain,
     HeuristicSupervisorBrain,
-    rewrite_question,
-    route_question,
 )
 from backend.agents.supervisor_agent.schemas import RewriteOutput, SupervisorOutput
-from backend.agents.synthesis_agent.schemas import SynthesisAlertOutput
-from backend.domain.entities import EventRoute, Severity, SeverityLevel
+from backend.domain.entities import EventRoute, SeverityLevel
 from backend.domain.guardrails.output_checks import check_output
 from backend.graph.chat import compile_chat_graph, run_chat_graph
 from backend.graph.scan import compile_scan_graph
 from backend.infra.market_data import CafefNewsSource, VnstockPriceSource
-from backend.infra.monitoring.tracing import agent_span, trace_request, reset_client_for_tests
-
+from backend.infra.monitoring.tracing import agent_span, reset_client_for_tests, trace_request
 
 # ==============================================================================
 # 1. Agent Execution & Nodes Tests
@@ -199,8 +191,8 @@ def test_eval_severity_schema_validation():
 
 def test_agent_span_captures_input_and_output(monkeypatch):
     """Kiểm tra context manager agent_span ghi nhận đầy đủ input, output và duration."""
-    from backend.shared.settings import settings
     from backend.infra.monitoring import tracing as tracing_mod
+    from backend.shared.settings import settings
 
     class MockSpan:
         def __init__(self, name, input=None, metadata=None):
@@ -291,6 +283,7 @@ def test_eval_system_prompts_use_registry_not_hardcode():
         _get_task_success_system_prompt,
         _get_trajectory_system_prompt,
     )
+
     from ai_backend.infra.prompts import get_system_prompt
 
     assert _get_judge_system_prompt() == get_system_prompt("eval_judge")
@@ -300,7 +293,7 @@ def test_eval_system_prompts_use_registry_not_hardcode():
 
 
 def test_phase2_prompt_v2_load_metadata_and_render():
-    """Phase 2: answer_compose và rewrite_question có v2 đầy đủ metadata; render không thiếu biến."""
+    """M3-B1: answer_compose / rewrite_question v2 là system prompt (không $var); metadata đủ."""
     from ai_backend.infra.prompts import registry
 
     reg = registry()
@@ -313,28 +306,11 @@ def test_phase2_prompt_v2_load_metadata_and_render():
         for field in required_meta:
             assert getattr(prompt, field, "").strip(), f"{name} v2 thiếu metadata '{field}'"
 
-    answer_rendered = reg.render(
-        "answer_compose",
-        version=2,
-        question="Giá FPT?",
-        symbol="FPT",
-        price_summary="FPT: 95000 VND",
-        news_summary="(không có tin)",
-        eval_summary="(không)",
-        evidence="FPT close=95000",
-        violations="(không)",
-    )
-    assert "FPT" in answer_rendered
-    assert "grounding" in answer_rendered.lower() or "evidence" in answer_rendered.lower()
+    answer = reg.get("answer_compose", version=2).template
+    assert "ghi chú" in answer.lower() or "không bịa" in answer.lower()
 
-    rewrite_rendered = reg.render(
-        "rewrite_question",
-        version=2,
-        question="Tại sao lại giảm?",
-        conversation='[{"role":"user","content":"Giá FPT hôm nay?"}]',
-    )
-    assert "Tại sao lại giảm?" in rewrite_rendered
-    assert "Turn 2" in rewrite_rendered or "đại từ" in rewrite_rendered
+    rewrite = reg.get("rewrite_question", version=2).template
+    assert "Turn 2" in rewrite or "đại từ" in rewrite or "sub-questions" in rewrite.lower()
 
 
 def test_phase2_production_still_points_to_v1():
@@ -379,6 +355,7 @@ def test_exact_cache_hit_on_repeat_question(monkeypatch):
     )
     from backend.infra.cache.semantic import get_semantic_cache
     from backend.infra.cost.tracker import get_cost_tracker, reset_cost_tracker
+
     from ai_backend.infra.cache.tiered import chat_cached
     from ai_backend.infra.llm import completion as completion_mod
 
@@ -433,6 +410,7 @@ def test_exact_cache_miss_on_prompt_version_bump(monkeypatch):
         set_llm_cache_context,
     )
     from backend.infra.cache.semantic import get_semantic_cache
+
     from ai_backend.infra.cache.tiered import chat_cached
     from ai_backend.infra.llm import completion as completion_mod
 
@@ -543,6 +521,7 @@ def test_semantic_cache_hit_paraphrase(monkeypatch):
         set_llm_cache_context,
     )
     from backend.infra.cache.semantic import get_semantic_cache, set_semantic_question
+
     from ai_backend.infra.cache.tiered import chat_cached
     from ai_backend.infra.llm import completion as completion_mod
 
@@ -699,10 +678,8 @@ def test_compute_sma_and_crossovers():
 
 def test_eval_agent_with_technical_indicators():
     """Kiểm tra EvalAgent kết hợp chỉ báo kỹ thuật và tin tức để đưa ra Severity (EV-01)."""
-    from backend.agents.eval_agent.nodes import HeuristicEvalBrain
     from backend.agents.news_agent.schemas import NewsAgentResult
     from backend.agents.price_agent import PriceAgentResult
-    from backend.domain.entities import SeverityLevel
     from backend.domain.indicators import IndicatorSummary
     from backend.domain.ports import NewsItem, PriceBar
 
@@ -770,14 +747,11 @@ def test_multi_source_news_deduplication():
 
 def test_phase3_vnstock_news_source_and_attribution():
     """Phase 3.2: Kiểm tra VnstockNewsSource, CafeFNewsSource và trích dẫn nguồn tin trong câu trả lời."""
+    from backend.agents.answer_composer.nodes import HeuristicAnswerDraftBrain, _news_summary
     from backend.domain.ports import NewsItem
     from backend.infra.market_data.news_source import (
-        CafefNewsSource,
         MultiSourceNewsSource,
-        VnstockNewsSource,
     )
-    from backend.agents.news_agent.schemas import NewsAgentResult
-    from backend.agents.answer_composer.nodes import _news_summary, HeuristicAnswerDraftBrain
 
     # 1. Kiểm tra đối tượng NewsItem có trường source
     item_vnstock = NewsItem(
@@ -900,7 +874,7 @@ def test_dec_04_context_inheritance_in_subqueries():
 
 def test_dec_05_supervisor_routing_multi_subqueries():
     """DEC-05: Supervisor duyệt sub_questions kích hoạt đầy đủ cả price_agent và news_agent."""
-    from backend.agents.supervisor_agent import RewrittenQuestion, HeuristicSupervisorBrain
+    from backend.agents.supervisor_agent import HeuristicSupervisorBrain, RewrittenQuestion
 
     supervisor = HeuristicSupervisorBrain()
     rewritten = RewrittenQuestion(
@@ -926,7 +900,6 @@ def test_dec_05_supervisor_routing_multi_subqueries():
 def test_answer_composer_multi_evidence_synthesis():
     """Kiểm tra AnswerComposer tổng hợp đa nguồn có cấu trúc rõ ràng theo từng mục khi so sánh nhiều mã."""
     from backend.agents.answer_composer.nodes import HeuristicAnswerDraftBrain
-    from backend.agents.price_agent import PriceAgentResult
     from backend.agents.news_agent import NewsAgentResult
     from backend.domain.ports import NewsItem
 
@@ -967,12 +940,10 @@ def test_answer_composer_multi_evidence_synthesis():
 
 def test_phase3_eval_agent_four_severity_levels():
     """Kiểm tra EvalAgent xếp hạng đủ 4 cấp độ rủi ro (none, low, medium, high) kết hợp chỉ báo và tin tức."""
-    from backend.agents.eval_agent.nodes import HeuristicEvalBrain
     from backend.agents.news_agent.schemas import NewsAgentResult
     from backend.agents.price_agent import PriceAgentResult
-    from backend.domain.entities import SeverityLevel
     from backend.domain.indicators import IndicatorSummary
-    from backend.domain.ports import NewsItem, PriceBar
+    from backend.domain.ports import NewsItem
     from backend.shared.schemas import EvalSeverityOutput
 
     brain = HeuristicEvalBrain()

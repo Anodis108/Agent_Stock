@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from contextvars import ContextVar
 from typing import Any
+
 from pydantic import BaseModel, Field
 
 MODEL_PRICING_USD_PER_1M: dict[str, dict[str, float]] = {
@@ -16,7 +17,7 @@ MODEL_PRICING_USD_PER_1M: dict[str, dict[str, float]] = {
 }
 VND_PER_USD = 25400.0
 
-_cost_context: ContextVar[dict[str, Any]] = ContextVar("cost_context", default={})
+_cost_context: ContextVar[dict[str, Any] | None] = ContextVar("cost_context", default=None)
 
 
 class CostRecord(BaseModel):
@@ -115,13 +116,13 @@ def reset_cost_tracker() -> None:
 
 def set_cost_context(**kwargs: Any) -> None:
     """Set tags cho các LLM call tiếp theo trong context hiện tại."""
-    current = dict(_cost_context.get())
+    current = dict(_cost_context.get() or {})
     current.update(kwargs)
     _cost_context.set(current)
 
 
 def get_cost_context() -> dict[str, Any]:
-    return dict(_cost_context.get())
+    return dict(_cost_context.get() or {})
 
 
 def record_cost(

@@ -274,8 +274,8 @@ vn-stock-swarm/
 # 1. Kích hoạt môi trường Python (>= 3.10)
 conda activate dong312
 
-# 2. Cài đặt các thư viện cần thiết
-pip install -e .
+# 2. Cài đặt thư viện (runtime + pytest/ruff). Docker image chỉ dùng requirements.txt.
+pip install -r requirements-dev.txt
 
 # 3. Tạo .env và điền secret. Tên biến nằm trong .env.example:
 #    DATABASE_URL, OPENAI_API_KEYS, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, QDRANT_API_KEY

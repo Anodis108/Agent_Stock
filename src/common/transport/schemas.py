@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from typing import Any, Literal
+
 from pydantic import Field, field_validator
 
 from common.base.base_model import CustomBaseModel
 from common.domain.entities import EventRoute, RoutingDecision, Severity, SeverityLevel
-
 
 # ==============================================================================
 # Inter-Service Network DTOs (/v1/chat, /v1/chat/stream, /v1/scan)

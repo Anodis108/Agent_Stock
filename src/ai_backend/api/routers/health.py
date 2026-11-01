@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter
+
 from ai_backend.shared.settings import ai_settings
 
 router = APIRouter(tags=["system"])

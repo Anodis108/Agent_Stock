@@ -1,7 +1,8 @@
 """Tests for Web Backend Application Layer (Use Cases)."""
 
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 
 from common.base.base_service import AsyncBaseService, BaseService
 from web_backend.application.chat_gateway_service import (
@@ -22,10 +23,8 @@ from web_backend.application.market_service import (
 )
 from web_backend.application.portfolio_service import (
     PortfolioInput,
-    PortfolioItemSummary,
     PortfolioOutput,
     PortfolioService,
-    PortfolioSummary,
 )
 from web_backend.application.review_approval_service import (
     ReviewApprovalInput,

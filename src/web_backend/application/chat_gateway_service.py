@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
-import queue
 import threading
-import time
 from collections.abc import AsyncIterator, Callable
 from typing import Any
 
@@ -15,13 +12,11 @@ from common.base.base_service import AsyncBaseService
 from common.logging.logger import get_logger
 from common.transport.transport import stream_remote_sse
 from web_backend.api.helpers.validation import normalize_question, title_from_question
-from web_backend.api.models.chat import ChatRequest, ChatResponse, ChatStep
 
 logger = get_logger("web_backend.application.chat_gateway")
 
 from web_backend.infra.database.connection import get_connection
 from web_backend.infra.database.repositories import MessageRepository, SessionRepository
-
 
 
 class ChatGatewayInput(CustomBaseModel):

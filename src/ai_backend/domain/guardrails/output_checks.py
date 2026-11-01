@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import re
 from typing import Any
+
 from pydantic import BaseModel, Field
 
 # Các cụm từ khuyến nghị mua/bán chắc chắn bị cấm

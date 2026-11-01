@@ -13,20 +13,19 @@ Tests:
 
 from __future__ import annotations
 
-
+from ai_backend.domain.agents.chat.nodes.portfolio import run_portfolio_report
 from ai_backend.domain.agents.graph import build_graph
-from ai_backend.infra.market_data.price_source import VnstockPriceSource
-from ai_backend.infra.qdrant.concepts import load_concept_chunks
+from ai_backend.domain.agents.scan.eval_agent import run_eval_agent
+from ai_backend.domain.agents.scan.price_agent import PriceAgentResult, run_price_agent
 from ai_backend.infra.cache.exact import normalize_question
 from ai_backend.infra.cost.tracker import (
     CostTracker,
 )
+from ai_backend.infra.market_data.price_source import VnstockPriceSource
+from ai_backend.infra.qdrant.concepts import load_concept_chunks
 from ai_backend.infra.storage.chart_store import safe_png_name
 from ai_backend.infra.storage.memory_store import PgMemoryStore
 from ai_backend.infra.storage.watchlist_store import PgWatchlistStore
-from ai_backend.domain.agents.scan.price_agent import run_price_agent, PriceAgentResult
-from ai_backend.domain.agents.scan.eval_agent import run_eval_agent
-from ai_backend.domain.agents.chat.nodes.portfolio import run_portfolio_report
 from common.domain.entities import WatchlistItem
 
 

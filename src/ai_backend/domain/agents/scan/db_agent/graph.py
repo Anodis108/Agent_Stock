@@ -7,15 +7,14 @@ from functools import lru_cache
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode
 
-from ai_backend.infra.llm.client import bind_tools_llm
 from ai_backend.domain.agents.scan.db_agent.state import DBWorkerState
-from ai_backend.domain.agents.scan.db_agent.tools import PORTFOLIO_TOOLS, db_results_from_tool_artifacts
-from ai_backend.infra.monitoring.tracing import _current, current_span, trace_step
-
-SYSTEM_PROMPT = (
-    "Bạn là worker dữ liệu người dùng: đọc danh mục nắm giữ và watchlist. "
-    "Chỉ dùng số liệu có trong tool / ghi chú, không bịa. Xong việc thì trả lời 1-2 câu tóm tắt kết quả."
+from ai_backend.domain.agents.scan.db_agent.tools import (
+    PORTFOLIO_TOOLS,
+    db_results_from_tool_artifacts,
 )
+from ai_backend.infra.llm.client import bind_tools_llm
+from ai_backend.infra.monitoring.tracing import _current, current_span, trace_step
+from ai_backend.infra.prompts import get_system_prompt
 
 
 def _worker_llm():
@@ -26,7 +25,7 @@ async def act(state: DBWorkerState) -> dict:
     with trace_step(current_span(), "act", as_type="generation"):
         notes = "\n".join(f"[{d}] {n}" for d, n in (state["notes"] or {}).items()) or "(chưa có)"
         messages = state["message_worker"] or [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": get_system_prompt("db_agent")},
             {"role": "user", "content": f"Nhiệm vụ: {state['task']}\n\nGhi chú từ worker đã chạy:\n{notes}"},
         ]
         response = await _worker_llm().ainvoke(messages)

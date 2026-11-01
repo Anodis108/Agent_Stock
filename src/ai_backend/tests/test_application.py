@@ -11,17 +11,10 @@ from __future__ import annotations
 
 import pytest
 
-from common.base.base_service import BaseService
 from ai_backend.application.chat_service import (
     ChatInput,
     ChatOutput,
     ChatService,
-)
-from ai_backend.application.rag_service import NOT_IN_DOCS, RagInput, RagOutput, RagService
-from ai_backend.application.scan_service import (
-    ScanInput,
-    ScanOutput,
-    ScanService,
 )
 from ai_backend.application.eval.gate import (
     GATES,
@@ -29,11 +22,17 @@ from ai_backend.application.eval.gate import (
     check_gates,
     format_gate_result,
 )
+from ai_backend.application.rag_service import NOT_IN_DOCS, RagInput, RagOutput, RagService
+from ai_backend.application.scan_service import (
+    ScanInput,
+    ScanOutput,
+    ScanService,
+)
 from ai_backend.infra.eval.steps import (
     ensure_steps_reflect_error,
     normalize_steps,
 )
-
+from common.base.base_service import BaseService
 
 # ==============================================================================
 # 1. Tests cho ChatService

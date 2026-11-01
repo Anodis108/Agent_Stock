@@ -32,12 +32,12 @@ if str(ROOT) not in sys.path:
 
 import yaml  # noqa: E402
 
-from ai_backend.infra.eval.history import get_git_sha  # noqa: E402
 from ai_backend.infra.cost.tracker import (  # noqa: E402
     get_cost_tracker,
     reset_cost_tracker,
     set_cost_context,
 )
+from ai_backend.infra.eval.history import get_git_sha  # noqa: E402
 
 REPLAY_PATH = ROOT / "resources" / "eval" / "replay_faq.yaml"
 REPORT_MD = ROOT / "resources" / "eval" / "cost_baseline.md"
@@ -85,8 +85,8 @@ def format_report_md(
         "",
         "## Tổng hợp",
         "",
-        f"| Metric | Value |",
-        f"| :--- | :--- |",
+        "| Metric | Value |",
+        "| :--- | :--- |",
         f"| LLM requests | {summary['requests']} |",
         f"| Total tokens | {summary['total_tokens']:,} |",
         f"| Total cost (USD) | ${summary['total_cost_usd']:.6f} |",
@@ -157,7 +157,7 @@ def run_baseline(
     if dry_run:
         llm_calls_per_question = 3  # rewrite + supervisor + answer (ước lượng)
         for pass_num in range(passes):
-            for i, item in enumerate(questions):
+            for i, _item in enumerate(questions):
                 for _ in range(llm_calls_per_question):
                     is_hit = with_cache == "tier1" and pass_num >= 1
                     set_cost_context(

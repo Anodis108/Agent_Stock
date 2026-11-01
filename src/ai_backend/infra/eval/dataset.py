@@ -9,9 +9,9 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from pydantic import BaseModel
 
 from ai_backend.infra.eval.scorers import RULE_SLICES
-from pydantic import BaseModel
 
 
 def _find_project_root() -> Path:

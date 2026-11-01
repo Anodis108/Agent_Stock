@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-
 from common.transport.transport import stream_remote_sse
 
 
@@ -31,10 +29,10 @@ class _Body:
 
 def test_stream_remote_sse_parses_demo_tokens(monkeypatch):
     sse = (
-        'data: {"token": "a"}\n\n'
-        'data: {"answer": "ab", "question": "q", "complete": true}\n\n'
-        "data: [DONE]\n\n"
-    ).encode()
+        b'data: {"token": "a"}\n\n'
+        b'data: {"answer": "ab", "question": "q", "complete": true}\n\n'
+        b"data: [DONE]\n\n"
+    )
 
     monkeypatch.setenv("AI_BASE_URL", "http://ai.test:8001")
     monkeypatch.setattr("urllib.request.urlopen", lambda *_a, **_k: _Body(sse))

@@ -5,10 +5,11 @@ from __future__ import annotations
 import operator
 from typing import Annotated, Any
 
+from pydantic import BaseModel, Field
+
 from ai_backend.domain.agents.multi_agent.hierarchical import HierarchicalState
 from ai_backend.domain.agents.scan.db_agent.state import DBAgentResult
 from ai_backend.domain.agents.state import AssistantState
-from pydantic import BaseModel, Field
 
 
 class RewrittenQuestion(BaseModel):

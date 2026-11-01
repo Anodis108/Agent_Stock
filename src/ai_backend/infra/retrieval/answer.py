@@ -6,10 +6,12 @@ Không tách subquery, không rerank, không tìm web. Supervisor gửi câu kh�
 from __future__ import annotations
 
 import re
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict
 
 from ai_backend.infra.retrieval.concepts import embed_concept_texts
 from common.settings import settings
-from pydantic import BaseModel, ConfigDict
 
 NOT_IN_DOCS = "Không có trong tài liệu."
 _WORD = re.compile(r"\w+", re.UNICODE)

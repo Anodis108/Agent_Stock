@@ -13,8 +13,9 @@ from __future__ import annotations
 
 import time
 import uuid
+from collections.abc import Callable
 from functools import lru_cache
-from typing import Any, Callable
+from typing import Any
 
 from ai_backend.shared.logging import get_logger
 from common.settings import settings

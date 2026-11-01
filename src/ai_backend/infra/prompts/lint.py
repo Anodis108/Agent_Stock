@@ -7,9 +7,9 @@ import sys
 from pathlib import Path
 
 import yaml
+from pydantic import BaseModel, ConfigDict
 
 from ai_backend.infra.prompts.registry import _required_vars, resolve_prompts_dir
-from pydantic import BaseModel, ConfigDict
 
 REQUIRED_META = ("name", "version", "model", "owner", "changelog", "template")
 

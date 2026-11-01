@@ -41,15 +41,19 @@ def resolve_prompts_dir() -> Path:
     return candidates[0]
 
 
-# Prompt production dùng LLM — Phase 1 audit (M3-B1).
+# Prompt production dùng LLM — M3-B1 (git registry).
 PRODUCTION_LLM_PROMPT_NAMES: tuple[str, ...] = (
     "answer_compose",
     "rewrite_question",
-    "supervisor_routing",
+    "chat_supervisor",
+    "scan_supervisor",
+    "price_agent",
+    "news_agent",
+    "eval_agent",
+    "db_agent",
+    "draw_agent",
     "synthesis_alert",
-    "news_agent_react",
     "event_classification",
-    "eval_severity",
     "diagram_plan",
     "memory_fact",
     "eval_judge",

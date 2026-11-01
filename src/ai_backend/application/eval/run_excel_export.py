@@ -45,7 +45,6 @@ import openpyxl
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
-from web_backend.api.deps import get_app_deps
 from ai_backend.application.eval.run import (
     GOLDEN_V5_PATH,
     GOLDEN_V6_PATH,
@@ -64,6 +63,7 @@ from ai_backend.application.eval.run_detailed import (
     uninstall_completion_hooks,
 )
 from common.settings import settings
+from web_backend.api.deps import get_app_deps
 
 
 def extract_observations(steps: list[dict], case_output: str) -> str:
@@ -153,7 +153,6 @@ def format_evaluation_details(c: dict, res: CaseEvalResult) -> str:
     # Rule-based check
     must_inc = c.get("must_include") or []
     must_not = c.get("must_not_include") or []
-    rule_ok = res.rule.passed
 
     rule_parts = []
     if must_inc:
@@ -229,10 +228,10 @@ def run_all_evaluations(
         all_cases = all_cases[:limit]
 
     total = len(all_cases)
-    print(f"================================================================")
-    print(f" BẮT ĐẦU CHẠY ĐÁNH GIÁ TỔNG HỢP {total} CASES (V5: {len(cases_v5)}, V6: {len(cases_v6)})")
+    print("================================================================")
+    print(f" BẮT ĐẦU CHẠY ĐÁNH GIÁ TỔNG HỢP {total} CASES (V5: {len(cases_ext)}, V6: {len(cases_golden)})")
     print(f" Model: {settings.llm_model} | Judge: {'Bỏ qua' if skip_judge else 'Kích hoạt'}")
-    print(f"================================================================\n")
+    print("================================================================\n")
 
     results: list[dict[str, Any]] = []
     install_completion_hooks()
@@ -257,11 +256,11 @@ def run_all_evaluations(
                 user_id=f"eval-{cid}",
             )
 
-            def tracked_answer_fn(q: str) -> str:
+            def tracked_answer_fn(q: str, _fn=fn) -> str:
                 _tracker.active_stage = "app"
-                out = fn(q)
+                out = _fn(q)
                 _tracker.mark_first_token()
-                tracked_answer_fn.last_steps = getattr(fn, "last_steps", [])
+                tracked_answer_fn.last_steps = getattr(_fn, "last_steps", [])
                 return out
 
             tracked_answer_fn.last_steps = []
@@ -324,9 +323,9 @@ def run_all_evaluations(
     passed_count = sum(1 for r in results if r["passed"])
     pass_rate = (passed_count / len(results)) * 100.0 if results else 0.0
 
-    print(f"\n================================================================")
+    print("\n================================================================")
     print(f" HOÀN TẤT: {passed_count}/{len(results)} PASS ({pass_rate:.1f}%) trong {total_time:.1f}s")
-    print(f"================================================================\n")
+    print("================================================================\n")
     return results
 
 
@@ -371,7 +370,7 @@ def export_to_excel(results: list[dict[str, Any]], output_path: Path) -> None:
 
     align_center = Alignment(horizontal="center", vertical="center", wrap_text=True)
     align_left = Alignment(horizontal="left", vertical="top", wrap_text=True)
-    align_right = Alignment(horizontal="right", vertical="top", wrap_text=True)
+    Alignment(horizontal="right", vertical="top", wrap_text=True)
 
     headers = [
         ("STT", 6, align_center),
@@ -391,7 +390,7 @@ def export_to_excel(results: list[dict[str, Any]], output_path: Path) -> None:
     ]
 
     # Ghi Header
-    for col_idx, (h_name, width, align) in enumerate(headers, 1):
+    for col_idx, (h_name, width, _align) in enumerate(headers, 1):
         cell = ws_detail.cell(row=1, column=col_idx, value=h_name)
         cell.font = font_header
         cell.fill = fill_header
@@ -481,7 +480,7 @@ def export_to_excel(results: list[dict[str, Any]], output_path: Path) -> None:
 
     avg_e2e = sum(r["latency_s"] for r in results) / total_cases if total_cases > 0 else 0.0
     avg_ttft = sum(r["ttft_s"] for r in results) / total_cases if total_cases > 0 else 0.0
-    avg_tokens = sum(r["total_tokens"] for r in results) / total_cases if total_cases > 0 else 0
+    sum(r["total_tokens"] for r in results) / total_cases if total_cases > 0 else 0
     total_cost_vnd = sum(r["cost_vnd"] for r in results)
     total_cost_usd = sum(r["cost_usd"] for r in results)
 

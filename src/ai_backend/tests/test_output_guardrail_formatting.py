@@ -9,7 +9,6 @@ Kiểm tra:
 
 from __future__ import annotations
 
-
 from ai_backend.domain.guardrails.output_checks import (
     OutputGuardrail,
     check_output,

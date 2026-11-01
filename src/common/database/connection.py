@@ -13,7 +13,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from common.database.pg import PgConn, connect_postgres, schema_name
+from common.database.pg import connect_postgres, schema_name
 
 SQLITE_SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS sessions (

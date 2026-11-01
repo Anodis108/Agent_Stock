@@ -56,7 +56,7 @@ def check_boundaries() -> int:
                             f"{rel_path}:{node.lineno} -> from {node.module} import ... (cấm '{top_level}')"
                         )
 
-    print(f"=== KIỂM TRA RANH GIỚI IMPORT (AST BOUNDARY CHECK) ===")
+    print("=== KIỂM TRA RANH GIỚI IMPORT (AST BOUNDARY CHECK) ===")
     print(f"- Thư mục quét: {web_backend_dir}")
     print(f"- Số file Python đã quét: {scanned_files}")
     print(f"- Các module bị cấm: {', '.join(sorted(forbidden_roots))}")

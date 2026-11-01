@@ -2,6 +2,18 @@
 
 Nhật ký ghi nhận chi tiết mọi thay đổi, kết quả kiểm thử và tiến độ triển khai theo phương pháp **Spec-Driven Development (SDD)**.
 
+## 2026-11-01 — Phase 7 M3-B1 Prompt Management (implemented)
+
+- Wire hot-path qua `get_system_prompt`: rewrite/answer (chat nodes + hierarchical), chat/scan supervisor, 5 worker graph.
+- YAML system-only + `production.txt` = `v1`/`v2` alias; tạo worker prompts; xoá orphan `supervisor_routing`, `news_agent_react`, `eval_severity`.
+- Cập nhật `PRODUCTION_LLM_PROMPT_NAMES`, prompts README, compare script, test chart/agents Phase2.
+- Verify: `prompts.lint` OK; assert registry load + rollback pointer; grep hết hardcode `SYSTEM_PROMPT` / `_REWRITE` / supervisor constants ở domain agents.
+- *Không chạy full pytest suite* (collector hang trên môi trường này); `test_chart.py` vẫn lỗi import sẵn `draw_agent.chart`.
+
+## 2026-11-01 — Spec M3-B1 vào `specs/` (trước implement)
+
+- Thêm `specs/m3-b1-prompt-management.md`; Phase 7 trong `implementation-plan.md`; bỏ `docs/superpowers/…`.
+
 ## 2026-10-24 — domain/agents/events.py rút gọn
 
 - Giữ `graph_deps`, `emit_agent_event`, `StreamCancelledError` / `set_stream_cancel_event`, `main_item` (đang được dùng). Gộp `target_symbols` vào main_item, `check_stream_cancelled` vào emit_agent_event (chỉ 1 chỗ gọi mỗi hàm).

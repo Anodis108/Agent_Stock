@@ -2,16 +2,11 @@
 
 from __future__ import annotations
 
-import pytest
-
 from web_backend.domain.portfolio_calculator import (
     HoldingCalculationResult,
-    PortfolioAlert,
-    PortfolioCalculationResult,
     PortfolioCalculator,
 )
 from web_backend.domain.session_validator import (
-    SessionValidationResult,
     SessionValidator,
 )
 

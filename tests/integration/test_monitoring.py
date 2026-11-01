@@ -1,17 +1,17 @@
-import pytest
-from unittest.mock import patch, MagicMock
-from backend.infra.monitoring.tracing import (
-    should_sample,
-    redact_pii,
-    sanitize_trace_payload,
-    trace_request,
-    agent_span,
-    mark_turn_guardrail,
-    mark_turn_error,
-    reset_client_for_tests,
-    KNOWN_AGENT_SPANS,
-)
 import subprocess
+from unittest.mock import MagicMock, patch
+
+from backend.infra.monitoring.tracing import (
+    agent_span,
+    mark_turn_error,
+    mark_turn_guardrail,
+    redact_pii,
+    reset_client_for_tests,
+    sanitize_trace_payload,
+    should_sample,
+    trace_request,
+)
+
 
 def test_should_sample_always_on_guardrail_and_error():
     assert should_sample(is_error=True) is True
@@ -169,7 +169,6 @@ def test_stream_cache_hit_does_not_write_trace(mock_enabled, mock_get_langfuse, 
         normalize_question,
         set_llm_cache_context,
     )
-    from ai_backend.infra.cache.tiered import chat_stream_cached as chat_stream
     from backend.infra.monitoring.tracing import (
         _should_trace_turn,
         agent_span,
@@ -177,6 +176,8 @@ def test_stream_cache_hit_does_not_write_trace(mock_enabled, mock_get_langfuse, 
         mark_turn_error,
     )
     from backend.shared.settings import settings
+
+    from ai_backend.infra.cache.tiered import chat_stream_cached as chat_stream
 
     mock_langfuse = MagicMock()
     mock_root = MagicMock()

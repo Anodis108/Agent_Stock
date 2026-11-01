@@ -15,15 +15,15 @@ from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.runtime import get_runtime
 
-from ai_backend.domain.guardrails.output_checks import strip_buy_sell
 from ai_backend.domain.agents.scan.state import ScanHierarchicalState
-from ai_backend.infra.llm.params import DETERMINISTIC
+from ai_backend.domain.guardrails.output_checks import strip_buy_sell
 from ai_backend.infra.cache.tiered import chat_parsed_cached
+from ai_backend.infra.llm.params import DETERMINISTIC
 from ai_backend.infra.monitoring.tracing import current_span, trace_step
 from ai_backend.infra.prompts import registry
+from ai_backend.shared.settings import ai_settings
 from common.domain.entities import AlertStatus, FinalAlert
 from common.transport.schemas import ClassifierOutput, SynthesisAlertOutput
-from ai_backend.shared.settings import ai_settings
 
 DEFAULT_THRESHOLD_PCT = 3.0
 

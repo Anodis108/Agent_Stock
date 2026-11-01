@@ -17,7 +17,6 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode
 from pydantic import BaseModel, Field
 
-from ai_backend.infra.llm.client import base_llm
 from ai_backend.domain.agents.scan.db_agent.graph import build_db_agent
 from ai_backend.domain.agents.scan.eval_agent.graph import build_eval_agent
 from ai_backend.domain.agents.scan.news_agent.graph import build_news_agent
@@ -25,8 +24,11 @@ from ai_backend.domain.agents.scan.nodes import event_classifier_node, synthesis
 from ai_backend.domain.agents.scan.price_agent.graph import build_price_agent
 from ai_backend.domain.agents.scan.state import ScanHierarchicalState
 from ai_backend.domain.agents.scan.tools import SCAN_ACTION_TOOLS
+from ai_backend.infra.llm.client import base_llm
 from ai_backend.infra.monitoring.tracing import _current, current_span, trace_step
+from ai_backend.infra.prompts import get_system_prompt
 from ai_backend.shared.logging import get_logger
+
 
 async def scan_tools_node(state: dict, config=None) -> dict:
     with trace_step(current_span(), "scan_tools", as_type="tool") as box:
@@ -102,19 +104,6 @@ SCAN_WORKERS = [
     "synthesis_node",
 ]
 
-SCAN_SUPERVISOR_SYSTEM = """Bạn điều phối team scan cổ phiếu Việt Nam gồm các worker:
-- 'price_agent': lấy giá đóng cửa, % thay đổi
-- 'news_agent': lấy tin tức
-- 'db_agent': đọc danh mục nắm giữ / watchlist của người dùng
-- 'event_classifier_node': phân loại biến động bình thường / bất thường (cần có giá + tin trước)
-- 'eval_agent': đánh giá mức độ nghiêm trọng (chỉ khi BẤT THƯỜNG, hoặc khi nhiệm vụ yêu cầu đánh giá)
-- 'synthesis_node': soạn và gửi cảnh báo ngay (chỉ khi quét cảnh báo và đã có đánh giá)
-Worker KHÔNG tự giao tiếp với nhau — bạn quyết định worker nào chạy tiếp theo dựa trên nhiệm vụ và ghi chú đã có;
-không chạy lại worker đã có kết quả trong ghi chú. 
-
-Chọn 'done' khi đã đủ thông tin để trả lời user, kể cả khi chỉ cần 1 worker."""
-
-
 class _RoutingDecision(BaseModel):
     next_agent: str = Field(description="Tên worker trong system prompt, hoặc 'done'")
     reasoning: str = Field(description="Lý do ngắn gọn cho quyết định")
@@ -175,7 +164,7 @@ def build_graph():
     graph = StateGraph(ScanHierarchicalState)
     graph.add_node(
         "scan_supervisor",
-        _make_supervisor_node("scan_supervisor", SCAN_SUPERVISOR_SYSTEM, SCAN_WORKERS),
+        _make_supervisor_node("scan_supervisor", get_system_prompt("scan_supervisor"), SCAN_WORKERS),
     )
     graph.add_node("scan_tools", scan_tools_node)
     graph.add_node("price_agent", price_agent_node)

@@ -1,97 +1,155 @@
-# M3-B6 — CD: build Docker + smoke test + rollback (Module III, Bài 6)
-# MVP: build & smoke on GitHub runner (no GCP deploy). LKG SHA cached for rollback drill.
-name: CD Pipeline
+name: cd
+
+# Module III, Bài 6, Section 4 (Deployment Strategies) — bản PRODUCTION (SSH).
+#
+# Nguyên tắc của bài, và cách file này thực hiện:
+#
+#   1. "Chỉ deploy khi CI xanh."  → workflow_run trên ci.yml, không phải push.
+#   2. "Artifact / bản chạy theo git SHA." → release.sh deploy <sha> trên host
+#      (swarm mount source qua compose; khác demo legal dùng image tag trên registry).
+#   3. "Promote theo smoke test." → release.sh smoke (câu hỏi có đáp án biết trước).
+#   4. "Rollback tự động."        → if failure() → release.sh rollback + smoke lại.
+#
+# Cần cấu hình trước:
+#   secrets: VM_SSH_KEY
+#   vars:    VM_HOST, VM_USER, APP_DIR (mặc định /opt/vn-stock-swarm), APP_URL (tuỳ chọn)
+#   Host: clone repo tại APP_DIR, cài Docker Compose, mở SSH.
+#   GitHub Environment "production" (bật required reviewers nếu muốn duyệt tay).
+#
+# ── MẶC ĐỊNH TẮT ───────────────────────────────────────────────────────────────
+#
+# Repo có HAI workflow deploy: file này (SSH host thật) và deploy.yml (compose
+# trên GitHub runner). Cả hai đều treo trên `workflow_run` của ci.yml — nếu bật
+# cả hai lên cùng một máy production thì hai lần recreate / ghi LKG đè nhau.
+#
+# Nên file này chỉ chạy khi biến `ENABLE_SSH_DEPLOY` = 'true'
+# (Settings → Secrets and variables → Actions → Variables). Muốn dùng đường
+# production: đặt biến đó và tắt / không rely deploy.yml cho cùng host.
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - "src/**"
-      - "docker-compose.yml"
-      - "pyproject.toml"
-      - ".github/workflows/cd.yml"
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
-  group: cd-main
+  group: cd-ssh-production
   cancel-in-progress: false
+
+permissions:
+  contents: read
 
 jobs:
   deploy:
-    name: build-smoke-lkg
+    name: ssh-deploy-smoke
+    if: >
+      vars.ENABLE_SSH_DEPLOY == 'true' &&
+      (github.event_name == 'workflow_dispatch' ||
+       github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+
+    env:
+      VM_USER: ${{ vars.VM_USER }}
+      VM_HOST: ${{ vars.VM_HOST }}
+      APP_DIR: ${{ vars.APP_DIR }}
+
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
-      - name: Restore last-known-good SHA
-        id: lkg-cache
-        uses: actions/cache@v4
-        with:
-          path: src/deploy/lkg
-          key: portfolio-watch-lkg-sha
-          restore-keys: |
-            portfolio-watch-lkg-sha
-
-      - name: Prepare environment file
+      - name: Kiểm tra variables
         run: |
-          cp .env.example .env
-          echo "MONITORING_ENABLED=false" >> .env
+          missing=""
+          [ -n "$VM_HOST" ] || missing="$missing VM_HOST"
+          [ -n "$VM_USER" ] || missing="$missing VM_USER"
+          if [ -n "$missing" ]; then
+            echo "::error::Thiếu GitHub variable:$missing"
+            exit 1
+          fi
+          if [ -z "$APP_DIR" ]; then
+            echo "APP_DIR=/opt/vn-stock-swarm" >> "$GITHUB_ENV"
+            APP_DIR=/opt/vn-stock-swarm
+          fi
+          echo "VM: $VM_USER@$VM_HOST APP_DIR=$APP_DIR"
 
-      - name: Build backend image
-        run: docker compose build backend
-
-      - name: Start backend
-        run: docker compose up -d backend
-
-      - name: Wait for healthy backend
+      - name: Xác định SHA
+        id: build
         run: |
-          for i in $(seq 1 45); do
-            if curl -sf http://localhost:8000/health >/dev/null; then
-              echo "Backend healthy after ${i} attempts"
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "::error::Backend did not become healthy in time"
-          docker compose logs backend
-          exit 1
+          SHA="$(git rev-parse HEAD)"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
 
-      - name: Smoke test
+      - name: Cài SSH key
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          echo "SSH_OPTS=-i $HOME/.ssh/deploy_key -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15" >> "$GITHUB_ENV"
+
+      - name: Copy release.sh lên host
+        run: |
+          scp $SSH_OPTS src/deploy/release.sh src/deploy/smoke.py \
+            "$VM_USER@$VM_HOST:/tmp/"
+
+      - name: Deploy SHA lên host
+        id: deploy_step
+        env:
+          SHA: ${{ steps.build.outputs.sha }}
+        run: |
+          ssh $SSH_OPTS "$VM_USER@$VM_HOST" "
+            sudo mkdir -p '$APP_DIR' &&
+            sudo mv /tmp/release.sh /tmp/smoke.py '$APP_DIR/' &&
+            sudo chmod +x '$APP_DIR/release.sh' &&
+            export APP_DIR='$APP_DIR' &&
+            sudo -E '$APP_DIR/release.sh' deploy '$SHA'
+          "
+
+      - name: Smoke test bản vừa deploy
         id: smoke
-        run: python src/deploy/smoke.py --url http://localhost:8000
-
-      - name: Save last-known-good SHA
-        if: success()
         run: |
-          mkdir -p src/deploy/lkg
-          echo "${{ github.sha }}" > src/deploy/lkg/sha.txt
-          echo "Saved LKG: ${{ github.sha }}"
+          ssh $SSH_OPTS "$VM_USER@$VM_HOST" \
+            "export APP_DIR='$APP_DIR'; sudo -E '$APP_DIR/release.sh' smoke '$APP_DIR/smoke.py'"
 
-      - name: Rollback to last-known-good on failure
-        if: failure() && steps.lkg-cache.outputs.cache-hit == 'true' && steps.smoke.outcome == 'failure'
+      - name: Kiểm tra URL công khai (nếu có)
+        continue-on-error: true
         run: |
-          set -euo pipefail
-          LKG=$(cat src/deploy/lkg/sha.txt)
-          echo "Rolling back to LKG commit: ${LKG}"
-          git checkout "${LKG}" -- .
-          cp .env.example .env
-          echo "MONITORING_ENABLED=false" >> .env
-          docker compose down || true
-          docker compose build backend
-          docker compose up -d backend
-          for i in $(seq 1 45); do
-            if curl -sf http://localhost:8000/health >/dev/null; then
-              break
-            fi
-            sleep 2
-          done
-          python src/deploy/smoke.py --url http://localhost:8000
-          echo "::warning::Deploy of ${{ github.sha }} failed; rolled back to ${LKG}"
+          if [ -n "${{ vars.APP_URL }}" ]; then
+            curl -fsS --max-time 15 "${{ vars.APP_URL }}/health" && echo " OK"
+          else
+            echo "APP_URL chưa đặt — bỏ qua"
+          fi
 
-      - name: Tear down containers
+      - name: Rollback về last-known-good
+        if: failure() && steps.deploy_step.outcome == 'success'
+        run: |
+          echo "::warning::Deploy thất bại — rollback về last-known-good"
+          ssh $SSH_OPTS "$VM_USER@$VM_HOST" "
+            export APP_DIR='$APP_DIR'
+            sudo -E '$APP_DIR/release.sh' rollback &&
+            sudo -E '$APP_DIR/release.sh' smoke '$APP_DIR/smoke.py' &&
+            sudo -E '$APP_DIR/release.sh' status
+          "
+
+      - name: Ghi kết quả vào job summary
         if: always()
-        run: docker compose down -v || true
+        run: |
+          {
+            echo "## Deploy ${{ job.status }}"
+            echo ""
+            echo "- Commit: \`${{ steps.build.outputs.sha }}\`"
+            echo "- Smoke: ${{ steps.smoke.outcome }}"
+            echo ""
+            echo "Rollback tay trên host:"
+            echo '```'
+            echo "sudo APP_DIR=$APP_DIR $APP_DIR/release.sh rollback"
+            echo '```'
+            echo ""
+            echo "### Rollback prompt (không cần deploy lại code)"
+            echo '```bash'
+            echo "python scripts/prompt_rollback.py --list"
+            echo "python scripts/prompt_rollback.py --previous"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

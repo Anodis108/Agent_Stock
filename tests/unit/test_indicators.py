@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
 from backend.domain.indicators import (
     IndicatorSummary,
     analyze_technical_indicators,

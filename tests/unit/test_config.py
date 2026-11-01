@@ -4,11 +4,8 @@ import tempfile
 from pathlib import Path
 
 import pytest
-import yaml
-
-from pydantic import ValidationError
-
 from backend.shared.settings import Settings, get_config_yaml_path, load_config_yaml_data
+from pydantic import ValidationError
 
 
 def test_get_config_yaml_path_exists():

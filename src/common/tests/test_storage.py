@@ -4,14 +4,9 @@ from __future__ import annotations
 
 import io
 from pathlib import Path
-from unittest.mock import MagicMock
-
-import pytest
 
 from common.storage import (
     ChartObjectStore,
-    get_chart_store,
-    get_default_charts_dir,
     read_chart_png,
     reset_chart_store,
     safe_png_name,

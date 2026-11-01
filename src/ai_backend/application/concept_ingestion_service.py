@@ -7,18 +7,19 @@ Nhận một tệp markdown (tên `[a-z0-9-]+.md`), lưu vào `resources/docs/co
 from __future__ import annotations
 
 import re
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from pydantic import Field
 
-from common.base.base_model import CustomBaseModel
-from common.base.base_service import BaseService
-from ai_backend.shared.logging import get_logger
-from ai_backend.shared.settings import ai_settings
 from ai_backend.infra.retrieval.concepts import (
     concepts_dir,
     index_concepts,
 )
+from ai_backend.shared.logging import get_logger
+from ai_backend.shared.settings import ai_settings
+from common.base.base_model import CustomBaseModel
+from common.base.base_service import BaseService
 
 logger = get_logger("ai_backend.application.concept_ingestion")
 

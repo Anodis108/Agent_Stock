@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 from typing import Any
-from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query, status
 
 from web_backend.api.deps import AppDeps, get_app_deps, get_current_user_id
 from web_backend.api.models.hitl import (
@@ -24,7 +23,6 @@ from web_backend.infra.database.repositories import (
     MessageRepository,
     SessionRepository,
 )
-
 
 SIGNAL_SCORE: dict[str, tuple[float, str]] = {
     "thumbs_up": (1.0, "explicit"),

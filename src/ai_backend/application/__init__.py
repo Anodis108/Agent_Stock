@@ -8,13 +8,13 @@ Bao gồm:
 - Eval: Bộ công cụ kiểm chuẩn và đánh giá chất lượng Agent.
 """
 
+from ai_backend.application.chat_service import ChatService
 from ai_backend.application.concept_ingestion_service import (
     ConceptIngestionInput,
     ConceptIngestionOutput,
     ConceptIngestionService,
 )
 from ai_backend.application.rag_service import RagInput, RagOutput, RagService
-from ai_backend.application.chat_service import ChatService
 from ai_backend.application.scan_service import ScanService
 
 __all__ = [

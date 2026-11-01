@@ -2,22 +2,20 @@
 
 from __future__ import annotations
 
-from typing import Any
-
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException
 
 from web_backend.api.deps import AppDeps, get_app_deps, get_current_user_id
 from web_backend.api.helpers.validation import (
     normalize_approval_id,
     normalize_reject_reason,
 )
-from web_backend.infra.ai_client.remote_ai_client import RemoteAiClient
 from web_backend.api.models.approvals import (
-    ApproveRequest,
     ApprovalsListResponse,
+    ApproveRequest,
     RejectRequest,
     ReviewResponse,
 )
+from web_backend.infra.ai_client.remote_ai_client import RemoteAiClient
 
 router = APIRouter(tags=["approvals"])
 

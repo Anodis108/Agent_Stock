@@ -9,17 +9,12 @@ Bao gồm:
 from __future__ import annotations
 
 import pytest
-from fastapi.testclient import TestClient
-
-from backend.domain.ports import PriceBar
 from backend.infra.market_data.price_source import VnstockPriceSource
 from backend.services.market_service import (
     DEFAULT_MARKET_SYMBOLS,
     MarketService,
-    get_market_service,
 )
-from backend.main import app as product_app
-
+from fastapi.testclient import TestClient
 
 # ==============================================================================
 # 1. MarketService Core Logic Tests
@@ -122,7 +117,6 @@ def test_shared_price_source_cache_between_agent_and_service(real_deps):
 
 def test_phase3_price_agent_trading_bands_and_percentage_calculation():
     """Phase 3.1: Kiểm tra tính toán % thay đổi, giá tham chiếu, giá trần (+7%) và giá sàn (-7%)."""
-    from backend.agents.price_agent.schemas import PriceAgentResult
     from backend.agents.price_agent.nodes import _from_quote
     from backend.domain.ports import PriceQuote
 

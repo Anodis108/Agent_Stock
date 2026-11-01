@@ -9,10 +9,6 @@ Bao gồm:
 from __future__ import annotations
 
 import datetime
-from unittest.mock import MagicMock
-
-import pytest
-from fastapi.testclient import TestClient
 
 from backend.agents.supervisor_agent.nodes import (
     HeuristicRewriteBrain,
@@ -25,13 +21,11 @@ from backend.database.connection import get_connection, init_db
 from backend.database.repositories import MessageRepository, SessionRepository
 from backend.graph.chat import run_chat_graph
 from backend.infra.storage.memory_store import (
-    SqliteMemoryStore,
     apply_sliding_window_with_ttl_eviction,
     filter_conversation_history,
     parse_timestamp,
 )
-from backend.main import app as product_app
-
+from fastapi.testclient import TestClient
 
 # ==============================================================================
 # 1. Short-Term Memory Tests (Sliding Window, TTL, Turn 1 -> Turn 2)
@@ -171,8 +165,8 @@ def test_session_and_message_crud(tmp_path):
     assert session.title == "Phiên phân tích FPT"
 
     # 2. Tạo tin nhắn
-    msg1 = m_repo.create(session_id=session.id, role="user", content="Giá FPT?")
-    msg2 = m_repo.create(session_id=session.id, role="assistant", content="Giá FPT là 125.0.")
+    m_repo.create(session_id=session.id, role="user", content="Giá FPT?")
+    m_repo.create(session_id=session.id, role="assistant", content="Giá FPT là 125.0.")
 
     messages = m_repo.list_by_session(session.id)
     assert len(messages) == 2

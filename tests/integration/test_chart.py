@@ -17,9 +17,7 @@ import base64
 from pathlib import Path
 
 import pytest
-
 from backend.agents.chart_agent import (
-    ChartResult,
     get_charts_dir,
     plot_comparison,
     plot_multi_price_history,
@@ -31,8 +29,8 @@ from backend.domain.ports import PriceBar
 
 @pytest.fixture(autouse=True)
 def _isolate_test_charts(monkeypatch):
-    from backend.shared.settings import settings
     from backend.infra.storage.chart_store import reset_chart_store
+    from backend.shared.settings import settings
     monkeypatch.setattr(settings, "chart_backend", "local")
     monkeypatch.setenv("STORAGE_CHART_BACKEND", "local")
     reset_chart_store()
@@ -355,20 +353,18 @@ def test_chat_graph_comparison_chart():
 
 def test_chat_api_endpoint_persists_chart_path(real_deps, monkeypatch):
     """Kiểm tra API POST /api/v1/chat trả về chart_path và lưu vào SQLite messages."""
-    from fastapi.testclient import TestClient
-    from backend.main import app
-    from backend.database.connection import get_connection
-    from backend.database.repositories import MessageRepository
     from backend.agents.answer_composer.nodes import HeuristicAnswerDraftBrain
     from backend.agents.supervisor_agent.nodes import (
         HeuristicRewriteBrain,
         HeuristicSupervisorBrain,
     )
-
     from backend.application.agents.answer_composer import nodes as answer_nodes
     from backend.application.agents.supervisor_agent import nodes as supervisor_nodes
-
+    from backend.database.connection import get_connection
+    from backend.database.repositories import MessageRepository
+    from backend.main import app
     from backend.shared.settings import settings
+    from fastapi.testclient import TestClient
     monkeypatch.setattr(settings, "chart_backend", "local")
 
     # Đảm bảo dùng heuristic để không cần external LLM API
@@ -469,20 +465,13 @@ def test_chat_graph_fpt_price_history_chart_10_sessions():
     assert result.chart_path.startswith("/charts/chart_FPT_")
 
 
-def test_supervisor_routing_prompt_registry_includes_chart():
-    """Kiểm tra Prompt Registry supervisor_routing render đúng worker chart và diagram."""
-    from ai_backend.infra.prompts import registry
+def test_chat_supervisor_prompt_mentions_draw_agent():
+    """Registry chat_supervisor (production) mô tả worker draw_agent."""
+    from ai_backend.infra.prompts import get_system_prompt
 
-    prompt = registry().render(
-        "supervisor_routing",
-        version="production",
-        rewritten_question="Vẽ biểu đồ giá cổ phiếu FPT 10 phiên gần nhất",
-        symbol="FPT",
-        intent="chart",
-    )
-    assert "chart: vẽ biểu đồ kỹ thuật" in prompt
-    assert '["price","chart"]' in prompt
-    assert '"chart"' in prompt
+    prompt = get_system_prompt("chat_supervisor")
+    assert "draw_agent" in prompt
+    assert "scan_team" in prompt
 
 
 def test_phase3_candlestick_chart_generation_with_sma_and_static_cache(tmp_path: Path):

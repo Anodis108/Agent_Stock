@@ -5,9 +5,7 @@ and are answered directly with low latency, while preserving strict security gua
 prompt injections and out-of-scope non-financial requests.
 """
 
-from typing import Any
 import pytest
-
 from backend.domain.guardrails.input_guardrail import check_input_guardrail
 from backend.graph.chat import GREETING_RESPONSE, run_chat_graph
 from backend.graph.steps import build_steps_from_chunks

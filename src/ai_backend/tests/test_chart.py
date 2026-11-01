@@ -30,8 +30,8 @@ from common.domain.ports import PriceBar
 
 @pytest.fixture(autouse=True)
 def _isolate_test_charts(monkeypatch):
-    from common.settings import settings
     from ai_backend.infra.storage.chart_store import reset_chart_store
+    from common.settings import settings
     monkeypatch.setattr(settings, "chart_backend", "local")
     monkeypatch.setenv("STORAGE_CHART_BACKEND", "local")
     reset_chart_store()
@@ -257,8 +257,8 @@ def test_chat_graph_executes_chart_agent(tmp_path: Path):
         HeuristicRewriteBrain,
         HeuristicSupervisorBrain,
     )
-    from common.domain.ports import PriceQuote
     from ai_backend.domain.agents.chat.graph import run_chat_graph
+    from common.domain.ports import PriceQuote
 
     class MockPriceSource:
         def fetch_latest_close(self, symbol: str) -> PriceQuote:
@@ -308,13 +308,13 @@ def test_chat_graph_executes_chart_agent(tmp_path: Path):
 
 def test_chat_graph_comparison_chart():
     """Kiểm tra run_chat_graph với truy vấn so sánh biểu đồ 2 mã."""
-    from ai_backend.domain.agents.chat.nodes.answer import HeuristicAnswerDraftBrain
     from ai_backend.domain.agents.chat.chat_supervisor_agent.nodes import (
         HeuristicRewriteBrain,
         HeuristicSupervisorBrain,
     )
-    from common.domain.ports import PriceQuote
     from ai_backend.domain.agents.chat.graph import run_chat_graph
+    from ai_backend.domain.agents.chat.nodes.answer import HeuristicAnswerDraftBrain
+    from common.domain.ports import PriceQuote
 
     class MockPriceSource:
         def fetch_latest_close(self, symbol: str) -> PriceQuote:
@@ -355,19 +355,18 @@ def test_chat_graph_comparison_chart():
 def test_chat_api_endpoint_persists_chart_path(real_deps, monkeypatch):
     """Kiểm tra API POST /api/v1/chat trả về chart_path và lưu vào bảng messages."""
     from fastapi.testclient import TestClient
-    from web_backend.main import app
-    from web_backend.infra.database.connection import get_connection
-    from web_backend.infra.database.repositories import MessageRepository
-    from ai_backend.domain.agents.chat.nodes.answer import HeuristicAnswerDraftBrain
+
+    import ai_backend.domain.agents.chat.nodes.answer as answer_nodes
+    from ai_backend.domain.agents.chat.chat_supervisor_agent import nodes as supervisor_nodes
     from ai_backend.domain.agents.chat.chat_supervisor_agent.nodes import (
         HeuristicRewriteBrain,
         HeuristicSupervisorBrain,
     )
-
-    import ai_backend.domain.agents.chat.nodes.answer as answer_nodes
-    from ai_backend.domain.agents.chat.chat_supervisor_agent import nodes as supervisor_nodes
-
+    from ai_backend.domain.agents.chat.nodes.answer import HeuristicAnswerDraftBrain
     from common.settings import settings
+    from web_backend.infra.database.connection import get_connection
+    from web_backend.infra.database.repositories import MessageRepository
+    from web_backend.main import app
     monkeypatch.setattr(settings, "chart_backend", "local")
 
     # Đảm bảo dùng heuristic để không cần external LLM API
@@ -409,13 +408,13 @@ def test_chat_api_endpoint_persists_chart_path(real_deps, monkeypatch):
 
 def test_chat_graph_fpt_price_history_chart_10_sessions():
     """Kiểm tra câu hỏi 'Vẽ biểu đồ giá cổ phiếu FPT 10 phiên gần nhất' sinh ra biểu đồ price_history, không nhầm sang eval/biến động."""
-    from ai_backend.domain.agents.chat.nodes.answer import HeuristicAnswerDraftBrain
     from ai_backend.domain.agents.chat.chat_supervisor_agent.nodes import (
         HeuristicRewriteBrain,
         HeuristicSupervisorBrain,
     )
-    from common.domain.ports import PriceQuote
     from ai_backend.domain.agents.chat.graph import run_chat_graph
+    from ai_backend.domain.agents.chat.nodes.answer import HeuristicAnswerDraftBrain
+    from common.domain.ports import PriceQuote
 
     class MockPriceSource:
         def fetch_latest_close(self, symbol: str) -> PriceQuote:
@@ -468,31 +467,24 @@ def test_chat_graph_fpt_price_history_chart_10_sessions():
     assert result.chart_path.startswith("/charts/chart_FPT_")
 
 
-def test_supervisor_routing_prompt_registry_includes_chart():
-    """Kiểm tra Prompt Registry supervisor_routing render đúng worker chart và diagram."""
-    from ai_backend.infra.prompts import registry
+def test_chat_supervisor_prompt_mentions_draw_agent():
+    """Registry chat_supervisor (production) mô tả worker draw_agent."""
+    from ai_backend.infra.prompts import get_system_prompt
 
-    prompt = registry().render(
-        "supervisor_routing",
-        version="production",
-        rewritten_question="Vẽ biểu đồ giá cổ phiếu FPT 10 phiên gần nhất",
-        symbol="FPT",
-        intent="chart",
-    )
-    assert "chart: vẽ biểu đồ kỹ thuật" in prompt
-    assert '["price","chart"]' in prompt
-    assert '"chart"' in prompt
+    prompt = get_system_prompt("chat_supervisor")
+    assert "draw_agent" in prompt
+    assert "scan_team" in prompt
 
 
 def test_phase3_candlestick_chart_generation_with_sma_and_static_cache(tmp_path: Path):
     """Mục 3.7: Kiểm tra vẽ biểu đồ nến kỹ thuật kèm đường SMA và lưu vào static cache."""
-    from ai_backend.domain.agents.chat.nodes.answer import HeuristicAnswerDraftBrain
     from ai_backend.domain.agents.chat.chat_supervisor_agent.nodes import (
         HeuristicRewriteBrain,
         HeuristicSupervisorBrain,
     )
-    from common.domain.ports import PriceQuote
     from ai_backend.domain.agents.chat.graph import run_chat_graph
+    from ai_backend.domain.agents.chat.nodes.answer import HeuristicAnswerDraftBrain
+    from common.domain.ports import PriceQuote
 
     # 1. Kiểm tra trực tiếp plot_price_history với style='candle' và sma_periods
     bars_30 = _make_sample_bars("FPT", count=30, base_price=135000.0)
@@ -614,13 +606,13 @@ def test_chat_graph_multi_symbol_price_chart_not_comparison(tmp_path: Path):
 
     Hệ thống PHẢI vẽ biểu đồ giá (price_history), KHÔNG ĐƯỢC nhầm sang biểu đồ hiệu suất tương đối (comparison).
     """
-    from ai_backend.domain.agents.chat.nodes.answer import HeuristicAnswerDraftBrain
     from ai_backend.domain.agents.chat.chat_supervisor_agent.nodes import (
         HeuristicRewriteBrain,
         HeuristicSupervisorBrain,
     )
-    from common.domain.ports import PriceQuote
     from ai_backend.domain.agents.chat.graph import run_chat_graph
+    from ai_backend.domain.agents.chat.nodes.answer import HeuristicAnswerDraftBrain
+    from common.domain.ports import PriceQuote
 
     sample_fpt = _make_sample_bars("FPT", count=15, base_price=62000.0)
     sample_vnm = _make_sample_bars("VNM", count=15, base_price=57000.0)
@@ -666,13 +658,13 @@ def test_chat_graph_multi_symbol_price_chart_not_comparison(tmp_path: Path):
 
 def test_chat_graph_multi_symbol_comparison_chart_still_supported(tmp_path: Path):
     """Kiểm tra câu hỏi so sánh hiệu suất/biến động vẫn vẽ đúng biểu đồ comparison (% tăng trưởng)."""
-    from ai_backend.domain.agents.chat.nodes.answer import HeuristicAnswerDraftBrain
     from ai_backend.domain.agents.chat.chat_supervisor_agent.nodes import (
         HeuristicRewriteBrain,
         HeuristicSupervisorBrain,
     )
-    from common.domain.ports import PriceQuote
     from ai_backend.domain.agents.chat.graph import run_chat_graph
+    from ai_backend.domain.agents.chat.nodes.answer import HeuristicAnswerDraftBrain
+    from common.domain.ports import PriceQuote
 
     sample_vnm = _make_sample_bars("VNM", count=15, base_price=57000.0)
     sample_hpg = _make_sample_bars("HPG", count=15, base_price=28000.0)

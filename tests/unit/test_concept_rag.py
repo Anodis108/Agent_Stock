@@ -32,11 +32,10 @@ def test_five_concept_markdown_files_cover_the_listed_topics():
 
 def test_index_writes_stock_concepts_not_memory_collection():
     """Cắt đoạn, embed, ghi stock_concepts. Không đụng portfolio_watch_memory."""
-    from qdrant_client import QdrantClient
-    from qdrant_client.models import Distance, VectorParams
-
     from backend.retrieval.concepts import index_concepts
     from backend.shared.settings import settings
+    from qdrant_client import QdrantClient
+    from qdrant_client.models import Distance, VectorParams
 
     assert settings.concept_collection == "stock_concepts"
     assert settings.concept_collection != settings.qdrant_collection
@@ -91,9 +90,8 @@ def test_index_writes_stock_concepts_not_memory_collection():
 
 def test_default_embed_stays_offline():
     """Embed mặc định không gọi OpenAI."""
-    from qdrant_client import QdrantClient
-
     from backend.retrieval.concepts import embed_concept_texts, index_concepts
+    from qdrant_client import QdrantClient
 
     vectors = embed_concept_texts(["RSI là gì"])
     assert len(vectors) == 1
@@ -111,9 +109,8 @@ def test_default_embed_stays_offline():
 
 
 def _indexed_client():
-    from qdrant_client import QdrantClient
-
     from backend.retrieval.concepts import embed_concept_texts, index_concepts
+    from qdrant_client import QdrantClient
 
     client = QdrantClient(location=":memory:")
     index_concepts(client=client, embed_fn=embed_concept_texts)
@@ -149,10 +146,9 @@ def test_nav_and_ato_questions_find_their_files():
 
 
 def test_memory_collection_is_not_used_for_concept_answers():
+    from backend.retrieval.answer import NOT_IN_DOCS, answer_concept
     from qdrant_client import QdrantClient
     from qdrant_client.models import Distance, PointStruct, VectorParams
-
-    from backend.retrieval.answer import NOT_IN_DOCS, answer_concept
 
     client = QdrantClient(location=":memory:")
     client.create_collection(
@@ -192,9 +188,8 @@ def test_unrelated_question_says_not_in_the_documents():
 
 
 def test_missing_collection_says_not_in_the_documents():
-    from qdrant_client import QdrantClient
-
     from backend.retrieval.answer import NOT_IN_DOCS, answer_concept
+    from qdrant_client import QdrantClient
 
     client = QdrantClient(location=":memory:")
     result = answer_concept("RSI là gì", client=client, embed_fn=lambda texts: [[0.0, 1.0]])
@@ -269,10 +264,10 @@ def test_supervisor_sends_rsi_definition_to_retrieval_and_symbol_to_indicator():
     assert published["source_file"] == "rsi-va-sma.md"
     assert published["agents_to_call"] == ["retrieval"]
 
-    from backend.domain.ports import PriceBar, PriceQuote
-    from backend.agents.eval_agent.nodes import HeuristicEvalBrain
     from backend.agents.answer_composer.nodes import HeuristicAnswerDraftBrain
+    from backend.agents.eval_agent.nodes import HeuristicEvalBrain
     from backend.agents.news_agent.schemas import NewsReactAction
+    from backend.domain.ports import PriceBar, PriceQuote
 
     class QuotePrice:
         def fetch_latest_close(self, symbol):
@@ -360,11 +355,10 @@ def test_ai_stream_says_not_in_the_documents_when_the_passage_is_missing():
     from types import SimpleNamespace
     from unittest.mock import patch
 
-    from fastapi.testclient import TestClient
-
     from backend.ai_main import app as ai_app
-    from backend.retrieval.answer import NOT_IN_DOCS
     from backend.api.deps import get_app_deps
+    from backend.retrieval.answer import NOT_IN_DOCS
+    from fastapi.testclient import TestClient
 
     class Boom:
         def fetch_latest_close(self, symbol):

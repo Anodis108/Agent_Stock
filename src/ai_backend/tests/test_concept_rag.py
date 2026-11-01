@@ -203,14 +203,17 @@ def test_missing_collection_says_not_in_the_documents():
 
 
 def test_supervisor_sends_rsi_definition_to_retrieval_and_symbol_to_indicator():
-    from ai_backend.domain.agents.chat.chat_supervisor_agent import RewrittenQuestion, route_question
+    from ai_backend.domain.agents.chat.chat_supervisor_agent import (
+        RewrittenQuestion,
+        route_question,
+    )
     from ai_backend.domain.agents.chat.chat_supervisor_agent.nodes import (
         HeuristicRewriteBrain,
         _extract_symbols,
+        chat_supervisor_node,
     )
     from ai_backend.domain.agents.chat.graph import run_chat_graph
     from ai_backend.domain.agents.graph import build_graph
-    from ai_backend.domain.agents.chat.chat_supervisor_agent.nodes import chat_supervisor_node
 
     class BoomBrain:
         def route(self, rewritten):
@@ -275,10 +278,10 @@ def test_supervisor_sends_rsi_definition_to_retrieval_and_symbol_to_indicator():
     assert published["source_file"] == "rsi-va-sma.md"
     assert published["agents_to_call"] == ["retrieval"]
 
-    from common.domain.ports import PriceBar, PriceQuote
-    from ai_backend.domain.agents.scan.eval_agent.nodes import HeuristicEvalBrain
     from ai_backend.domain.agents.chat.nodes.answer import HeuristicAnswerDraftBrain
+    from ai_backend.domain.agents.scan.eval_agent.nodes import HeuristicEvalBrain
     from ai_backend.domain.agents.scan.news_agent.schemas import NewsReactAction
+    from common.domain.ports import PriceBar, PriceQuote
 
     class QuotePrice:
         def fetch_latest_close(self, symbol):
@@ -368,8 +371,8 @@ def test_ai_stream_says_not_in_the_documents_when_the_passage_is_missing():
 
     from fastapi.testclient import TestClient
 
-    from ai_backend.main import app as ai_app
     from ai_backend.infra.qdrant.answer import NOT_IN_DOCS, answer_concept
+    from ai_backend.main import app as ai_app
 
     class MockSwarm:
         def stream(self, question, **kwargs):

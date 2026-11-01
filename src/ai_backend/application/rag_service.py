@@ -12,9 +12,9 @@ import re
 from pathlib import Path
 from typing import Any
 
+from ai_backend.shared.logging import get_logger
 from common.base.base_model import CustomBaseModel
 from common.base.base_service import BaseService
-from ai_backend.shared.logging import get_logger
 
 logger = get_logger("ai_backend.application.rag")
 

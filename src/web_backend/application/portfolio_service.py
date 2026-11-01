@@ -11,13 +11,6 @@ from common.logging.logger import get_logger
 
 logger = get_logger("web_backend.application.portfolio")
 
-from web_backend.infra.database.repositories import (
-    PortfolioHoldingRecord,
-    PortfolioHoldingRepository,
-    UserSettingsRecord,
-    UserSettingsRepository,
-)
-from common.domain.ports import IPriceSource as PriceSource
 
 from web_backend.domain.portfolio_calculator import PortfolioCalculator
 

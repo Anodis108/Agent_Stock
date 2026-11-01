@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 
 from web_backend.api.deps import AppDeps, get_app_deps, get_current_user_id
 from web_backend.api.helpers.validation import normalize_symbol, validate_threshold_pct

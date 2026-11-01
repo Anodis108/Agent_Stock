@@ -7,26 +7,18 @@ and persistent data retention across closed/reopened SQLite connections.
 from __future__ import annotations
 
 import sqlite3
-import tempfile
 from pathlib import Path
 
 import pytest
-
-from backend.database.connection import get_connection, init_db
+from backend.database.connection import get_connection
 from backend.database.repositories import (
-    HITLEvaluationRecord,
     HITLEvaluationRepository,
     MarketHistoryRecord,
     MarketHistoryRepository,
-    MessageRecord,
     MessageRepository,
-    PortfolioHoldingRecord,
     PortfolioHoldingRepository,
-    SessionRecord,
     SessionRepository,
-    UserSettingsRecord,
     UserSettingsRepository,
-    WatchlistRecord,
     WatchlistRepository,
 )
 

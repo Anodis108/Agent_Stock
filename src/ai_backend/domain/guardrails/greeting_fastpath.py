@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import re
 from typing import Any
+
 from pydantic import BaseModel, Field
 
 # Các mẫu từ khóa chào hỏi và giao tiếp mở đầu

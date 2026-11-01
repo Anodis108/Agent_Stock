@@ -3,8 +3,8 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import Any
 
-from common.domain.ports import PriceBar
 from ai_backend.infra.storage.pg_db import connect
+from common.domain.ports import PriceBar
 
 
 class PgPriceHistoryStore:

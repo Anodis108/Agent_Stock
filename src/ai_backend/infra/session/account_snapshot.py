@@ -98,7 +98,8 @@ def load_account_snapshot(user_id: str) -> dict[str, list[dict]]:
         from web_backend.api.deps import get_app_deps
         from web_backend.api.routers.watchlist import store as watchlist_store
     except ImportError:
-        get_app_deps = lambda: None
+        def get_app_deps():
+            return None
         watchlist_store = None
 
     uid = user_id.strip()

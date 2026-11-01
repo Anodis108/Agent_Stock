@@ -41,7 +41,7 @@ def main() -> int:
     if history_dir.exists():
         for file in history_dir.glob("*.json"):
             try:
-                with open(file, "r", encoding="utf-8") as f:
+                with open(file, encoding="utf-8") as f:
                     data = json.load(f)
                     if isinstance(data, list):
                         for item in data:

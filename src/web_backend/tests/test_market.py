@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-from fastapi.testclient import TestClient
-
 from web_backend.application.market_service import (
     DEFAULT_MARKET_SYMBOLS,
     MarketInput,

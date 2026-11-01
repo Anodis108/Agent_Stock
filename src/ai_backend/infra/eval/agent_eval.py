@@ -10,14 +10,13 @@ Các tiêu chí đánh giá cốt lõi:
 
 from __future__ import annotations
 
-from uuid import uuid4
-
-import asyncio
 import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
+
 from pydantic import BaseModel, Field
 
 
@@ -245,9 +244,9 @@ def evaluate_case(
 
     res = None
     if live_url:
-        import urllib.request
         import json
         import time
+        import urllib.request
 
         payload = json.dumps({"question": question, "user_id": "eval_user"}).encode("utf-8")
         req = urllib.request.Request(
@@ -258,7 +257,7 @@ def evaluate_case(
         )
         data = None
         last_exc = None
-        for attempt in range(3):
+        for _attempt in range(3):
             try:
                 with urllib.request.urlopen(req, timeout=60.0) as resp:
                     data = json.loads(resp.read().decode("utf-8"))
@@ -296,11 +295,16 @@ def evaluate_case(
         if not res.actual_agents and res.steps:
             for st in res.steps:
                 sname = (st.get("name") if isinstance(st, dict) else getattr(st, "name", "")).lower()
-                if "price" in sname: res.actual_agents.append("price")
-                elif "news" in sname: res.actual_agents.append("news")
-                elif "chart" in sname: res.actual_agents.append("chart")
-                elif "eval" in sname or "indicator" in sname: res.actual_agents.append("eval")
-                elif "diagram" in sname: res.actual_agents.append("diagram")
+                if "price" in sname:
+                    res.actual_agents.append("price")
+                elif "news" in sname:
+                    res.actual_agents.append("news")
+                elif "chart" in sname:
+                    res.actual_agents.append("chart")
+                elif "eval" in sname or "indicator" in sname:
+                    res.actual_agents.append("eval")
+                elif "diagram" in sname:
+                    res.actual_agents.append("diagram")
         res.actual_agents = list(dict.fromkeys(res.actual_agents))
         res.compose = None
         res.evidence = []
@@ -315,7 +319,7 @@ def evaluate_case(
             if isinstance(st, dict) and st.get("output"):
                 res.evidence.append(str(st["output"]))
             elif hasattr(st, "output") and getattr(st, "output", None):
-                res.evidence.append(str(getattr(st, "output")))
+                res.evidence.append(str(st.output))
     else:
         # Thực thi qua Chat Graph Swarm
         try:
@@ -379,9 +383,9 @@ def evaluate_case(
 
     actual_agents = getattr(res, "actual_agents", [])
     if not actual_agents and getattr(res, "routing", None):
-        routing_obj = getattr(res, "routing")
+        routing_obj = res.routing
         if hasattr(routing_obj, "agents_to_call"):
-            actual_agents = list(getattr(routing_obj, "agents_to_call") or [])
+            actual_agents = list(routing_obj.agents_to_call or [])
         elif isinstance(routing_obj, str):
             actual_agents = [routing_obj]
 

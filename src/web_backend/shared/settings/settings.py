@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 import os
 
-from common.base.base_model import CustomBaseModel
 import common.settings.config  # noqa: F401 — nạp .env thành biến môi trường khi chạy local
+from common.base.base_model import CustomBaseModel
 from web_backend.shared.settings.models import MinioSettings
 
 

@@ -10,13 +10,16 @@ import hashlib
 import os
 import re
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
-from typing import Any, Iterator, Protocol
+from typing import Any, Protocol
 
 TTL_SECONDS = 24 * 3600
 
-_llm_cache_context: ContextVar[dict[str, Any]] = ContextVar("llm_cache_context", default={})
+_llm_cache_context: ContextVar[dict[str, Any] | None] = ContextVar(
+    "llm_cache_context", default=None
+)
 
 
 def normalize_question(text: str) -> str:
@@ -151,7 +154,7 @@ def is_exact_cache_enabled() -> bool:
 
 
 def set_llm_cache_context(**kwargs: Any) -> None:
-    current = dict(_llm_cache_context.get())
+    current = dict(_llm_cache_context.get() or {})
     current.update(kwargs)
     _llm_cache_context.set(current)
 
@@ -161,7 +164,7 @@ def clear_llm_cache_context() -> None:
 
 
 def get_llm_cache_context() -> dict[str, Any]:
-    return dict(_llm_cache_context.get())
+    return dict(_llm_cache_context.get() or {})
 
 
 @contextmanager

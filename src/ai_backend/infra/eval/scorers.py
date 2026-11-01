@@ -8,6 +8,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from ai_backend.domain.guardrails.output_checks import find_buy_sell_phrases
+from ai_backend.infra.cache.tiered import chat_parsed_cached
 from ai_backend.infra.eval.agent_scorers import (
     TASK_SUCCESS_SLICES,
     TRAJECTORY_WARN_THRESHOLD,
@@ -16,7 +17,6 @@ from ai_backend.infra.eval.agent_scorers import (
     evaluate_task_success,
     evaluate_trajectory,
 )
-from ai_backend.infra.cache.tiered import chat_parsed_cached
 from ai_backend.infra.llm.params import DETERMINISTIC
 from ai_backend.infra.prompts import get_system_prompt
 from common.settings import settings

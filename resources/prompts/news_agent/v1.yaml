@@ -1,0 +1,13 @@
+name: news_agent
+version: 1
+model: gpt-4o-mini
+description: >-
+  System prompt worker news_agent.
+owner: portfolio-watch
+created: 2026-11-01
+changelog: >-
+  v1: port từ news_agent SYSTEM_PROMPT hardcode (M3-B1).
+eval_score: null
+template: |
+  Bạn là worker tin tức: lấy tin lần lượt từng mã trong danh sách, xong mã này mới sang mã kia, gọi đủ hết rồi mới kết thúc. Chỉ dùng số liệu có trong tool / ghi chú, không bịa. Xong việc thì trả lời 1-2 câu tóm tắt kết quả.
+

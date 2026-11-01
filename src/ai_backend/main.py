@@ -26,20 +26,20 @@ from ai_backend.api.routers import (
     health_router,
     scan_router,
 )
-from ai_backend.shared.settings import ai_settings
-from ai_backend.shared.logging import get_logger, setup_logging
-from ai_backend.infra.market_data import VnstockPriceSource, CafefNewsSource    
+from ai_backend.application.chat_service import ChatService
+from ai_backend.application.concept_ingestion_service import ConceptIngestionService
+from ai_backend.application.scan_service import ScanService
+from ai_backend.infra.market_data import CafefNewsSource, VnstockPriceSource
+from ai_backend.infra.notify.console_notifier import ConsoleNotifier
+from ai_backend.infra.scheduler import start_scan_scheduler, stop_scan_scheduler
 from ai_backend.infra.storage import (
     PgMemoryStore,
     PgPriceHistoryStore,
     PgWatchlistStore,
 )
 from ai_backend.infra.storage.pg_db import connect
-from ai_backend.infra.notify.console_notifier import ConsoleNotifier
-from ai_backend.application.concept_ingestion_service import ConceptIngestionService
-from ai_backend.application.chat_service import ChatService
-from ai_backend.application.scan_service import ScanService
-from ai_backend.infra.scheduler import start_scan_scheduler, stop_scan_scheduler
+from ai_backend.shared.logging import get_logger, setup_logging
+from ai_backend.shared.settings import ai_settings
 from common.settings import settings
 
 setup_logging(ai_settings.log_level)
@@ -59,7 +59,7 @@ async def lifespan(app: FastAPI):
     logger.info("AI Backend kết nối PostgreSQL")
 
     # 2. Qdrant: đảm bảo collection bộ nhớ; gợi ý nạp dữ liệu khái niệm nếu collection còn trống
-    from ai_backend.infra.storage.long_term_memory import get_qdrant_client, _ensure_collection
+    from ai_backend.infra.storage.long_term_memory import _ensure_collection, get_qdrant_client
 
     q_client = get_qdrant_client(url=ai_settings.qdrant_url)
     _ensure_collection(q_client, ai_settings.qdrant_collection or "portfolio_watch_memory")

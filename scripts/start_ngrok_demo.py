@@ -11,10 +11,11 @@ import os
 import sys
 import time
 from pathlib import Path
+
 import requests
 
 try:
-    from pyngrok import conf, ngrok
+    from pyngrok import ngrok
 except ImportError:
     print("Vui lòng cài đặt pyngrok: pip install pyngrok")
     sys.exit(1)
@@ -69,7 +70,7 @@ def main() -> None:
     print(f"[*] Kiểm tra trạng thái Backend tại http://127.0.0.1:{args.port}/health ...")
     if not check_backend_running(args.port):
         print(f"[!] CẢNH BÁO: Backend chưa khởi động trên cổng {args.port}!")
-        print(f"[*] Hãy chạy lệnh sau trên một cửa sổ terminal khác trước khi demo:")
+        print("[*] Hãy chạy lệnh sau trên một cửa sổ terminal khác trước khi demo:")
         print(f"    $env:PYTHONPATH='src'; python -m uvicorn backend.api.main:app --port {args.port} --host 127.0.0.1")
         if not args.check_only:
             sys.exit(1)

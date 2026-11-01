@@ -8,13 +8,14 @@ from __future__ import annotations
 import hashlib
 import math
 import uuid
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
+
+from pydantic import BaseModel, ConfigDict
 
 from ai_backend.infra.cache.exact import normalize_question
 from ai_backend.infra.storage.long_term_memory import _ensure_collection
 from common.settings import settings
-from pydantic import BaseModel, ConfigDict
 
 _NAMESPACE = uuid.UUID("6f0c1d2e-3a4b-5c6d-7e8f-90a1b2c3d4e5")
 

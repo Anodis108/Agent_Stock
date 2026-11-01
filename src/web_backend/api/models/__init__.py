@@ -1,8 +1,8 @@
 """Pydantic Models Package for Web Backend API."""
 
 from web_backend.api.models.approvals import (
-    ApproveRequest,
     ApprovalsListResponse,
+    ApproveRequest,
     RejectRequest,
     ReviewResponse,
 )

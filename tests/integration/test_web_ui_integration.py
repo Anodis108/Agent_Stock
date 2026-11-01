@@ -9,15 +9,13 @@ Covers:
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import shutil
 import subprocess
 import time
-
-from fastapi.testclient import TestClient
-import pytest
+from pathlib import Path
 
 from backend.main import app
+from fastapi.testclient import TestClient
 
 ROOT = Path(__file__).resolve().parents[2] if Path(__file__).resolve().parent.name in ("unit", "integration", "e2e") else Path(__file__).resolve().parent.parent
 FE = ROOT / "src" / "frontend"

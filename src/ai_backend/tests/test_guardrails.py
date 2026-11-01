@@ -11,7 +11,6 @@ Kiểm tra:
 
 from __future__ import annotations
 
-
 from ai_backend.domain.guardrails.input_guardrail import (
     InputGuardrail,
     InputGuardrailResult,

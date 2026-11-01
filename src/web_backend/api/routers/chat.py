@@ -22,10 +22,10 @@ from web_backend.api.models.chat import ChatRequest, ChatResponse, ChatStep
 logger = get_logger("web_backend.api.routers.chat")
 router = APIRouter(tags=["chat"])
 
+import sys
+
 from web_backend.infra.database.connection import get_connection
 from web_backend.infra.database.repositories import MessageRepository, SessionRepository
-
-import sys
 
 _chat_answer_fn: Any = None
 
@@ -44,7 +44,6 @@ def _get_chat_answer_fn() -> Any:
         return None
 
     def answer(question: str, *, user_id: str, request_id: str, **request_deps: Any) -> Any:
-        import asyncio
 
         from ai_backend.domain.agents.graph import start_graph
 

@@ -4,10 +4,11 @@
 import json
 import sys
 import time
-import urllib.request
 import urllib.error
-import yaml
+import urllib.request
 from pathlib import Path
+
+import yaml
 
 # Cấu hình UTF-8 cho Windows console
 if hasattr(sys.stdout, "reconfigure"):
@@ -46,7 +47,7 @@ def run_live_golden_eval():
     print(f"Golden Dataset: {GOLDEN_PATH}")
     print("=" * 80)
 
-    with open(GOLDEN_PATH, "r", encoding="utf-8") as f:
+    with open(GOLDEN_PATH, encoding="utf-8") as f:
         doc = yaml.safe_load(f)
 
     cases = doc.get("cases", [])

@@ -100,11 +100,11 @@ def test_async_base_service_cannot_instantiate_without_process():
 def test_application_services_inheritance_contract():
     """AC-3: Xác nhận tất cả use-case services chính trong application/ kế thừa BaseService hoặc AsyncBaseService."""
     # 1. Web Backend application services
-    from web_backend.application.portfolio_service import PortfolioService
-    from web_backend.application.market_service import MarketService
-    from web_backend.application.hitl_service import HitlService
-    from web_backend.application.review_approval_service import ReviewApprovalService
     from web_backend.application.chat_gateway_service import ChatGatewayService
+    from web_backend.application.hitl_service import HitlService
+    from web_backend.application.market_service import MarketService
+    from web_backend.application.portfolio_service import PortfolioService
+    from web_backend.application.review_approval_service import ReviewApprovalService
 
     assert issubclass(PortfolioService, BaseService)
     assert hasattr(PortfolioService, "process")
@@ -118,9 +118,9 @@ def test_application_services_inheritance_contract():
     assert hasattr(ChatGatewayService, "process")
 
     # 2. AI Backend application services
+    from ai_backend.application.chat_service import ChatService
     from ai_backend.application.rag_service import RagService
     from ai_backend.application.scan_service import ScanService
-    from ai_backend.application.chat_service import ChatService
 
     assert issubclass(RagService, BaseService)
     assert hasattr(RagService, "process")

@@ -19,9 +19,6 @@ import pytest
 import uvicorn
 from fastapi.testclient import TestClient
 
-from ai_backend.main import app as ai_app
-from web_backend.api.deps import AppDeps, clear_deps_cache, set_app_deps
-from common.domain.entities import WatchlistItem
 from ai_backend.infra.market_data import CafefNewsSource, VnstockPriceSource
 from ai_backend.infra.notify import ConsoleNotifier
 from ai_backend.infra.storage import (
@@ -29,7 +26,10 @@ from ai_backend.infra.storage import (
     PgPriceHistoryStore,
     PgWatchlistStore,
 )
+from ai_backend.main import app as ai_app
 from ai_backend.shared.settings import ai_settings
+from common.domain.entities import WatchlistItem
+from web_backend.api.deps import AppDeps, clear_deps_cache, set_app_deps
 from web_backend.main import app as main_app
 
 

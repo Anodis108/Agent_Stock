@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import pytest
-
-from backend.domain.guardrails import check_input_guardrail, InputGuardrailResult
+from backend.domain.guardrails import InputGuardrailResult, check_input_guardrail
 from backend.graph.chat import run_chat_graph
-
 
 # ==============================================================================
 # 1. Unit Tests: Hàm check_input_guardrail
@@ -239,11 +236,10 @@ def test_ai_stream_greeting_skips_price_and_refusals_stay_blocked():
     """Đường HTTP mà web gọi: chào không gọi giá; injection và câu ngoài phạm vi bị từ chối."""
     from types import SimpleNamespace
 
-    from fastapi.testclient import TestClient
-
     from backend.ai_main import app as ai_app
-    from backend.graph.chat import GREETING_RESPONSE
     from backend.api.deps import get_app_deps
+    from backend.graph.chat import GREETING_RESPONSE
+    from fastapi.testclient import TestClient
 
     class BoomPrice:
         def fetch_latest_close(self, symbol):

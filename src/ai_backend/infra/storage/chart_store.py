@@ -4,7 +4,6 @@ Delegates to unified common.storage while preserving local chart directory suppo
 """
 from __future__ import annotations
 
-
 import ai_backend.shared.charts as backend_charts
 from common.storage import (
     ChartObjectStore,

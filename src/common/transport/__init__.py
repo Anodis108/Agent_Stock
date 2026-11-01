@@ -17,7 +17,6 @@ from common.transport.schemas import (
 )
 from common.transport.transport import (
     AiClientError,
-    _use_http,
     ai_chat,
     ai_scan,
     ai_scan_resume,

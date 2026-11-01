@@ -6,9 +6,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ai_backend.infra.eval.eval_cache import get_cached, prompt_hash_from_messages, set_cached
 from ai_backend.application.eval.run import eval_one_case
-from ai_backend.infra.cost.tracker import BudgetExceededError, check_budget_or_raise, reset_cost_tracker
+from ai_backend.infra.cost.tracker import (
+    BudgetExceededError,
+    check_budget_or_raise,
+    reset_cost_tracker,
+)
+from ai_backend.infra.eval.eval_cache import get_cached, prompt_hash_from_messages, set_cached
 from ai_backend.infra.prompts import pick_prompt_version
 from common.settings import settings
 
@@ -25,7 +29,9 @@ def test_pick_prompt_version_disabled():
 
 
 def test_restrict_symbols_blocks_xin_vui_from_typo():
-    from ai_backend.domain.agents.chat.chat_supervisor_agent.nodes import _restrict_symbols_to_original
+    from ai_backend.domain.agents.chat.chat_supervisor_agent.nodes import (
+        _restrict_symbols_to_original,
+    )
 
     q = "Cho tôi giá hiện tịa VNM"
     assert _restrict_symbols_to_original(q, ["VNM", "XIN", "VUI"]) == ["VNM"]
@@ -48,7 +54,7 @@ def test_eval_cache_roundtrip(tmp_path, monkeypatch):
     hit = get_cached("case-1", ph)
     assert hit is not None
     assert hit["output"] == "FPT 100k"
-    path = tmp_path / f"{ph[:8]}.json"
+    tmp_path / f"{ph[:8]}.json"
     # key is hashed — just verify file exists
     assert any(tmp_path.glob("*.json"))
 

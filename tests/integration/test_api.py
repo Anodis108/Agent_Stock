@@ -13,18 +13,16 @@ Bao gồm:
 from __future__ import annotations
 
 import json
+import threading
 import time
 from pathlib import Path
-import pytest
-from fastapi.testclient import TestClient
 
-from backend.main import app, store
+from backend.infra.storage.store import ApprovalRecord, WatchlistItem
+from backend.main import store
 from backend.services.hitl_service import (
     get_hitl_feedback_json_path,
-    record_hitl_telemetry,
 )
-from backend.infra.storage.store import ApprovalRecord, WatchlistItem
-
+from fastapi.testclient import TestClient
 
 # ==============================================================================
 # 1. Health, UI Static & Watchlist CRUD Tests
@@ -161,8 +159,8 @@ def test_ui_stream_receives_async_tokens_before_complete(client: TestClient, mon
     from backend.api.routers import chat as chat_router
     from backend.application.answer_question import AnswerQuestionResult
     from backend.domain.entities.models import RoutingDecision
-    from ai_backend.infra.llm import async_client
     from backend.shared.settings import settings
+
 
     class _Delta:
         def __init__(self, content: str) -> None:
@@ -257,7 +255,6 @@ def test_ui_stream_receives_async_tokens_before_complete(client: TestClient, mon
     import threading
 
     import uvicorn
-
     from backend.main import app as main_app
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -381,14 +378,13 @@ def test_ngrok_hop_receives_async_tokens_before_complete(monkeypatch):
     import threading
 
     import uvicorn
-
     from backend.agents.supervisor_agent.nodes import RewrittenQuestion
     from backend.api.routers import chat as chat_router
     from backend.application.answer_question import AnswerQuestionResult
     from backend.domain.entities.models import RoutingDecision
-    from ai_backend.infra.llm import async_client
     from backend.main import app as main_app
     from backend.shared.settings import settings
+
 
     class _Delta:
         def __init__(self, content: str) -> None:

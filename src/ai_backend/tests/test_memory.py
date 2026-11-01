@@ -19,15 +19,14 @@ from ai_backend.domain.agents.chat.chat_supervisor_agent.nodes import (
     rewrite_question,
     store_memory,
 )
-from web_backend.infra.database.connection import get_connection
-from web_backend.infra.database.repositories import MessageRepository, SessionRepository
 from ai_backend.domain.agents.chat.graph import run_chat_graph
 from ai_backend.infra.storage.memory_store import (
     apply_sliding_window_with_ttl_eviction,
     filter_conversation_history,
     parse_timestamp,
 )
-
+from web_backend.infra.database.connection import get_connection
+from web_backend.infra.database.repositories import MessageRepository, SessionRepository
 
 # ==============================================================================
 # 1. Short-Term Memory Tests (Sliding Window, TTL, Turn 1 -> Turn 2)
@@ -165,8 +164,8 @@ def test_session_and_message_crud(pg_schema):
     assert session.title == "Phiên phân tích FPT"
 
     # 2. Tạo tin nhắn
-    msg1 = m_repo.create(session_id=session.id, role="user", content="Giá FPT?")
-    msg2 = m_repo.create(session_id=session.id, role="assistant", content="Giá FPT là 125.0.")
+    m_repo.create(session_id=session.id, role="user", content="Giá FPT?")
+    m_repo.create(session_id=session.id, role="assistant", content="Giá FPT là 125.0.")
 
     messages = m_repo.list_by_session(session.id)
     assert len(messages) == 2

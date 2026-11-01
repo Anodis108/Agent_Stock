@@ -7,18 +7,15 @@ from functools import lru_cache
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode
 
-from ai_backend.infra.llm.client import bind_tools_llm
 from ai_backend.domain.agents.scan.eval_agent.state import EvalWorkerState
-from ai_backend.domain.agents.scan.eval_agent.tools import TOOLS, eval_results_from_tool_artifacts, proposals_from_tool_artifacts
-from ai_backend.infra.monitoring.tracing import _current, current_span, trace_step
-
-SYSTEM_PROMPT = (
-    "Bạn đánh giá mức độ nghiêm trọng từng mã trong danh sách: lần lượt hết mã này rồi mới sang mã kia. "
-    "Với mỗi mã: đọc chỉ báo kỹ thuật, kết hợp giá + tin trong ghi chú, rồi nộp submit_severity cho đúng mã đó. "
-    "Xong hết mã mới kết thúc. Nếu nhiệm vụ là quét cảnh báo và biến động lớn bất thường so với ngưỡng, "
-    "có thể đề xuất đổi ngưỡng / theo dõi mã liên quan bằng propose_watchlist_update. "
-    "Chỉ dùng số liệu có trong tool / ghi chú, không bịa. Xong việc thì trả lời 1-2 câu tóm tắt kết quả."
+from ai_backend.domain.agents.scan.eval_agent.tools import (
+    TOOLS,
+    eval_results_from_tool_artifacts,
+    proposals_from_tool_artifacts,
 )
+from ai_backend.infra.llm.client import bind_tools_llm
+from ai_backend.infra.monitoring.tracing import _current, current_span, trace_step
+from ai_backend.infra.prompts import get_system_prompt
 
 
 def _worker_llm():
@@ -31,7 +28,7 @@ async def act(state: EvalWorkerState) -> dict:
         syms = ", ".join(state["symbols"]) if "symbols" in state and state["symbols"] else ""
         sym_line = f"\nCác mã (làm lần lượt): {syms}" if syms else ""
         messages = state["message_worker"] or [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": get_system_prompt("eval_agent")},
             {"role": "user", "content": f"Nhiệm vụ: {state['task']}{sym_line}\n\nGhi chú từ worker đã chạy:\n{notes}"},
         ]
         response = await _worker_llm().ainvoke(messages)

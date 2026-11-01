@@ -1,6 +1,7 @@
 """Tests for Docker & Local Run Scripts setup."""
 
 from pathlib import Path
+
 import yaml
 
 
@@ -14,7 +15,7 @@ def test_docker_compose_structure():
     compose_path = root / "docker-compose.yml"
     assert compose_path.exists(), "docker-compose.yml must exist at project root"
 
-    with open(compose_path, "r", encoding="utf-8") as f:
+    with open(compose_path, encoding="utf-8") as f:
         compose_data = yaml.safe_load(f)
 
     assert "services" in compose_data, "docker-compose.yml must define services"

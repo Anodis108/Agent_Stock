@@ -11,8 +11,6 @@ from typing import Any
 
 from common.logging.logger import get_logger
 from common.transport.transport import (
-    AiClientError,
-    ai_chat,
     ai_scan,
     ai_scan_resume,
     post_json,

@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import os
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from common.logging.logger import get_logger
 from web_backend.api.deps import AppDeps, get_app_deps, get_current_user_id
@@ -29,11 +28,7 @@ from web_backend.infra.database.repositories import (
 )
 
 try:
-    from web_backend.application.portfolio_service import (
-        PortfolioItemSummary,
-        PortfolioService,
-        PortfolioSummary,
-    )
+    from web_backend.application.portfolio_service import PortfolioService
 except ImportError:
     PortfolioService = None
 
@@ -238,7 +233,7 @@ def add_holding(
             updated_at=getattr(record, "updated_at", None),
         )
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
 
 @router.delete(
@@ -317,4 +312,4 @@ def update_user_settings(
             updated_at=s.updated_at,
         )
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e

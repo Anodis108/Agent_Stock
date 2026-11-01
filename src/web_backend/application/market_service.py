@@ -16,7 +16,6 @@ from common.database import PgConn
 from web_backend.infra.database.connection import get_connection
 from web_backend.infra.database.repositories import MarketHistoryRecord, MarketHistoryRepository
 
-
 DEFAULT_MARKET_SYMBOLS: list[str] = [
     "FPT",
     "VNM",
@@ -62,7 +61,7 @@ class SessionInfo(dict):
         try:
             return self[name]
         except KeyError:
-            raise AttributeError(f"'SessionInfo' object has no attribute '{name}'")
+            raise AttributeError(f"'SessionInfo' object has no attribute '{name}'") from None
 
     def __setattr__(self, name: str, value: Any) -> None:
         self[name] = value

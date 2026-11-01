@@ -16,8 +16,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from openai import OpenAI
 import httpx
+from openai import OpenAI
 
 from ai_backend.infra.llm.backends import get_backend
 from ai_backend.infra.llm.resilience import RotatingKeyPool

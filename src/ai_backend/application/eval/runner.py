@@ -5,14 +5,15 @@ Chạy full golden qua luồng production (`run_graph` mode=chat).
 
 from __future__ import annotations
 
-from uuid import uuid4
-
 import asyncio
 import os
 import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
+
+from pydantic import BaseModel, Field
 
 from ai_backend.infra.eval.agent_scorers import (
     TASK_SUCCESS_SLICES,
@@ -29,7 +30,6 @@ from ai_backend.infra.eval.scorers import (
     score_case_task_success,
     score_case_trajectory,
 )
-from pydantic import BaseModel, Field
 
 SLICE_ORDER = (
     "lookup",
@@ -170,10 +170,8 @@ def make_answer_fn(
     Gắn `fn.last_steps` (list[dict]) sau mỗi lần gọi để chấm trajectory.
     Không truyền deps → lấy `get_app_deps()` (giống POST /chat).
     """
-    from web_backend.api.deps import get_app_deps
-    import asyncio
-
     from ai_backend.domain.agents.graph import start_graph
+    from web_backend.api.deps import get_app_deps
 
     def _answer(question: str) -> str:
         deps = None

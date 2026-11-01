@@ -17,17 +17,18 @@ from pydantic import BaseModel, Field
 from ai_backend.domain.agents.chat.draw_agent.graph import build_draw_agent
 from ai_backend.domain.agents.chat.nodes import (
     answer_node,
-    save_long_term_memory_node,
     concept_retrieval_node,
     guardrail_input_node,
     portfolio_report_node,
     rewrite_node,
     route_after_guardrail,
+    save_long_term_memory_node,
     scan_team_node,
 )
 from ai_backend.domain.agents.chat.state import ChatTeamState
 from ai_backend.infra.llm.client import base_llm
 from ai_backend.infra.monitoring.tracing import _current, current_span, trace_step
+from ai_backend.infra.prompts import get_system_prompt
 
 # ── Team chat theo multi_agent/hierarchical.py ───────────────────────────────────────────────────
 # chat_supervisor (LLM: task + notes → next_agent) → <worker> → collect → chat_supervisor; 'done' → answer.
@@ -53,17 +54,6 @@ CHAT_WORKERS = [
     "portfolio_report",
     "concept_retrieval",
 ]
-
-CHAT_SUPERVISOR_SYSTEM = """Bạn điều phối team chat trả lời câu hỏi chứng khoán Việt Nam gồm các worker:
-- 'scan_team': thu thập dữ liệu — giá, tin tức, đánh giá kỹ thuật / mức độ biến động của mã, danh mục nắm giữ và watchlist của người dùng
-- 'draw_agent': vẽ biểu đồ giá (cần mã) hoặc sơ đồ Mermaid, chỉ khi người dùng yêu cầu vẽ
-- 'portfolio_report': lập bảng NAV / lãi lỗ danh mục + watchlist (cần scan_team đọc danh mục người dùng trước)
-- 'concept_retrieval': tra tài liệu giải thích khái niệm chứng khoán (câu hỏi "X là gì", không gắn mã cụ thể)
-Worker KHÔNG tự giao tiếp với nhau — bạn quyết định worker nào chạy tiếp theo dựa trên nhiệm vụ và ghi chú đã có;
-không chạy lại worker đã có kết quả trong ghi chú.
-
-Chọn 'done' khi đã đủ thông tin để trả lời (node answer tổng hợp task + notes, stream token)."""
-
 
 class _RoutingDecision(BaseModel):
     next_agent: str = Field(description="Tên worker trong system prompt, hoặc 'done'")
@@ -118,7 +108,10 @@ def _build_graph():
     graph = StateGraph(ChatTeamState)
     graph.add_node("guardrail_input", guardrail_input_node)
     graph.add_node("rewrite_question", rewrite_node)
-    graph.add_node("chat_supervisor", _make_supervisor_node("chat_supervisor", CHAT_SUPERVISOR_SYSTEM, CHAT_WORKERS))
+    graph.add_node(
+        "chat_supervisor",
+        _make_supervisor_node("chat_supervisor", get_system_prompt("chat_supervisor"), CHAT_WORKERS),
+    )
     graph.add_node("answer", answer_node)
     graph.add_node("save_long_term_memory", save_long_term_memory_node)
 

@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Request
 
-from ai_backend.api.models.scan_models import ScanRequest, ScanResponse, ScanResumeRequest, ScanResumeResponse
+from ai_backend.api.models.scan_models import (
+    ScanRequest,
+    ScanResponse,
+    ScanResumeRequest,
+    ScanResumeResponse,
+)
 from ai_backend.application.scan_service import ScanResumeInput, ScanService
 from ai_backend.shared.exceptions import ScanExecutionException
 from ai_backend.shared.logging import get_logger

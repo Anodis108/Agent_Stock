@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any
-from common.domain.entities import WatchlistItem
+
 from ai_backend.infra.storage.pg_db import connect
+from common.domain.entities import WatchlistItem
 
 
 class PgWatchlistStore:

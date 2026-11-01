@@ -7,8 +7,9 @@ Tuân thủ đầy đủ quy chuẩn Handbook Module 3 (Bài 3 dòng 792) phục
 """
 
 import sys
-import yaml
 from pathlib import Path
+
+import yaml
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -287,6 +288,6 @@ with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
     yaml.safe_dump(dataset_content, f, allow_unicode=True, sort_keys=False)
 
 print(f"Đã tạo thành công tập Replay FAQ 200 câu tại: {OUTPUT_FILE}")
-print(f"- Số câu hỏi độc lập (Canonical): 140 câu (70%)")
-print(f"- Số câu hỏi gần giống (Near-duplicate): 60 câu (30%)")
+print("- Số câu hỏi độc lập (Canonical): 140 câu (70%)")
+print("- Số câu hỏi gần giống (Near-duplicate): 60 câu (30%)")
 print(f"- Tổng số câu: {len(questions_list)} câu")

@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import builtins
 
-from ai_backend.infra.cache.exact import ExactCache, InMemoryStore, get_exact_cache, reset_exact_cache_for_tests
+from ai_backend.infra.cache.exact import (
+    ExactCache,
+    InMemoryStore,
+    get_exact_cache,
+    reset_exact_cache_for_tests,
+)
 from ai_backend.infra.cache.redis_store import RedisStore, redis_url_from_env
 from common.settings import settings
 

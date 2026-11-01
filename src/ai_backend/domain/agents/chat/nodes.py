@@ -19,17 +19,23 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.config import get_stream_writer
 from langgraph.runtime import get_runtime
 
-from ai_backend.domain.guardrails import check_input_guardrail
-from ai_backend.domain.agents.chat.state import AnswerEvalData, AnswerQuestionResult, ChatTeamState, RewrittenQuestion, ScanResult
+from ai_backend.domain.agents.chat.state import (
+    AnswerEvalData,
+    AnswerQuestionResult,
+    ChatTeamState,
+    RewrittenQuestion,
+    ScanResult,
+)
 from ai_backend.domain.agents.scan.graph import build_graph as build_scan_graph
+from ai_backend.domain.guardrails import check_input_guardrail
 from ai_backend.infra.cache.tiered import chat_parsed_cached, chat_stream_cached
 from ai_backend.infra.llm.params import DETERMINISTIC
 from ai_backend.infra.monitoring.tracing import _current, current_span, trace_step, trace_stream
-from ai_backend.infra.prompts import registry
+from ai_backend.infra.prompts import get_system_prompt, registry
 from ai_backend.infra.storage.long_term_memory import recall_long_term, save_to_long_term
 from ai_backend.shared.logging import get_logger
-from common.settings import settings
 from common.domain.entities import WatchlistItem
+from common.settings import settings
 from common.transport.schemas import MemoryFact
 
 _logger = get_logger(__name__)
@@ -60,12 +66,6 @@ def route_after_guardrail(state: ChatTeamState) -> str:
     return "answer" if res and (not res.is_safe or res.category == "greeting") else "rewrite_question"
 
 
-_REWRITE_SYSTEM = (
-    "1) Viết lại câu hỏi mới nhất của người dùng thành MỘT câu hỏi đầy đủ, tự hiểu được: thay đại từ / chỗ lược bỏ "
-    "bằng thông tin trong hội thoại trước (nếu có). Giữ nguyên ý định và thuật ngữ (mã cổ phiếu, điều luật, khái niệm…).\n"
-    "2) Nếu câu hỏi gồm nhiều ý, chia thành 2-4 câu hỏi con đơn giản, mỗi câu trả lời độc lập được; "
-    "câu hỏi đã đơn giản thì trả về chính nó trong danh sách 1 phần tử."
-)
 
 
 async def rewrite_node(state: ChatTeamState, config: RunnableConfig) -> dict:
@@ -84,7 +84,7 @@ async def rewrite_node(state: ChatTeamState, config: RunnableConfig) -> dict:
     conversation = apply_sliding_window_with_ttl_eviction(conversation, limit=limit, ttl_minutes=ttl)
     memories = recall_memory(state["user_id"], q)
     messages = [
-        {"role": "system", "content": _REWRITE_SYSTEM},
+        {"role": "system", "content": get_system_prompt("rewrite_question")},
         {"role": "user", "content": f"Hội thoại trước:\n{json.dumps(conversation, ensure_ascii=False)}\n\nCâu hỏi mới: {q}"},
     ]
     with trace_step(current_span(), "rewrite_question", input=q, as_type="generation") as box:
@@ -274,10 +274,6 @@ def store_memory(user_id: str, question: str, answer: str) -> None:
 # ── 4. Trả lời: answer (final_answer + stream) → save_long_term_memory → END ──
 
 
-_FINAL_ANSWER_SYSTEM = """Tổng hợp ghi chú từ các worker thành câu trả lời cuối
-cho user — ngắn gọn, đầy đủ thông tin đã thu thập được. Không bịa số liệu ngoài ghi chú.
-Trả lời bằng tiếng Việt."""
-
 GREETING_RESPONSE = (
     "Xin chào! Tôi là trợ lý AI phân tích chứng khoán Việt Nam (Portfolio Watch).\n\n"
     "Tôi có thể hỗ trợ bạn các tác vụ sau:\n"
@@ -309,7 +305,7 @@ def answer_node(state: ChatTeamState, config: RunnableConfig) -> dict:
     writer = get_stream_writer()
     notes_text = "\n".join(f"[{d}] {n}" for d, n in state["notes"].items())
     messages = [
-        {"role": "system", "content": _FINAL_ANSWER_SYSTEM},
+        {"role": "system", "content": get_system_prompt("answer_compose")},
         {"role": "user", "content": f"Nhiệm vụ: {state['task']}\n\nGhi chú:\n{notes_text}"},
     ]
 

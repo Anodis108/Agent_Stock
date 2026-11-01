@@ -13,9 +13,10 @@ import time
 from contextvars import ContextVar
 from typing import Any
 
+from pydantic import BaseModel, Field, PrivateAttr
+
 from ai_backend.infra.cache.exact import get_llm_cache_context, normalize_question
 from common.settings import settings
-from pydantic import BaseModel, Field, PrivateAttr
 
 COSINE_THRESHOLD = 0.93
 TTL_SECONDS = 24 * 3600

@@ -22,16 +22,8 @@ if hasattr(sys.stdout, "reconfigure"):
 
     from common.settings import settings
 
-from ai_backend.infra.eval.dataset import (
-    BASELINE_PATH,
-    GOLDEN_PR_SUBSET_PATH,
-    GOLDEN_V5_PATH,
-    GOLDEN_V6_PATH,
-    format_blocked_registry,
-    format_fail_policy_guidance,
-    load_blocked_cases,
-    load_golden_dataset,
-)
+from pydantic import BaseModel
+
 from ai_backend.application.eval.runner import (
     SLICE_ORDER,
     CaseEvalResult,
@@ -44,6 +36,16 @@ from ai_backend.application.eval.runner import (
     format_trajectory_warnings,
     run_eval,
 )
+from ai_backend.infra.eval.dataset import (
+    BASELINE_PATH,
+    GOLDEN_PR_SUBSET_PATH,
+    GOLDEN_V5_PATH,
+    GOLDEN_V6_PATH,
+    format_blocked_registry,
+    format_fail_policy_guidance,
+    load_blocked_cases,
+    load_golden_dataset,
+)
 from ai_backend.infra.eval.scorers import (
     JUDGE_PASS_THRESHOLD_MIN,
     REGRESSION_TOLERANCE,
@@ -53,7 +55,6 @@ from ai_backend.infra.eval.scorers import (
     score_case_llm_judge,
     score_case_rule_based,
 )
-from pydantic import BaseModel
 
 
 class RegressionResult(BaseModel):

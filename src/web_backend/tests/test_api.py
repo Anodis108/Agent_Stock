@@ -2,15 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
 from fastapi.testclient import TestClient
-
-from web_backend.infra.database.connection import get_connection
-from web_backend.infra.database.repositories import (
-    PortfolioHoldingRepository,
-    SessionRepository,
-    WatchlistRepository,
-)
 
 
 def test_health_endpoint(client: TestClient):

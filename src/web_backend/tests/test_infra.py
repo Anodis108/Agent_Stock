@@ -6,31 +6,18 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from web_backend.infra.ai_client import RemoteAiClient
 from common.database import PgConn
+from web_backend.infra.ai_client import RemoteAiClient
 from web_backend.infra.database.connection import get_connection
 from web_backend.infra.database.pg import PgRow, qmark, schema_name
 from web_backend.infra.database.repositories import (
-    HITLEvaluationRecord,
-    HITLEvaluationRepository,
     HITLEvalRepo,
     MarketHistoryRecord,
-    MarketHistoryRepository,
     MarketHistoryRepo,
-    MessageRecord,
-    MessageRepository,
     MessageRepo,
-    PortfolioHoldingRecord,
-    PortfolioHoldingRepository,
     PortfolioRepo,
-    SessionRecord,
-    SessionRepository,
     SessionRepo,
-    UserSettingsRecord,
-    UserSettingsRepository,
     UserSettingsRepo,
-    WatchlistRecord,
-    WatchlistRepository,
     WatchlistRepo,
 )
 
@@ -165,7 +152,7 @@ class TestPortfolioAndWatchlistRepositories:
         assert h1.quantity == 500.0
 
         # Create holding for user_b (multi-tenant check)
-        h2 = repo.create(symbol="HPG", quantity=1000, avg_buy_price=28.0, user_id="user_b")
+        repo.create(symbol="HPG", quantity=1000, avg_buy_price=28.0, user_id="user_b")
 
         # List by user
         list_a = repo.list_by_user("user_a")

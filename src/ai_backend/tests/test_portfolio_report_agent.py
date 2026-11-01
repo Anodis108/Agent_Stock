@@ -6,22 +6,21 @@ preventing spurious ticker extraction (TRA, NAV, XEM).
 
 from __future__ import annotations
 
-
-from ai_backend.domain.agents.chat.nodes.portfolio import run_portfolio_report
 from ai_backend.domain.agents.chat.chat_supervisor_agent.nodes import (
     HeuristicRewriteBrain,
     HeuristicSupervisorBrain,
     _extract_symbols,
 )
+from ai_backend.domain.agents.chat.graph import run_chat_graph
+from ai_backend.domain.agents.chat.nodes.portfolio import run_portfolio_report
+from ai_backend.infra.storage.watchlist_store import PgWatchlistStore
+from common.domain.entities import WatchlistItem
+from common.domain.ports import PriceBar, PriceQuote, PriceSourcePort
 from web_backend.infra.database.connection import get_connection
 from web_backend.infra.database.repositories import (
     PortfolioHoldingRepository,
     UserSettingsRepository,
 )
-from common.domain.entities import WatchlistItem
-from common.domain.ports import PriceBar, PriceQuote, PriceSourcePort
-from ai_backend.domain.agents.chat.graph import run_chat_graph
-from ai_backend.infra.storage.watchlist_store import PgWatchlistStore
 
 
 class MockPriceSource(PriceSourcePort):

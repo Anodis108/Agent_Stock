@@ -13,7 +13,6 @@ from web_backend.shared.exceptions import (
     HoldingNotFoundException,
     SessionNotFoundException,
     ValidationException,
-    WebBackendException,
     WebDatabaseException,
 )
 from web_backend.shared.settings import WebSettings, web_settings

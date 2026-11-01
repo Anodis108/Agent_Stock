@@ -11,19 +11,12 @@ import pytest
 from common.database import PgConn
 from web_backend.infra.database.connection import get_connection
 from web_backend.infra.database.repositories import (
-    HITLEvaluationRecord,
     HITLEvaluationRepository,
     MarketHistoryRecord,
     MarketHistoryRepository,
-    MessageRecord,
     MessageRepository,
-    PortfolioHoldingRecord,
     PortfolioHoldingRepository,
-    SessionRecord,
     SessionRepository,
-    UserSettingsRecord,
-    UserSettingsRepository,
-    WatchlistRecord,
     WatchlistRepository,
 )
 

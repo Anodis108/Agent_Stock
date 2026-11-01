@@ -1,19 +1,34 @@
 #!/usr/bin/env python3
-"""Smoke test — M3-B5 Phase 11: health + FPT chat (+ optional SSE stream).
+"""Smoke test sau deploy — Module III, Bài 6, Section 4 (Deployment Strategies).
 
+Vì sao KHÔNG dùng "container đã start" làm tiêu chí deploy thành công:
+    Một bản deploy hỏng rất nhiều kiểu mà `/health` vẫn trả 200 — model sai,
+    hết quota API key, agent/chat lỗi chỉ lộ khi gọi thật. Container "healthy"
+    chỉ nghĩa là process còn sống.
+
+Nên smoke test phải đi hết một đường NGƯỜI DÙNG THẬT: health → hỏi 1 câu đã
+biết kỳ vọng (FPT tăng/giảm hoặc từ chối hợp lệ) → (tuỳ chọn) SSE stream.
+
+Đây là bước chặn cuối trong deploy.yml / cd.yml: smoke fail → rollback về
+last-known-good, trước khi người dùng kịp thấy.
+
+Khác llm-engineer-demo/deploy/smoke.py: demo còn bước ingest Qdrant rồi hỏi
+câu pháp lý; swarm không ingest — dữ liệu giá/tin lấy runtime / fallback.
+
+Chạy:
     python src/deploy/smoke.py --url http://localhost:8000
     python src/deploy/smoke.py --url http://localhost:8000 --stream
-    python src/deploy/smoke.py --url https://<ngrok-id>.ngrok-free.app --stream
+    python src/deploy/smoke.py --url https://<tunnel-or-ngrok> --stream
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import sys
 import urllib.error
 import urllib.request
 
+# Câu smoke cố định — phải thấy tín hiệu về FPT/biến động hoặc từ chối phạm vi.
 SMOKE_QUESTION = "FPT hôm nay tăng hay giảm?"
 FPT_MARKERS = ("fpt", "tăng", "giảm", "biến động", "giá", "change")
 REFUSAL_MARKERS = ("phạm vi", "không thể", "ngoài phạm vi", "từ chối", "sorry")
@@ -129,16 +144,17 @@ def run_smoke(base_url: str, *, check_stream_flag: bool = False) -> int:
     if ok:
         print("\nALL SMOKE TESTS PASSED")
         return 0
-    print("\nSMOKE TESTS FAILED")
+    # Format gần GitHub Actions annotation — hiện trên log CI.
+    print("\n::error::smoke: SMOKE TESTS FAILED")
     return 1
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Portfolio Watch deploy smoke test")
+    parser = argparse.ArgumentParser(description="VN Stock Swarm deploy smoke test (M3-B6)")
     parser.add_argument(
         "--url",
         required=True,
-        help="Base URL (e.g. http://localhost:8000 or https://xxx.ngrok-free.app)",
+        help="Base URL (e.g. http://localhost:8000 or https://xxx.trycloudflare.com)",
     )
     parser.add_argument(
         "--stream",

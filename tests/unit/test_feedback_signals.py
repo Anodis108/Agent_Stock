@@ -5,9 +5,8 @@ from __future__ import annotations
 import sys
 
 import pytest
-from fastapi.testclient import TestClient
-
 from backend.api.routers.hitl import score_for_signal
+from fastapi.testclient import TestClient
 
 
 def test_score_for_signal_maps_explicit_and_implicit():
@@ -104,10 +103,10 @@ def test_thumbs_up_and_down_are_rows_in_postgres(client: TestClient):
 
 def test_web_entry_thumbs_still_write_postgres(tmp_path, monkeypatch):
     """Nút thích và không thích trên entry web ghi PostgreSQL."""
-    from backend.main import app as web_app
     from backend.database.connection import get_connection
     from backend.database.pg import PgConn
     from backend.database.repositories import HITLEvaluationRepository
+    from backend.main import app as web_app
 
     monkeypatch.setenv("SQLITE_PATH", str(tmp_path / "thumbs.db"))
     monkeypatch.setenv("HITL_FEEDBACK_JSON_PATH", str(tmp_path / "hitl.json"))

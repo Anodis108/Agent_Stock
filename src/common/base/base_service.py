@@ -3,8 +3,6 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any
 
-from common.base.base_model import CustomBaseModel
-
 
 class BaseService(ABC):
     """Abstract base service for synchronous business use cases."""

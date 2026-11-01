@@ -3,11 +3,11 @@
 import os
 import subprocess
 from pathlib import Path
-import pytest
+
 import yaml
 
-from scripts.hitl_to_golden_draft import process_feedback
 from ai_backend.infra.cache.exact import ExactCache
+from scripts.hitl_to_golden_draft import process_feedback
 
 ROOT = Path(__file__).resolve().parents[2] if Path(__file__).resolve().parent.name in ("unit", "integration", "e2e") else Path(__file__).resolve().parents[1]
 

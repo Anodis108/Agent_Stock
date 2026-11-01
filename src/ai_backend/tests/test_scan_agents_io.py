@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage
 
 from ai_backend.domain.agents.scan import nodes
 from ai_backend.domain.agents.scan.db_agent import graph as db_graph

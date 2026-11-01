@@ -31,12 +31,12 @@ if str(ROOT) not in sys.path:
 
 import yaml  # noqa: E402
 
-from ai_backend.infra.eval.history import get_git_sha  # noqa: E402
 from ai_backend.infra.cost.tracker import (  # noqa: E402
     get_cost_tracker,
     reset_cost_tracker,
     set_cost_context,
 )
+from ai_backend.infra.eval.history import get_git_sha  # noqa: E402
 
 REPLAY_PATH = ROOT / "resources" / "eval" / "replay_faq.yaml"
 REPORT_MD = ROOT / "resources" / "eval" / "cache_benchmark.md"
@@ -225,7 +225,7 @@ def format_report_md(payload: dict, *, questions_run: int) -> str:
         "",
         f"- **Generated:** {payload.get('generated_at')}",
         f"- **Git SHA:** `{payload.get('git_sha')}`",
-        f"- **Dataset:** `resources/eval/replay_faq.yaml`",
+        "- **Dataset:** `resources/eval/replay_faq.yaml`",
         f"- **Questions run:** {questions_run}",
         f"- **Mode:** {'dry-run (simulated)' if dry else 'live'}",
         f"- **Elapsed:** {payload.get('elapsed_sec')}s",

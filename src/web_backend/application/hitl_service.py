@@ -22,7 +22,6 @@ from web_backend.infra.database.repositories import (
     SessionRepository,
 )
 
-
 SIGNAL_SCORE: dict[str, tuple[float, str]] = {
     "thumbs_up": (1.0, "explicit"),
     "thumbs_down": (0.0, "explicit"),
@@ -200,7 +199,7 @@ class HitlService(BaseService):
             records = []
             if dest.is_file():
                 try:
-                    with open(dest, "r", encoding="utf-8") as f:
+                    with open(dest, encoding="utf-8") as f:
                         records = json.load(f)
                     if not isinstance(records, list):
                         records = []

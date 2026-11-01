@@ -215,15 +215,13 @@ def _make_collect_node(domain: str):
     return collect
 
 
-_FINAL_ANSWER_SYSTEM = """Tổng hợp ghi chú từ các worker thành câu trả lời cuối
-cho user — ngắn gọn, đầy đủ thông tin đã thu thập được."""
-
-
 async def final_answer_node(state: HierarchicalState) -> dict:
+    from ai_backend.infra.prompts import get_system_prompt
+
     notes_text = "\n".join(f"[{d}] {n}" for d, n in state["notes"].items())
     response = await base_llm().ainvoke(
         [
-            {"role": "system", "content": _FINAL_ANSWER_SYSTEM},
+            {"role": "system", "content": get_system_prompt("answer_compose")},
             {"role": "user", "content": f"Nhiệm vụ: {state['task']}\n\nGhi chú:\n{notes_text}"},
         ]
     )

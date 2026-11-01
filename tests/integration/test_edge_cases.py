@@ -8,18 +8,17 @@ Covers:
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
-import pytest
+from unittest.mock import MagicMock
 
 from backend.agents.answer_composer.nodes import (
     HeuristicAnswerDraftBrain,
-    LlmAnswerDraftBrain,
     build_evidence,
     run_answer_composer,
 )
 from backend.agents.price_agent.nodes import run_price_agent
 from backend.domain.ports import PriceQuote
-from backend.graph.chat import build_chat_graph
+
+
 def test_edge_case_unknown_ticker_xyz_price_and_composer(monkeypatch):
     """Mã không tồn tại (VD: XYZ): Thông báo không tìm thấy mã và gợi ý tra cứu mã VN30."""
     mock_price_source = MagicMock()

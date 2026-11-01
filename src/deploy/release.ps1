@@ -1,13 +1,22 @@
 <#
 .SYNOPSIS
-    VN Stock Swarm — Release & Deployment Management Script (PowerShell)
+    VN Stock Swarm — Release (PowerShell) — Module III, Bài 6, Section 4.
 .DESCRIPTION
-    Quản lý vòng đời release cho môi trường triển khai cục bộ (Local / Docker Compose):
-    - up: Khởi chạy dịch vụ với docker compose và kiểm tra sức khỏe
-    - smoke: Chạy bộ kiểm thử tự động nhanh (src/deploy/smoke.py)
-    - rollback: Hoàn nguyên bản phát hành trước đó (LKG / Prompt Rollback)
-    - status: Kiểm tra trạng thái các container và endpoints (health check)
-    Triển khai thuần cục bộ trên máy trạm Windows.
+    Bản Windows của `release.sh` (demo có release.sh trên VM Linux).
+
+    Tách khỏi GitHub Actions vì:
+      1. Rollback phải gõ tay được khi Actions sập.
+      2. Logic release test được ngoài YAML.
+
+    Swarm local = Docker Compose (không systemd / gcloud). API giống demo:
+      up | smoke | rollback | status
+
+    - up:       compose up + ghi LKG SHA
+    - smoke:    src/deploy/smoke.py (health + câu FPT — không chỉ /health)
+    - rollback: prompt_rollback.py + compose --force-recreate + smoke lại
+    - status:   compose ps + /health web + AI
+
+    Host Linux / cd.yml: dùng release.sh (checkout git SHA), không file này.
 #>
 
 [CmdletBinding()]

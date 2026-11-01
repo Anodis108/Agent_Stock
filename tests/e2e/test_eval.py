@@ -15,16 +15,17 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+
 import pytest
 import yaml
 
 from ai_backend.application.eval import run as eval_mod
 from ai_backend.application.eval.run_detailed import (
-    GOLDEN_V5_PATH,
     TokenTracker,
     extract_pipeline_trace,
     generate_markdown_report,
 )
+
 ROOT = Path(__file__).resolve().parents[2] if Path(__file__).resolve().parent.name in ("unit", "integration", "e2e") else Path(__file__).resolve().parents[1]
 GOLDEN_V5_RESOURCE = (
     ROOT / "resources" / "eval" / "extended_dataset.yaml"
@@ -382,8 +383,8 @@ def test_generate_markdown_report_formatting():
 
 def test_prompt_lint_passes_on_resources_prompts():
     """Mọi prompt trong resources/prompts/ phải pass lint (metadata + biến template)."""
-    from ai_backend.infra.prompts.lint import lint_prompts_dir
     from ai_backend.infra.prompts import resolve_prompts_dir
+    from ai_backend.infra.prompts.lint import lint_prompts_dir
 
     issues = lint_prompts_dir(resolve_prompts_dir())
     assert not issues, "\n".join(str(i) for i in issues)
@@ -637,7 +638,8 @@ def test_compute_noise_stats_three_runs():
 
 def test_gate_drill_bad_then_good(tmp_path: Path):
     """Drill: injection tụt → exit 1; revert → exit 0."""
-    from ai_backend.application.eval.gate import check_gates, main as gate_main
+    from ai_backend.application.eval.gate import check_gates
+    from ai_backend.application.eval.gate import main as gate_main
 
     bad = {
         "rate": 0.85,
@@ -661,7 +663,7 @@ def test_gate_drill_bad_then_good(tmp_path: Path):
 
 def test_gate_accepts_v5_baseline_format():
     """Legacy v5_baseline.json (thiếu rule_pass_rate) vẫn chạy gate."""
-    from ai_backend.application.eval.gate import load_gate_report, check_gates
+    from ai_backend.application.eval.gate import check_gates, load_gate_report
 
     baseline_path = ROOT / "resources" / "eval" / "v5_baseline.json"
     if not baseline_path.is_file():
@@ -876,13 +878,17 @@ def test_agent_eval_benchmark_runner_and_export(tmp_path: Path):
 
 def test_phase5_observation_metrics_and_trace(tmp_path: Path):
     """Kiểm tra toàn diện 4 nhóm thông số quan sát: Token, Cost, Latency TTFT/E2E, Trace và Compliance Gate."""
+    from ai_backend.application.eval.run import (
+        CaseEvalResult,
+        LlmJudgeResult,
+        RuleBasedScore,
+        build_report,
+    )
     from ai_backend.application.eval.run_detailed import (
         TokenTracker,
         extract_pipeline_trace,
         generate_markdown_report,
-        run_detailed_evaluation,
     )
-    from ai_backend.application.eval.run import build_report, CaseEvalResult, LlmJudgeResult, RuleBasedScore
 
     # 1. Kiểm tra TokenTracker và tính toán chi phí
     tracker = TokenTracker()

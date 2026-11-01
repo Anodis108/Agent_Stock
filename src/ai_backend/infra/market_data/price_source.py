@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
 import logging
 import re
 import threading
 import time
+from datetime import datetime, timedelta
 
 from common.domain.ports import PriceBar, PriceQuote
 

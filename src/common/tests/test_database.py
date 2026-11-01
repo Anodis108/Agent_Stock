@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-import sqlite3
 from pathlib import Path
 
-import pytest
-
-from common.database.connection import get_connection, init_db
+from common.database.connection import get_connection
 from common.database.pg import qmark, schema_name
 
 

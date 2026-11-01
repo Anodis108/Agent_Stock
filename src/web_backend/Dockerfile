@@ -15,27 +15,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-COPY pyproject.toml README.md ./
+COPY requirements.txt ./
 
 ARG PIP_EXTRA_INDEX_URL=https://vnstocks.com/api/simple
 ENV PIP_EXTRA_INDEX_URL=${PIP_EXTRA_INDEX_URL}
 
+# Chỉ runtime deps (requirements.txt) — pytest/ruff ở requirements-dev.txt, không vào image.
 RUN pip install --no-cache-dir -U pip setuptools wheel \
-    && python - <<'PY'
-import os
-import subprocess
-import tomllib
-from pathlib import Path
-
-data = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
-deps = list(data["project"]["dependencies"])
-extra = os.environ.get("PIP_EXTRA_INDEX_URL")
-cmd = ["pip", "install", "--no-cache-dir"]
-if extra:
-    cmd.extend(["--extra-index-url", extra])
-cmd.extend(deps)
-subprocess.check_call(cmd)
-PY
+    && pip install --no-cache-dir -r requirements.txt
 
 # Stage 2: Runtime image tối ưu và bảo mật
 FROM python:3.12-slim AS runner

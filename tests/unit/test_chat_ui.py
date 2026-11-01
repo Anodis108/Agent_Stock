@@ -9,9 +9,8 @@ def _frontend() -> Path:
 
 def test_web_entry_serves_one_chat_screen_with_three_users():
     """backend mở đúng một trang chat và bộ chọn User A, User B, Default."""
-    from fastapi.testclient import TestClient
-
     from backend.main import app
+    from fastapi.testclient import TestClient
 
     frontend = _frontend()
     assert [p.name for p in sorted(frontend.glob("*.html"))] == ["index.html"]

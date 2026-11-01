@@ -19,27 +19,27 @@ from web_backend.infra.database.pg import (
     schema_name,
 )
 from web_backend.infra.database.repositories import (
+    HITLEvalRepo,
     HITLEvaluationRecord,
     HITLEvaluationRepository,
-    HITLEvalRepo,
     MarketHistoryRecord,
-    MarketHistoryRepository,
     MarketHistoryRepo,
+    MarketHistoryRepository,
     MessageRecord,
-    MessageRepository,
     MessageRepo,
+    MessageRepository,
     PortfolioHoldingRecord,
     PortfolioHoldingRepository,
     PortfolioRepo,
     SessionRecord,
-    SessionRepository,
     SessionRepo,
+    SessionRepository,
     UserSettingsRecord,
-    UserSettingsRepository,
     UserSettingsRepo,
+    UserSettingsRepository,
     WatchlistRecord,
-    WatchlistRepository,
     WatchlistRepo,
+    WatchlistRepository,
 )
 
 __all__ = [

@@ -10,18 +10,24 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any
+
 from pydantic import Field
 
-from common.base.base_model import CustomBaseModel
-from common.base.base_service import BaseService
-from common.domain.ports import MemoryStore, NewsSource, Notifier, PriceHistoryStore, PriceSource, WatchlistStore
-from ai_backend.shared.logging import get_logger
 from ai_backend.domain.agents.graph import resume_graph, start_graph
 from ai_backend.domain.agents.scan.nodes import DEFAULT_THRESHOLD_PCT
+from ai_backend.shared.logging import get_logger
+from common.base.base_model import CustomBaseModel
+from common.base.base_service import BaseService
+from common.domain.ports import (
+    MemoryStore,
+    NewsSource,
+    Notifier,
+    PriceHistoryStore,
+    PriceSource,
+    WatchlistStore,
+)
 
 logger = get_logger("ai_backend.application.scan_service")
-
-DEFAULT_THRESHOLD_PCT = 3.0
 
 
 class ScanInput(CustomBaseModel):

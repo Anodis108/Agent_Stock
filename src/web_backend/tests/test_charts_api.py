@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import io
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
 
-from common.storage import ChartObjectStore, reset_chart_store
+from common.storage import ChartObjectStore
 from web_backend.main import app, charts_path
 
 

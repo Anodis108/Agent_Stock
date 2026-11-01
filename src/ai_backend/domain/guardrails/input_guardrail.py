@@ -15,11 +15,14 @@ from __future__ import annotations
 import re
 from typing import Literal
 
+from pydantic import BaseModel
+
 from ai_backend.domain.guardrails.greeting_fastpath import (
     is_greeting as _check_is_greeting,
+)
+from ai_backend.domain.guardrails.greeting_fastpath import (
     is_pure_greeting as _check_is_pure_greeting,
 )
-from pydantic import BaseModel
 
 # Phân loại vi phạm Guardrail đầu vào
 GuardrailCategory = Literal[

@@ -11,7 +11,11 @@ from typing import Any, TypeVar
 
 from pydantic import BaseModel
 
-from ai_backend.infra.cost.tracker import check_budget_or_raise, record_cache_hit, record_response_usage
+from ai_backend.infra.cost.tracker import (
+    check_budget_or_raise,
+    record_cache_hit,
+    record_response_usage,
+)
 from ai_backend.infra.llm.params import GenerationParams
 from common.settings import settings
 

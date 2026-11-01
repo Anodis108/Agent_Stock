@@ -10,14 +10,13 @@ Cung cấp:
 
 from __future__ import annotations
 
-import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from common.logging.logger import get_logger
@@ -27,7 +26,11 @@ from web_backend.api.routers.approvals import router as approvals_router
 from web_backend.api.routers.chat import router as chat_router
 from web_backend.api.routers.hitl import (
     alias_router as hitl_alias_router,
+)
+from web_backend.api.routers.hitl import (
     direct_router as hitl_direct_router,
+)
+from web_backend.api.routers.hitl import (
     router as hitl_router,
 )
 from web_backend.api.routers.market import router as market_router
@@ -35,6 +38,8 @@ from web_backend.api.routers.portfolio import router as portfolio_router
 from web_backend.api.routers.scan import router as scan_router
 from web_backend.api.routers.sessions import (
     alias_router as sessions_alias_router,
+)
+from web_backend.api.routers.sessions import (
     router as sessions_router,
 )
 from web_backend.api.routers.watchlist import router as watchlist_router
@@ -139,7 +144,8 @@ charts_path.mkdir(parents=True, exist_ok=True)
 @app.get("/static/charts/{file_name}", tags=["charts"])
 def get_chart_image(file_name: str):
     """Phục vụ ảnh biểu đồ nến kỹ thuật từ đĩa cục bộ hoặc MinIO Object Storage."""
-    from fastapi.responses import FileResponse, Response
+    from fastapi.responses import FileResponse
+
     from common.storage import get_chart_store, safe_png_name
 
     clean = safe_png_name(file_name)
