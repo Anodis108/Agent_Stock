@@ -46,7 +46,7 @@ class JsonLogFormatter(logging.Formatter):
         return json.dumps(log_obj, ensure_ascii=False)
 
 
-def setup_logging(log_level: str = "INFO", json_format: bool = False) -> None:
+def setup_logging(log_level: str | None = "INFO", json_format: bool = False) -> None:
     '''Cấu hình logging cho ứng dụng.
 
     Args:
@@ -54,7 +54,7 @@ def setup_logging(log_level: str = "INFO", json_format: bool = False) -> None:
         json_format (bool): True để sử dụng JSON format cho Production/Cloud.
     '''
     root = logging.getLogger()
-    level = getattr(logging, log_level.upper(), logging.INFO)
+    level = getattr(logging, (log_level or "INFO").upper(), logging.INFO)
     root.setLevel(level)
 
     # Xóa các handler cũ nếu có
