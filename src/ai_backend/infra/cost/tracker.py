@@ -156,7 +156,7 @@ def check_budget_or_raise() -> None:
     from common.settings import settings
 
     limit = settings.cost_daily_limit_usd
-    if limit <= 0:
+    if limit is None or limit <= 0:
         return
     if _tracker.total_cost_usd >= limit:
         raise BudgetExceededError(
@@ -167,7 +167,10 @@ def check_budget_or_raise() -> None:
 def is_over_alert_threshold() -> bool:
     from common.settings import settings
 
-    return _tracker.total_cost_usd >= settings.cost_alert_threshold_usd
+    threshold = settings.cost_alert_threshold_usd
+    if threshold is None:
+        return False
+    return _tracker.total_cost_usd >= threshold
 
 
 def record_completion_usage(

@@ -88,7 +88,9 @@ def main() -> int:
     budget_limit = settings.cost_daily_limit_usd
     alert_threshold = settings.cost_alert_threshold_usd
     over_alert = is_over_alert_threshold()
-    over_budget = budget_limit > 0 and total_usd >= budget_limit
+    over_budget = (
+        budget_limit is not None and budget_limit > 0 and total_usd >= budget_limit
+    )
 
     out_json.write_text(json.dumps({
         "total_usd": total_usd,

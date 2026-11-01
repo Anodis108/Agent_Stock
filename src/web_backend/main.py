@@ -67,8 +67,8 @@ async def lifespan(app: FastAPI):
 
 # Khởi tạo ứng dụng FastAPI chính
 app = FastAPI(
-    title=web_settings.app_name,
-    version=web_settings.version,
+    title=web_settings.app_name or "VN Stock Swarm Web",
+    version=web_settings.version or "0.0.0",
     description="Web Gateway Microservice phục vụ người dùng và giao tiếp AI Swarm qua HTTP.",
     lifespan=lifespan,
 )
@@ -124,15 +124,14 @@ app.include_router(scan_router)
 
 
 # 5. Phục vụ biểu đồ kỹ thuật (Đĩa cục bộ & MinIO Object Storage)
-charts_path = Path(web_settings.charts_dir)
+_default_charts = Path(__file__).resolve().parents[2] / "resources" / "data" / "charts"
+charts_path = Path(web_settings.charts_dir) if web_settings.charts_dir else _default_charts
 if not charts_path.is_dir():
-    # Tìm fallback thư mục charts
-    candidates = [
+    for c in (
         Path.cwd() / "resources" / "data" / "charts",
         Path.cwd() / "data" / "charts",
-        Path(__file__).resolve().parents[2] / "resources" / "data" / "charts",
-    ]
-    for c in candidates:
+        _default_charts,
+    ):
         if c.is_dir():
             charts_path = c
             break

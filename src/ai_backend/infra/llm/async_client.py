@@ -36,13 +36,13 @@ from common.settings import settings
 # Section 4: giới hạn số lời gọi LLM ĐỒNG THỜI. Request thứ (N+1) sẽ `await`
 # ở đây cho tới khi có slot — backpressure ở tầng app, không đẩy hết tải lên provider.
 # Module level → dùng CHUNG mọi request trong 1 uvicorn worker (giống demo).
-_LLM_SEMAPHORE = asyncio.Semaphore(settings.llm_max_concurrency)
+_LLM_SEMAPHORE = asyncio.Semaphore(settings.llm_max_concurrency or 5)
 
 
 def semaphore_state() -> dict[str, int]:
     """Số slot còn trống / tổng — `/health`, benchmark."""
     return {
-        "limit": settings.llm_max_concurrency,
+        "limit": settings.llm_max_concurrency or 5,
         "available": _LLM_SEMAPHORE._value,  # noqa: SLF001 — quan sát, không điều khiển
     }
 

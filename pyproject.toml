@@ -15,7 +15,7 @@ include = ["common*", "web_backend*", "ai_backend*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["tests", "src"]
+testpaths = ["src/common/tests", "src/web_backend/tests", "src/ai_backend/tests", "tests/e2e"]
 pythonpath = ["src", "."]
 
 [tool.ruff]

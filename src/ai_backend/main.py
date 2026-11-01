@@ -127,8 +127,8 @@ async def lifespan(app: FastAPI):
 
 # Khởi tạo ứng dụng FastAPI AI Backend
 app = FastAPI(
-    title=ai_settings.app_name,
-    version=ai_settings.version,
+    title=ai_settings.app_name or "VN Stock Swarm AI",
+    version=ai_settings.version or "0.0.0",
     description="AI Backend Microservice — LangGraph Swarm Multi-Agent, SSE Streaming & Technical Scanner.",
     lifespan=lifespan,
 )

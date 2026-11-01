@@ -46,7 +46,11 @@ def _drop_pg_schema(schema: str) -> None:
 
 @pytest.fixture(autouse=True)
 def _pg_test_schema(monkeypatch):
-    """Mọi bài kiểm thử dùng schema PostgreSQL tạm (cả get_connection của web_backend), xóa khi kết thúc."""
+    """Schema PostgreSQL tạm khi có DATABASE_URL; không thì no-op (CI hermetic / e2e yaml)."""
+    if not ai_settings.database_url:
+        yield None
+        return
+
     from web_backend.infra.database import connection
 
     schema = _new_pg_schema()
