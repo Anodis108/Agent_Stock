@@ -1,0 +1,226 @@
+"""Cost tracker — M3-B3 Phase 7: ghi token/cost mỗi LLM request.
+
+Tag: feature, model, prompt_version, cache_hit.
+"""
+
+from __future__ import annotations
+
+from contextvars import ContextVar
+from typing import Any
+
+from pydantic import BaseModel, Field
+
+MODEL_PRICING_USD_PER_1M: dict[str, dict[str, float]] = {
+    "gpt-4o-mini": {"prompt": 0.15, "completion": 0.60},
+    "gpt-4o": {"prompt": 2.50, "completion": 10.00},
+    "default": {"prompt": 0.15, "completion": 0.60},
+}
+VND_PER_USD = 25400.0
+
+_cost_context: ContextVar[dict[str, Any] | None] = ContextVar("cost_context", default=None)
+
+
+class CostRecord(BaseModel):
+    feature: str
+    model: str
+    prompt_version: str
+    cache_hit: bool
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+    cost_usd: float
+
+    def as_dict(self) -> dict:
+        return self.model_dump()
+
+
+class CostTracker(BaseModel):
+    records: list[CostRecord] = Field(default_factory=list)
+
+    def record_cost(
+        self,
+        *,
+        feature: str,
+        model: str,
+        prompt_version: str,
+        cache_hit: bool,
+        prompt_tokens: int,
+        completion_tokens: int,
+        total_tokens: int | None = None,
+    ) -> CostRecord:
+        total = total_tokens if total_tokens is not None else prompt_tokens + completion_tokens
+        pricing = MODEL_PRICING_USD_PER_1M.get(model, MODEL_PRICING_USD_PER_1M["default"])
+        cost_usd = (
+            prompt_tokens * pricing["prompt"] + completion_tokens * pricing["completion"]
+        ) / 1_000_000.0
+        rec = CostRecord(
+            feature=feature,
+            model=model,
+            prompt_version=prompt_version,
+            cache_hit=cache_hit,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total,
+            cost_usd=cost_usd,
+        )
+        self.records.append(rec)
+        return rec
+
+    def reset(self) -> None:
+        self.records.clear()
+
+    @property
+    def total_tokens(self) -> int:
+        return sum(r.total_tokens for r in self.records)
+
+    @property
+    def total_cost_usd(self) -> float:
+        return sum(r.cost_usd for r in self.records)
+
+    @property
+    def total_cost_vnd(self) -> float:
+        return self.total_cost_usd * VND_PER_USD
+
+    def summary(self) -> dict:
+        by_feature: dict[str, dict[str, float | int]] = {}
+        for r in self.records:
+            bucket = by_feature.setdefault(
+                r.feature,
+                {"requests": 0, "tokens": 0, "cost_usd": 0.0},
+            )
+            bucket["requests"] = int(bucket["requests"]) + 1
+            bucket["tokens"] = int(bucket["tokens"]) + r.total_tokens
+            bucket["cost_usd"] = float(bucket["cost_usd"]) + r.cost_usd
+        cache_hits = sum(1 for r in self.records if r.cache_hit)
+        return {
+            "requests": len(self.records),
+            "cache_hits": cache_hits,
+            "cache_hit_rate": (cache_hits / len(self.records)) if self.records else 0.0,
+            "total_tokens": self.total_tokens,
+            "total_cost_usd": round(self.total_cost_usd, 6),
+            "total_cost_vnd": round(self.total_cost_vnd, 2),
+            "by_feature": by_feature,
+        }
+
+
+_tracker = CostTracker()
+
+
+def get_cost_tracker() -> CostTracker:
+    return _tracker
+
+
+def reset_cost_tracker() -> None:
+    _tracker.reset()
+
+
+def set_cost_context(**kwargs: Any) -> None:
+    """Set tags cho các LLM call tiếp theo trong context hiện tại."""
+    current = dict(_cost_context.get() or {})
+    current.update(kwargs)
+    _cost_context.set(current)
+
+
+def get_cost_context() -> dict[str, Any]:
+    return dict(_cost_context.get() or {})
+
+
+def record_cost(
+    *,
+    feature: str,
+    model: str,
+    prompt_version: str,
+    cache_hit: bool,
+    prompt_tokens: int,
+    completion_tokens: int,
+    total_tokens: int | None = None,
+) -> CostRecord:
+    """Ghi một LLM request vào global tracker."""
+    return _tracker.record_cost(
+        feature=feature,
+        model=model,
+        prompt_version=prompt_version,
+        cache_hit=cache_hit,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        total_tokens=total_tokens,
+    )
+
+
+class BudgetExceededError(Exception):
+    """Chi phí vượt ngưỡng daily budget — chặn LLM call tiếp theo."""
+
+
+def check_budget_or_raise() -> None:
+    """Kiểm tra ngân sách trước mỗi LLM request (0 = không giới hạn)."""
+    from common.settings import settings
+
+    limit = settings.cost_daily_limit_usd
+    if limit is None or limit <= 0:
+        return
+    if _tracker.total_cost_usd >= limit:
+        raise BudgetExceededError(
+            f"Daily cost budget exceeded: ${_tracker.total_cost_usd:.4f} >= ${limit:.4f}"
+        )
+
+
+def is_over_alert_threshold() -> bool:
+    from common.settings import settings
+
+    threshold = settings.cost_alert_threshold_usd
+    if threshold is None:
+        return False
+    return _tracker.total_cost_usd >= threshold
+
+
+def record_completion_usage(
+    *,
+    model: str,
+    prompt_tokens: int,
+    completion_tokens: int,
+    total_tokens: int | None = None,
+    feature: str | None = None,
+    prompt_version: str | None = None,
+    cache_hit: bool | None = None,
+) -> None:
+    """Ghi usage một lời gọi LLM. Caller (cache tiered, cascade, …) gọi — không gọi từ chat()."""
+    ctx = get_cost_context()
+    record_cost(
+        feature=feature or str(ctx.get("feature") or "llm"),
+        model=model,
+        prompt_version=str(prompt_version or ctx.get("prompt_version") or "production"),
+        cache_hit=bool(cache_hit if cache_hit is not None else ctx.get("cache_hit", False)),
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        total_tokens=total_tokens,
+    )
+
+
+def record_response_usage(usage: Any, *, model: str) -> None:
+    """Ghi token từ object usage của SDK. Thiếu usage hoặc tracker lỗi thì bỏ qua."""
+    if usage is None:
+        return
+    try:
+        record_completion_usage(
+            model=model,
+            prompt_tokens=usage.prompt_tokens or 0,
+            completion_tokens=usage.completion_tokens or 0,
+            total_tokens=usage.total_tokens,
+            cache_hit=False,
+        )
+    except Exception:
+        pass
+
+
+def record_cache_hit(*, model: str) -> None:
+    """Cache hit: 0 token, đánh dấu cache_hit để thống kê không tính tiền model."""
+    try:
+        record_completion_usage(
+            model=model,
+            prompt_tokens=0,
+            completion_tokens=0,
+            total_tokens=0,
+            cache_hit=True,
+        )
+    except Exception:
+        pass

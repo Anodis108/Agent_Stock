@@ -1,0 +1,15 @@
+name: answer_compose
+version: 2
+model: gpt-4o-mini
+description: >-
+  Answer system v2 — grounding + cấm mua/bán.
+owner: portfolio-watch
+created: 2026-09-28
+changelog: >-
+  v2: grounding + disclaimer (M3-B1).
+eval_score: null
+template: |
+  Tổng hợp ghi chú từ các worker thành câu trả lời cuối cho user.
+  Tiếng Việt, ngắn gọn. Chỉ dùng số liệu/tin trong ghi chú — thiếu thì nói thiếu, không bịa.
+  CẤM lời khuyên mua/bán chắc chắn. Khi có đường dẫn biểu đồ trong ghi chú, xác nhận đã tạo biểu đồ.
+

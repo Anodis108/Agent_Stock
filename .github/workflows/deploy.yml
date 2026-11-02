@@ -1,0 +1,129 @@
+name: deploy
+
+# Module III, Bài 6, Section 4 (Deployment Strategies) — bản DEMO / lớp học.
+#
+# ── Vì sao có file này bên cạnh cd.yml ─────────────────────────────────────────
+#
+# cd.yml là bản PRODUCTION: SSH lên máy chủ thật, checkout SHA, docker compose
+# recreate, smoke + rollback qua src/deploy/release.sh. Đúng bài học “deploy
+# remote”, nhưng cần VM/host + SSH key + clone sẵn repo trên máy — dễ trượt
+# khi mới setup.
+#
+# File này là bản DEMO: giữ nguyên bài học CI/CD (chỉ deploy khi CI xanh →
+# smoke câu hỏi thật → LKG → rollback) nhưng chạy hết trên GitHub runner
+# (docker compose), không cần máy chủ:
+#
+#   cd.yml                              deploy.yml
+#   ──────────────────────────────      ──────────────────────────────────────
+#   SSH lên host (VM/máy nhà)           Compose trên GitHub runner
+#   release.sh deploy <git SHA>         compose build/up trên runner
+#   .lkg trên disk host                 LKG SHA trong Actions cache
+#   Bật bằng ENABLE_SSH_DEPLOY=true     Mặc định BẬT (đường học / drill)
+#
+# Điểm mấu chốt: KHÔNG bật cả hai cùng lúc trên cùng một môi trường production
+# — hai tiến trình sẽ giành recreate container / ghi LKG.
+#
+# ── Nguyên tắc của bài, và cách file này thực hiện ─────────────────────────────
+#
+#   1. "Chỉ deploy khi CI xanh."  → workflow_run trên ci.yml, không phải push.
+#   2. "Promote theo smoke test." → src/deploy/smoke.py (câu FPT), không chỉ /health.
+#   3. "Rollback tự động."        → nếu smoke fail và có LKG cache → checkout LKG,
+#      compose lại, smoke lại.
+#
+# Swarm khác demo legal-RAG: compose mount ./src (không tag image latest trên
+# registry). Runner drill vẫn đủ để học gate + smoke + rollback.
+
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  # Không cancel giữa lúc compose/smoke — tránh trạng thái nửa vời.
+  group: deploy-runner-mvp
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: build-smoke-lkg
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # workflow_run: checkout đúng SHA mà CI đã test.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Restore last-known-good SHA
+        id: lkg-cache
+        uses: actions/cache@v4
+        with:
+          path: src/deploy/lkg
+          key: portfolio-watch-lkg-sha
+          restore-keys: |
+            portfolio-watch-lkg-sha
+
+      - name: Prepare environment file
+        run: |
+          cp .env.example .env
+          echo "MONITORING_ENABLED=false" >> .env
+
+      - name: Build backend image
+        run: docker compose build backend
+
+      - name: Start backend
+        run: docker compose up -d backend
+
+      - name: Wait for healthy backend
+        run: |
+          for i in $(seq 1 45); do
+            if curl -sf http://localhost:8000/health >/dev/null; then
+              echo "Backend healthy after ${i} attempts"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::Backend did not become healthy in time"
+          docker compose logs backend
+          exit 1
+
+      - name: Smoke test
+        id: smoke
+        run: python src/deploy/smoke.py --url http://localhost:8000
+
+      - name: Save last-known-good SHA
+        if: success()
+        run: |
+          mkdir -p src/deploy/lkg
+          echo "${{ github.event.workflow_run.head_sha || github.sha }}" > src/deploy/lkg/sha.txt
+          echo "Saved LKG: $(cat src/deploy/lkg/sha.txt)"
+
+      - name: Rollback to last-known-good on failure
+        if: failure() && steps.lkg-cache.outputs.cache-hit == 'true' && steps.smoke.outcome == 'failure'
+        run: |
+          set -euo pipefail
+          LKG=$(cat src/deploy/lkg/sha.txt)
+          echo "Rolling back to LKG commit: ${LKG}"
+          git checkout "${LKG}" -- .
+          cp .env.example .env
+          echo "MONITORING_ENABLED=false" >> .env
+          docker compose down || true
+          docker compose build backend
+          docker compose up -d backend
+          for i in $(seq 1 45); do
+            if curl -sf http://localhost:8000/health >/dev/null; then
+              break
+            fi
+            sleep 2
+          done
+          python src/deploy/smoke.py --url http://localhost:8000
+          echo "::warning::Deploy failed; rolled back to ${LKG}"
+
+      - name: Tear down containers
+        if: always()
+        run: docker compose down -v || true

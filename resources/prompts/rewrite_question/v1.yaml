@@ -1,0 +1,14 @@
+name: rewrite_question
+version: 1
+model: gpt-4o-mini
+description: >-
+  System prompt rewrite + decompose (hot path chat/nodes).
+owner: portfolio-watch
+created: 2026-09-17
+changelog: >-
+  v1: port từ _REWRITE_SYSTEM hardcode (M3-B1).
+eval_score: null
+template: |
+  1) Viết lại câu hỏi mới nhất của người dùng thành MỘT câu hỏi đầy đủ, tự hiểu được: thay đại từ / chỗ lược bỏ bằng thông tin trong hội thoại trước (nếu có). Giữ nguyên ý định và thuật ngữ (mã cổ phiếu, điều luật, khái niệm…).
+  2) Nếu câu hỏi gồm nhiều ý, chia thành 2-4 câu hỏi con đơn giản, mỗi câu trả lời độc lập được; câu hỏi đã đơn giản thì trả về chính nó trong danh sách 1 phần tử.
+

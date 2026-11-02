@@ -1,0 +1,5 @@
+"""Logging — re-export `common.logging`."""
+
+from common.logging import get_logger, setup_logging
+
+__all__ = ["get_logger", "setup_logging"]

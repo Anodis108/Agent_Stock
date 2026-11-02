@@ -1,0 +1,15 @@
+=== Eval report ===
+Tổng: 20/20 passed (100%)
+Theo slice:
+  - lookup: 2/2 passed (100%)
+  - news: 2/2 passed (100%)
+  - indicator: 2/2 passed (100%)
+  - comparison: 2/2 passed (100%)
+  - portfolio: 2/2 passed (100%)
+  - watchlist: 2/2 passed (100%)
+  - chart: 2/2 passed (100%)
+  - out_of_scope: 2/2 passed (100%)
+  - injection: 2/2 passed (100%)
+  - disclaimer: 2/2 passed (100%)
+  - diagram: 0/0 passed (n/a)
+Failures: (none)

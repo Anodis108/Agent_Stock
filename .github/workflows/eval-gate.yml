@@ -1,0 +1,176 @@
+name: eval-gate
+
+# Module III, Bài 2, Section 6 (CI Integration: Eval Gate) — nối sang Bài 6.
+#
+# Hai tầng theo bài học:
+#   - PR chạm prompts / ai_backend / eval data: chạy SUBSET (rẻ, nhanh, chặn merge).
+#   - Nightly: chạy FULL dataset (không chặn PR, chỉ báo cáo xu hướng).
+#
+# paths: filter — bỏ qua eval nếu PR không đụng gì liên quan tới answer quality
+# (kiểm soát chi phí CI, Section 6).
+#
+# Bài 6, Section 4: kết quả phải tới người review → PR comment + job summary.
+# Swarm giữ thêm .eval_cache (demo không có) để PR re-run đỡ đốt tiền API.
+# Không dùng LangSmith — chỉ OPENAI_API_KEYS. Deps: requirements-dev.txt + wheels.
+
+on:
+  pull_request:
+    paths:
+      - "resources/prompts/**"
+      - "src/ai_backend/**"
+      - "resources/eval/**"
+      - ".github/workflows/eval-gate.yml"
+  schedule:
+    - cron: "0 2 * * *" # 02:00 UTC hằng ngày — full dataset, không chặn PR
+
+# Push liên tiếp trên cùng PR: huỷ run cũ. Eval tốn tiền API.
+concurrency:
+  group: eval-gate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  PYTHONPATH: src
+  LLM_BACKEND: openai
+  LLM_MODEL: gpt-4o-mini
+  MONITORING_ENABLED: "false"
+  OPENAI_API_KEYS: ${{ secrets.OPENAI_API_KEYS }}
+
+jobs:
+  # ── PR: subset + gate (chặn merge nếu FAIL) ─────────────────────────────────
+  eval-subset:
+    name: eval-gate
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          pip install wheels/*.whl
+          pip install -r requirements-dev.txt
+
+      - name: Cache eval responses
+        uses: actions/cache@v4
+        with:
+          path: .eval_cache
+          key: eval-cache-${{ hashFiles('resources/prompts/**', 'resources/eval/**') }}
+          restore-keys: |
+            eval-cache-
+
+      - name: Run eval subset (chặn merge nếu FAIL)
+        id: eval
+        # Có secret → chạy live + gate. Thiếu secret → skip xanh (giữ hành vi
+        # workflow cũ 05dc683); đừng đỏ PR chỉ vì repo chưa cấu hình key.
+        run: |
+          mkdir -p specs/eval
+          if [ -z "${OPENAI_API_KEYS}" ]; then
+            echo "::warning::OPENAI_API_KEYS secret chưa set — skip live eval."
+            echo '{"status":"skipped","reason":"OPENAI_API_KEYS secret not configured"}' \
+              > specs/eval/pr_report.json
+            printf '%s\n' \
+              '## Eval Gate Report' '' \
+              '> [!WARNING]' \
+              '> **Skipped**: `OPENAI_API_KEYS` chưa có trên GitHub Secrets.' \
+              > specs/eval/pr_report.md
+            exit 0
+          fi
+          python -m scripts.eval_pipeline --subset \
+            --report specs/eval/pr_report.md --json specs/eval/pr_report.json
+
+      - name: Ghi báo cáo vào job summary
+        if: always()
+        run: |
+          if [ -f specs/eval/pr_report.md ]; then
+            cat specs/eval/pr_report.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Eval không chạy xong — không có báo cáo." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Comment kết quả lên PR
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = 'specs/eval/pr_report.md';
+            if (!fs.existsSync(path)) return;
+
+            let body = fs.readFileSync(path, 'utf8');
+            if (body.length > 60000) {
+              body = body.slice(0, 60000) + '\n\n… _(truncated)_';
+            }
+            const marker = '<!-- eval-gate-report -->';
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+
+            const comments = await github.rest.issues.listComments({ owner, repo, issue_number });
+            const existing = comments.data.find(c => c.body && c.body.includes(marker));
+
+            const payload = `${marker}\n${body}`;
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body: payload });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body: payload });
+            }
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-report
+          path: |
+            specs/eval/pr_report.md
+            specs/eval/pr_report.json
+          if-no-files-found: warn
+
+  # ── Nightly: full golden set (chỉ báo cáo, không chặn) ───────────────────────
+  eval-full-nightly:
+    name: eval-full-nightly
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          pip install wheels/*.whl
+          pip install -r requirements-dev.txt
+
+      - name: Run full golden set (không chặn gì — chỉ báo cáo xu hướng)
+        continue-on-error: true
+        run: |
+          mkdir -p specs/eval
+          if [ -z "${OPENAI_API_KEYS}" ]; then
+            echo "::warning::OPENAI_API_KEYS secret chưa set — skip nightly eval."
+            exit 0
+          fi
+          python -m scripts.eval_pipeline \
+            --report specs/eval/nightly_report.md --json specs/eval/nightly_report.json \
+            --save-history
+
+      - name: Ghi báo cáo vào job summary
+        if: always()
+        run: |
+          if [ -f specs/eval/nightly_report.md ]; then
+            cat specs/eval/nightly_report.md >> "$GITHUB_STEP_SUMMARY"
+          fi

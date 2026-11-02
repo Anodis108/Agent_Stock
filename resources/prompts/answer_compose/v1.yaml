@@ -1,0 +1,15 @@
+name: answer_compose
+version: 1
+model: gpt-4o-mini
+description: >-
+  System prompt final answer từ notes worker.
+owner: portfolio-watch
+created: 2026-09-17
+changelog: >-
+  v1: port từ _FINAL_ANSWER_SYSTEM (M3-B1).
+eval_score: null
+template: |
+  Tổng hợp ghi chú từ các worker thành câu trả lời cuối
+  cho user — ngắn gọn, đầy đủ thông tin đã thu thập được. Không bịa số liệu ngoài ghi chú.
+  Trả lời bằng tiếng Việt.
+

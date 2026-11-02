@@ -1,0 +1,211 @@
+"""Web Backend Microservice — FastAPI Entrypoint (Cổng 8000).
+
+Cung cấp:
+- Cổng tiếp nhận câu hỏi chứng khoán và điều phối Streaming SSE ra Web UI.
+- Quản lý danh mục đầu tư (Holdings, NAV, P&L, Alert Thresholds) theo user_id.
+- Quản lý danh mục theo dõi (Watchlist) và trạng thái phiên thị trường (Market Watch).
+- Ghi nhận đánh giá phản hồi Human-In-The-Loop (HITL) và kiểm duyệt lệnh.
+- Phục vụ tĩnh giao diện Frontend Web SPA và biểu đồ kỹ thuật /charts.
+"""
+
+from __future__ import annotations
+
+from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import Any
+
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, Response
+from fastapi.staticfiles import StaticFiles
+
+from common.logging.logger import get_logger
+from web_backend.api.helpers.exception_handler import register_exception_handlers
+from web_backend.api.helpers.middlewares import CorrelationIdMiddleware, RequestLoggingMiddleware
+from web_backend.api.routers.approvals import router as approvals_router
+from web_backend.api.routers.chat import router as chat_router
+from web_backend.api.routers.hitl import (
+    alias_router as hitl_alias_router,
+)
+from web_backend.api.routers.hitl import (
+    direct_router as hitl_direct_router,
+)
+from web_backend.api.routers.hitl import (
+    router as hitl_router,
+)
+from web_backend.api.routers.market import router as market_router
+from web_backend.api.routers.portfolio import router as portfolio_router
+from web_backend.api.routers.scan import router as scan_router
+from web_backend.api.routers.sessions import (
+    alias_router as sessions_alias_router,
+)
+from web_backend.api.routers.sessions import (
+    router as sessions_router,
+)
+from web_backend.api.routers.watchlist import router as watchlist_router
+from web_backend.infra.ai_client.remote_ai_client import RemoteAiClient
+from web_backend.infra.database.connection import get_connection, init_db
+from web_backend.shared.settings import web_settings
+
+logger = get_logger("web_backend.main")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Quản lý vòng đời khởi động và dừng của Web Backend."""
+    logger.info(f"Khởi động Web Backend Microservice tại cổng {web_settings.port}...")
+    try:
+        conn = get_connection()
+        init_db(conn)
+        conn.close()
+        logger.info("Khởi tạo cơ sở dữ liệu Web Backend thành công.")
+    except Exception as exc:
+        logger.warning(f"Lỗi khởi tạo cơ sở dữ liệu khi khởi động: {exc}")
+    yield
+    logger.info("Dừng Web Backend Microservice.")
+
+
+# Khởi tạo ứng dụng FastAPI chính
+app = FastAPI(
+    title=web_settings.app_name or "VN Stock Swarm Web",
+    version=web_settings.version or "0.0.0",
+    description="Web Gateway Microservice phục vụ người dùng và giao tiếp AI Swarm qua HTTP.",
+    lifespan=lifespan,
+)
+
+# 1. Đăng ký Middlewares
+app.add_middleware(CorrelationIdMiddleware)
+app.add_middleware(RequestLoggingMiddleware)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=web_settings.cors_origins if web_settings.cors_origins else ["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# 2. Đăng ký Global Exception Handlers
+register_exception_handlers(app)
+
+
+# 3. Health Endpoint
+@app.get("/health", tags=["system"])
+def health_check() -> dict[str, Any]:
+    """Kiểm tra trạng thái hoạt động của Web Backend và độ sẵn sàng của AI Backend."""
+    ai_client = RemoteAiClient(base_url=web_settings.ai_base_url)
+    ai_health = ai_client.check_health()
+
+    return {
+        "status": "ok",
+        "service": "web_backend",
+        "port": web_settings.port,
+        "version": web_settings.version,
+        "database": "postgresql" if web_settings.database_url else "not_configured",
+        "storage": {
+            "backend": web_settings.chart_backend,
+            "minio_endpoint": web_settings.minio_endpoint if web_settings.chart_backend == "minio" else None,
+        },
+        "ai_backend": ai_health,
+    }
+
+
+# 4. Đăng ký toàn bộ 8 Router Web
+app.include_router(chat_router)
+app.include_router(portfolio_router)
+app.include_router(watchlist_router)
+app.include_router(sessions_router)
+app.include_router(sessions_alias_router)
+app.include_router(hitl_router)
+app.include_router(hitl_alias_router)
+app.include_router(hitl_direct_router)
+app.include_router(market_router)
+app.include_router(approvals_router)
+app.include_router(scan_router)
+
+
+# 5. Phục vụ biểu đồ kỹ thuật (Đĩa cục bộ & MinIO Object Storage)
+_default_charts = Path(__file__).resolve().parents[2] / "resources" / "data" / "charts"
+charts_path = Path(web_settings.charts_dir) if web_settings.charts_dir else _default_charts
+if not charts_path.is_dir():
+    for c in (
+        Path.cwd() / "resources" / "data" / "charts",
+        Path.cwd() / "data" / "charts",
+        _default_charts,
+    ):
+        if c.is_dir():
+            charts_path = c
+            break
+
+charts_path.mkdir(parents=True, exist_ok=True)
+
+
+@app.get("/charts/{file_name}", tags=["charts"])
+@app.get("/static/charts/{file_name}", tags=["charts"])
+def get_chart_image(file_name: str):
+    """Phục vụ ảnh biểu đồ nến kỹ thuật từ đĩa cục bộ hoặc MinIO Object Storage."""
+    from fastapi.responses import FileResponse
+
+    from common.storage import get_chart_store, safe_png_name
+
+    clean = safe_png_name(file_name)
+    if not clean:
+        raise HTTPException(status_code=400, detail="Tên tệp không hợp lệ")
+
+    # 1. Ưu tiên kiểm tra trên đĩa cục bộ
+    local_file = charts_path / clean
+    if local_file.is_file():
+        return FileResponse(str(local_file), media_type="image/png")
+
+    # 2. Đọc trực tiếp từ MinIO Object Storage
+    store = get_chart_store()
+    if store is not None:
+        data = store.get(clean)
+        if data:
+            return Response(content=data, media_type="image/png")
+
+    raise HTTPException(status_code=404, detail="Không tìm thấy biểu đồ")
+
+
+app.mount("/charts", StaticFiles(directory=str(charts_path)), name="charts")
+
+
+# 6. Phục vụ giao diện Frontend Web SPA
+frontend_dir = None
+for candidate in [
+    Path.cwd() / "frontend" / "dist",
+    Path.cwd() / "frontend",
+    Path.cwd() / "src" / "frontend",
+    Path(__file__).resolve().parents[1] / "frontend",
+    Path(__file__).resolve().parents[2] / "src" / "frontend",
+    Path(__file__).resolve().parents[2] / "frontend",
+    Path("/app/frontend"),
+]:
+    if candidate.is_dir() and (candidate / "index.html").is_file():
+        frontend_dir = candidate
+        break
+
+if frontend_dir is not None:
+    @app.get("/", include_in_schema=False)
+    def serve_frontend_index():
+        return FileResponse(frontend_dir / "index.html")
+
+    app.mount("/", StaticFiles(directory=str(frontend_dir), html=True), name="frontend")
+else:
+    @app.get("/", include_in_schema=False)
+    def default_root_page():
+        return {
+            "message": "VN Stock Swarm Web Gateway Microservice is running",
+            "docs": "/docs",
+            "health": "/health",
+        }
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(
+        "web_backend.main:app",
+        host=web_settings.host,
+        port=web_settings.port,
+        reload=False,
+    )

@@ -1,0 +1,139 @@
+name: ci
+
+# Module III, Bài 6, Section 4 — CI Patterns cho LLM.
+#
+# Nguyên tắc quan trọng nhất của bài: **chạy check RẺ trước, check ĐẮT sau.**
+# Prompt lint và ruff mất vài giây; pytest mất chục giây; eval gate (workflow
+# riêng) tốn tiền gọi LLM thật. Xếp sai thứ tự nghĩa là mỗi PR lỗi chính tả /
+# import vẫn đốt thời gian runner (và nếu lẫn eval vào đây thì đốt tiền API).
+#
+# Nên: job `checks` (rẻ) chạy xong mới tới job `tests` (needs:). Còn eval gate
+# tách hẳn ra eval-gate.yml và chỉ chạy khi PR đụng prompt / ai_backend / eval.
+
+on:
+  pull_request:
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "resources/**"
+      - "wheels/**"
+      - "requirements.txt"
+      - "requirements-dev.txt"
+      - "pyproject.toml"
+      - ".github/workflows/ci.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "resources/**"
+      - "wheels/**"
+      - "requirements.txt"
+      - "requirements-dev.txt"
+      - "pyproject.toml"
+      - ".github/workflows/ci.yml"
+
+# PR mới đè lên PR cũ cùng nhánh → huỷ run đang chạy. Không có cái này thì 5 lần
+# push liên tiếp = 5 run chạy song song, tốn runner mà kết quả cũ đã vô nghĩa.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # CI hermetic: không .env trên runner — set default tối thiểu (khớp .env.example).
+  PYTHONPATH: src
+  MONITORING_ENABLED: "false"
+  LOG_LEVEL: INFO
+  AI_APP_NAME: VN Stock Swarm AI Microservice
+  AI_VERSION: "0.0.0"
+  WEB_APP_NAME: VN Stock Swarm Web Gateway
+  WEB_VERSION: "0.0.0"
+  LLM_MAX_CONCURRENCY: "5"
+  LLM_MAX_RETRIES: "1"
+  COST_DAILY_LIMIT_USD: "0"
+  COST_ALERT_THRESHOLD_USD: "1"
+  CHARTS_DIR: ./resources/data/charts
+  PRICE_FALLBACK_ON_ERROR: "true"
+
+jobs:
+  # ── Tầng 1: check rẻ, chạy trước ────────────────────────────────────────────
+  checks:
+    name: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          pip install wheels/*.whl
+          pip install -r requirements-dev.txt
+
+      - name: Prompt lint (metadata, version, biến template)
+        # Không gọi LLM — lint YAML dưới resources/prompts/ trước khi eval/CD.
+        run: python -m ai_backend.infra.prompts.lint resources/prompts/
+
+      - name: Ruff (E, F, I, B, UP — trừ E501)
+        run: ruff check .
+
+  # ── Tầng 2: test, chỉ chạy khi tầng 1 xanh ──────────────────────────────────
+  tests:
+    name: tests
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          pip install wheels/*.whl
+          pip install -r requirements-dev.txt
+
+      - name: Pytest
+        # Không set OPENAI_API_KEYS. `tests/` legacy `backend.*` + stale suite bỏ qua.
+        run: >
+          python -m pytest -q
+          src/common/tests src/web_backend/tests src/ai_backend/tests
+          tests/e2e/test_ci_workflows.py tests/e2e/test_docker_setup.py
+          --ignore=src/ai_backend/tests/test_async_client.py
+          --ignore=src/ai_backend/tests/test_chart.py
+          --ignore=src/ai_backend/tests/test_chart_store.py
+          --ignore=src/ai_backend/tests/test_chat_agents_io.py
+          --ignore=src/ai_backend/tests/test_edge_cases.py
+          --ignore=src/ai_backend/tests/test_hierarchical_swarm.py
+          --ignore=src/ai_backend/tests/test_infra.py
+          --ignore=src/ai_backend/tests/test_memory.py
+          --ignore=src/ai_backend/tests/test_portfolio_report_agent.py
+          --ignore=src/ai_backend/tests/test_presentation.py
+          --ignore=src/ai_backend/tests/test_scan_supervisor_agent.py
+          --ignore=src/ai_backend/tests/test_module3_features.py
+          --ignore=src/ai_backend/tests/test_application.py
+          --ignore=src/ai_backend/tests/test_entrypoint.py
+          --ignore=src/ai_backend/tests/test_concept_rag.py
+          --ignore=src/ai_backend/tests/test_ai_http_stream.py
+          --ignore=src/common/tests/test_config.py
+          --ignore=src/common/tests/test_storage.py
+          --ignore=src/common/tests/test_transport_sse_demo.py
+          --ignore=src/web_backend/tests/test_application.py
+          --ignore=src/web_backend/tests/test_domain.py
+          --ignore=src/web_backend/tests/test_main.py
+          --ignore=src/web_backend/tests/test_market.py
+          --ignore=src/web_backend/tests/test_presentation.py

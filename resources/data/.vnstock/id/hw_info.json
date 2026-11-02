@@ -1,0 +1,21 @@
+{
+  "device_id": "8ee4bcd46b92483f11f665eb4e039246",
+  "register_date": "2026-10-21T09:58:53.270129",
+  "version_installed": "0.0.1",
+  "os": "Linux",
+  "os_platform": "Linux-6.18.54.1-microsoft-standard-WSL2-x86_64-with-glibc2.41",
+  "python": "3.12.15",
+  "arch": "glibc2.41",
+  "environment": "script",
+  "hosting_service": null,
+  "ide": {
+    "ide_name": "Unknown",
+    "detection_method": "no_match",
+    "detected_at": "2026-10-21T09:58:53.270111",
+    "process_chain_depth": null,
+    "matched_process": null,
+    "environment_variable": null,
+    "frontend": null,
+    "shell_name": null
+  }
+}

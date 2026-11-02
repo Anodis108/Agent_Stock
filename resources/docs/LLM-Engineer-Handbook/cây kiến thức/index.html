@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cây Kiến Thức LLM Engineer Handbook</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-layout">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-brand" id="brand-home" title="Về màn hình chính">
+        <span class="brand-icon">🌳</span>
+        <div>
+          <h1 class="brand-title">LLM Engineer Handbook</h1>
+          <p class="brand-subtitle">Cây Kiến Thức Tương Tác</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <a href="bando-tuduy-llm-engineer.html" class="status-badge" style="text-decoration: none; background: linear-gradient(135deg, #0284c7, #4f46e5); color: #ffffff; font-weight: 700; cursor: pointer; padding: 6px 14px; border-radius: 8px;">🧠 Mở Bản Đồ Tư Duy</a>
+        <span class="status-badge" id="setup-status">Phase 4: Connected</span>
+      </div>
+    </header>
+
+    <!-- Main Workspace (2-Column Layout) -->
+    <main class="app-main">
+      <!-- Sidebar / Tree View -->
+      <aside class="tree-sidebar" id="tree-sidebar">
+        <!-- Tree Toolbar -->
+        <div class="tree-toolbar">
+          <div class="search-box">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="tree-search-input" class="search-input" placeholder="Tìm kiếm bài học, chủ đề..." autocomplete="off">
+            <button type="button" id="clear-search-btn" class="clear-btn" title="Xóa tìm kiếm" hidden>&times;</button>
+          </div>
+          <div class="toolbar-actions">
+            <button type="button" id="expand-all-btn" class="toolbar-btn" title="Mở rộng toàn bộ cây">
+              <span class="btn-icon">📂</span> Mở tất cả
+            </button>
+            <button type="button" id="collapse-all-btn" class="toolbar-btn" title="Thu gọn toàn bộ cây">
+              <span class="btn-icon">📁</span> Thu gọn
+            </button>
+          </div>
+        </div>
+
+        <!-- Dynamic Tree Container (Rendered by app.js from KNOWLEDGE_DATA) -->
+        <div class="tree-container" id="tree-container">
+          <!-- Tree DOM will be injected here -->
+        </div>
+      </aside>
+
+      <!-- Content Viewport -->
+      <section class="content-viewport" id="content-viewport">
+        <!-- 1. Welcome State View (Shown by default when no leaf is selected) -->
+        <div class="welcome-view" id="welcome-view">
+          <div class="welcome-card">
+            <div class="welcome-badge">Khóa học Kỹ sư AI Thực chiến</div>
+            <h2 class="welcome-title">Chào mừng đến với Cây Kiến Thức LLM Engineer</h2>
+            <p class="welcome-lead">
+              Hệ thống hóa toàn bộ kiến thức chuyên sâu từ nền tảng API, Fine-tuning, RAG, AI Agent đến triển khai Production LLMOps trích xuất trực tiếp từ Handbook.
+            </p>
+
+            <div class="welcome-stats">
+              <div class="stat-card">
+                <span class="stat-number" id="stat-modules">3</span>
+                <span class="stat-label">Modules Chuyên sâu</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-number" id="stat-lessons">25</span>
+                <span class="stat-label">Bài học Thực chiến</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-number" id="stat-topics">167</span>
+                <span class="stat-label">Chủ đề & Code mẫu</span>
+              </div>
+            </div>
+
+            <div class="module-overview-grid" id="module-overview-grid">
+              <!-- Dynamically populated or static fallback -->
+              <div class="module-card" data-mod-id="module-1">
+                <span class="mod-icon">📦</span>
+                <h3>Module I: Nền tảng & RAG</h3>
+                <p>LLM APIs, Local LLMs, Fine-tuning LoRA, Embeddings, Vector DB, RAG Pipeline & Evaluation.</p>
+              </div>
+              <div class="module-card" data-mod-id="module-2">
+                <span class="mod-icon">🤖</span>
+                <h3>Module II: AI Agent</h3>
+                <p>Kiến trúc Agent, LangGraph, Memory & Context, Tool Design, Multi-Agent Systems & Capstone.</p>
+              </div>
+              <div class="module-card" data-mod-id="module-3">
+                <span class="mod-icon">⚙️</span>
+                <h3>Module III: Production LLMOps</h3>
+                <p>Prompt Management, Evaluation Pipelines, Cost Optimization, Docker, Cloud & CI/CD.</p>
+              </div>
+            </div>
+
+            <div class="welcome-action-hint">
+              👈 <strong>Hướng dẫn:</strong> Nhấp vào một mục bất kỳ trên <strong>Cây kiến thức</strong> bên trái để bắt đầu khám phá nội dung chi tiết.
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. Dynamic Article View (Rendered by app.js upon leaf selection) -->
+        <div class="article-view" id="article-view" style="display: none;">
+          <!-- Breadcrumb Header -->
+          <nav class="content-breadcrumb" id="content-breadcrumb">
+            <!-- Dynamic Breadcrumb Links -->
+          </nav>
+
+          <!-- Dynamic Content Body -->
+          <article class="content-body" id="content-body">
+            <!-- Dynamic Article Content -->
+          </article>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="knowledge-data.js"></script>
+  <script src="app.js" defer></script>
+</body>
+</html>

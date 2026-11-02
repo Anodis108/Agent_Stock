@@ -1,0 +1,15 @@
+Thông báo sử dụng Vnstock đã được hiển thị trên môi trường có mã nhận dạng 8ee4bcd46b92483f11f665eb4e039246 lúc 2026-10-21T09:58:53.258190.
+
+Tệp này KHÔNG phải là bản ghi chấp thuận. Việc chấp thuận điều khoản được ghi nhận khi bạn xác nhận trên https://vnstocks.com.
+
+
+Việc sử dụng Vnstock chịu sự điều chỉnh của Giấy phép sử dụng phần mềm và Chính sách
+quyền riêng tư dưới đây. Vui lòng đọc trước khi sử dụng.
+
+Sự chấp thuận chỉ được ghi nhận khi bạn thực hiện thao tác xác nhận trên website với
+đúng phiên bản văn bản đang có hiệu lực. Việc tải, cài đặt hay tiếp tục sử dụng thư
+viện không thay thế thao tác xác nhận đó.
+
+Chi tiết:
+- Giấy phép sử dụng phần mềm: https://vnstocks.com/onboard/giay-phep-su-dung
+- Chính sách quyền riêng tư: https://vnstocks.com/onboard/chinh-sach-quyen-rieng-tu

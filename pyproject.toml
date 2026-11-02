@@ -1,0 +1,32 @@
+[project]
+name = "portfolio-watch"
+version = "0.1.0"
+description = "Portfolio Watch & Chat Agent — multi-agent giám sát cổ phiếu VN"
+requires-python = ">=3.10"
+# Runtime/dev deps: requirements.txt + requirements-dev.txt (giống llm-engineer-demo).
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["common*", "web_backend*", "ai_backend*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["src/common/tests", "src/web_backend/tests", "src/ai_backend/tests", "tests/e2e"]
+pythonpath = ["src", "."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+# Giống llm-engineer-demo: F/I/UP/B + E (trừ E501 — comment tiếng Việt dài).
+select = ["E", "F", "I", "UP", "B"]
+ignore = [
+    "E501",  # comment/chuỗi tiếng Việt dài
+    "E402",  # scripts: sys.path rồi mới import
+    "B008",  # FastAPI: Depends() trong default argument
+]
